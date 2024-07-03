@@ -3167,12 +3167,12 @@ class ConductorManager(service.PeriodicService):
             values = {'mgmt_mac': inic['mac']}
             self.dbapi.ihost_update(ihost['uuid'], values)
 
-    def _get_interface_mac_update_dict(self, ihost, inic_pciaddr_dict, interface_mac_update):
-        """ Get port list of altered MACs if vendor and device-id is the same on a PCI address.
+    def _get_ports_with_mac_change(self, ihost, inic_pciaddr_dict, ports_with_mac_change):
+        """ Get port list with altered MACs if vendor and device-id is the same on a PCI address.
 
         :param ihost: host object
         :param inic_pciaddr_dict: NIC data dict reported by sysinv-agent, key is PCI address
-        :param interface_mac_update: output dict containing MAC update info
+        :param ports_with_mac_change: output dict containing MAC update info
         """
         eth_ports = self.dbapi.ethernet_port_get_by_host(ihost['uuid'])
         for port in eth_ports:
@@ -3181,7 +3181,7 @@ class ConductorManager(service.PeriodicService):
                         and inic_pciaddr_dict[port.pciaddr]['pdevice'] == port.pdevice
                         and inic_pciaddr_dict[port.pciaddr]['mac'] != port.mac):
                     LOG.debug('add interface for mac update %s' % vars(port))
-                    interface_mac_update[port.interface_uuid] = port.pciaddr
+                    ports_with_mac_change[port.interface_uuid] = port.pciaddr
 
     def _set_port_report_mismatch_alarm(self, host, port, reason_text):
         """ Alarm update for port report mismatch
@@ -3453,21 +3453,17 @@ class ConductorManager(service.PeriodicService):
 
         has_removed = False
         cannot_replace = set()
-        interface_mac_update = dict()
-        is_aio_simplex_system = cutils.is_aio_simplex_system(self.dbapi)
-        if (is_aio_simplex_system):
-            inic_pciaddr_dict = dict()
-            for inic in inic_dict_array:
-                inic_pciaddr_dict[inic['pciaddr']] = inic
-            # If AIO-SX, we can update the NIC's MAC with the same vendor, device-id and PCI address
-            # For other system configuration the correct procedure is to perform host-delete and
-            # then host-add
-            self._get_interface_mac_update_dict(ihost, inic_pciaddr_dict, interface_mac_update)
+        ports_with_mac_change = dict()
+        inic_pciaddr_dict = dict()
+        for inic in inic_dict_array:
+            inic_pciaddr_dict[inic['pciaddr']] = inic
+        # Update the NIC's MAC with the same vendor, device-id and PCI address
+        self._get_ports_with_mac_change(ihost, inic_pciaddr_dict, ports_with_mac_change)
 
-            # in AIO-SX, if the replaced or unreported ports do not have the associated interface
-            # with class none or are used by other sub-interfaces, the new reported interface is not
-            # processed until the operator removes the interface configuration.
-            has_removed = self._process_port_replacement(ihost, inic_pciaddr_dict, cannot_replace)
+        # If the replaced or unreported ports do not have the associated interface
+        # with class none or are used by other sub-interfaces, the new reported interface is not
+        # processed until the operator removes the interface configuration.
+        has_removed = self._process_port_replacement(ihost, inic_pciaddr_dict, cannot_replace)
 
         try:
             iinterfaces = self.dbapi.iinterface_get_by_ihost(ihost_uuid,
@@ -3541,8 +3537,8 @@ class ConductorManager(service.PeriodicService):
 
                         self._fix_db_pciaddr_for_n3000_i40(ihost, inic)
                         break
-                    elif (interface.uuid in interface_mac_update.keys()
-                            and interface_mac_update[interface.uuid] == inic['pciaddr']):
+                    elif (interface.uuid in ports_with_mac_change.keys()
+                            and ports_with_mac_change[interface.uuid] == inic['pciaddr']):
                         # append to port attributes as well
                         inic_dict.update({
                             'interface_id': interface['id'], 'bootp': bootp
@@ -3700,8 +3696,8 @@ class ConductorManager(service.PeriodicService):
                              "on host %s" % (inic_dict, ihost.uuid))
                     port = self.dbapi.ethernet_port_create(ihost.uuid, port_dict)
 
-                    if (is_aio_simplex_system and has_removed):
-                        # In AIO-SX if a replacement has occurred it may be necessary to update
+                    if has_removed:
+                        # If a replacement has occurred it may be necessary to update
                         # the node_id from the inode database, as inumas_update_by_ihost() updates
                         # the ports only when is creating new inode entries
                         self._set_ethernet_port_node_id(ihost, port)

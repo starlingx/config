@@ -3024,6 +3024,16 @@ class ManagerTestCase(base.DbTestCase):
 
         return inic_dict_array
 
+    def _create_test_iports_with_new_macs(self, ei_inc):
+        # New MAC addresses created by incrementing the the original EI first byte by ei_inc
+        # Example: ei_inc=2 , 3c:fd:fe:b5:72:e0 -> 3c:fd:fe:b7:72:e0
+        new_inic_dict_array = self._create_test_iports()
+        for inic in new_inic_dict_array:
+            mac = netaddr.EUI(inic['mac'])
+            new_mac = netaddr.EUI(int(mac) + (ei_inc << 16), dialect=netaddr.mac_unix_expanded)
+            inic['mac'] = str(new_mac)
+        return new_inic_dict_array
+
     def _create_test_networks(self, mgmt_vlan_id):
         address_pool_mgmt = utils.create_test_address_pool(id=1, network='192.168.204.0',
             name='management', ranges=[['192.168.204.2', '192.168.204.254']], prefix=24)
@@ -3478,43 +3488,7 @@ class ManagerTestCase(base.DbTestCase):
         self.assertEqual(port.speed, inic_dict_array[-1]['speed'])
         self.assertEqual(port.dpdksupport, inic_dict_array[-1]['dpdksupport'])
 
-    def test_iport_update_by_ihost_report_update_same_device_same_slot_diff_mac(self):
-        """Test the interface MAC update
-
-        In case of NIC exchange by the same vendor/device-id the new MAC needs to be updated
-        on the database if the system is AIO-SX
-        """
-        inic_dict_array = self._create_test_iports()
-        test_mgmt_mac = inic_dict_array[3]['mac']
-        mgmt_vlan_id = 111
-        # Create controller-0 node
-        config_uuid = str(uuid.uuid4())
-        ihost = self._create_test_ihost(
-            hostname='controller-0', mgmt_mac=test_mgmt_mac, uuid=str(uuid.uuid4()),
-            personality=constants.WORKER, config_status=None, config_applied=config_uuid,
-            config_target=config_uuid, invprovision=constants.PROVISIONED,
-            administrative=constants.ADMIN_UNLOCKED, operational=constants.OPERATIONAL_ENABLED,
-            availability=constants.AVAILABILITY_ONLINE,
-        )
-        self._create_test_networks(mgmt_vlan_id)
-
-        mock_find_local_mgmt_interface_vlan_id = mock.MagicMock()
-        p = mock.patch(
-            'sysinv.conductor.manager.ConductorManager._find_local_mgmt_interface_vlan_id',
-            mock_find_local_mgmt_interface_vlan_id)
-        p.start().return_value = 0
-        self.addCleanup(p.stop)
-
-        mock_socket_gethostname = mock.MagicMock()
-        p2 = mock.patch('socket.gethostname', mock_socket_gethostname)
-        p2.start().return_value = 'controller-0'
-        self.addCleanup(p2.stop)
-
-        mock_is_aio_simplex_system = mock.MagicMock()
-        p3 = mock.patch('sysinv.common.utils.is_aio_simplex_system', mock_is_aio_simplex_system)
-        p3.start().return_value = True
-        self.addCleanup(p3.stop)
-
+    def _create_test_interfaces(self, ihost, inic_dict_array, test_mgmt_mac, mgmt_vlan_id):
         ifaces = dict()
         ports = dict()
         ifaces['sriov0'] = utils.create_test_interface(ifname='sriov0',
@@ -3572,13 +3546,9 @@ class ManagerTestCase(base.DbTestCase):
                                     iftype=constants.INTERFACE_TYPE_VLAN, uses=['pxeboot0'],
                                     ifclass=constants.INTERFACE_CLASS_PLATFORM,
                                     vlan_id=mgmt_vlan_id, imac=test_mgmt_mac)
+        return ifaces, ports
 
-        inic_dict_array[0]['mac'] = '1a:2a:3a:4a:5a:6a'
-        inic_dict_array[1]['mac'] = 'c0:ca:de:ad:be:ff'
-        inic_dict_array[3]['mac'] = '20:2a:2e:2d:2e:2f'
-
-        self.service.iport_update_by_ihost(self.context, ihost['uuid'], inic_dict_array[0:4])
-
+    def _check_test_interfaces(self, ifaces, ports, inic_dict_array):
         self.assertEqual(self.dbapi.iinterface_get(ifaces['sriov0'].id).imac,
                          inic_dict_array[0]['mac'])
         self.assertEqual(self.dbapi.iinterface_get(ifaces['sriov0a'].id).imac,
@@ -3601,6 +3571,140 @@ class ManagerTestCase(base.DbTestCase):
         self.assertEqual(self.dbapi.ethernet_port_get(ports['pxeboot0'].id).mac,
                          inic_dict_array[3]['mac'])
 
+    def test_iport_update_by_ihost_report_update_same_device_same_slot_diff_mac_sx(self):
+        self._iport_update_by_ihost_report_update_same_device_same_slot_diff_mac(True)
+
+    def test_iport_update_by_ihost_report_update_same_device_same_slot_diff_mac_dx(self):
+        self._iport_update_by_ihost_report_update_same_device_same_slot_diff_mac(False)
+
+    def _iport_update_by_ihost_report_update_same_device_same_slot_diff_mac(self, is_simplex):
+        """Test the interface MAC update
+
+        In case of NIC exchange by the same vendor/device-id the new MAC needs to be updated
+        on the database if the system is AIO-SX or AIO-DX.
+        For AIO-SX the MAC change is tested on controller-0 and for AIO-DX on controller-1.
+        """
+        inic_dict_array = self._create_test_iports()
+        test_mgmt_mac = inic_dict_array[3]['mac']
+        c0_mac = ''
+        c1_mac = ''
+        if is_simplex:
+            c0_mac = test_mgmt_mac
+        else:
+            c0_mac = '00:15:17:cd:c4:af'
+            c1_mac = test_mgmt_mac
+        mgmt_vlan_id = 111
+        # Create controller-0 node
+        config_uuid = str(uuid.uuid4())
+        ihost = self._create_test_ihost(
+            hostname='controller-0', mgmt_mac=c0_mac, uuid=str(uuid.uuid4()),
+            personality=constants.CONTROLLER, config_status=None, config_applied=config_uuid,
+            config_target=config_uuid, invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED, operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+        )
+        # For DX, create controller-1 node as well
+        if not is_simplex:
+            config_uuid = str(uuid.uuid4())
+            ihost = self._create_test_ihost(
+                hostname='controller-1', mgmt_mac=c1_mac, uuid=str(uuid.uuid4()),
+                personality=constants.CONTROLLER, config_status=None, config_applied=config_uuid,
+                config_target=config_uuid, invprovision=constants.PROVISIONED,
+                administrative=constants.ADMIN_UNLOCKED, operational=constants.OPERATIONAL_ENABLED,
+                availability=constants.AVAILABILITY_ONLINE,
+            )
+        self._create_test_networks(mgmt_vlan_id)
+
+        mock_find_local_mgmt_interface_vlan_id = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.conductor.manager.ConductorManager._find_local_mgmt_interface_vlan_id',
+            mock_find_local_mgmt_interface_vlan_id)
+        p.start().return_value = 0
+        self.addCleanup(p.stop)
+
+        mock_socket_gethostname = mock.MagicMock()
+        p2 = mock.patch('socket.gethostname', mock_socket_gethostname)
+        p2.start().return_value = 'controller-0'
+        self.addCleanup(p2.stop)
+
+        mock_is_aio_simplex_system = mock.MagicMock()
+        p3 = mock.patch('sysinv.common.utils.is_aio_simplex_system', mock_is_aio_simplex_system)
+        p3.start().return_value = is_simplex
+        self.addCleanup(p3.stop)
+
+        ifaces, ports = self._create_test_interfaces(ihost, inic_dict_array, test_mgmt_mac, mgmt_vlan_id)
+
+        inic_dict_array[0]['mac'] = '1a:2a:3a:4a:5a:6a'
+        inic_dict_array[1]['mac'] = 'c0:ca:de:ad:be:ff'
+        inic_dict_array[3]['mac'] = '20:2a:2e:2d:2e:2f'
+
+        self.service.iport_update_by_ihost(self.context, ihost['uuid'], inic_dict_array[0:4])
+        self._check_test_interfaces(ifaces, ports, inic_dict_array)
+
+    def test_iport_update_by_ihost_report_move_nic_to_other_node(self):
+        """Test new NIC on controller-0 and move former NIC from controller-0 to controller-1
+
+        A new NIC is placed on controller-0 and the NIC from controller-0 is moved to controller-1.
+        New MAC addresses will be updated on controller-0 and the former MAC addresses from
+        controller-0 will be moved to controller-1.
+        """
+        c0_inic_dict_array = self._create_test_iports()
+        c1_inic_dict_array = self._create_test_iports_with_new_macs(1)
+        new_c0_inic_dict_array = self._create_test_iports_with_new_macs(2)
+
+        c0_test_mgmt_mac = c0_inic_dict_array[3]['mac']
+        c1_test_mgmt_mac = c1_inic_dict_array[3]['mac']
+        mgmt_vlan_id = 111
+        # Create controller-0 node
+        config_uuid0 = str(uuid.uuid4())
+        ihost0 = self._create_test_ihost(
+            hostname='controller-0', mgmt_mac=c0_test_mgmt_mac, uuid=str(uuid.uuid4()),
+            personality=constants.CONTROLLER, config_status=None, config_applied=config_uuid0,
+            config_target=config_uuid0, invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED, operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+        )
+        # Create controller-1 node
+        config_uuid1 = str(uuid.uuid4())
+        ihost1 = self._create_test_ihost(
+            hostname='controller-1', mgmt_mac=c1_test_mgmt_mac, uuid=str(uuid.uuid4()),
+            personality=constants.CONTROLLER, config_status=None, config_applied=config_uuid1,
+            config_target=config_uuid1, invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED, operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+        )
+        self._create_test_networks(mgmt_vlan_id)
+
+        mock_find_local_mgmt_interface_vlan_id = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.conductor.manager.ConductorManager._find_local_mgmt_interface_vlan_id',
+            mock_find_local_mgmt_interface_vlan_id)
+        p.start().return_value = 0
+        self.addCleanup(p.stop)
+
+        mock_socket_gethostname = mock.MagicMock()
+        p2 = mock.patch('socket.gethostname', mock_socket_gethostname)
+        p2.start().return_value = 'controller-0'
+        self.addCleanup(p2.stop)
+
+        mock_is_aio_simplex_system = mock.MagicMock()
+        p3 = mock.patch('sysinv.common.utils.is_aio_simplex_system', mock_is_aio_simplex_system)
+        p3.start().return_value = False
+        self.addCleanup(p3.stop)
+
+        ifaces0, ports0 = self._create_test_interfaces(ihost0, c0_inic_dict_array, c0_test_mgmt_mac, mgmt_vlan_id)
+        ifaces1, ports1 = self._create_test_interfaces(ihost1, c1_inic_dict_array, c1_test_mgmt_mac, mgmt_vlan_id)
+
+        # Update controller-0 with new NIC (new MAC addresses)
+        self.service.iport_update_by_ihost(self.context, ihost0['uuid'], new_c0_inic_dict_array[0:4])
+        # Update controller-1 with controller-0's original NIC (controller-0's original MAC addresses)
+        self.service.iport_update_by_ihost(self.context, ihost1['uuid'], c0_inic_dict_array[0:4])
+
+        # Check new NIC on controller-0
+        self._check_test_interfaces(ifaces0, ports0, new_c0_inic_dict_array)
+        # Check moved NIC on controller-1
+        self._check_test_interfaces(ifaces1, ports1, c0_inic_dict_array)
+
     def test_iport_update_by_ihost_report_update_different_device_same_slot(self):
         """Test different device exchange on the same PCI address
 
@@ -3617,7 +3721,7 @@ class ManagerTestCase(base.DbTestCase):
         config_uuid = str(uuid.uuid4())
         ihost = self._create_test_ihost(
             hostname='controller-0', mgmt_mac=test_mgmt_mac, uuid=str(uuid.uuid4()),
-            personality=constants.WORKER, config_status=None, config_applied=config_uuid,
+            personality=constants.CONTROLLER, config_status=None, config_applied=config_uuid,
             config_target=config_uuid, invprovision=constants.PROVISIONED,
             administrative=constants.ADMIN_UNLOCKED, operational=constants.OPERATIONAL_ENABLED,
             availability=constants.AVAILABILITY_ONLINE,
@@ -3656,63 +3760,7 @@ class ManagerTestCase(base.DbTestCase):
         self.service.fm_api.clear_fault.side_effect = port_clear_fault
         self.service.fm_api.get_faults_by_id.side_effect = port_get_faults_by_id
 
-        ifaces = dict()
-        ports = dict()
-        ifaces['sriov0'] = utils.create_test_interface(ifname='sriov0',
-                                    forihostid=ihost.id, ihost_uuid=ihost.uuid,
-                                    iftype=constants.INTERFACE_TYPE_ETHERNET,
-                                    ifclass=constants.INTERFACE_CLASS_PCI_SRIOV,
-                                    imac=inic_dict_array[0]['mac'])
-        ports['sriov0'] = utils.create_test_ethernet_port(name=inic_dict_array[0]['pname'],
-                                    host_id=ihost.id, interface_id=ifaces['sriov0'].id,
-                                    mac=inic_dict_array[0]['mac'],
-                                    pciaddr=inic_dict_array[0]['pciaddr'],
-                                    pdevice=inic_dict_array[0]['pdevice'],
-                                    pvendor=inic_dict_array[0]['pvendor'])
-        ifaces['sriov0a'] = utils.create_test_interface(ifname='sriov0a',
-                                    forihostid=ihost.id, ihost_uuid=ihost.uuid,
-                                    iftype=constants.INTERFACE_TYPE_VF, uses=['sriov0'],
-                                    ifclass=constants.INTERFACE_CLASS_PCI_SRIOV,
-                                    imac=inic_dict_array[0]['mac'])
-
-        ifaces['data0'] = utils.create_test_interface(ifname='data0',
-                                    forihostid=ihost.id, ihost_uuid=ihost.uuid,
-                                    ifclass=constants.INTERFACE_CLASS_DATA,
-                                    imac=inic_dict_array[1]['mac'])
-        ports['data0'] = utils.create_test_ethernet_port(name=inic_dict_array[1]['pname'],
-                                    host_id=ihost.id, interface_id=ifaces['data0'].id,
-                                    mac=inic_dict_array[1]['mac'],
-                                    pciaddr=inic_dict_array[1]['pciaddr'],
-                                    pdevice=inic_dict_array[1]['pdevice'],
-                                    pvendor=inic_dict_array[1]['pvendor'])
-
-        ifaces['pcipt0'] = utils.create_test_interface(ifname='pcipt0',
-                                    forihostid=ihost.id, ihost_uuid=ihost.uuid,
-                                    ifclass=constants.INTERFACE_CLASS_PCI_PASSTHROUGH,
-                                    imac=inic_dict_array[2]['mac'])
-        ports['pcipt0'] = utils.create_test_ethernet_port(name=inic_dict_array[2]['pname'],
-                                    host_id=ihost.id, interface_id=ifaces['pcipt0'].id,
-                                    mac=inic_dict_array[2]['mac'],
-                                    pciaddr=inic_dict_array[2]['pciaddr'],
-                                    pdevice=inic_dict_array[2]['pdevice'],
-                                    pvendor=inic_dict_array[2]['pvendor'])
-
-        ifaces['pxeboot0'] = utils.create_test_interface(ifname='pxeboot0',
-                                    forihostid=ihost.id, ihost_uuid=ihost.uuid,
-                                    iftype=constants.INTERFACE_TYPE_ETHERNET,
-                                    ifclass=constants.INTERFACE_CLASS_PLATFORM,
-                                    imac=test_mgmt_mac)
-        ports['pxeboot0'] = utils.create_test_ethernet_port(name=inic_dict_array[3]['pname'],
-                                    host_id=ihost.id, interface_id=ifaces['pxeboot0'].id,
-                                    mac=inic_dict_array[3]['mac'],
-                                    pciaddr=inic_dict_array[3]['pciaddr'],
-                                    pdevice=inic_dict_array[3]['pdevice'],
-                                    pvendor=inic_dict_array[3]['pvendor'])
-        ifaces['mgmt0'] = utils.create_test_interface(ifname='mgmt0',
-                                    forihostid=ihost.id, ihost_uuid=ihost.uuid,
-                                    iftype=constants.INTERFACE_TYPE_VLAN, uses=['pxeboot0'],
-                                    ifclass=constants.INTERFACE_CLASS_PLATFORM,
-                                    vlan_id=mgmt_vlan_id, imac=test_mgmt_mac)
+        ifaces, ports = self._create_test_interfaces(ihost, inic_dict_array, test_mgmt_mac, mgmt_vlan_id)
 
         # create inodes to update port.node_id
         inuma_dict_array = [{'numa_node': 0, 'capabilities': {}},
@@ -3786,7 +3834,7 @@ class ManagerTestCase(base.DbTestCase):
         config_uuid = str(uuid.uuid4())
         ihost = self._create_test_ihost(
             hostname='controller-0', mgmt_mac=test_mgmt_mac, uuid=str(uuid.uuid4()),
-            personality=constants.WORKER, config_status=None, config_applied=config_uuid,
+            personality=constants.CONTROLLER, config_status=None, config_applied=config_uuid,
             config_target=config_uuid, invprovision=constants.PROVISIONED,
             administrative=constants.ADMIN_UNLOCKED, operational=constants.OPERATIONAL_ENABLED,
             availability=constants.AVAILABILITY_ONLINE,
@@ -3825,63 +3873,7 @@ class ManagerTestCase(base.DbTestCase):
         self.service.fm_api.clear_fault.side_effect = port_clear_fault
         self.service.fm_api.get_faults_by_id.side_effect = port_get_faults_by_id
 
-        ifaces = dict()
-        ports = dict()
-        ifaces['sriov0'] = utils.create_test_interface(ifname='sriov0',
-                                    forihostid=ihost.id, ihost_uuid=ihost.uuid,
-                                    iftype=constants.INTERFACE_TYPE_ETHERNET,
-                                    ifclass=constants.INTERFACE_CLASS_PCI_SRIOV,
-                                    imac=inic_dict_array[0]['mac'])
-        ports['sriov0'] = utils.create_test_ethernet_port(name=inic_dict_array[0]['pname'],
-                                    host_id=ihost.id, interface_id=ifaces['sriov0'].id,
-                                    mac=inic_dict_array[0]['mac'],
-                                    pciaddr=inic_dict_array[0]['pciaddr'],
-                                    pdevice=inic_dict_array[0]['pdevice'],
-                                    pvendor=inic_dict_array[0]['pvendor'])
-        ifaces['sriov0a'] = utils.create_test_interface(ifname='sriov0a',
-                                    forihostid=ihost.id, ihost_uuid=ihost.uuid,
-                                    iftype=constants.INTERFACE_TYPE_VF, uses=['sriov0'],
-                                    ifclass=constants.INTERFACE_CLASS_PCI_SRIOV,
-                                    imac=inic_dict_array[0]['mac'])
-
-        ifaces['data0'] = utils.create_test_interface(ifname='data0',
-                                    forihostid=ihost.id, ihost_uuid=ihost.uuid,
-                                    ifclass=constants.INTERFACE_CLASS_DATA,
-                                    imac=inic_dict_array[1]['mac'])
-        ports['data0'] = utils.create_test_ethernet_port(name=inic_dict_array[1]['pname'],
-                                    host_id=ihost.id, interface_id=ifaces['data0'].id,
-                                    mac=inic_dict_array[1]['mac'],
-                                    pciaddr=inic_dict_array[1]['pciaddr'],
-                                    pdevice=inic_dict_array[1]['pdevice'],
-                                    pvendor=inic_dict_array[1]['pvendor'])
-
-        ifaces['pcipt0'] = utils.create_test_interface(ifname='pcipt0',
-                                    forihostid=ihost.id, ihost_uuid=ihost.uuid,
-                                    ifclass=constants.INTERFACE_CLASS_PCI_PASSTHROUGH,
-                                    imac=inic_dict_array[2]['mac'])
-        ports['pcipt0'] = utils.create_test_ethernet_port(name=inic_dict_array[2]['pname'],
-                                    host_id=ihost.id, interface_id=ifaces['pcipt0'].id,
-                                    mac=inic_dict_array[2]['mac'],
-                                    pciaddr=inic_dict_array[2]['pciaddr'],
-                                    pdevice=inic_dict_array[2]['pdevice'],
-                                    pvendor=inic_dict_array[2]['pvendor'])
-
-        ifaces['pxeboot0'] = utils.create_test_interface(ifname='pxeboot0',
-                                    forihostid=ihost.id, ihost_uuid=ihost.uuid,
-                                    iftype=constants.INTERFACE_TYPE_ETHERNET,
-                                    ifclass=constants.INTERFACE_CLASS_PLATFORM,
-                                    imac=test_mgmt_mac)
-        ports['pxeboot0'] = utils.create_test_ethernet_port(name=inic_dict_array[3]['pname'],
-                                    host_id=ihost.id, interface_id=ifaces['pxeboot0'].id,
-                                    mac=inic_dict_array[3]['mac'],
-                                    pciaddr=inic_dict_array[3]['pciaddr'],
-                                    pdevice=inic_dict_array[3]['pdevice'],
-                                    pvendor=inic_dict_array[3]['pvendor'])
-        ifaces['mgmt0'] = utils.create_test_interface(ifname='mgmt0',
-                                    forihostid=ihost.id, ihost_uuid=ihost.uuid,
-                                    iftype=constants.INTERFACE_TYPE_VLAN, uses=['pxeboot0'],
-                                    ifclass=constants.INTERFACE_CLASS_PLATFORM,
-                                    vlan_id=mgmt_vlan_id, imac=test_mgmt_mac)
+        ifaces, ports = self._create_test_interfaces(ihost, inic_dict_array, test_mgmt_mac, mgmt_vlan_id)
 
         # create inodes to update port.node_id
         inuma_dict_array = [{'numa_node': 0, 'capabilities': {}},
@@ -4101,65 +4093,7 @@ class ManagerTestCase(base.DbTestCase):
         self.service.fm_api.clear_fault.side_effect = port_clear_fault
         self.service.fm_api.get_faults_by_id.side_effect = port_get_faults_by_id
 
-        ifaces = dict()
-        ports = dict()
-        ifaces['sriov0'] = utils.create_test_interface(ifname='sriov0',
-                                    forihostid=ihost.id, ihost_uuid=ihost.uuid,
-                                    iftype=constants.INTERFACE_TYPE_ETHERNET,
-                                    ifclass=constants.INTERFACE_CLASS_PCI_SRIOV,
-                                    imac=inic_dict_array[0]['mac'])
-        ports['sriov0'] = utils.create_test_ethernet_port(name=inic_dict_array[0]['pname'],
-                                    host_id=ihost.id, interface_id=ifaces['sriov0'].id,
-                                    mac=inic_dict_array[0]['mac'],
-                                    pciaddr=inic_dict_array[0]['pciaddr'],
-                                    pdevice=inic_dict_array[0]['pdevice'],
-                                    pvendor=inic_dict_array[0]['pvendor'])
-
-        ifaces['sriov0a'] = utils.create_test_interface(ifname='sriov0a',
-                                    forihostid=ihost.id, ihost_uuid=ihost.uuid,
-                                    iftype=constants.INTERFACE_TYPE_VF, uses=['sriov0'],
-                                    ifclass=constants.INTERFACE_CLASS_PCI_SRIOV,
-                                    imac=inic_dict_array[0]['mac'])
-
-        ifaces['data0'] = utils.create_test_interface(ifname='data0',
-                                    forihostid=ihost.id, ihost_uuid=ihost.uuid,
-                                    ifclass=constants.INTERFACE_CLASS_DATA,
-                                    imac=inic_dict_array[1]['mac'])
-        ports['data0'] = utils.create_test_ethernet_port(name=inic_dict_array[1]['pname'],
-                                    host_id=ihost.id, interface_id=ifaces['data0'].id,
-                                    mac=inic_dict_array[1]['mac'],
-                                    pciaddr=inic_dict_array[1]['pciaddr'],
-                                    pdevice=inic_dict_array[1]['pdevice'],
-                                    pvendor=inic_dict_array[1]['pvendor'])
-
-        ifaces['pcipt0'] = utils.create_test_interface(ifname='pcipt0',
-                                    forihostid=ihost.id, ihost_uuid=ihost.uuid,
-                                    ifclass=constants.INTERFACE_CLASS_PCI_PASSTHROUGH,
-                                    imac=inic_dict_array[2]['mac'])
-        ports['pcipt0'] = utils.create_test_ethernet_port(name=inic_dict_array[2]['pname'],
-                                    host_id=ihost.id, interface_id=ifaces['pcipt0'].id,
-                                    mac=inic_dict_array[2]['mac'],
-                                    pciaddr=inic_dict_array[2]['pciaddr'],
-                                    pdevice=inic_dict_array[2]['pdevice'],
-                                    pvendor=inic_dict_array[2]['pvendor'])
-
-        ifaces['pxeboot0'] = utils.create_test_interface(ifname='pxeboot0',
-                                    forihostid=ihost.id, ihost_uuid=ihost.uuid,
-                                    iftype=constants.INTERFACE_TYPE_ETHERNET,
-                                    ifclass=constants.INTERFACE_CLASS_PLATFORM,
-                                    imac=test_mgmt_mac)
-        ports['pxeboot0'] = utils.create_test_ethernet_port(name=inic_dict_array[3]['pname'],
-                                    host_id=ihost.id, interface_id=ifaces['pxeboot0'].id,
-                                    mac=inic_dict_array[3]['mac'],
-                                    pciaddr=inic_dict_array[3]['pciaddr'],
-                                    pdevice=inic_dict_array[3]['pdevice'],
-                                    pvendor=inic_dict_array[3]['pvendor'])
-
-        ifaces['mgmt0'] = utils.create_test_interface(ifname='mgmt0',
-                                    forihostid=ihost.id, ihost_uuid=ihost.uuid,
-                                    iftype=constants.INTERFACE_TYPE_VLAN, uses=['pxeboot0'],
-                                    ifclass=constants.INTERFACE_CLASS_PLATFORM,
-                                    vlan_id=mgmt_vlan_id, imac=test_mgmt_mac)
+        ifaces, ports = self._create_test_interfaces(ihost, inic_dict_array, test_mgmt_mac, mgmt_vlan_id)
 
         # create inodes to update port.node_id
         inuma_dict_array = [{'numa_node': 0, 'capabilities': {}},
