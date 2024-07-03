@@ -266,16 +266,9 @@ def _validate_ldap_dn(name, value):
 
 
 def _validate_ldap_access_filter(name, value):
-    """Check if ldap dn is valid"""
+    """Check if ldap_access_filter is empty"""
 
     _validate_not_empty(name, value)
-    memberof, ldap_dn = value.split("=", 1)
-    match = re.fullmatch(
-            r"((CN=([^,]*)),)?((((?:CN|OU)=[^,]+,?)+),)?((DC=[^,]+,?)+)$",
-            ldap_dn, re.IGNORECASE)
-    if match is None or memberof != "memberOf":
-        raise wsme.exc.ClientSideError(_(
-            "Parameter '%s' must be a valid memberOf=dn expression." % name))
 
 
 def _validate_intel_nic_driver_version(name, value):
