@@ -10410,6 +10410,20 @@ class ConductorManager(service.PeriodicService):
                       'task': None}
             self.dbapi.storage_ceph_external_update(sb_uuid, values)
 
+    def update_ceph_rook_config(self, context):
+        """Update the manifests for Rook Ceph backend"""
+
+        personalities = [constants.CONTROLLER, constants.WORKER]
+
+        config_dict = {
+            "personalities": personalities,
+            "classes": ['platform::rook::runtime'],
+        }
+
+        config_uuid = self._config_update_hosts(context, personalities)
+
+        self._config_apply_runtime_manifest(context, config_uuid, config_dict)
+
     def _is_tracked_alarm(self, alarm_id):
         """ Check _alarm_raised status of specific alarm_id"""
         return self._alarms_raised[alarm_id]
@@ -10738,11 +10752,6 @@ class ConductorManager(service.PeriodicService):
             if status == puppet_common.REPORT_SUCCESS:
                 # Configuration was successful
                 success = True
-        elif reported_cfg == puppet_common.REPORT_CEPH_ROOK_CONFIG:
-            success = _process_config_report(
-                self.report_ceph_rook_config_success, [context, host_uuid],
-                self.report_ceph_rook_config_failure, [host_uuid, error]
-            )
         elif reported_cfg == puppet_common.REPORT_CONTROLLERFS_CONFIG:
             success = _process_config_report(
                 self.report_controllerfs_config_success, [context, host_uuid],
@@ -11313,80 +11322,6 @@ class ConductorManager(service.PeriodicService):
         reason = "Ceph external configuration failed to apply on host: %(host)s" % args
         self._update_storage_backend_alarm(fm_constants.FM_ALARM_STATE_SET,
                                            constants.CINDER_BACKEND_CEPH,
-                                           reason)
-
-    def report_ceph_rook_config_success(self, context, host_uuid):
-        """ Callback for Sysinv Agent
-
-        Configuring Ceph Rook was successful, finalize operation.
-        The Agent calls this if Ceph manifests are applied correctly.
-        Both controllers have to get their manifests applied before accepting
-        the entire operation as successful.
-        """
-        LOG.info("Ceph manifests success on host: %s" % host_uuid)
-
-        # As we can have multiple rook_ceph backends, need to find the one
-        # that is in configuring state.
-        ceph_conf = StorageBackendConfig.get_configuring_target_backend(
-            self.dbapi, target=constants.SB_TYPE_CEPH_ROOK)
-
-        if ceph_conf:
-            config_done = True
-            active_controller = utils.HostHelper.get_active_controller(self.dbapi)
-            if not utils.is_host_simplex_controller(active_controller):
-                ctrls = self.dbapi.ihost_get_by_personality(constants.CONTROLLER)
-                for host in ctrls:
-                    if host.uuid == host_uuid:
-                        break
-                else:
-                    LOG.error("Host %s is not a controller?" % host_uuid)
-                    return
-                tasks = eval(ceph_conf.get('task', '{}'))
-                if tasks:
-                    tasks[host.hostname] = None
-                else:
-                    tasks = {host.hostname: None}
-
-                for h in ctrls:
-                    if tasks[h.hostname]:
-                        config_done = False
-                        break
-
-            if config_done:
-                values = {'state': constants.SB_STATE_CONFIGURED,
-                          'task': None}
-
-                # Clear alarm, if any
-                self._update_storage_backend_alarm(fm_constants.FM_ALARM_STATE_CLEAR,
-                                                   constants.SB_TYPE_CEPH_ROOK)
-            else:
-                values = {'task': str(tasks)}
-
-            self.dbapi.storage_backend_update(ceph_conf.uuid, values)
-
-    def report_ceph_rook_config_failure(self, host_uuid, error):
-        """ Callback for Sysinv Agent
-
-        Configuring Rook Ceph backend failed, set backend to err and raise alarm
-        The agent calls this if Ceph manifests failed to apply
-        """
-
-        args = {'host': host_uuid, 'error': error}
-        LOG.error("Ceph rook manifests failed on host: %(host)s. Error: %(error)s" % args)
-
-        # As we can have multiple rook_ceph backends, need to find the one
-        # that is in configuring state.
-        ceph_conf = StorageBackendConfig.get_configuring_target_backend(
-            self.dbapi, target=constants.SB_TYPE_CEPH_ROOK)
-
-        # Set ceph backend to error state
-        values = {'state': constants.SB_STATE_CONFIG_ERR, 'task': None}
-        self.dbapi.storage_backend_update(ceph_conf.uuid, values)
-
-        # Raise alarm
-        reason = "Ceph rook configuration failed to apply on host: %(host)s" % args
-        self._update_storage_backend_alarm(fm_constants.FM_ALARM_STATE_SET,
-                                           constants.SB_TYPE_CEPH_ROOK,
                                            reason)
 
     def report_ceph_config_success(self, context, host_uuid):

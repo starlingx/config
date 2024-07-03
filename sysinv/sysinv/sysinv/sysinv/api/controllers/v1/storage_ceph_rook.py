@@ -547,14 +547,16 @@ def _check_backend_ceph_rook(req, storage_ceph_rook, confirmed=False):
 def _apply_backend_changes(op, sb_obj):
     if op == constants.SB_API_OP_CREATE:
         # TODO(rchurch): Trigger and application apply to force the new changes into play
-        pass
+        # Run puppet manifest to create rook-ceph flag
+        pecan.request.rpcapi.update_ceph_rook_config(pecan.request.context)
 
     elif op == constants.SB_API_OP_MODIFY:
         # TODO(rchurch): Trigger and application apply to force the new changes into play
         pass
 
     elif op == constants.SB_API_OP_DELETE:
-        pass
+        # Run puppet manifest to delete rook-ceph flag
+        pecan.request.rpcapi.update_ceph_rook_config(pecan.request.context)
 
 
 #
@@ -813,11 +815,11 @@ def _delete(sb_uuid):
                         storage_ceph_rook_obj.as_dict(),
                         True)
 
-    # Enable the backend changes:
-    _apply_backend_changes(constants.SB_API_OP_DELETE, storage_ceph_rook_obj)
-
     try:
         pecan.request.dbapi.storage_backend_destroy(storage_ceph_rook_obj.uuid)
     except exception.HTTPNotFound:
         msg = _("Deletion of backend %s failed" % storage_ceph_rook_obj.uuid)
         raise wsme.exc.ClientSideError(msg)
+
+    # Enable the backend changes:
+    _apply_backend_changes(constants.SB_API_OP_DELETE, storage_ceph_rook_obj)
