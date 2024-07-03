@@ -9729,6 +9729,33 @@ class ConductorManager(service.PeriodicService):
         self._config_apply_runtime_manifest(context, config_uuid=config_uuid,
                                             config_dict=config_dict)
 
+    def update_mgmt_secondary_pool_config(self, context, family, disable=False):
+        LOG.info(f"update management secondary pool config family={family}, disable={disable}")
+        # management is present on all nodes
+        personalities = [constants.CONTROLLER, constants.WORKER, constants.STORAGE]
+        config_uuid = self._config_update_hosts(context, personalities)
+        config_dict = {
+            "personalities": personalities,
+            "classes": ['platform::network::runtime',
+                        'platform::firewall::runtime']
+        }
+        self._config_apply_runtime_manifest(context, config_uuid, config_dict)
+        # mark for reboot since we just made basic network config, other services may need
+        # configurations done during reboot.
+        self._config_update_hosts(context, personalities, reboot=True)
+
+    def update_storage_net_config(self, context):
+        LOG.info("update storage network config")
+        # storage network is used for external NetApp deployment as the storage backend
+        personalities = [constants.CONTROLLER, constants.WORKER]
+        config_uuid = self._config_update_hosts(context, personalities)
+        config_dict = {
+            "personalities": personalities,
+            "classes": ['platform::network::runtime',
+                        'platform::firewall::runtime']
+        }
+        self._config_apply_runtime_manifest(context, config_uuid, config_dict)
+
     def update_user_config(self, context, host_uuids=None):
         """Update the user configuration"""
         LOG.info("update_user_config")

@@ -269,6 +269,9 @@ class InterfaceNetworkController(rest.RestController):
                 cutils.update_subcloud_routes(pecan.request.dbapi, [host])
             pecan.request.rpcapi.update_admin_config(pecan.request.context, host, disable)
 
+        elif interface_network.network_type == constants.NETWORK_TYPE_STORAGE:
+            pecan.request.rpcapi.update_storage_net_config(pecan.request.context)
+
     def _check_interface_class(self, interface_uuid):
         interface = pecan.request.dbapi.iinterface_get(interface_uuid)
         if not interface.ifclass or interface.ifclass == constants.INTERFACE_CLASS_NONE:

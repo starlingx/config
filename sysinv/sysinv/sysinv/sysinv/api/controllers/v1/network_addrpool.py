@@ -207,17 +207,24 @@ class NetworkAddresspoolController(rest.RestController):
             pecan.request.rpcapi.update_oam_config(pecan.request.context)
 
         elif network.type == constants.NETWORK_TYPE_MGMT:
-            if utils.get_system_mode() == constants.SYSTEM_MODE_SIMPLEX and \
-                    cutils.is_initial_config_complete():
-                pecan.request.rpcapi.set_mgmt_network_reconfig_flag(pecan.request.context)
-                if utils.is_network_associated_to_interface(constants.NETWORK_TYPE_MGMT):
-                    if operation == constants.API_POST:
-                        address_pool.add_management_addresses_to_no_proxy_list([addrpool])
-                    else:
-                        address_pool.remove_management_addresses_from_no_proxy_list([addrpool])
-                    dc_role = utils.get_distributed_cloud_role()
-                    if dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
-                        cutils.update_subcloud_routes(pecan.request.dbapi)
+            if cutils.is_initial_config_complete():
+                if utils.get_system_mode() == constants.SYSTEM_MODE_SIMPLEX:
+                    pecan.request.rpcapi.set_mgmt_network_reconfig_flag(pecan.request.context)
+                    if utils.is_network_associated_to_interface(constants.NETWORK_TYPE_MGMT):
+                        if operation == constants.API_POST:
+                            address_pool.add_management_addresses_to_no_proxy_list([addrpool])
+                        else:
+                            address_pool.remove_management_addresses_from_no_proxy_list([addrpool])
+                        dc_role = utils.get_distributed_cloud_role()
+                        if dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
+                            cutils.update_subcloud_routes(pecan.request.dbapi)
+                else:
+                    # is the management secondary pool?
+                    if network.pool_uuid != addrpool.uuid:
+                        # if yes send the rpc request
+                        disable = True if operation == constants.API_DELETE else False
+                        pecan.request.rpcapi.update_mgmt_secondary_pool_config(
+                            pecan.request.context, addrpool.family, disable)
 
         elif network.type == constants.NETWORK_TYPE_ADMIN:
             if hosts:
@@ -227,6 +234,10 @@ class NetworkAddresspoolController(rest.RestController):
                 for host in hosts:
                     pecan.request.rpcapi.update_admin_config(pecan.request.context, host,
                                                              disable=disable)
+
+        elif network.type == constants.NETWORK_TYPE_STORAGE:
+            if cutils.is_initial_config_complete():
+                pecan.request.rpcapi.update_storage_net_config(pecan.request.context)
 
         elif network.type in [constants.NETWORK_TYPE_CLUSTER_HOST,
                             constants.NETWORK_TYPE_CLUSTER_POD,

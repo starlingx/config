@@ -110,7 +110,7 @@ class NetworkAddrpoolTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
         network = dbutils.create_test_network(**kw)
         return network
 
-    def _setup_context(self, add_worker=False):
+    def _setup_context(self, add_worker=False, add_storage_net=False):
         # controller-0
         self.host0 = self._create_test_host(personality=constants.CONTROLLER, unit=0,
                                             id=1, mgmt_ip="1.1.1.1")
@@ -123,6 +123,9 @@ class NetworkAddrpoolTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
                                                           constants.NETWORK_TYPE_MGMT)
         dbutils.create_test_interface_network_type_assign(self.c0_mgmt_if.id,
                                                           constants.NETWORK_TYPE_CLUSTER_HOST)
+        if add_storage_net:
+            dbutils.create_test_interface_network_type_assign(self.c0_mgmt_if.id,
+                                                              constants.NETWORK_TYPE_STORAGE)
 
         # controller-1
         self.host1 = self._create_test_host(personality=constants.CONTROLLER, unit=1,
@@ -137,6 +140,9 @@ class NetworkAddrpoolTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
                                                           constants.NETWORK_TYPE_MGMT)
         dbutils.create_test_interface_network_type_assign(self.c1_mgmt_if.id,
                                                           constants.NETWORK_TYPE_CLUSTER_HOST)
+        if add_storage_net:
+            dbutils.create_test_interface_network_type_assign(self.c1_mgmt_if.id,
+                                                              constants.NETWORK_TYPE_STORAGE)
 
         # worker-0
         if add_worker:
@@ -147,6 +153,9 @@ class NetworkAddrpoolTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
                                                             constants.NETWORK_TYPE_MGMT)
             dbutils.create_test_interface_network_type_assign(self.w0_mgmt_if.id,
                                                             constants.NETWORK_TYPE_CLUSTER_HOST)
+            if add_storage_net:
+                dbutils.create_test_interface_network_type_assign(self.w0_mgmt_if.id,
+                                                                  constants.NETWORK_TYPE_STORAGE)
 
     def create_test_interface(self, ifname='test0', host=None):
         if not host:
@@ -172,6 +181,11 @@ class TestPostMixin(NetworkAddrpoolTestCase):
 
     def test_success_create_network_addrpool_primary(self):
         self._setup_context()
+
+        p = mock.patch('sysinv.conductor.rpcapi.ConductorAPI.update_mgmt_secondary_pool_config')
+        self.mock_rpcapi_update_mgmt_secondary_pool_config = p.start()
+        self.addCleanup(p.stop)
+
         # Test creation of object
         net_type = constants.NETWORK_TYPE_MGMT
         ndict = self.get_post_object(self.networks[net_type].uuid,
@@ -192,6 +206,8 @@ class TestPostMixin(NetworkAddrpoolTestCase):
         self.assertEqual(response.json['network_name'], self.networks[net_type].name)
         self.assertEqual(response.json['network_id'], self.networks[net_type].id)
         self.assertEqual(response.json['network_uuid'], self.networks[net_type].uuid)
+
+        self.mock_rpcapi_update_mgmt_secondary_pool_config.assert_not_called()
 
         uuid = response.json['uuid']
         # Verify that the object was created and some basic attribute matches
@@ -220,6 +236,10 @@ class TestPostMixin(NetworkAddrpoolTestCase):
     def test_success_create_network_addrpool_secondary_mgmt_before_initial_config_complete(self):
         self._setup_context(add_worker=True)
 
+        p = mock.patch('sysinv.conductor.rpcapi.ConductorAPI.update_mgmt_secondary_pool_config')
+        self.mock_rpcapi_update_mgmt_secondary_pool_config = p.start()
+        self.addCleanup(p.stop)
+
         p = mock.patch('sysinv.common.utils.is_initial_config_complete')
         self.mock_utils_is_initial_config_complete = p.start()
         self.mock_utils_is_initial_config_complete.return_value = False
@@ -235,6 +255,7 @@ class TestPostMixin(NetworkAddrpoolTestCase):
         # Check HTTP response is successful
         self.assertEqual('application/json', response.content_type)
         self.assertEqual(response.status_code, http_client.OK)
+        self.mock_rpcapi_update_mgmt_secondary_pool_config.assert_not_called()
 
         # add secondary
         ndict = self.get_post_object(self.networks[net_type].uuid,
@@ -245,6 +266,7 @@ class TestPostMixin(NetworkAddrpoolTestCase):
         # Check HTTP response is successful
         self.assertEqual('application/json', response.content_type)
         self.assertEqual(response.status_code, http_client.OK)
+        self.mock_rpcapi_update_mgmt_secondary_pool_config.assert_not_called()
 
         uuid = response.json['uuid']
         # Verify that the object was created and some basic attribute matches
@@ -286,6 +308,10 @@ class TestPostMixin(NetworkAddrpoolTestCase):
     def test_success_create_network_addrpool_secondary_mgmt_after_initial_config_complete(self):
         self._setup_context(add_worker=True)
 
+        p = mock.patch('sysinv.conductor.rpcapi.ConductorAPI.update_mgmt_secondary_pool_config')
+        self.mock_rpcapi_update_mgmt_secondary_pool_config = p.start()
+        self.addCleanup(p.stop)
+
         # add primary
         net_type = constants.NETWORK_TYPE_MGMT
         ndict = self.get_post_object(self.networks[net_type].uuid,
@@ -296,6 +322,7 @@ class TestPostMixin(NetworkAddrpoolTestCase):
         # Check HTTP response is successful
         self.assertEqual('application/json', response.content_type)
         self.assertEqual(response.status_code, http_client.OK)
+        self.mock_rpcapi_update_mgmt_secondary_pool_config.assert_not_called()
 
         p = mock.patch('sysinv.common.utils.is_initial_config_complete')
         self.mock_utils_is_initial_config_complete = p.start()
@@ -311,6 +338,7 @@ class TestPostMixin(NetworkAddrpoolTestCase):
         # Check HTTP response is successful
         self.assertEqual('application/json', response.content_type)
         self.assertEqual(response.status_code, http_client.OK)
+        self.mock_rpcapi_update_mgmt_secondary_pool_config.assert_called_once()
 
         uuid = response.json['uuid']
         # Verify that the object was created and some basic attribute matches
@@ -760,6 +788,79 @@ class TestPostMixin(NetworkAddrpoolTestCase):
         self.assertEqual(response['network_id'], self.networks[net_type].id)
         self.assertEqual(response['network_uuid'], self.networks[net_type].uuid)
         self.mock_rpcapi_update_oam_config.assert_called_once()
+
+    def test_success_create_network_addrpool_secondary_storage_after_initial_config_complete(self):
+        self._setup_context(add_worker=True, add_storage_net=True)
+
+        p = mock.patch('sysinv.conductor.rpcapi.ConductorAPI.update_storage_net_config')
+        self.mock_rpcapi_update_storage_net_config = p.start()
+        self.addCleanup(p.stop)
+
+        p = mock.patch('sysinv.common.utils.is_initial_config_complete')
+        self.mock_utils_is_initial_config_complete = p.start()
+        self.mock_utils_is_initial_config_complete.return_value = True
+        self.addCleanup(p.stop)
+
+        # add primary
+        net_type = constants.NETWORK_TYPE_STORAGE
+        ndict = self.get_post_object(self.networks[net_type].uuid,
+                                     self.address_pools['storage-ipv4'].uuid)
+        response = self.post_json(self.API_PREFIX,
+                                  ndict,
+                                  headers=self.API_HEADERS)
+        # Check HTTP response is successful
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(response.status_code, http_client.OK)
+        self.mock_rpcapi_update_storage_net_config.assert_called_once()
+        self.mock_rpcapi_update_storage_net_config.reset_mock()
+
+        # add secondary
+        ndict = self.get_post_object(self.networks[net_type].uuid,
+                                     self.address_pools['storage-ipv6'].uuid)
+        response = self.post_json(self.API_PREFIX,
+                                  ndict,
+                                  headers=self.API_HEADERS)
+        # Check HTTP response is successful
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(response.status_code, http_client.OK)
+        self.mock_rpcapi_update_storage_net_config.assert_called_once()
+
+        uuid = response.json['uuid']
+        # Verify that the object was created and some basic attribute matches
+        response = self.get_json(self.get_single_url(uuid))
+        self.assertEqual(response['address_pool_name'], self.address_pools['storage-ipv6'].name)
+        self.assertEqual(response['address_pool_id'], self.address_pools['storage-ipv6'].id)
+        self.assertEqual(response['address_pool_uuid'], self.address_pools['storage-ipv6'].uuid)
+        self.assertEqual(response['network_name'], self.networks[net_type].name)
+        self.assertEqual(response['network_id'], self.networks[net_type].id)
+        self.assertEqual(response['network_uuid'], self.networks[net_type].uuid)
+
+        addr_list = dbutils.get_address_table()
+        self.assertEqual(8, len(addr_list))
+        ip4_list = list()
+        ip6_list = list()
+        for addr in addr_list:
+            self.assertIn(addr.name,
+                          [f"{constants.CONTROLLER_HOSTNAME}-{net_type}",
+                           f"{constants.CONTROLLER_0_HOSTNAME}-{net_type}",
+                           f"{constants.CONTROLLER_1_HOSTNAME}-{net_type}",
+                           f"worker-0-{net_type}"])
+            if addr.name == f"{constants.CONTROLLER_HOSTNAME}-{net_type}":
+                self.assertEqual(addr.interface_id, None)
+            elif addr.name == f"{constants.CONTROLLER_0_HOSTNAME}-{net_type}":
+                self.assertEqual(addr.interface_id, self.c0_mgmt_if.id)
+            elif addr.name == f"{constants.CONTROLLER_1_HOSTNAME}-{net_type}":
+                self.assertEqual(addr.interface_id, self.c1_mgmt_if.id)
+            elif addr.name == f"worker-0-{net_type}":
+                self.assertEqual(addr.interface_id, self.w0_mgmt_if.id)
+
+            if addr.family == constants.IPV6_FAMILY:
+                ip6_list.append(addr)
+            elif addr.family == constants.IPV4_FAMILY:
+                ip4_list.append(addr)
+
+        self.assertEqual(4, len(ip4_list))
+        self.assertEqual(4, len(ip6_list))
 
     def test_success_create_network_addrpool_primary_subcloud(self):
         self._setup_context()
