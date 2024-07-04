@@ -16,6 +16,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import json
+import netaddr
 import os
 import re
 import ssl
@@ -25,6 +26,7 @@ import tempfile
 import requests
 from eventlet.green import subprocess
 from six.moves.urllib.parse import urlparse
+from oslo_concurrency import lockutils
 from oslo_config import cfg
 from oslo_log import log
 from oslo_utils import encodeutils
@@ -56,6 +58,8 @@ AVAILABILITY_ONLINE = "online"
 CERT_NAMESPACE_SYS_CONTROLLER = 'dc-cert'
 CERT_NAMESPACE_SUBCLOUD_CONTROLLER = 'sc-cert'
 DC_ROLE_UNDETECTED = 'unknown'
+
+ENDPOINT_LOCK_NAME = "sysinv-endpoints"
 
 LOG = log.getLogger(__name__)
 CONF = cfg.CONF
@@ -139,26 +143,6 @@ def verify_adminep_cert_chain():
                 return False
 
 
-def dc_get_subcloud_sysinv_url(subcloud_name, dc_token):
-    """Pulls the sysinv platform URL from the given token"""
-    url = dc_token.get_service_admin_url(constants.SERVICE_TYPE_PLATFORM,
-                                         constants.SYSINV_USERNAME,
-                                         subcloud_name)
-    if url:
-        LOG.debug('%s sysinv endpoint %s' % (subcloud_name, url))
-        return url
-    else:
-        LOG.error('Cannot find sysinv endpoint for %s' % subcloud_name)
-        raise Exception('Cannot find sysinv endpoint for %s' % subcloud_name)
-
-
-def dc_update_subcloud_sysinv_url(subcloud_name, sysinv_url, dc_token):
-    dc_token.update_service_admin_url(constants.SERVICE_TYPE_PLATFORM,
-                                      constants.SYSINV_USERNAME,
-                                      subcloud_name,
-                                      sysinv_url)
-
-
 def dc_get_service_endpoint_url(token,
                                 service_name='dcmanager',
                                 service_type='dcmanager',
@@ -215,6 +199,7 @@ def load_subclouds(resp, invalid_deploy_states=None):
         sc["management-state"] = obj["management-state"]
         sc["availability-status"] = obj["availability-status"]
         sc["sync_status"] = obj["sync_status"]
+        sc["management_ip"] = obj["management-start-ip"]
         for ss in obj["endpoint_sync_status"]:
             sc[ss["endpoint_type"]] = ss["sync_status"]
         sc_list.append(sc)
@@ -773,3 +758,63 @@ class TokenCache(object):
                       self._token_type, self._token)
             self._token = self._getter_func()
         return self._token
+
+
+class SubcloudSysinvEndpointCache(object):
+
+    # Maps subcloud name to sysinv endpoint
+    cached_endpoints = {}
+
+    @classmethod
+    @lockutils.synchronized(ENDPOINT_LOCK_NAME)
+    def get_endpoint(cls, region_name: str, dc_token=None):
+        """Retrieve the sysinv endpoint for the given region.
+        :param region_name: The subcloud region name.
+        :param dc_token: dcmanager token, if it's present and the endpoint is
+        not already cached, the endpoint will be obtained by querying dcmanager.
+        """
+        endpoint = cls.cached_endpoints.get(region_name)
+        if endpoint is None:
+            if dc_token is None:
+                LOG.error(f'Cannot find sysinv endpoint for {region_name}')
+                raise Exception(f'Cannot find sysinv endpoint for {region_name}')
+
+            # Try to get it from dcmanager, this should rarely happen as the
+            # cache is already populated during cert-mon audit during service
+            # startup
+            LOG.info("Unable to find cached sysinv endpoint, querying dcmanager")
+            subcloud = get_subcloud(dc_token, region_name)
+            endpoint = cls.build_endpoint(subcloud["management-start-ip"])
+            cls.cached_endpoints[region_name] = endpoint
+
+        return endpoint
+
+    @classmethod
+    @lockutils.synchronized(ENDPOINT_LOCK_NAME)
+    def update_endpoints(cls, endpoints_dict: dict):
+        """Update the cached endpoints with the provided dictionary.
+        :param endpoints_dict: A dictionary mapping region names to endpoint URLs.
+        """
+        cls.cached_endpoints.update(endpoints_dict)
+
+    @classmethod
+    @lockutils.synchronized(ENDPOINT_LOCK_NAME)
+    def cache_endpoints_by_ip(cls, subcloud_mgmt_ips: dict):
+        """Cache endpoints based on management IPs.
+        :param subcloud_mgmt_ips: A dictionary mapping region names to management IPs.
+        """
+        endpoints = {}
+
+        for region, ip in subcloud_mgmt_ips.items():
+            endpoints[region] = cls.build_endpoint(ip)
+
+        cls.cached_endpoints.clear()
+        cls.cached_endpoints.update(endpoints)
+
+    @staticmethod
+    def build_endpoint(ip: str):
+        """Build the sysinv endpoint from the subcloud management IP.
+        :param ip: The management IP of a subcloud.
+        """
+        formatted_ip = f"[{ip}]" if netaddr.IPAddress(ip).version == 6 else ip
+        return f"https://{formatted_ip}:6386/v1"

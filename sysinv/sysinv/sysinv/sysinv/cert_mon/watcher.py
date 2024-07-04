@@ -591,8 +591,11 @@ class DCIntermediateCertRenew(CertificateRenew):
                  event_data)
 
         token = self.context.get_dc_token()
-        subcloud_sysinv_url = utils.dc_get_subcloud_sysinv_url(subcloud_name,
-                                                               token)
+
+        subcloud_sysinv_url = utils.SubcloudSysinvEndpointCache.get_endpoint(
+            subcloud_name, token
+        )
+
         utils.update_subcloud_ca_cert(token,
                                       subcloud_name,
                                       subcloud_sysinv_url,

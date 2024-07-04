@@ -105,6 +105,10 @@ class CertificateMonitorService(service.Service):
                 LOG.error('Failed to stop engine service: %s' % ex)
                 LOG.exception(ex)
 
+    # TODO(gherzman): verify if it's possible to add the subcloud management IP
+    # as a parameter as a way to further optimize the audit request during
+    # subcloud deployment. Might require passing the parameter to the audit
+    # enqueue method as well.
     def subcloud_online(self, context, subcloud_name=None):
         """
         Trigger a subcloud online audit
