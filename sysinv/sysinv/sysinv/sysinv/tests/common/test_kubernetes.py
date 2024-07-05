@@ -974,8 +974,9 @@ class TestKubeOperator(base.TestCase):
         self.cp_pods_missing_result['kube-controller-manager-test-node-2'].\
             items[0].spec.containers[0].image = "test-image-3:v1.42.3"
 
-        self.assertRaises(ValueError,
-                          self.kube_operator.kube_get_control_plane_versions)
+        with mock.patch('retrying.time.sleep', return_value=None):
+            self.assertRaises(ValueError,
+                              self.kube_operator.kube_get_control_plane_versions)
 
     def test_kube_get_control_plane_versions_multi_node(self):
 
