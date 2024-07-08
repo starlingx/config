@@ -47,6 +47,7 @@
     parent: tox-py39
     description: |
       Run py39 test for sysinv
+    timeout: 2700
     nodeset: debian-bullseye
     required-projects:
       - starlingx/fault
