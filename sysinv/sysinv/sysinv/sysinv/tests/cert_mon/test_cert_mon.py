@@ -596,7 +596,7 @@ class CertMonTestCase(base.DbTestCase):
 
         """Test the audit_sc_cert_task basic queuing functionality"""
         with mock.patch.multiple("sysinv.cert_mon.utils",
-                                 dc_get_subcloud_sysinv_url=mock.DEFAULT,
+                                 SubcloudSysinvEndpointCache=mock.DEFAULT,
                                  get_endpoint_certificate=mock.DEFAULT,
                                  get_sc_intermediate_ca_secret=mock.DEFAULT,
                                  is_subcloud_online=mock.DEFAULT,
@@ -606,7 +606,7 @@ class CertMonTestCase(base.DbTestCase):
                                  update_subcloud_ca_cert=mock.DEFAULT) \
                 as utils_mock:
             # returns an SSL cert in PEM-encoded string
-            utils_mock["dc_get_subcloud_sysinv_url"].return_value \
+            utils_mock["SubcloudSysinvEndpointCache"].get_endpoint.return_value \
                 = "https://example.com"
             utils_mock["get_endpoint_certificate"].return_value \
                 = self._get_valid_certificate_pem()

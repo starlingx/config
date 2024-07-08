@@ -123,6 +123,11 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
         all_subclouds = utils.get_subclouds_from_dcmanager(
             self.token_cache.get_token(), INVALID_SUBCLOUD_AUDIT_DEPLOY_STATES
         )
+
+        # Update sysinv endpoint cache
+        management_ips = {sc["name"]: sc["management_ip"] for sc in all_subclouds}
+        utils.SubcloudSysinvEndpointCache.cache_endpoints_by_ip(management_ips)
+
         LOG.info("Periodic: begin subcloud certificate audit: %d subclouds"
                  % len(all_subclouds))
         for sc in all_subclouds:
@@ -152,6 +157,11 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
         all_subclouds = utils.get_subclouds_from_dcmanager(
             self.token_cache.get_token(), INVALID_SUBCLOUD_AUDIT_DEPLOY_STATES
         )
+
+        # Update sysinv endpoint cache
+        management_ips = {sc["name"]: sc["management_ip"] for sc in all_subclouds}
+        utils.SubcloudSysinvEndpointCache.cache_endpoints_by_ip(management_ips)
+
         LOG.info(
             "Service start: begin subcloud certificate audit [#sc: %d, batch: %s]"
             % (len(all_subclouds), CONF.certmon.audit_batch_size)
@@ -245,8 +255,13 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
 
         subcloud_sysinv_url = None
         try:
-            subcloud_sysinv_url = utils.dc_get_subcloud_sysinv_url(
-                subcloud_name, my_dc_token())
+            subcloud_sysinv_url = utils.SubcloudSysinvEndpointCache.build_endpoint(
+                subcloud["management-start-ip"]
+            )
+            utils.SubcloudSysinvEndpointCache.update_endpoints(
+                {subcloud_name: subcloud_sysinv_url}
+            )
+
             sc_ssl_cert = utils.get_endpoint_certificate(
                 subcloud_sysinv_url,
                 timeout_secs=CONF.certmon.certificate_timeout_secs)
@@ -471,12 +486,9 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
             allow_requeue=allow_requeue)
 
     def subcloud_sysinv_endpoint_update(self, subcloud_name, sysinv_url):
-        dc_token = self.dc_token_cache.get_token()
-        subcloud_sysinv_url = utils.dc_get_subcloud_sysinv_url(
-            subcloud_name, dc_token)
-        if subcloud_sysinv_url != sysinv_url:
-            utils.dc_update_subcloud_sysinv_url(
-                subcloud_name, sysinv_url, dc_token)
+        utils.SubcloudSysinvEndpointCache.update_endpoints(
+            {subcloud_name: sysinv_url}
+        )
 
     def monitor_cert(self, monitor):
         while True:
