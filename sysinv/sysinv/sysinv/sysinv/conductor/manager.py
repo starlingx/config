@@ -13658,6 +13658,7 @@ class ConductorManager(service.PeriodicService):
             hosts = [self.dbapi.ihost_get(host_uuid) for host_uuid in host_uuids]
 
         for host in hosts:
+            LOG.info(f"Trace config for {host.hostname}, c_uuid = {config_uuid}, force = {force}")
             if host.personality in personalities:
                 # Never generate hieradata for uninventoried hosts, as their
                 # interface config will be incomplete.
@@ -13674,10 +13675,24 @@ class ConductorManager(service.PeriodicService):
                 # example the ntp configuration to be changed on an CPE
                 # node before the "worker_config_complete" has been
                 # executed.
-                elif (force or
-                    host.invprovision in [constants.PROVISIONED, constants.UPGRADING] or
-                    (host.invprovision == constants.PROVISIONING and
-                     host.personality == constants.CONTROLLER)):
+                elif force:
+                    if host.software_load == tsc.SW_VERSION:
+                        try:
+                            # if active controller, update without check
+                            if utils.is_host_active_controller(host) and not skip_update_config:
+                                self._puppet.update_host_config(host, config_uuid)
+                                host_updated = True
+                            # if force flag, check the host available config first.
+                            elif self._check_host_config(host):
+                                self._puppet.update_host_config(host, config_uuid)
+                                host_updated = True
+                        except Exception as e:
+                            LOG.exception(
+                                f"An error occurred updating host config for {host.hostname}: {e}"
+                            )
+                elif (host.invprovision in [constants.PROVISIONED, constants.UPGRADING] or
+                      (host.invprovision == constants.PROVISIONING and
+                       host.personality == constants.CONTROLLER)):
                     if host.software_load == tsc.SW_VERSION:
                         # We will not generate the hieradata in runtime here if the
                         # software load of the host is different from the active
@@ -13698,6 +13713,56 @@ class ConductorManager(service.PeriodicService):
         if host_updated:
             self._puppet.update_system_config()
             self._puppet.update_secure_system_config()
+
+    def _check_host_config(self, host):
+        """Verify that the configuration for the host is correct
+        before generating hieradata. This avoids generating
+        incorrect hieradata configuration file.
+
+        It checks first network address present for this host and
+        then cgts-vg present.
+
+        :param host: request host.
+        """
+
+        address_found = False
+        interfaces_networks = []
+
+        try:
+            interfaces_networks = self.dbapi.interface_network_get_by_host(host.uuid)
+        except Exception:
+            LOG.exception(
+                "Failed to get interface network association for %s " % host.hostname)
+            return False
+
+        # Check for network addresses
+        for iface_net in interfaces_networks:
+            if host.id == iface_net.forihostid:
+                if iface_net.network_type == constants.NETWORK_TYPE_MGMT:
+                    address_found = True
+                    break
+        else:
+            LOG.info(f"cannot find valid interfaces_networks for {host.hostname}")
+
+        if not address_found:
+            return False
+
+        # Check for cgts-vg volume
+        if host.personality == constants.CONTROLLER:
+            try:
+                ipvs = self.dbapi.ipv_get_by_ihost(host.id)
+                for ipv in ipvs:
+                    if ipv['lvm_vg_name'] == constants.LVG_CGTS_VG:
+                        LOG.info(f"cgts-vg present for {host.hostname}")
+                        break
+                else:
+                    LOG.info(f"cgts-vg not present for {host.hostname}")
+                    return False
+            except Exception as e:
+                LOG.info(f"{e}:Could not get physical volume for {host.hostname}")
+                return False
+
+        return True
 
     def _config_update_file(self,
                             context,
