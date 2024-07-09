@@ -655,7 +655,7 @@ class TestPatch(TestKubeUpgrade,
 
         # Verify that the images were downloaded
         self.fake_conductor_api.kube_pre_application_update.\
-            assert_called_with(mock.ANY)
+            assert_called_with(mock.ANY, kube_upgrade.to_version)
 
         # Verify that the upgrade was updated with the new state
         result = self.get_json('/kube_upgrade/%s' % uuid)
@@ -689,7 +689,7 @@ class TestPatch(TestKubeUpgrade,
 
         # Verify that the images were downloaded
         self.fake_conductor_api.kube_pre_application_update.\
-            assert_called_with(mock.ANY)
+            assert_called_with(mock.ANY, kube_upgrade.to_version)
 
         # Verify that the upgrade was updated with the new state
         result = self.get_json('/kube_upgrade/%s' % uuid)

@@ -1742,13 +1742,14 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.call(context, self.make_msg('get_fernet_keys',
                                                 key_id=key_id))
 
-    def kube_pre_application_update(self, context):
+    def kube_pre_application_update(self, context, k8s_version):
         """Asynchronously, update applications before Kubernetes is upgraded.
 
         :param context: Context of the request.
         """
 
-        return self.cast(context, self.make_msg('kube_pre_application_update'))
+        return self.cast(context, self.make_msg('kube_pre_application_update',
+                                                k8s_version=k8s_version))
 
     def kube_post_application_update(self, context, k8s_version):
         """Asynchronously, update applications after Kubernetes is upgraded.

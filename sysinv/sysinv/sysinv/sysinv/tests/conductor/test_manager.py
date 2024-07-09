@@ -1127,7 +1127,7 @@ class ManagerTestCase(base.DbTestCase):
         )
 
         # Run update
-        self.service.kube_pre_application_update(self.context)
+        self.service.kube_pre_application_update(self.context, to_version)
 
         # Verify that the upgrade state was updated
         updated_upgrade = self.dbapi.kube_upgrade_get_one()
@@ -1157,7 +1157,7 @@ class ManagerTestCase(base.DbTestCase):
         )
 
         # Run update
-        self.service.kube_pre_application_update(self.context)
+        self.service.kube_pre_application_update(self.context, to_version)
 
         # Verify that the upgrade state was updated
         updated_upgrade = self.dbapi.kube_upgrade_get_one()
