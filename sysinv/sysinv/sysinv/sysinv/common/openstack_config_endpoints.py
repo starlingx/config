@@ -38,12 +38,14 @@ BASE_USERS = [
 ADDITIONAL_SYSTEMCONTROLLER_USERS = [
     'dcorch',
     'dcmanager',
-    'dcdbsync'
+    'dcdbsync',
+    'dcagent'
 ]
 
 ADDITIONAL_SUBCLOUD_USERS = [
     'dcmanager',
-    'dcdbsync'
+    'dcdbsync',
+    'dcagent'
 ]
 
 # Services that should exist in every system independently of its system type
@@ -106,6 +108,11 @@ ADDITIONAL_SYSTEMCONTROLLER_SERVICES = [
         'description': 'DCOrch DBsync service',
         'type': 'dcorch-dbsync'
     },
+    {
+        'name': 'dcagent',
+        'description': 'DCAgent service',
+        'type': 'dcagent'
+    },
 ]
 
 ADDITIONAL_SUBCLOUD_SERVICES = [
@@ -118,6 +125,11 @@ ADDITIONAL_SUBCLOUD_SERVICES = [
         'name': 'dcdbsync',
         'description': 'DCOrch DBsync service',
         'type': 'dcorch-dbsync'
+    },
+    {
+        'name': 'dcagent',
+        'description': 'DCAgent service',
+        'type': 'dcagent'
     },
 ]
 
@@ -147,6 +159,11 @@ SERVICES_WITH_ADITIONAL_SYSTEMCONTROLLER_ENDPOINTS = [
 # DC services where endpoints will be created in RegionOne
 SERVICES_WITH_ADITIONAL_DC_ENDPOINTS = [
     'dcdbsync'
+]
+
+SERVICES_WITHOUT_PUBLIC_ENDPOINT = [
+    'dcdbsync',
+    'dcagent'
 ]
 
 ENDPOINTS_INTERFACES = ['admin', 'internal', 'public']
@@ -221,10 +238,11 @@ def grant_admin_role(keystone, users_to_create, project_name):
             continue
         try:
             keystone.roles.grant(role=admin_role_id,
-                                user=users_dict[username],
-                                project=project_id)
+                                 user=users_dict[username],
+                                 project=project_id)
         except Exception:
-            LOG.warning(f"Error granting admin role for user {username}. Retrying...")
+            LOG.warning(
+                f"Error granting admin role for user {username}. Retrying...")
             keystone.roles.grant(role=admin_role_id,
                                  user=users_dict[username],
                                  project=project_id)
@@ -418,12 +436,15 @@ def build_endpoint_list(services, region_name, puppet_plugins):
     for service in services:
         endpoints = {}
         for interface in ENDPOINTS_INTERFACES:
-            if service == 'dcdbsync' and interface == 'public':
-                # dcdbsync is a private service only used by dcorch,
-                # its API is not exposed for public access.
+            if (
+                service in SERVICES_WITHOUT_PUBLIC_ENDPOINT
+                and interface == constants.OS_INTERFACE_PUBLIC
+            ):
+                # These services APIs are not exposed for public access.
                 continue
             endpoints[interface] = \
-                get_service_url(puppet_plugins, service, interface, region_name)
+                get_service_url(puppet_plugins, service,
+                                interface, region_name)
         endpoints_to_create.append({
             'service': service,
             'region': region_name,
@@ -521,8 +542,10 @@ def run_endpoint_config(puppet_operator: puppet.PuppetOperator,
             # updated region_name and keystone uri
             # First we need to set the new region_name and auth_uri in cfg
             auth_uri = keystone_plugin.get_identity_uri()
-            cfg.CONF.set_override("auth_uri", auth_uri, group=openstack.OPENSTACK_CONFIG)
-            cfg.CONF.set_override("region_name", region_name, group=openstack.OPENSTACK_CONFIG)
+            cfg.CONF.set_override("auth_uri", auth_uri,
+                                  group=openstack.OPENSTACK_CONFIG)
+            cfg.CONF.set_override("region_name", region_name,
+                                  group=openstack.OPENSTACK_CONFIG)
             db_instance = dbapi.get_instance()
             openstack_operator = openstack.OpenStackOperator(db_instance)
             keystone = get_keystone_client(openstack_operator)
