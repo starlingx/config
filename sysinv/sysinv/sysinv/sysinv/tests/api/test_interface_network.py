@@ -525,6 +525,11 @@ class InterfaceNetworkCreateTestCase(InterfaceNetworkTestCase):
         self._post_and_check(worker_interface_network, expect_errors=False)
 
     def test_create_storage_interface_network(self):
+
+        p = mock.patch('sysinv.conductor.rpcapi.ConductorAPI.update_storage_net_config')
+        self.mock_rpcapi_update_storage_net_config = p.start()
+        self.addCleanup(p.stop)
+
         controller_interface = dbutils.create_test_interface(
             ifname='enp0s8',
             forihostid=self.controller.id)
@@ -545,6 +550,8 @@ class InterfaceNetworkCreateTestCase(InterfaceNetworkTestCase):
             interface_uuid=controller_interface.uuid,
             network_uuid=self.storage_network.uuid)
         self._post_and_check(controller_interface_network, expect_errors=False)
+        self.mock_rpcapi_update_storage_net_config.assert_called_once()
+        self.mock_rpcapi_update_storage_net_config.reset_mock()
 
         for family, address in controller_addresses.items():
             updated_address = self.dbapi.address_get(address.id)
@@ -554,6 +561,7 @@ class InterfaceNetworkCreateTestCase(InterfaceNetworkTestCase):
             interface_uuid=worker_interface.uuid,
             network_uuid=self.storage_network.uuid)
         self._post_and_check(worker_interface_network, expect_errors=False)
+        self.mock_rpcapi_update_storage_net_config.assert_called_once()
 
         worker_addresses = self.dbapi.addresses_get_by_interface(worker_interface.id)
         self.assertEqual(2, len(worker_addresses))

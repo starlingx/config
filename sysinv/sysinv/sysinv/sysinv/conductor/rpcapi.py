@@ -801,6 +801,23 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                                 family=family, disable=disable),
                          timeout=RPC_TIMEOUT)
 
+    def update_mgmt_secondary_pool_config(self, context, family, disable=False):
+        """Synchronously, have the conductor update the management secondary pool config.
+
+        :param context: request context.
+        :param family:  IP address family.
+        :param disable: type of operation.
+        """
+        return self.call(context, self.make_msg('update_mgmt_secondary_pool_config',
+                                                family=family, disable=disable))
+
+    def update_storage_net_config(self, context):
+        """Synchronously, have the conductor update the storage network.
+
+        :param context: request context.
+        """
+        return self.call(context, self.make_msg('update_storage_net_config'))
+
     def update_user_config(self, context, host_uuids=None):
         """Synchronously, have the conductor update the user configuration.
 
