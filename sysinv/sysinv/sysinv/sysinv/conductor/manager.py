@@ -66,6 +66,7 @@ from controllerconfig.upgrades import management as upgrades_management
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives.asymmetric import ec
 from eventlet import greenpool
 from eventlet import greenthread
 # Make subprocess module greenthread friendly
@@ -15739,11 +15740,10 @@ class ConductorManager(service.PeriodicService):
             except Exception as e:
                 raise exception.SysinvException(_("Error loading private key "
                                                   "from PEM data: %s" % e))
-
-            if not isinstance(private_key, rsa.RSAPrivateKey):
+            if (not isinstance(private_key, rsa.RSAPrivateKey) or
+                    not isinstance(private_key, ec.EllipticCurvePrivateKey)):
                 raise exception.SysinvException(_(
-                    "Only RSA encryption based Private Keys are supported."))
-
+                    "Only RSA or ECC encryption based Private Keys are supported."))
             try:
                 private_bytes = private_key.private_bytes(
                     encoding=serialization.Encoding.PEM,
