@@ -525,6 +525,12 @@ class Health(object):
 
         return err_msg
 
+    def _check_system_local_ca_flags(self):
+        err_msg = ''
+        if not utils.is_system_local_ca_data_from_user() and not utils.platform_certificates_upgraded():
+            err_msg += 'Platform Issuer CA data was auto generated (not provided by user).\n'
+        return err_msg
+
     def _check_local_issuer_health(self):
         err_msg = ''
         update_ca_warning = (
@@ -538,7 +544,8 @@ class Health(object):
             "* \n"
         )
 
-        check_methods = [self._check_local_issuer_secret_data(),
+        check_methods = [self._check_system_local_ca_flags(),
+                         self._check_local_issuer_secret_data(),
                          self._check_local_issuer_CA_cert_chain(),
                          self._check_local_issuer_clusterIssuer(),
                          self._check_expected_platform_certs()]

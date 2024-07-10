@@ -2482,9 +2482,21 @@ def is_fqdn_ready_to_use(ignore_upgrade=False):
 
 
 def is_platform_certificates_creation_enabled():
-    """Check if RestAPI/GUI and Docker Registry are to be created by bootstrap
+    """Check if platform certificates were created during bootstrap/upgrade
     """
     return os.path.isfile(constants.CREATE_PLATFORM_CERTIFICATES_IN_BOOTSTRAP)
+
+
+def is_system_local_ca_data_from_user():
+    """Check if system-local-ca data was provided by user during bootstrap/update playbook
+    """
+    return os.path.isfile(constants.SYSTEM_LOCAL_CA_DATA_PROVIDED)
+
+
+def platform_certificates_upgraded():
+    """Check if platform certificates were updated during upgrade
+    """
+    return os.path.isfile(constants.PLATFORM_CERTIFICATES_UPDATED_IN_UPGRADE)
 
 
 def is_std_system(dbapi):
