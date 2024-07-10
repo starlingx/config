@@ -197,8 +197,10 @@ class TestPostKubeRootCAUpdate(TestKubeRootCAUpdate,
         mock_pods_healthy.return_value = True, []
         # Test creation of kubernetes rootca update
         create_dict = dbutils.get_test_kube_rootca_update()
-        result = self.post_json('/kube_rootca_update?force=False', create_dict,
-                                headers=self.headers)
+        with mock.patch('sysinv.common.usm_service.get_platform_upgrade',
+                        side_effect=exception.NotFound()):
+            result = self.post_json('/kube_rootca_update?force=False', create_dict,
+                                    headers=self.headers)
 
         # Verify that the kubernetes rootca update has the expected attributes
         self.assertEqual(result.json['state'],
@@ -226,9 +228,11 @@ class TestPostKubeRootCAUpdate(TestKubeRootCAUpdate,
 
         # Test creation of kubernetes rootca update
         create_dict = dbutils.get_test_kube_rootca_update()
-        result = self.post_json('/kube_rootca_update?force=False', create_dict,
-                                headers=self.headers,
-                                expect_errors=True)
+        with mock.patch('sysinv.common.usm_service.get_platform_upgrade',
+                        side_effect=exception.NotFound()):
+            result = self.post_json('/kube_rootca_update?force=False', create_dict,
+                                    headers=self.headers,
+                                    expect_errors=True)
 
         # Verify that the rootca update has the expected attributes
         self.assertEqual(result.content_type, 'application/json')
@@ -247,9 +251,11 @@ class TestPostKubeRootCAUpdate(TestKubeRootCAUpdate,
 
         # Test creation of kubernetes rootca update
         create_dict = dbutils.get_test_kube_rootca_update()
-        result = self.post_json('/kube_rootca_update?force=False', create_dict,
-                                headers=self.headers,
-                                expect_errors=True)
+        with mock.patch('sysinv.common.usm_service.get_platform_upgrade',
+                        side_effect=exception.NotFound()):
+            result = self.post_json('/kube_rootca_update?force=False', create_dict,
+                                    headers=self.headers,
+                                    expect_errors=True)
 
         # Verify that the rootca update has the expected attributes
         self.assertEqual(result.content_type, 'application/json')

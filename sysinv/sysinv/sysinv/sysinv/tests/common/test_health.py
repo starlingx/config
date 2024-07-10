@@ -17,6 +17,7 @@ from oslo_context import context
 
 from sysinv.common import constants
 from sysinv.common import health
+from sysinv.common import exception
 
 from sysinv.tests.db import base as dbbase
 from sysinv.tests.db import utils as dbutils
@@ -229,7 +230,9 @@ class TestHealth(dbbase.BaseHostTestCase):
             self.cp_pod_ready_status_result
 
         # Check system health
-        health_ok, output = self.health.get_system_health(self.context)
+        with mock.patch('sysinv.common.usm_service.get_platform_upgrade',
+                        side_effect=exception.NotFound()):
+            health_ok, output = self.health.get_system_health(self.context)
         assert health_ok is True, "output: %s" % output
 
     def test_get_system_health_k8s_node_not_ready(self):
@@ -265,7 +268,10 @@ class TestHealth(dbbase.BaseHostTestCase):
             self.cp_pod_ready_status_result
 
         # Check system health
-        health_ok, output = self.health.get_system_health(self.context)
+
+        with mock.patch('sysinv.common.usm_service.get_platform_upgrade',
+                        side_effect=exception.NotFound()):
+            health_ok, output = self.health.get_system_health(self.context)
         assert health_ok is False, "output: %s" % output
         assert "Kubernetes nodes not ready: controller-0" in output, \
             "get_system_health output: %s" % output
@@ -304,7 +310,9 @@ class TestHealth(dbbase.BaseHostTestCase):
             'kube-controller-manager-controller-1'] = 'False'
 
         # Check system health
-        health_ok, output = self.health.get_system_health(self.context)
+        with mock.patch('sysinv.common.usm_service.get_platform_upgrade',
+                        side_effect=exception.NotFound()):
+            health_ok, output = self.health.get_system_health(self.context)
         assert health_ok is False, "get_system_health output: %s" % output
         assert "kubernetes control plane pods are ready: [Fail]" in output, \
             "output: %s" % output
@@ -350,8 +358,10 @@ class TestHealth(dbbase.BaseHostTestCase):
             self.cp_pod_ready_status_result
 
         # Check system health
-        health_ok, output = self.health.get_system_health_kube_upgrade(
-            self.context)
+        with mock.patch('sysinv.common.usm_service.get_platform_upgrade',
+                        side_effect=exception.NotFound()):
+            health_ok, output = self.health.get_system_health_kube_upgrade(
+                self.context)
         assert health_ok is True, "output: %s" % output
 
     def test_get_system_health_kube_upgrade_k8s_app_invalid_state(self):
@@ -393,8 +403,10 @@ class TestHealth(dbbase.BaseHostTestCase):
             self.cp_pod_ready_status_result
 
         # Check system health
-        health_ok, output = self.health.get_system_health_kube_upgrade(
-            self.context)
+        with mock.patch('sysinv.common.usm_service.get_platform_upgrade',
+                        side_effect=exception.NotFound()):
+            health_ok, output = self.health.get_system_health_kube_upgrade(
+                self.context)
         assert health_ok is False, "output: %s" % output
         assert "applications are in a valid state: [Fail]" in output, \
             "output: %s" % output
