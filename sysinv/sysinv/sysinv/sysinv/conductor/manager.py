@@ -13934,6 +13934,10 @@ class ConductorManager(service.PeriodicService):
         # to which the runtime config must be applied, but the
         # database entry is stored without the 'host_uuids' key
         # since there should be one entry per host on the table
+        valid_inventory_states = [
+            constants.INV_STATE_INITIAL_INVENTORIED,
+            constants.INV_STATE_REINSTALLING
+        ]
         host_uuids = config_dict.get("host_uuids")
         if not host_uuids:
             host_uuids = []
@@ -13941,7 +13945,15 @@ class ConductorManager(service.PeriodicService):
             for personality in personalities:
                 hosts = self.dbapi.ihost_get_by_personality(personality)
                 for host in hosts:
-                    host_uuids.append(host.uuid)
+                    if utils.is_host_active_controller(host):
+                        host_uuids.append(host.uuid)
+                    # Performs checks to avoid misconfigurations that may
+                    # arise from an early incorrect attempt
+                    elif host.inv_state in valid_inventory_states:
+                        host_uuids.append(host.uuid)
+                    else:
+                        LOG.warn(f"{host.hostname} not active controller "
+                                f"and not valid state: {host.inv_state}")
 
         tmp_config_dict = deepcopy(config_dict)
         tmp_config_dict.pop("host_uuids", None)
