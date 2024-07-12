@@ -8188,10 +8188,6 @@ class ConductorManager(service.PeriodicService):
                 context, tarball.app_name, tarball.app_version)
             target_app.status = constants.APP_UPDATE_IN_PROGRESS
             target_app.save()
-            if cutils.is_aio_simplex_system(self.dbapi):
-                operation = constants.APP_APPLY_OP
-            else:
-                operation = constants.APP_ROLLBACK_OP
         except exception.KubeAppInactiveNotFound:
             target_app_data = {
                 'name': tarball.app_name,
@@ -8201,7 +8197,6 @@ class ConductorManager(service.PeriodicService):
                 'status': constants.APP_UPDATE_IN_PROGRESS,
                 'active': True
             }
-            operation = constants.APP_APPLY_OP
 
             try:
                 target_db_app = self.dbapi.kube_app_create(target_app_data)
@@ -8224,7 +8219,6 @@ class ConductorManager(service.PeriodicService):
                               applied_app,
                               target_app,
                               tarball.tarball_name,
-                              operation,
                               hook_info,
                               None,
                               None,
@@ -8234,7 +8228,6 @@ class ConductorManager(service.PeriodicService):
                                            applied_app,
                                            target_app,
                                            tarball.tarball_name,
-                                           operation,
                                            hook_info,
                                            None,
                                            None,
@@ -17234,7 +17227,7 @@ class ConductorManager(service.PeriodicService):
         return app_applied
 
     def perform_app_update(self, context, from_rpc_app, to_rpc_app, tarfile,
-                           operation, lifecycle_hook_info_app_update, reuse_user_overrides=None,
+                           lifecycle_hook_info_app_update, reuse_user_overrides=None,
                            reuse_attributes=None, k8s_version=None):
         """Handling of application update request (via AppOperator)
 
@@ -17244,7 +17237,6 @@ class ConductorManager(service.PeriodicService):
         :param to_rpc_app: data object provided in the rpc request that
                            application update to
         :param tarfile: location of the application tarfile to be extracted
-        :param operation: apply or rollback
         :param lifecycle_hook_info_app_update: LifecycleHookInfo object
         :param reuse_user_overrides: (optional) True or False
         :param reuse_attributes: (optional) True or False
@@ -17255,7 +17247,6 @@ class ConductorManager(service.PeriodicService):
         return self._app.perform_app_update(from_rpc_app,
                                             to_rpc_app,
                                             tarfile,
-                                            operation,
                                             lifecycle_hook_info_app_update,
                                             reuse_user_overrides,
                                             reuse_attributes,

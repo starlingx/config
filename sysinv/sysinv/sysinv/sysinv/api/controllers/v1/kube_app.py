@@ -527,7 +527,6 @@ class KubeAppController(rest.RestController):
         pecan.request.rpcapi.perform_app_update(pecan.request.context,
                                                 applied_app, target_app,
                                                 tarfile,
-                                                constants.APP_APPLY_OP,
                                                 lifecycle_hook_info,
                                                 reuse_overrides,
                                                 reuse_attributes)

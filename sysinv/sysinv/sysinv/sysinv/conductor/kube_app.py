@@ -2825,7 +2825,7 @@ class AppOperator(object):
         return False
 
     def perform_app_update(self, from_rpc_app, to_rpc_app, tarfile,
-                           operation, lifecycle_hook_info_app_update, reuse_user_overrides=None,
+                           lifecycle_hook_info_app_update, reuse_user_overrides=None,
                            reuse_attributes=None, k8s_version=None):
         """Process application update request
 
@@ -2851,7 +2851,6 @@ class AppOperator(object):
         :param to_rpc_app: application object in the RPC request that
                            application updating to
         :param tarfile: location of application tarfile
-        :param operation: apply or rollback
         :param lifecycle_hook_info_app_update: LifecycleHookInfo object
         :param reuse_user_overrides: (optional) True or False
         :param reuse_attributes: (optional) True or False
@@ -2933,39 +2932,38 @@ class AppOperator(object):
 
                 self._update_app_status(to_app, constants.APP_UPDATE_IN_PROGRESS)
 
-                if operation == constants.APP_APPLY_OP:
-                    reuse_overrides = \
-                        self._get_metadata_value(to_app,
-                                                 constants.APP_METADATA_MAINTAIN_USER_OVERRIDES,
-                                                 False)
-                    if reuse_user_overrides is not None:
-                        reuse_overrides = reuse_user_overrides
+                reuse_overrides = \
+                    self._get_metadata_value(to_app,
+                                                constants.APP_METADATA_MAINTAIN_USER_OVERRIDES,
+                                                False)
+                if reuse_user_overrides is not None:
+                    reuse_overrides = reuse_user_overrides
 
-                    # Preserve user overrides for the new app
-                    if reuse_overrides:
-                        self._preserve_user_overrides(from_app, to_app)
+                # Preserve user overrides for the new app
+                if reuse_overrides:
+                    self._preserve_user_overrides(from_app, to_app)
 
-                    reuse_app_attributes = \
-                        self._get_metadata_value(to_app,
-                                                 constants.APP_METADATA_MAINTAIN_ATTRIBUTES,
-                                                 False)
-                    if reuse_attributes is not None:
-                        reuse_app_attributes = reuse_attributes
+                reuse_app_attributes = \
+                    self._get_metadata_value(to_app,
+                                                constants.APP_METADATA_MAINTAIN_ATTRIBUTES,
+                                                False)
+                if reuse_attributes is not None:
+                    reuse_app_attributes = reuse_attributes
 
-                    # Preserve attributes for the new app
-                    if reuse_app_attributes:
-                        self._preserve_attributes(from_app, to_app)
+                # Preserve attributes for the new app
+                if reuse_app_attributes:
+                    self._preserve_attributes(from_app, to_app)
 
-                    # The app_apply will generate new versioned overrides for the
-                    # app upgrade and will enable the new plugins for that version.
-                    lifecycle_hook_info_app_update.operation = constants.APP_APPLY_OP
-                    result = self.perform_app_apply(
-                        to_rpc_app, mode=None,
-                        lifecycle_hook_info_app_apply=lifecycle_hook_info_app_update,
-                        caller='update')
-                    lifecycle_hook_info_app_update.operation = constants.APP_UPDATE_OP
+                # The app_apply will generate new versioned overrides for the
+                # app upgrade and will enable the new plugins for that version.
+                lifecycle_hook_info_app_update.operation = constants.APP_APPLY_OP
+                result = self.perform_app_apply(
+                    to_rpc_app, mode=None,
+                    lifecycle_hook_info_app_apply=lifecycle_hook_info_app_update,
+                    caller='update')
+                lifecycle_hook_info_app_update.operation = constants.APP_UPDATE_OP
 
-                    operation_successful = result
+                operation_successful = result
             else:
                 operation_successful = semantic_check_result
 
@@ -4127,8 +4125,6 @@ class FluxCDHelper(object):
                               "cleanup..." % manifest_dir)
             elif operation in [constants.APP_DELETE_OP, constants.APP_REMOVE_OP]:
                 rc = self._delete(manifest_dir)
-            elif operation == constants.APP_ROLLBACK_OP:
-                pass
             elif operation == constants.APP_VALIDATE_OP:
                 self._validate(manifest_dir)
             else:
