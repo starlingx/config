@@ -15752,7 +15752,7 @@ class ConductorManager(service.PeriodicService):
             except Exception as e:
                 raise exception.SysinvException(_("Error loading private key "
                                                   "from PEM data: %s" % e))
-            if (not isinstance(private_key, rsa.RSAPrivateKey) or
+            if (not isinstance(private_key, rsa.RSAPrivateKey) and
                     not isinstance(private_key, ec.EllipticCurvePrivateKey)):
                 raise exception.SysinvException(_(
                     "Only RSA or ECC encryption based Private Keys are supported."))
