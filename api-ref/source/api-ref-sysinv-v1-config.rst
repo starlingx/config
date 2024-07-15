@@ -12624,3 +12624,110 @@ forbidden (403), badMethod (405)
    }
 
 This operation does not accept a request body.
+
+-------------------------
+Host Kernels
+-------------------------
+
+These APIs allow the display and modification of the host's kernel
+
+********************
+Display Host Kernel
+********************
+
+.. rest_method:: GET /v1/ihosts/{ihost_uuid}/kernel
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+computeFault (400, 500, ...), serviceUnavailable (503),
+unauthorized (401), forbidden (403), itemNotFound (404)
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "ihost_uuid", "URI", "csapi:UUID", "The unique identifier of the host"
+
+This operation does not accept a request body.
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "ihost_uuid", "URI", "csapi:UUID", "The unique identifier of the host"
+   "hostname", "plain", "xsd:string", "The host name"
+   "kernel_provisioned", "plain", "xsd:string", "The provisioned kernel"
+   "kernel_running", "plain", "xsd:string", "The running kernel"
+
+::
+
+   {
+      "ihost_uuid": "e551b1f0-ab6d-43a9-8eb1-05c39025a161",
+      "hostname": "controller-0",
+      "kernel_provisioned": "standard",
+      "kernel_running": "standard",
+   }
+
+This operation does not accept a request body.
+
+********************
+Modify Host Kernel
+********************
+
+.. rest_method:: PATCH /v1/ihosts/{ihost_uuid}/kernel
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+computeFault (400, 500, ...), serviceUnavailable (503), badRequest (400),
+unauthorized (401), forbidden (403), itemNotFound (404)
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "ihost_uuid", "URI", "csapi:UUID", "The unique identifier of the host"
+   "path", "URI", "xsd:string", "``/kernel_provisioned`` (always)"
+   "value", "plain", "xsd:string", "New Kernel [lowlatency|standard]"
+   "op", "plain", "xsd:string", "Type of operation: ``replace`` (always)"
+
+::
+
+   [
+      {
+         "path": "/kernel_provisioned",
+         "value": "lowlatency",
+         "op": "replace"
+      }
+   ]
+
+Will reply with updated kernel value
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "ihost_uuid", "URI", "csapi:UUID", "The unique identifier of the host"
+   "hostname", "plain", "xsd:string", "The host name"
+   "kernel_provisioned", "plain", "xsd:string", "The provisioned kernel"
+   "kernel_running", "plain", "xsd:string", "The running kernel"
+
+::
+
+   {
+      "ihost_uuid": "e551b1f0-ab6d-43a9-8eb1-05c39025a161",
+      "hostname": "controller-0",
+      "kernel_provisioned": "lowlatency",
+      "kernel_running": "standard"
+   }
