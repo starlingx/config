@@ -32,7 +32,6 @@ from wsme import types as wtypes
 from oslo_log import log
 from sysinv._i18n import _
 from sysinv import objects
-from sysinv.api.controllers.v1 import address_pool
 from sysinv.api.controllers.v1 import base
 from sysinv.api.controllers.v1 import collection
 from sysinv.api.controllers.v1 import types
@@ -250,9 +249,9 @@ class InterfaceNetworkController(rest.RestController):
                     cutils.is_initial_config_complete()):
                 pecan.request.rpcapi.set_mgmt_network_reconfig_flag(pecan.request.context)
                 if operation == constants.API_POST:
-                    address_pool.add_management_addresses_to_no_proxy_list(addrpools)
+                    caddress_pool.add_management_addresses_to_no_proxy_list(addrpools)
                 elif operation == constants.API_DELETE:
-                    address_pool.remove_management_addresses_from_no_proxy_list(addrpools)
+                    caddress_pool.remove_management_addresses_from_no_proxy_list(addrpools)
             dc_role = utils.get_distributed_cloud_role()
             if dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
                 cutils.update_subcloud_routes(pecan.request.dbapi, [_get_host()])

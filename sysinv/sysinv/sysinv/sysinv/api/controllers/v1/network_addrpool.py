@@ -13,7 +13,6 @@ from pecan import rest
 import uuid
 
 import wsmeext.pecan as wsme_pecan
-from sysinv.api.controllers.v1 import address_pool
 from sysinv.api.controllers.v1 import base
 from sysinv.api.controllers.v1 import types
 from sysinv.api.controllers.v1 import collection
@@ -212,9 +211,9 @@ class NetworkAddresspoolController(rest.RestController):
                     pecan.request.rpcapi.set_mgmt_network_reconfig_flag(pecan.request.context)
                     if utils.is_network_associated_to_interface(constants.NETWORK_TYPE_MGMT):
                         if operation == constants.API_POST:
-                            address_pool.add_management_addresses_to_no_proxy_list([addrpool])
+                            caddress_pool.add_management_addresses_to_no_proxy_list([addrpool])
                         else:
-                            address_pool.remove_management_addresses_from_no_proxy_list([addrpool])
+                            caddress_pool.remove_management_addresses_from_no_proxy_list([addrpool])
                         dc_role = utils.get_distributed_cloud_role()
                         if dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
                             cutils.update_subcloud_routes(pecan.request.dbapi)

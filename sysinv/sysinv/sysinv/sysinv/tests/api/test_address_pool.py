@@ -964,6 +964,43 @@ class TestPatchMixin(object):
         c1_new_route = self.dbapi.routes_get_by_interface(c1_mgmt0.id)[0]
         self.assertEqual(new_gateway, c1_new_route.gateway)
 
+    def test_modify_mgmt_update_no_proxy_list(self):
+        self._set_system_mode(constants.SYSTEM_MODE_SIMPLEX)
+
+        network = self._find_network_by_type(constants.NETWORK_TYPE_MGMT)
+        addrpool = self.find_addrpool_by_networktype(constants.NETWORK_TYPE_MGMT)
+
+        controller0 = self._create_test_host(constants.CONTROLLER, unit=0)
+        c0_mgmt0 = self.create_test_interface('c0_mgm0', controller0)
+
+        dbutils.create_test_interface_network(interface_id=c0_mgmt0.id, network_id=network.id)
+
+        old_floating = addrpool.floating_address
+        new_floating = str(self.mgmt_subnet[12])
+        old_c0 = addrpool.controller0_address
+        new_c0 = str(self.mgmt_subnet[13])
+
+        def _get_ip_list(ips):
+            if self.mgmt_subnet.version == constants.IPV6_FAMILY:
+                return ','.join(['[' + ip + ']' for ip in ips])
+            return ','.join(ips)
+
+        param_values = {'service': constants.SERVICE_TYPE_DOCKER,
+                        'section': constants.SERVICE_PARAM_SECTION_DOCKER_PROXY,
+                        'name': constants.SERVICE_PARAM_NAME_DOCKER_NO_PROXY,
+                        'value': _get_ip_list([old_floating, old_c0])}
+
+        dbutils.create_test_service_parameter(**param_values)
+
+        self.patch_success(addrpool, floating_address=new_floating, controller0_address=new_c0)
+
+        no_proxy_entry = self.dbapi.service_parameter_get_one(
+            service=constants.SERVICE_TYPE_DOCKER,
+            section=constants.SERVICE_PARAM_SECTION_DOCKER_PROXY,
+            name=constants.SERVICE_PARAM_NAME_DOCKER_NO_PROXY)
+
+        self.assertEqual(_get_ip_list([new_floating, new_c0]), no_proxy_entry.value)
+
 
 class TestPatchIPv4(TestPatchMixin,
                     AddressPoolTestCase):
