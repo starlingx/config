@@ -2465,6 +2465,12 @@ CERT_MODE_TO_SECRET_NAME = {
 # Create RestAPI/GUI and Docker Registry certificates from bootstrap
 CREATE_PLATFORM_CERTIFICATES_IN_BOOTSTRAP = os.path.join(tsc.CONFIG_PATH,
                                                          ".create_platform_certificates")
+# Platform certificates were updated in upgrade
+PLATFORM_CERTIFICATES_UPDATED_IN_UPGRADE = os.path.join(tsc.CONFIG_PATH,
+                                                         ".upgrade_platform_certificates")
+# system-local-ca data provided by user during bootstrap/update playbook
+SYSTEM_LOCAL_CA_DATA_PROVIDED = os.path.join(tsc.CONFIG_PATH,
+                                                         ".system_local_ca_data_provided")
 
 # Storage associated networks
 SB_SUPPORTED_NETWORKS = {

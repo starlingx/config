@@ -6,14 +6,13 @@
 # This script creates/updates required platform certificates during upgrade.
 # - The secret 'system-local-ca' is updated to include the 'ca.crt' field.
 #
-# - Certificates are created using ansible playbooks.
-#   - (Legacy) SX upgrade is already covered by upgrade playbook.
-#
 # - Subject is updated to match new defaults, if not otherwise customized by
 #   the user:
 #   - 'commonName' - default now is <cert_short_name>
 #   - 'localities' - default now is <region>
 #   - 'organization' - default now is 'starlingx'
+#
+# During rollback, HTTPS certificate is deleted if created by this script.
 
 import logging as LOG
 import subprocess
@@ -26,20 +25,18 @@ from cryptography.hazmat.primitives import serialization
 from sysinv.common import utils as sysinv_utils
 from oslo_serialization import base64
 
-KUBE_CMD = 'kubectl --kubeconfig=/etc/kubernetes/admin.conf '
-TMP_FILENAME = '/tmp/update_cert.yml'
 RETRIES = 3
+
+KUBE_CMD = 'kubectl --kubeconfig=/etc/kubernetes/admin.conf '
+AUTO_CREATED_TAG = '.auto_created_cert-'
+
+K8S_RESOURCES_TMP_FILENAME = '/tmp/update_cert.yml'
 TRUSTED_BUNDLE_FILEPATH = '/etc/ssl/certs/ca-cert.pem'
+CONFIG_FOLDER = '/opt/platform/config/'
 
-
-def get_system_mode():
-    lines = [line.rstrip('\n') for line in
-             open('/etc/platform/platform.conf')]
-    for line in lines:
-        values = line.split('=')
-        if values[0] == 'system_mode':
-            return values[1]
-    return None
+OPENLDAP_CERT_NAME = 'system-openldap-local-certificate'
+HTTPS_CERT_NAME = 'system-restapi-gui-certificate'
+REGISTRY_CERT_NAME = 'system-registry-local-certificate'
 
 
 def get_distributed_cloud_role():
@@ -151,14 +148,32 @@ def retrieve_certificate(certificate, namespace='deployment'):
                         % (certificate, namespace))
 
 
+def delete_certificate(certificate, namespace='deployment'):
+    """Delete certificate from k8s
+    """
+    delete_cmd = (KUBE_CMD + 'delete certificate ' + certificate + ' -n ' +
+                  namespace)
+
+    sub = subprocess.Popen(
+        delete_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    stdout, stderr = sub.communicate()
+    if sub.returncode == 0:
+        return stdout.decode('utf-8')
+    else:
+        LOG.error('Command failed:\n %s\n. %s\n%s\n' % (
+            delete_cmd, stdout.decode('utf-8'), stderr.decode('utf-8')))
+        raise Exception('Cannot delete Certificate %s from namespace: %s.'
+                        % (certificate, namespace))
+
+
 def get_old_default_CN_by_cert(certificate):
     """Return the old default CN per certificate
     """
     oam_ip = get_primary_oam_ip()
     default_CN_by_cert = {
-        'system-restapi-gui-certificate': oam_ip,
-        'system-registry-local-certificate': oam_ip,
-        'system-openldap-local-certificate': 'system-openldap'
+        HTTPS_CERT_NAME: oam_ip,
+        REGISTRY_CERT_NAME: oam_ip,
+        OPENLDAP_CERT_NAME: 'system-openldap'
     }
     return default_CN_by_cert[certificate]
 
@@ -181,6 +196,44 @@ def find_root_ca(intermediate_ca):
     return ""
 
 
+def create_tls_secret_body(name, namespace, tls_crt, tls_key, ca_crt=''):
+    secret_body = {
+        'apiVersion': 'v1',
+        'kind': 'Secret',
+        'metadata': {
+            'name': name,
+            'namespace': namespace
+        },
+        'type': 'kubernetes.io/tls',
+        'data': {
+            'ca.crt': base64.encode_as_text(ca_crt),
+            'tls.crt': base64.encode_as_text(tls_crt),
+            'tls.key': base64.encode_as_text(tls_key),
+        }
+    }
+
+    return secret_body
+
+
+def apply_k8s_yml(resources_yml):
+    with open(K8S_RESOURCES_TMP_FILENAME, 'w') as yaml_file:
+        yaml.safe_dump(resources_yml, yaml_file, default_flow_style=False)
+
+    apply_cmd = KUBE_CMD + 'apply -f ' + K8S_RESOURCES_TMP_FILENAME
+
+    sub = subprocess.Popen(apply_cmd, shell=True, stdout=subprocess.PIPE,
+                           stderr=subprocess.PIPE)
+    stdout, stderr = sub.communicate()
+    if sub.returncode != 0:
+        LOG.error('Command failed:\n %s\n. %s\n%s\n' % (
+            apply_cmd, stdout.decode('utf-8'), stderr.decode('utf-8')))
+        raise Exception('Cannot apply k8s resource file.')
+    else:
+        os.remove(K8S_RESOURCES_TMP_FILENAME)
+        LOG.info('K8s resources applied. Output:\n%s\n'
+                 % stdout.decode('utf-8'))
+
+
 def update_system_local_ca_secret():
     """Update system-local-ca secret
     """
@@ -189,37 +242,13 @@ def update_system_local_ca_secret():
 
     if ca_crt == "" or not sysinv_utils.verify_cert_issuer(tls_crt, ca_crt):
         ca_crt = find_root_ca(tls_crt)
-        secret_body = {
-            'apiVersion': 'v1',
-            'kind': 'Secret',
-            'metadata': {
-                'name': 'system-local-ca',
-                'namespace': 'cert-manager'
-            },
-            'type': 'kubernetes.io/tls',
-            'data': {
-                'ca.crt': base64.encode_as_text(ca_crt),
-                'tls.crt': base64.encode_as_text(tls_crt),
-                'tls.key': base64.encode_as_text(tls_key),
-            }
-        }
+        secret_body = create_tls_secret_body('system-local-ca',
+                                             'cert-manager',
+                                             tls_crt,
+                                             tls_key,
+                                             find_root_ca(tls_crt))
 
-        with open(TMP_FILENAME, 'w') as yaml_file:
-            yaml.safe_dump(secret_body, yaml_file, default_flow_style=False)
-
-        apply_cmd = KUBE_CMD + 'apply -f ' + TMP_FILENAME
-
-        sub = subprocess.Popen(apply_cmd, shell=True, stdout=subprocess.PIPE,
-                               stderr=subprocess.PIPE)
-        stdout, stderr = sub.communicate()
-        if sub.returncode != 0:
-            LOG.error('Command failed:\n %s\n. %s\n%s\n' % (
-                apply_cmd, stdout.decode('utf-8'), stderr.decode('utf-8')))
-            raise Exception('Cannot apply change to system-local-ca secret.')
-        else:
-            os.remove(TMP_FILENAME)
-            LOG.info('Updated system-local-ca secret. Output:\n%s\n'
-                     % stdout.decode('utf-8'))
+        apply_k8s_yml(secret_body)
 
 
 def update_certificate(certificate, short_name):
@@ -241,7 +270,7 @@ def update_certificate(certificate, short_name):
     common_name = loaded_data['spec'].get('commonName', None)
     if common_name == get_old_default_CN_by_cert(certificate):
         same_CN = True
-        if certificate != 'system-openldap-local-certificate':
+        if certificate != OPENLDAP_CERT_NAME:
             common_name = short_name
             loaded_data['spec'].update({'commonName': common_name})
             cert_changes = True
@@ -283,41 +312,59 @@ def update_certificate(certificate, short_name):
                             'the certificate not found for %s.' % certificate)
 
     if cert_changes:
-        with open(TMP_FILENAME, 'w') as yaml_file:
-            yaml.safe_dump(loaded_data, yaml_file, default_flow_style=False)
-
-        apply_cmd = KUBE_CMD + 'apply -f ' + TMP_FILENAME
-
-        sub = subprocess.Popen(apply_cmd, shell=True, stdout=subprocess.PIPE,
-                               stderr=subprocess.PIPE)
-        stdout, stderr = sub.communicate()
-        if sub.returncode != 0:
-            LOG.error('Command failed:\n %s\n. %s\n%s\n' % (
-                apply_cmd, stdout.decode('utf-8'), stderr.decode('utf-8')))
-            raise Exception('Cannot apply change to certificate %s.'
-                            % certificate)
-        else:
-            os.remove(TMP_FILENAME)
-            LOG.info('Updated subject entries for certificate: %s. '
-                     'Output:\n%s\n' % (certificate, stdout.decode('utf-8')))
+        apply_k8s_yml(loaded_data)
 
 
 def reconfigure_certificates_subject():
     """Reconfigure the subject for all desired certs
     """
     certificate_short_name = {
-        'system-restapi-gui-certificate': 'system-restapi-gui',
-        'system-registry-local-certificate': 'system-registry-local',
-        'system-openldap-local-certificate': 'system-openldap',
+        HTTPS_CERT_NAME: 'system-restapi-gui',
+        REGISTRY_CERT_NAME: 'system-registry-local',
+        OPENLDAP_CERT_NAME: 'system-openldap',
     }
 
     cloud_role = get_distributed_cloud_role()
     for cert in certificate_short_name.keys():
-        if (cert == 'system-openldap-local-certificate' and
-                cloud_role == 'subcloud'):
+        if (cert == OPENLDAP_CERT_NAME and cloud_role == 'subcloud'):
             continue
         if certificate_exists(cert):
             update_certificate(cert, certificate_short_name[cert])
+
+
+def create_platform_certificates_updated_file_flag(version):
+    sysinv_utils.touch(
+        sysinv_utils.constants.PLATFORM_CERTIFICATES_UPDATED_IN_UPGRADE)
+
+
+def get_cert_auto_creation_filename(cert_name, version):
+    return CONFIG_FOLDER + version + '/' + AUTO_CREATED_TAG + cert_name
+
+
+def create_cert_auto_creation_file_flag(cert_name, version):
+    sysinv_utils.touch(get_cert_auto_creation_filename(cert_name, version))
+
+
+def check_cert_auto_creation_file_flag(cert_name, version):
+    return os.path.isfile(get_cert_auto_creation_filename(cert_name, version))
+
+
+def remove_cert_auto_creation_file_flag(cert_name, version):
+    try:
+        os.remove(get_cert_auto_creation_filename(cert_name, version))
+    except OSError:
+        pass
+
+
+def restore_https_certificate_config(to_release):
+    if check_cert_auto_creation_file_flag(HTTPS_CERT_NAME, to_release):
+        delete_certificate(HTTPS_CERT_NAME)
+
+
+def register_https_certificate_config(to_release):
+    remove_cert_auto_creation_file_flag(HTTPS_CERT_NAME, to_release)
+    if not certificate_exists(HTTPS_CERT_NAME):
+        create_cert_auto_creation_file_flag(HTTPS_CERT_NAME, to_release)
 
 
 def main():
@@ -345,26 +392,46 @@ def main():
     LOG.basicConfig(filename="/var/log/software.log",
                     format=log_format, level=LOG.INFO, datefmt="%FT%T")
 
+    # Activate
     if (action == 'activate' and from_release == '22.12'):
         LOG.info("%s invoked with from_release = %s to_release = %s "
                  "action = %s"
                  % (sys.argv[0], from_release, to_release, action))
-
         for retry in range(0, RETRIES):
             try:
+                register_https_certificate_config(to_release)
                 update_system_local_ca_secret()
                 reconfigure_certificates_subject()
-                mode = get_system_mode()
-                # For (legacy) SX upgrade, the role that creates the required
-                # platform certificates is already executed by the upgrade
-                # playbook.
-                if mode != 'simplex':
-                    create_platform_certificates(to_release)
+                create_platform_certificates(to_release)
+                create_platform_certificates_updated_file_flag(to_release)
                 LOG.info("Successfully created/updated required platform "
                          "certificates.")
             except Exception as e:
                 if retry == RETRIES - 1:
                     LOG.error("Error updating required platform certificates. "
+                              "Please verify logs.")
+                    return 1
+                else:
+                    LOG.exception(e)
+                    LOG.error("Exception ocurred during script execution, "
+                              "retrying after 5 seconds.")
+                    sleep(5)
+            else:
+                return 0
+
+    # Activate rollback
+    if (action == 'activate-rollback' and from_release == '22.12'):
+        LOG.info("%s invoked with from_release = %s to_release = %s "
+                 "action = %s"
+                 % (sys.argv[0], from_release, to_release, action))
+        for retry in range(0, RETRIES):
+            try:
+                restore_https_certificate_config(to_release)
+                LOG.info("Successfully restored legacy certificate "
+                         "config.")
+            except Exception as e:
+                if retry == RETRIES - 1:
+                    LOG.error("Error restoring legacy certificate config. "
                               "Please verify logs.")
                     return 1
                 else:
