@@ -4,6 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 from sysinv.common import rest_api
+from sysinv.common import utils as sys_utils
 from sysinv.ipsec_auth.common import constants
 from sysinv.common.kubernetes import KUBERNETES_ADMIN_CONF
 
@@ -321,3 +322,32 @@ def kube_apply_certificate_request(body):
         return None
 
     return signed_cert.stdout.decode("utf-8").strip("'")
+
+
+def remove_ca_certificates(prefix):
+    for file in os.listdir(constants.TRUSTED_CA_CERT_DIR):
+        path = os.path.join(constants.TRUSTED_CA_CERT_DIR, file)
+        if os.path.isfile(path) and file.startswith(prefix):
+            try:
+                os.remove(path)
+            except Exception:
+                LOG.exception("Error removing file: %s" % path)
+                return False
+    return True
+
+
+def get_ca_certificate_path(prefix, index):
+    if index == 0:
+        return constants.TRUSTED_CA_CERT_DIR + prefix + '.crt'
+
+    return constants.TRUSTED_CA_CERT_DIR + prefix + '_l' + str(index) + '.crt'
+
+
+def save_cert_bundle(cert_data, cert_prefix):
+    index = 0
+
+    certs = sys_utils.extract_certs_from_pem(cert_data)
+    for cert in certs:
+        cert_path = get_ca_certificate_path(cert_prefix, index)
+        save_data(cert_path, cert.public_bytes(encoding=serialization.Encoding.PEM))
+        index += 1

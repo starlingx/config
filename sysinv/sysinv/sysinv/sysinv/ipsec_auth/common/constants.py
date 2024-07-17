@@ -30,8 +30,10 @@ SECRET_SYSTEM_LOCAL_CA = 'system-local-ca'
 # associated with system-local-ca.
 TRUSTED_ROOT_CA_CERT_FILE_0 = 'system-root-ca-0.crt'
 TRUSTED_ROOT_CA_CERT_FILE_1 = 'system-root-ca-1.crt'
-TRUSTED_CA_CERT_FILE_0 = 'system-local-ca-0.crt'
-TRUSTED_CA_CERT_FILE_1 = 'system-local-ca-1.crt'
+TRUSTED_CA_CERT_0_PREFIX = 'system-local-ca-0'
+TRUSTED_CA_CERT_1_PREFIX = 'system-local-ca-1'
+TRUSTED_CA_CERT_FILE_0 = TRUSTED_CA_CERT_0_PREFIX + '.crt'
+TRUSTED_CA_CERT_FILE_1 = TRUSTED_CA_CERT_1_PREFIX + '.crt'
 TRUSTED_CA_CERT_FILES = TRUSTED_CA_CERT_FILE_0 + ',' + TRUSTED_CA_CERT_FILE_1
 TRUSTED_CA_CERT_DIR = '/etc/swanctl/x509ca/'
 TRUSTED_ROOT_CA_CERT_0_PATH = TRUSTED_CA_CERT_DIR + TRUSTED_ROOT_CA_CERT_FILE_0
