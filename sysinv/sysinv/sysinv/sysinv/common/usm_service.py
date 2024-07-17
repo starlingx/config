@@ -105,11 +105,16 @@ def get_platform_upgrade(dbapi, usm_only=False):
         # it is ok, legacy upgrade does not have usm service available
         pass
 
+    # USM upgrade completed is considered as no upgrade in progress
     if upgrade and upgrade.state == constants.DEPLOY_STATE_COMPLETED:
-        # USM upgrade completed
         raise exception.NotFound()
 
+    # query legacy upgrade API
     if upgrade is None and not usm_only:
         upgrade = dbapi.software_upgrade_get_one()
+
+    # no upgrade in progress (USM and legacy)
+    if upgrade is None:
+        raise exception.NotFound()
 
     return upgrade
