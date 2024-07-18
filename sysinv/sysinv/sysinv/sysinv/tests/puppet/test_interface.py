@@ -2328,6 +2328,12 @@ class InterfaceHostTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
                                     intf_cfg[exp_intf]['method'])
                     self.assertEqual(self.exp_yaml_config[exp_intf]['stx-description'],
                                     intf_cfg[exp_intf]['options']['stx-description'])
+                    if 'bond-primary' in intf_cfg[exp_intf]['options'].keys():
+                        self.assertEqual(self.exp_yaml_config[exp_intf]['bond-primary'],
+                                        intf_cfg[exp_intf]['options']['bond-primary'])
+                    if 'bond-slaves' in intf_cfg[exp_intf]['options'].keys():
+                        self.assertEqual(self.exp_yaml_config[exp_intf]['bond-slaves'],
+                                        intf_cfg[exp_intf]['options']['bond-slaves'])
                 if self.exp_yaml_config[exp_intf]['tc']:
                     self.assertTrue('tc_setup.sh' in intf_cfg[exp_intf]['options']['post-up'])
                 else:
@@ -2636,25 +2642,103 @@ class InterfaceControllerBond(InterfaceHostTestCase):
                      'stx-description': f'ifname:eth7,net:{None}', 'tc': False},
             "oam0": {'family': 'inet', 'method': 'manual',
                      'stx-description': f'ifname:oam0,net:{None}',
-                     'tc': False},
+                     'bond-slaves': 'eth0 eth1 ', 'tc': False},
             "oam0:3-11": {'family': 'inet', 'method': 'static',
                      'stx-description': f'ifname:oam0,net:{constants.NETWORK_TYPE_OAM}',
-                     'tc': False},
+                     'bond-slaves': 'eth0 eth1 ', 'tc': False},
             "mgmt0": {'family': 'inet', 'method': 'manual',
-                      'stx-description': f'ifname:mgmt0,net:{None}', 'tc': True},
+                      'stx-description': f'ifname:mgmt0,net:{None}',
+                      'bond-slaves': 'eth2 eth3 ', 'tc': True},
             "mgmt0:1": {'family': 'inet', 'method': 'static',
                       'stx-description': f'ifname:mgmt0,net:{constants.NETWORK_TYPE_PXEBOOT}',
-                      'tc': False},
+                      'bond-slaves': 'eth2 eth3 ', 'tc': False},
             "mgmt0:2-7": {'family': 'inet', 'method': 'static',
                       'stx-description': f'ifname:mgmt0,net:{constants.NETWORK_TYPE_MGMT}',
-                      'tc': False},
+                      'bond-slaves': 'eth2 eth3 ', 'tc': False},
             "cluster-host0": {'family': 'inet', 'method': 'manual',
                               'stx-description': f'ifname:cluster-host0,net:{None}',
-                              'tc': False},
+                              'bond-slaves': 'eth4 eth5 ', 'tc': False},
             "cluster-host0:4-15": {'family': 'inet', 'method': 'static',
                               'stx-description': 'ifname:cluster-host0,'
                                      f'net:{constants.NETWORK_TYPE_CLUSTER_HOST}',
+                              'bond-slaves': 'eth4 eth5 ', 'tc': False},
+            "lo": {'family': 'inet', 'method': 'loopback', 'stx-description': '',
+                   'tc': False},
+        }
+
+
+class InterfaceControllerBondCfg2(InterfaceHostTestCase):
+    def _setup_configuration(self):
+        self.host = self._create_test_host(constants.CONTROLLER)
+
+        port1, iface1 = self._create_ethernet_test(ifname='bondbase0')
+        port2, iface2 = self._create_ethernet_test(ifname='bondbase1')
+
+        self._create_bond_test('oam0', constants.INTERFACE_CLASS_PLATFORM,
+                                constants.NETWORK_TYPE_OAM,
+                                hostname=self.host.hostname, iface1=iface1,
+                                iface2=iface2, aemode='active-backup')
+
+        self._create_bond_test('mgmt0', constants.INTERFACE_CLASS_PLATFORM,
+                                constants.NETWORK_TYPE_MGMT,
+                                hostname=self.host.hostname, iface1=iface1,
+                                iface2=iface2, aemode='active-backup')
+
+        self._create_bond_test('cluster-host0', constants.INTERFACE_CLASS_PLATFORM,
+                                constants.NETWORK_TYPE_CLUSTER_HOST,
+                                hostname=self.host.hostname)
+
+    def setUp(self):
+        super(InterfaceControllerBondCfg2, self).setUp()
+        self.expected_bmc_interface = 'mgmt'
+        self.expected_platform_interfaces = ['eth0', 'eth1', 'oam0',
+                                             'mgmt0', 'eth4', 'eth5',
+                                             'cluster-host0', 'bondbase0',
+                                             'bondbase1']
+        self.expected_slave_interfaces = ['eth4', 'eth5',
+                                          'bondbase0',
+                                          'bondbase1']
+        # the slave interfaces do not match the linux name created by the test database
+        # port:eth0 => ifname:bondbase0, port:eth1 => ifname:bondbase1
+        # port:eth2 => ifname:eth4, port:eth3 => ifname:eth5 (differ)
+        self.exp_yaml_config = {
+            "eth0": {'family': 'inet', 'method': 'manual',
+                     'stx-description': f'ifname:bondbase0,net:{None}', 'tc': False},
+            "eth1": {'family': 'inet', 'method': 'manual',
+                     'stx-description': f'ifname:bondbase1,net:{None}', 'tc': False},
+            "eth2": {'family': 'inet', 'method': 'manual',
+                     'stx-description': f'ifname:eth4,net:{None}', 'tc': False},
+            "eth3": {'family': 'inet', 'method': 'manual',
+                     'stx-description': f'ifname:eth5,net:{None}', 'tc': False},
+            "oam0": {'family': 'inet', 'method': 'manual',
+                     'bond-mode': 'active-backup', 'bond-primary': 'eth0',
+                     'bond-slaves': 'eth0 eth1 ',
+                     'stx-description': f'ifname:oam0,net:{None}',
+                     'tc': False},
+            "oam0:3-11": {'family': 'inet', 'method': 'static', 'bond-primary': 'eth0',
+                          'bond-slaves': 'eth0 eth1 ',
+                          'stx-description': f'ifname:oam0,net:{constants.NETWORK_TYPE_OAM}',
+                          'tc': False},
+            "mgmt0": {'family': 'inet', 'method': 'manual', 'bond-primary': 'eth0',
+                      'bond-slaves': 'eth0 eth1 ',
+                      'stx-description': f'ifname:mgmt0,net:{None}', 'tc': True},
+            "mgmt0:1": {'family': 'inet', 'method': 'static', 'bond-primary': 'eth0',
+                        'bond-slaves': 'eth0 eth1 ',
+                        'stx-description': f'ifname:mgmt0,net:{constants.NETWORK_TYPE_PXEBOOT}',
+                        'tc': False},
+            "mgmt0:2-7": {'family': 'inet', 'method': 'static', 'bond-primary': 'eth0',
+                          'bond-slaves': 'eth0 eth1 ',
+                          'stx-description': f'ifname:mgmt0,net:{constants.NETWORK_TYPE_MGMT}',
+                          'tc': False},
+            "cluster-host0": {'family': 'inet', 'method': 'manual', 'bond-primary': 'eth2',
+                              'bond-slaves': 'eth2 eth3 ',
+                              'stx-description': f'ifname:cluster-host0,net:{None}',
                               'tc': False},
+            "cluster-host0:4-15": {'family': 'inet', 'method': 'static', 'bond-primary': 'eth2',
+                                   'bond-slaves': 'eth2 eth3 ',
+                                   'stx-description': 'ifname:cluster-host0,'
+                                   f'net:{constants.NETWORK_TYPE_CLUSTER_HOST}',
+                                   'tc': False},
             "lo": {'family': 'inet', 'method': 'loopback', 'stx-description': '',
                    'tc': False},
         }
@@ -2697,7 +2781,7 @@ class InterfaceControllerVlanOverBond(InterfaceHostTestCase):
                      'stx-description': f'ifname:eth1,net:{None}', 'tc': False},
             "pxeboot0": {'family': 'inet', 'method': 'static',
                      'stx-description': f'ifname:pxeboot0,net:{constants.NETWORK_TYPE_PXEBOOT}',
-                     'tc': False},
+                     'bond-slaves': 'eth0 eth1 ', 'tc': False},
             "vlan1": {'family': 'inet', 'method': 'manual',
                      'stx-description': f'ifname:oam0,net:{None}',
                      'tc': False},
@@ -3160,24 +3244,25 @@ class InterfaceComputeBond(InterfaceHostTestCase):
             "eth1": {'family': 'inet', 'method': 'manual',
                      'stx-description': f'ifname:eth1,net:{None}', 'tc': False},
             "mgmt": {'family': 'inet', 'method': 'manual',
-                     'stx-description': f'ifname:mgmt,net:{None}', 'tc': True},
+                     'stx-description': f'ifname:mgmt,net:{None}',
+                     'bond-slaves': 'eth0 eth1 ', 'tc': True},
             "mgmt:1": {'family': 'inet', 'method': 'dhcp',
                      'stx-description': f'ifname:mgmt,net:{constants.NETWORK_TYPE_PXEBOOT}',
-                     'tc': False},
+                     'bond-slaves': 'eth0 eth1 ', 'tc': False},
             "mgmt:2-37": {'family': 'inet', 'method': 'static',
                      'stx-description': f'ifname:mgmt,net:{constants.NETWORK_TYPE_MGMT}',
-                     'tc': False},
+                     'bond-slaves': 'eth0 eth1 ', 'tc': False},
             "eth2": {'family': 'inet', 'method': 'manual',
                      'stx-description': f'ifname:eth3,net:{None}', 'tc': False},
             "eth3": {'family': 'inet', 'method': 'manual',
                      'stx-description': f'ifname:eth4,net:{None}', 'tc': False},
             "cluster-host": {'family': 'inet', 'method': 'manual',
                      'stx-description': f'ifname:cluster-host,net:{None}',
-                                    'tc': False},
+                     'bond-slaves': 'eth2 eth3 ', 'tc': False},
             "cluster-host:4-38": {'family': 'inet', 'method': 'static',
                      'stx-description': f'ifname:cluster-host,'
-                                    f'net:{constants.NETWORK_TYPE_CLUSTER_HOST}',
-                                    'tc': False},
+                     f'net:{constants.NETWORK_TYPE_CLUSTER_HOST}',
+                     'bond-slaves': 'eth2 eth3 ', 'tc': False},
             "eth6": {'family': 'inet', 'method': 'manual',
                      'stx-description': f'ifname:sriov,net:{None}', 'tc': False},
             "eth7": {'family': 'inet', 'method': 'manual',
@@ -3229,7 +3314,7 @@ class InterfaceComputeVlanOverBond(InterfaceHostTestCase):
                      'stx-description': f'ifname:eth1,net:{None}', 'tc': False},
             "pxeboot": {'family': 'inet', 'method': 'dhcp',
                      'stx-description': f'ifname:pxeboot,net:{constants.NETWORK_TYPE_PXEBOOT}',
-                     'tc': False},
+                     'bond-slaves': 'eth0 eth1 ', 'tc': False},
             "vlan1": {'family': 'inet', 'method': 'manual',
                      'stx-description': f'ifname:oam,net:{None}',
                      'tc': False},

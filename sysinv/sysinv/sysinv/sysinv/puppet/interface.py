@@ -952,7 +952,7 @@ def add_vlan_interface_creation_command(context, iface, options):
         'ip link del %s' % (os_ifname))
 
 
-def get_bond_interface_options_ifupdown(iface, primary_iface):
+def get_bond_interface_options_ifupdown(context, iface, primary_iface):
     """
     Get the interface config attribute for bonding options
     """
@@ -964,7 +964,9 @@ def get_bond_interface_options_ifupdown(iface, primary_iface):
         # Requires the active device in an active_standby LAG
         # configuration to be determined based on the lowest MAC address
         options['bond-mode'] = 'active-backup'
-        options['bond-primary'] = primary_iface['ifname']
+        port_name = get_interface_devices(context, primary_iface)
+        if len(port_name):
+            options['bond-primary'] = port_name[0]
         if iface['primary_reselect']:
             options['bond-primary-reselect'] = iface['primary_reselect']
     else:
@@ -976,8 +978,9 @@ def get_bond_interface_options_ifupdown(iface, primary_iface):
             options['bond-lacp-rate'] = 'fast'
     if iface['uses']:
         bond_slaves = str()
-        for iface in iface['uses']:
-            bond_slaves += (iface + ' ')
+        os_ifname = get_interface_devices(context, iface)
+        for interface_name in os_ifname:
+            bond_slaves += (interface_name + ' ')
         options['bond-slaves'] = bond_slaves
     return options
 
@@ -993,7 +996,8 @@ def get_bond_network_config(context, iface, config):
     iface_mac = iface['imac'].rstrip()
 
     options['hwaddress'] = iface_mac
-    bonding_options = get_bond_interface_options_ifupdown(iface, primary_iface)
+    bonding_options = get_bond_interface_options_ifupdown(context, iface,
+                                                          primary_iface)
     if bonding_options:
         options.update(bonding_options)
 
