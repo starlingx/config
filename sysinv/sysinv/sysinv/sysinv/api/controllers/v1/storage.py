@@ -643,6 +643,25 @@ def _check_host(stor):
                 raise wsme.exc.ClientSideError(_("Host %s must be locked." %
                                                  ihost['hostname']))
 
+    elif StorageBackendConfig.has_backend(pecan.request.dbapi,
+                                        constants.SB_TYPE_CEPH_ROOK):
+        sb_name = constants.SB_DEFAULT_NAMES[constants.SB_TYPE_CEPH_ROOK]
+        sb = pecan.request.dbapi.storage_backend_get_by_name(sb_name)
+        dm = sb.capabilities.get(constants.CEPH_ROOK_BACKEND_DEPLOYMENT_CAP,
+                                 constants.CEPH_ROOK_DEPLOYMENT_CONTROLLER)
+
+        msg = _("Deployment model %s from storage backend %s "
+                "does not support osd on host %s." %
+                (dm, sb_name, ihost['hostname']))
+
+        if dm == constants.CEPH_ROOK_DEPLOYMENT_CONTROLLER:
+            if ihost['personality'] != constants.CONTROLLER:
+                raise wsme.exc.ClientSideError(msg)
+
+        elif dm == constants.CEPH_ROOK_DEPLOYMENT_DEDICATED:
+            if ihost['personality'] != constants.WORKER:
+                raise wsme.exc.ClientSideError(msg)
+
     # semantic check: whether system has a ceph backend
     if (not StorageBackendConfig.has_backend(pecan.request.dbapi,
                                              constants.SB_TYPE_CEPH) and
@@ -1042,9 +1061,49 @@ def _create(stor):
         # Override the runtime manifest call if the Ceph Rook backend is
         # configured. Appliction apply will make changes, not runtime puppet
         # manifests
+        # Update the storage_backend replication factor if the quantity of the
+        # host by deployment_model is more than 2
         if StorageBackendConfig.has_backend(pecan.request.dbapi,
                                             constants.SB_TYPE_CEPH_ROOK):
             runtime_manifests = False
+
+            sb_name = constants.SB_DEFAULT_NAMES[constants.SB_TYPE_CEPH_ROOK]
+            sb = pecan.request.dbapi.storage_backend_get_by_name(sb_name)
+            dm = sb.capabilities.get(constants.CEPH_ROOK_BACKEND_DEPLOYMENT_CAP,
+                                     constants.CEPH_ROOK_DEPLOYMENT_CONTROLLER)
+            count_hosts_with_osds = 0
+
+            if dm == constants.CEPH_ROOK_DEPLOYMENT_CONTROLLER:
+                hosts = pecan.request.dbapi.ihost_get_by_personality(constants.CONTROLLER)
+            elif dm == constants.CEPH_ROOK_DEPLOYMENT_DEDICATED:
+                hosts = pecan.request.dbapi.ihost_get_by_personality(constants.WORKER)
+            else:
+                hosts = pecan.request.dbapi.ihost_get_list()
+
+            # Pass for all hosts by deployment_model, get all hosts that has OSDs
+            for host in hosts:
+                host_has_osd = False
+                istors = pecan.request.dbapi.istor_get_by_ihost(host.uuid)
+                for stor in istors:
+                    if (stor.function == constants.STOR_FUNCTION_OSD and
+                            (stor.state == constants.SB_STATE_CONFIGURED or
+                             stor.state == constants.SB_STATE_CONFIGURING_WITH_APP)):
+                        host_has_osd = True
+                if host_has_osd:
+                    count_hosts_with_osds += 1
+
+            # if the count of hosts with OSDs is greater than the replication factor default (2)
+            # the replication factor is updated to 3 when replication is less than or equal
+            # replication factor default (2)
+            if count_hosts_with_osds > constants.CEPH_REPLICATION_FACTOR_DEFAULT:
+                replication = int(sb.capabilities.get(constants.CEPH_BACKEND_REPLICATION_CAP,
+                                                      constants.CEPH_REPLICATION_FACTOR_DEFAULT))
+
+                if replication <= constants.CEPH_REPLICATION_FACTOR_DEFAULT:
+                    new_cap = sb.capabilities
+                    new_cap['replication'] = constants.CEPH_REPLICATION_FACTOR_DEFAULT + 1
+                    new_cap['min_replication'] = constants.CEPH_REPLICATION_MAP_DEFAULT[new_cap['replication']]
+                    pecan.request.dbapi.storage_backend_update(sb.uuid, {'capabilities': new_cap})
 
         pecan.request.rpcapi.update_ceph_osd_config(pecan.request.context,
                                                     ihost, new_stor['uuid'],
