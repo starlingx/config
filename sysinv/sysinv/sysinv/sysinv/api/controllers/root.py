@@ -15,6 +15,10 @@
 # WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 # License for the specific language governing permissions and limitations
 # under the License.
+#
+# Copyright (c) 2024 Wind River Systems, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
 
 import pecan
 from pecan import rest
@@ -84,3 +88,9 @@ class RootController(rest.RestController):
         #       request is because we need to get the host url from
         #       the request object to make the links.
         return Root.convert()
+
+    @pecan.expose()
+    def options(self):
+        allowed_methods = ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH']
+        pecan.response.headers['Allow'] = ', '.join(allowed_methods)
+        return

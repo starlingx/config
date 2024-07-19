@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# Copyright (c) 2013-2022 Wind River Systems, Inc.
+# Copyright (c) 2013-2022,2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -276,15 +276,21 @@ sysinv_api_monitor () {
         return $rc
     fi
 
-    # Trigger a request over sysinv-api to determine if it is properly started
-    sysinv_api_request
+    # Send an HTTP OPTIONS request to the sysinv-api and capture the HTTP status code
+    http_code=$(curl -s -o /dev/null -w "%{http_code}" -X OPTIONS http://controller:6385/)
     rc=$?
-    if [ $rc -ne ${OCF_SUCCESS} ] ; then
-        ocf_log err "System Inventory Service (sysinv-api) monitor failed"
-    else
-        ocf_log debug "System Inventory Service (sysinv-api) monitor succeeded"
+    if [ $rc -ne 0 ]; then
+        ocf_log err "Failed to execute curl command for sysinv-api monitor"
+        return $OCF_ERR_GENERIC
     fi
-    return ${rc}
+
+    if [ "$http_code" -eq 200 ] || [ "$http_code" -eq 204 ]; then
+        ocf_log info "System Inventory Service (sysinv-api) is reachable via OPTIONS request"
+        return $OCF_SUCCESS
+    else
+        ocf_log err "System Inventory Service (sysinv-api) monitor failed with HTTP status code $http_code"
+        return $OCF_ERR_GENERIC
+    fi
 }
 
 sysinv_api_start () {
