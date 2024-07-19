@@ -1510,19 +1510,6 @@ class StorageCephRookTestCases(base.FunctionalTest):
                          self.get_json('/storage_ceph_rook/%s/' %
                                        response.json['uuid'])['capabilities']['deployment_model'])  # Result
 
-    def test_post_with_invalid_dedicated_deployment_model_and_confirm(self):
-        vals = {
-            'backend': constants.SB_TYPE_CEPH_ROOK,
-            'deployment': constants.CEPH_ROOK_DEPLOYMENT_DEDICATED,
-            'confirmed': True
-        }
-        response = self.post_json('/storage_ceph_rook', vals, expect_errors=True)
-        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
-        self.assertEqual('application/json', response.content_type)
-        self.assertTrue(response.json['error_message'])
-        self.assertIn('Deployment_model dedicated is not supported in duplex system mode '
-                      'that there are no worker hosts', response.json['error_message'])
-
     def test_post_and_confirm_modify_with_invalid_svc(self):
         vals = {
             'backend': constants.SB_TYPE_CEPH_ROOK,

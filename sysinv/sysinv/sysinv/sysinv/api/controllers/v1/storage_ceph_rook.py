@@ -436,22 +436,6 @@ def _check_backend_ceph_rook(req, storage_ceph_rook, confirmed=False):
     if deployment_model not in constants.CEPH_ROOK_DEPLOYMENTS_SUPPORTED:
         raise wsme.exc.ClientSideError("Deployment_model %s is not supported" % deployment_model)
 
-    # Check system mode
-    isystem = pecan.request.dbapi.isystem_get_one()
-    if deployment_model == constants.CEPH_ROOK_DEPLOYMENT_DEDICATED:
-        if isystem.system_mode == constants.SYSTEM_MODE_SIMPLEX:
-            raise wsme.exc.ClientSideError("Deployment_model %s is not supported in %s "
-                                           "system mode" %
-                                           (constants.CEPH_ROOK_DEPLOYMENT_DEDICATED,
-                                            constants.SYSTEM_MODE_SIMPLEX))
-        else:
-            hosts = pecan.request.dbapi.ihost_get_by_personality(constants.WORKER)
-            if len(hosts) <= 0:
-                raise wsme.exc.ClientSideError("Deployment_model %s is not supported in %s "
-                                           "system mode that there are no worker hosts" %
-                                           (constants.CEPH_ROOK_DEPLOYMENT_DEDICATED,
-                                            constants.SYSTEM_MODE_DUPLEX))
-
     # go through the service list and validate
     req_services = api_helper.getListFromServices(storage_ceph_rook)
     if (constants.SB_SVC_CEPH_ROOK_BLOCK in req_services and
