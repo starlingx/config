@@ -45,6 +45,7 @@ from sysinv.common import exception
 from sysinv.common import utils as cutils
 from sysinv import objects
 from sysinv.common.storage_backend_conf import StorageBackendConfig
+from sysinv.agent import rpcapiproxy as agent_rpcapi
 
 
 journal_opts = [
@@ -1066,6 +1067,13 @@ def _create(stor):
         if StorageBackendConfig.has_backend(pecan.request.dbapi,
                                             constants.SB_TYPE_CEPH_ROOK):
             runtime_manifests = False
+
+            # If the storage-backend added is Ceph-Rook, then prepare the disk. This is necessary
+            # because Rook uses the disk as an OSD only when wiped, without any disk label.
+            rpcapi = agent_rpcapi.AgentAPI()
+            idisk = pecan.request.dbapi.idisk_get(idisk_uuid)
+            rpcapi.disk_prepare(pecan.request.context, ihost.uuid, idisk.as_dict(),
+                                True, False)
 
             sb_name = constants.SB_DEFAULT_NAMES[constants.SB_TYPE_CEPH_ROOK]
             sb = pecan.request.dbapi.storage_backend_get_by_name(sb_name)
