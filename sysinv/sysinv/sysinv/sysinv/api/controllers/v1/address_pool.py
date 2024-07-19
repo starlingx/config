@@ -664,8 +664,8 @@ class AddressPoolController(rest.RestController):
         self._check_modification_allowed(network_types)
         existing_addresses = self._validate_updates(addrpool, network_types, updates)
         field_updates = self._update_addresses(addrpool, network_types, updates, existing_addresses)
+        self._update_no_proxy_list(addrpool, network_types, field_updates)
         addrpool = self._apply_addrpool_updates(addrpool, updates, field_updates)
-        self._update_no_proxy_list(addrpool, network_types, updates)
         self._operation_complete(addrpool, network_types, is_primary, constants.API_PATCH)
         return addrpool
 
@@ -816,10 +816,21 @@ class AddressPoolController(rest.RestController):
         create_cmd['interface_id'] = floating_address.interface_id
         commands['update'].setdefault('floating_address', {})['interface_id'] = None
 
+    def _has_to_update_no_proxy_list(self, network_types):
+        if constants.NETWORK_TYPE_MGMT not in network_types:
+            return False
+        if utils.get_system_mode() != constants.SYSTEM_MODE_SIMPLEX:
+            return False
+        if not cutils.is_initial_config_complete():
+            return False
+        if utils.is_network_associated_to_interface(constants.NETWORK_TYPE_MGMT):
+            return True
+        return False
+
     def _update_no_proxy_list(self, addrpool, network_types, updates):
-        if not has_to_update_no_proxy_list(network_types):
+        if not self._has_to_update_no_proxy_list(network_types):
             return
-        no_proxy_entry = _get_docker_no_proxy_entry()
+        no_proxy_entry = caddress_pool.get_docker_no_proxy_entry()
         if not no_proxy_entry:
             return
         addr_fields = ['floating_address', 'controller0_address']
@@ -829,12 +840,12 @@ class AddressPoolController(rest.RestController):
         for field in updated_fields:
             old = getattr(addrpool, field)
             if old:
-                to_remove.append(addrpool.family, old)
+                to_remove.append((addrpool.family, old))
             new = updates[field]
             if new:
-                to_add.append(addrpool.family, new)
+                to_add.append((addrpool.family, new))
         if to_remove or to_add:
-            _update_docker_no_proxy_list(no_proxy_entry, to_remove, to_add)
+            caddress_pool.update_docker_no_proxy_list(no_proxy_entry, to_remove, to_add)
 
     def _is_primary(self, addrpool, networks):
         return any(network.pool_uuid == addrpool.uuid for network in networks)
@@ -941,8 +952,8 @@ class AddressPoolController(rest.RestController):
 
         # if proxy is being used, remove the old management network IPs
         # from the no_proxy list
-        if has_to_update_no_proxy_list(network_types):
-            remove_management_addresses_from_no_proxy_list([addrpool])
+        if self._has_to_update_no_proxy_list(network_types):
+            caddress_pool.remove_management_addresses_from_no_proxy_list([addrpool])
 
         # If the primary pool is being removed, the network will be automatically removed and also
         # the network-addrpool entry for the secondary pool. The addresses from the secondary pool
@@ -963,76 +974,3 @@ class AddressPoolController(rest.RestController):
         pecan.request.dbapi.address_pool_destroy(address_pool_uuid)
 
         self._operation_complete(addrpool, network_types, is_primary, constants.API_DELETE)
-
-
-def _get_docker_no_proxy_entry():
-    try:
-        no_proxy_entry = pecan.request.dbapi.service_parameter_get_one(
-            service=constants.SERVICE_TYPE_DOCKER,
-            section=constants.SERVICE_PARAM_SECTION_DOCKER_PROXY,
-            name=constants.SERVICE_PARAM_NAME_DOCKER_NO_PROXY)
-    except exception.NotFound:
-        return None
-    return no_proxy_entry
-
-
-def _update_docker_no_proxy_list(no_proxy_entry, to_remove=None, to_add=None):
-    no_proxy_list = no_proxy_entry.value.split(',') if no_proxy_entry.value else []
-
-    if to_remove:
-        for family, address in to_remove:
-            if family == constants.IPV6_FAMILY:
-                address = '[' + address + ']'
-            if address in no_proxy_list:
-                no_proxy_list.remove(address)
-
-    if to_add:
-        for family, address in to_add:
-            if family == constants.IPV6_FAMILY:
-                address = '[' + address + ']'
-            if address not in no_proxy_list:
-                no_proxy_list.append(address)
-
-    no_proxy_string = ','.join(no_proxy_list)
-    pecan.request.dbapi.service_parameter_update(no_proxy_entry.uuid, {'value': no_proxy_string})
-
-
-def has_to_update_no_proxy_list(network_types):
-    if constants.NETWORK_TYPE_MGMT not in network_types:
-        return False
-    if utils.get_system_mode() != constants.SYSTEM_MODE_SIMPLEX:
-        return False
-    if not cutils.is_initial_config_complete():
-        return False
-    if utils.is_network_associated_to_interface(constants.NETWORK_TYPE_MGMT):
-        return True
-    return False
-
-
-def _collect_management_addresses(addrpool):
-    addresses = []
-    if addrpool.floating_address:
-        addresses.append((addrpool.family, addrpool.floating_address))
-    if addrpool.controller0_address:
-        addresses.append((addrpool.family, addrpool.controller0_address))
-    return addresses
-
-
-def add_management_addresses_to_no_proxy_list(addrpools):
-    no_proxy_entry = _get_docker_no_proxy_entry()
-    if not no_proxy_entry:
-        return
-    for addrpool in addrpools:
-        addresses = _collect_management_addresses(addrpool)
-        if addresses:
-            _update_docker_no_proxy_list(no_proxy_entry, to_add=addresses)
-
-
-def remove_management_addresses_from_no_proxy_list(addrpools):
-    no_proxy_entry = _get_docker_no_proxy_entry()
-    if not no_proxy_entry:
-        return
-    for addrpool in addrpools:
-        addresses = _collect_management_addresses(addrpool)
-        if addresses:
-            _update_docker_no_proxy_list(no_proxy_entry, to_remove=addresses)

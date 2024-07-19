@@ -452,3 +452,64 @@ def check_address_pools_overlaps(dbapi, ref_addrpools, network_types=None, show_
 
     if overlap_list:
         raise exception.AddressPoolOverlaps('\n'.join(addrpool_texts))
+
+
+def get_docker_no_proxy_entry():
+    try:
+        no_proxy_entry = pecan.request.dbapi.service_parameter_get_one(
+            service=constants.SERVICE_TYPE_DOCKER,
+            section=constants.SERVICE_PARAM_SECTION_DOCKER_PROXY,
+            name=constants.SERVICE_PARAM_NAME_DOCKER_NO_PROXY)
+    except exception.NotFound:
+        return None
+    return no_proxy_entry
+
+
+def update_docker_no_proxy_list(no_proxy_entry, to_remove=None, to_add=None):
+    no_proxy_list = no_proxy_entry.value.split(',') if no_proxy_entry.value else []
+
+    if to_remove:
+        for family, address in to_remove:
+            if family == constants.IPV6_FAMILY:
+                address = '[' + address + ']'
+            if address in no_proxy_list:
+                no_proxy_list.remove(address)
+
+    if to_add:
+        for family, address in to_add:
+            if family == constants.IPV6_FAMILY:
+                address = '[' + address + ']'
+            if address not in no_proxy_list:
+                no_proxy_list.append(address)
+
+    no_proxy_string = ','.join(no_proxy_list)
+    pecan.request.dbapi.service_parameter_update(no_proxy_entry.uuid, {'value': no_proxy_string})
+
+
+def _collect_management_addresses(addrpool):
+    addresses = []
+    if addrpool.floating_address:
+        addresses.append((addrpool.family, addrpool.floating_address))
+    if addrpool.controller0_address:
+        addresses.append((addrpool.family, addrpool.controller0_address))
+    return addresses
+
+
+def add_management_addresses_to_no_proxy_list(addrpools):
+    no_proxy_entry = get_docker_no_proxy_entry()
+    if not no_proxy_entry:
+        return
+    for addrpool in addrpools:
+        addresses = _collect_management_addresses(addrpool)
+        if addresses:
+            update_docker_no_proxy_list(no_proxy_entry, to_add=addresses)
+
+
+def remove_management_addresses_from_no_proxy_list(addrpools):
+    no_proxy_entry = get_docker_no_proxy_entry()
+    if not no_proxy_entry:
+        return
+    for addrpool in addrpools:
+        addresses = _collect_management_addresses(addrpool)
+        if addresses:
+            update_docker_no_proxy_list(no_proxy_entry, to_remove=addresses)
