@@ -29,6 +29,7 @@ import site
 import six
 from six.moves.urllib.parse import urlparse
 import sys
+import tempfile
 import threading
 import time
 import zipfile
@@ -1264,7 +1265,33 @@ class AppOperator(object):
         charts = []
 
         # Getting helmrelease result of "kubectl kustomize <fluxcd_directory>"
-        resources_list = cutils.get_resources_list_via_kubectl_kustomize(manifest)
+        if include_disabled:
+            with tempfile.TemporaryDirectory() as temp_dirname:
+                # By default, the "kubectl kustomize <dir>" command always uses the
+                # kustomization.yaml file to build the set of KRM. To use the
+                # kustomization-orig.yaml file as a data source for command, a temporary folder is
+                # created and the files are copied there. Immediately after this operation,
+                # kustomization.yaml is deleted and kustomization-orig.yaml is renamed to
+                # kustomization.yaml.
+
+                # Copy fluxcd files to temp dir
+                temp_manifest_dir = os.path.join(temp_dirname, os.path.basename(manifest))
+                shutil.copytree(manifest, temp_manifest_dir)
+
+                # Delete kustomization.yaml
+                temp_kustomization_path = \
+                    os.path.join(temp_manifest_dir, constants.APP_ROOT_KUSTOMIZE_FILE)
+                os.remove(temp_kustomization_path)
+
+                # Rename kustomization-orig.yaml to kustomization.yaml
+                kustomization_orig_path = \
+                    os.path.join(temp_manifest_dir, constants.APP_ROOT_KUSTOMIZE_ORIG_FILE)
+                os.rename(kustomization_orig_path, temp_kustomization_path)
+
+                resources_list = cutils.get_resources_list_via_kubectl_kustomize(temp_manifest_dir)
+        else:
+            resources_list = cutils.get_resources_list_via_kubectl_kustomize(manifest)
+
         if not resources_list:
             return charts
         helmreleases_from_kustomize_command = cutils.filter_helm_releases(resources_list)
