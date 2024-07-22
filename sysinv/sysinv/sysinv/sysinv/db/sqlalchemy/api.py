@@ -9672,7 +9672,9 @@ class Connection(api.Connection):
         return result
 
     @db_objects.objectify(objects.runtime_config)
-    def runtime_config_get_all(self, config_uuid=None, state=None, older_than=None):
+    def runtime_config_get_all(
+        self, config_uuid=None, state=None, older_than=None, forihostid=None
+    ):
         query = model_query(models.RuntimeConfig)
         if config_uuid:
             query = query.filter_by(config_uuid=config_uuid)
@@ -9680,6 +9682,8 @@ class Connection(api.Connection):
             query = query.filter_by(state=state)
         if older_than:
             query = query.filter(models.RuntimeConfig.created_at < older_than)
+        if forihostid:
+            query = query.filter(models.RuntimeConfig.forihostid == forihostid)
         return query.all()
 
     @db_objects.objectify(objects.kube_app_bundle)

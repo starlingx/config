@@ -9588,12 +9588,14 @@ class ConductorManager(service.PeriodicService):
 
         config_uuid = self._config_update_hosts(context, personalities,
                                                 host_uuids=[host.uuid])
+        # Add a flag generate_optimized_hieradata to config_dict to indicate it's a route update
         config_dict = {
             "personalities": personalities,
             'host_uuids': [host.uuid],
             "classes": ['platform::network::routes::runtime'],
             puppet_common.REPORT_STATUS_CFG:
                 puppet_common.REPORT_ROUTE_CONFIG,
+            "generate_optimized_hieradata": True
         }
 
         self._config_apply_runtime_manifest(context, config_uuid, config_dict,
@@ -13673,6 +13675,9 @@ class ConductorManager(service.PeriodicService):
         host_updated = False
 
         personalities = config_dict['personalities']
+
+        # Determine if k8s_host_join_cmd should be skipped
+        generate_optimized_hieradata = config_dict.get('generate_optimized_hieradata', False)
         if not host_uuids:
             hosts = self.dbapi.ihost_get_list()
         else:
@@ -13721,7 +13726,9 @@ class ConductorManager(service.PeriodicService):
                         # will be saved by update_host_config_upgrade() to the
                         # directory of the host's software load.
                         if not skip_update_config:
-                            self._puppet.update_host_config(host, config_uuid)
+                            self._puppet.update_host_config(
+                                host, config_uuid, generate_optimized_hieradata
+                            )
                             host_updated = True
                 else:
                     LOG.info(
@@ -14016,6 +14023,11 @@ class ConductorManager(service.PeriodicService):
         tmp_config_dict = deepcopy(config_dict)
         tmp_config_dict.pop("host_uuids", None)
 
+        valid_inventory_states = [
+                    constants.INV_STATE_INITIAL_INVENTORIED,
+                    constants.INV_STATE_REINSTALLING
+        ]
+
         for host_uuid in host_uuids:
             host = self.dbapi.ihost_get(host_uuid)
             runtime_config = {
@@ -14023,12 +14035,33 @@ class ConductorManager(service.PeriodicService):
                 "config_dict": json.dumps(tmp_config_dict),
                 "forihostid": host.id,
             }
-            try:
-                self.dbapi.runtime_config_create(runtime_config)
-            except Exception:
-                # can be ignored as runtime_config can
-                # already exists in the retry scenario
-                pass
+            # Check if there's an existing pending entry with the
+            # same config_dict and forihostid
+            existing_configs = self.dbapi.runtime_config_get_all(
+                state=constants.RUNTIME_CONFIG_STATE_PENDING, forihostid=host.id)
+            for existing_config in existing_configs:
+                existing_dict = json.loads(existing_config.config_dict)
+                if existing_dict == tmp_config_dict:
+                    # Update the config_uuid of the existing entry
+                    LOG.info(
+                        (
+                            f"Updating existing config_uuid "
+                            f"{existing_config.config_uuid} with new config_uuid "
+                            f"{config_uuid}"
+                        )
+                    )
+                    self.dbapi.runtime_config_update(
+                        existing_config.id, {"config_uuid": config_uuid})
+                    break
+            else:
+                # No matching pending entry found, create a new entry
+                try:
+                    if host.inv_state in valid_inventory_states:
+                        self.dbapi.runtime_config_create(runtime_config)
+                except Exception:
+                    # Can be ignored as runtime_config can
+                    # already exist in the retry scenario
+                    pass
 
     def _config_apply_runtime_manifest(self,
                                        context,
@@ -14122,7 +14155,13 @@ class ConductorManager(service.PeriodicService):
                 config_uuid, config_dict, deferred_config, host_uuids, force, skip_update_config):
             return
 
-        self.evaluate_apps_reapply(context, trigger={'type': constants.APP_EVALUATE_REAPPLY_TYPE_RUNTIME_APPLY_PUPPET})
+        skip_app_reapply = config_dict.get('generate_optimized_hieradata', False)
+
+        # Conditional skipping of app reapply
+        if not skip_app_reapply:
+            self.evaluate_apps_reapply(
+                context,
+                trigger={'type': constants.APP_EVALUATE_REAPPLY_TYPE_RUNTIME_APPLY_PUPPET})
 
         # Remove reboot required flag in case it's present. Runtime manifests
         # are no supposed to clear this flag. A host lock/unlock cycle (or similar)
