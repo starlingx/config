@@ -17,6 +17,13 @@ from sysinv.ipsec_auth.common import constants
 LOG = logging.getLogger(__name__)
 
 
+class StatusCode(enum.Enum):
+    IPSEC_OP_SUCCESS = "10"
+    IPSEC_OP_ENABLED = "11"
+    IPSEC_OP_FAILURE_GENERAL = "20"
+    IPSEC_OP_IN_PROGRESS = "30"
+
+
 class State(enum.Enum):
     STAGE_1 = 1
     STAGE_2 = 2
