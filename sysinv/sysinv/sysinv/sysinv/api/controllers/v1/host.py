@@ -4375,6 +4375,15 @@ class HostController(rest.RestController):
 
         return patch_bm_password
 
+    def _bm_ip_version_semantic_check(self, bm_ip):
+        networks = pecan.request.dbapi.networks_get_by_type(constants.NETWORK_TYPE_OAM)
+        if not networks:
+            raise wsme.exc.ClientSideError(_("Rejected: OAM network does not exist."))
+        bm_ip_version = "IPv%d" % netaddr.IPAddress(bm_ip).version
+        if bm_ip_version != networks[0].primary_pool_family:
+            raise wsme.exc.ClientSideError(_("Rejected: Board management controller IP address "
+                                             "must be the same version as OAM primary address."))
+
     def _bm_semantic_check_and_update(self, ohost, phost, delta, patch_obj,
                                       current_ihosts=None, hostupdate=None):
         """ Parameters:
@@ -4462,6 +4471,7 @@ class HostController(rest.RestController):
                 raise wsme.exc.ClientSideError(
                     _("%s: Rejected: Board Management controller IP Address "
                       "is not valid." % phost['hostname']))
+            self._bm_ip_version_semantic_check(phost['bm_ip'])
 
         if current_ihosts and ('bm_ip' in phost):
             bm_ips = [h['bm_ip'] for h in current_ihosts]
