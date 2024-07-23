@@ -1229,6 +1229,13 @@ SERVICE_PARAM_PLAT_CONFIG_INTEL_CVL_VALUES = (
     'cvl-4.10',
     'cvl-4.0.1')
 
+# Intel NIC out of tree drivers parameter
+SERVICE_PARAM_NAME_PLATFORM_OOT = 'out_of_tree_drivers'
+SERVICE_PARAM_PLAT_KERNEL_OOT_VALUES = (
+    "ice",
+    "i40e",
+    "iavf")
+
 SERVICE_PARAM_NAME_PLAT_CONFIG_INTEL_PSTATE = 'intel_pstate'
 # Valid 'intel_pstate' values
 # Kernel Command Line Options for intel_pstate at
