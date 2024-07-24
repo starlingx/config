@@ -1043,6 +1043,15 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                        sb_uuid=sb_uuid,
                                        services=services))
 
+    def update_ceph_rook_config(self, context):
+        """Synchronously, have the conductor update Rook Ceph on all k8s hosts"
+
+        :param context: request context
+
+        """
+        return self.call(context,
+                         self.make_msg('update_ceph_rook_config'))
+
     def update_external_cinder_config(self, context):
         """Synchronously, have the conductor update Cinder Exernal(shared)
            on a controller.

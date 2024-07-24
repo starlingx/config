@@ -42,7 +42,6 @@ REPORT_CEPH_MONITOR_CONFIG = 'ceph_monitor'
 REPORT_PCI_SRIOV_CONFIG = 'pci_sriov_config'
 REPORT_CEPH_OSD_CONFIG = 'ceph_osd'
 REPORT_CEPH_RADOSGW_CONFIG = 'ceph_radosgw'
-REPORT_CEPH_ROOK_CONFIG = 'ceph_rook_config'
 REPORT_CONTROLLERFS_CONFIG = 'controllerfs_config'
 REPORT_HOSTFS_CONFIG = 'hostfs_config'
 # puppet report configs for hosts cert update
