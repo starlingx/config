@@ -168,7 +168,7 @@ class Client(object):
             self.hostname = msg['hostname']
             key = base64.b64decode(msg['pub_key'])
             root_ca_cert = base64.b64decode(msg['root_ca_cert'])
-            ca_cert = base64.b64decode(msg['ca_cert'])
+            ca_cert = base64.b64decode(msg['ca_cert'].encode('utf-8'))
             digest = base64.b64decode(msg['hash'])
 
             data = bytes.fromhex(self.ots_token) + msg['pub_key'].encode('utf-8')
@@ -178,11 +178,16 @@ class Client(object):
                 return False
 
             utils.save_data(constants.TMP_PUK1_FILE, key)
-            utils.save_data(constants.TRUSTED_ROOT_CA_CERT_1_PATH, root_ca_cert)
-            utils.save_data(constants.TRUSTED_CA_CERT_1_PATH, ca_cert)
+
             if self.op_code == constants.OP_CODE_INITIAL_AUTH:
                 utils.save_data(constants.TRUSTED_ROOT_CA_CERT_0_PATH, root_ca_cert)
-                utils.save_data(constants.TRUSTED_CA_CERT_0_PATH, ca_cert)
+                utils.save_cert_bundle(ca_cert, constants.TRUSTED_CA_CERT_0_PREFIX)
+            else:
+                utils.remove_ca_certificates(constants.TRUSTED_ROOT_CA_CERT_FILE_1)
+                utils.remove_ca_certificates(constants.TRUSTED_CA_CERT_1_PREFIX)
+
+            utils.save_data(constants.TRUSTED_ROOT_CA_CERT_1_PATH, root_ca_cert)
+            utils.save_cert_bundle(ca_cert, constants.TRUSTED_CA_CERT_1_PREFIX)
 
         if self.state == State.STAGE_4:
             LOG.info("Received IPSec Auth CSR response")
@@ -251,7 +256,7 @@ class Client(object):
 
                 if load_conns.returncode != 0:
                     err = "Error: %s" % (load_conns.stderr.decode("utf-8"))
-                    LOG.exception("Failed to load StrongSwan credentials: %s" % err)
+                    LOG.exception("Failed to load StrongSwan connection configurations: %s" % err)
                     return False
 
                 LOG.info('IPsec certificate renewed successfully')
