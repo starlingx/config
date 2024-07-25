@@ -224,6 +224,56 @@ class StrongswanPuppet(object):
         }
         swanctl.add_connection('system-nodes-local', conn)
 
+        # Add connections to bypass some services. These services are already
+        # secured.
+        conn = {
+            'remote_addrs': '127.0.0.1',
+            'children': {
+                'service-bypass': {
+                    'mode': 'pass',
+                    'start_action': 'trap',
+                    'local_ts': '0.0.0.0/0, ::/0',
+                    'remote_ts': ('dynamic[tcp/22],'
+                                  'dynamic[tcp/443],'
+                                  'dynamic[tcp/8443],'
+                                  'dynamic[tcp/9001],'
+                                  'dynamic[tcp/9002],'
+                                  'dynamic[tcp/6800-6815],'
+                                  'dynamic[tcp/6816-6847],'
+                                  'dynamic[tcp/6848-6911],'
+                                  'dynamic[tcp/6912-7167],'
+                                  'dynamic[tcp/7168-7295],'
+                                  'dynamic[tcp/7296-7299],'
+                                  'dynamic[tcp/7300]'),
+                },
+            },
+        }
+        swanctl.add_connection('services-bypass-egress', conn)
+
+        conn = {
+            'remote_addrs': '127.0.0.1',
+            'children': {
+                'service-bypass': {
+                    'mode': 'pass',
+                    'start_action': 'trap',
+                    'local_ts': ('dynamic[tcp/22],'
+                                 'dynamic[tcp/443],'
+                                 'dynamic[tcp/8443],'
+                                 'dynamic[tcp/9001],'
+                                 'dynamic[tcp/9002],'
+                                 'dynamic[tcp/6800-6815],'
+                                 'dynamic[tcp/6816-6847],'
+                                 'dynamic[tcp/6848-6911],'
+                                 'dynamic[tcp/6912-7167],'
+                                 'dynamic[tcp/7168-7295],'
+                                 'dynamic[tcp/7296-7299],'
+                                 'dynamic[tcp/7300]'),
+                    'remote_ts': '0.0.0.0/0, ::/0',
+                },
+            },
+        }
+        swanctl.add_connection('services-bypass-ingress', conn)
+
         # Add ndp bypass connection for IPv6 only.
         # Reference: https://wiki.strongswan.org/projects/strongswan/wiki/IPv6NDP/1
         if cutils.is_valid_ipv6_cidr(self.network_addrs):
