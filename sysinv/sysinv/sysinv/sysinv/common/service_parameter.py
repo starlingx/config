@@ -636,7 +636,7 @@ def _validate_oot(name, value):
     # are also present in the constants.SERVICE_PARAM_PLAT_KERNEL_OOT_VALUES.
     # If they are, the expression evaluates to True; otherwise, it evaluates to False
 
-    if (all(x in constants.SERVICE_PARAM_PLAT_KERNEL_OOT_VALUES
+    if not (all(x in constants.SERVICE_PARAM_PLAT_KERNEL_OOT_VALUES
             for x in driver_list)):
         msg = "Parameter '{}' value must be one of '{}' .".format(
             name, constants.SERVICE_PARAM_PLAT_KERNEL_OOT_VALUES)
