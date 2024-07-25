@@ -90,6 +90,7 @@ SUBCLOUD = \
             5498: "usm-api",
             6386: "sysinv-api",
             8220: "dcdbsync-api",
+            8326: "dcagent-api",
             constants.PLATFORM_DOCKER_PARAMS_REGISTRY_PORT: "Docker registry",
             constants.PLATFORM_DOCKER_PARAMS_TOKEN_PORT: "Registry token server",
             9312: "barbican-api",
