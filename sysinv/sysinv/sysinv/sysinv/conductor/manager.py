@@ -9595,8 +9595,9 @@ class ConductorManager(service.PeriodicService):
             "classes": ['platform::network::routes::runtime'],
             puppet_common.REPORT_STATUS_CFG:
                 puppet_common.REPORT_ROUTE_CONFIG,
-            "generate_optimized_hieradata": True
         }
+        if host.administrative == constants.ADMIN_UNLOCKED:
+            config_dict["generate_optimized_hieradata"] = True
 
         self._config_apply_runtime_manifest(context, config_uuid, config_dict,
                                             filter_classes=[self.PUPPET_RUNTIME_CLASS_ROUTES])
