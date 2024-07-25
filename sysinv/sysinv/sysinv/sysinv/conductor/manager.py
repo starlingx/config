@@ -539,7 +539,7 @@ class ConductorManager(service.PeriodicService):
         context = ctx.RequestContext(user_id='admin', project_id='admin',
                                      is_admin=True)
         for username in KEYSTONE_USER_PASSWORD_UPDATE.keys():
-            if username == 'admin':
+            if username == 'admin' or username == 'sysinv':
                 callback_endpoints.append(
                     {'function': self._app.audit_local_registry_secrets,
                      'context': context,
