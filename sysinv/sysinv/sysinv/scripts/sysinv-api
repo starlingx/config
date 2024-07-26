@@ -484,6 +484,8 @@ if [ ${OCF_RESKEY_dbg} = "true" ] ; then
     ocf_log info "${binname}:${__OCF_ACTION} action"
 fi
 
+start=$(printf '%s' $(date +%s%N) | rev | cut -c 7- | rev )
+ocf_log info "action:${__OCF_ACTION}:start-at:${start} ms"
 case ${__OCF_ACTION} in
 
     start)        sysinv_api_start
@@ -502,3 +504,9 @@ case ${__OCF_ACTION} in
                   exit ${OCF_ERR_UNIMPLEMENTED}
                   ;;
 esac
+rc=$?
+end=$(printf '%s' $(date +%s%N) | rev | cut -c 7- | rev )
+ocf_log info "action:${__OCF_ACTION}:end-at:${end} ms"
+diff=$((end-start))
+ocf_log info "action:${__OCF_ACTION}:took:${diff} ms"
+exit $rc
