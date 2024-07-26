@@ -545,8 +545,8 @@ class ConductorManager(service.PeriodicService):
                      'context': context,
                      'user': username})
             if ((username == 'admin') or
-                    (self.dbapi.isystem_get_one().distributed_cloud_role ==
-                     constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD)):
+                    (self.dbapi.isystem_get_one().distributed_cloud_role !=
+                     constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER)):
                 callback_endpoints.append({'function': self._update_keystone_password,
                                            'context': context,
                                            'user': username})
