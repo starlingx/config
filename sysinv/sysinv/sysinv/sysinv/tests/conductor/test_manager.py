@@ -5116,6 +5116,77 @@ class ManagerTestCase(base.DbTestCase):
         getContext = requestCtx(user='admin', tenant='admin', is_admin=True)
 
         config_dict = [{
+            'context': getContext,
+            'function': self.service._update_keystone_password,
+            'user': 'sysinv'
+        }, {
+            'context': getContext,
+            'function': self.service._app.audit_local_registry_secrets,
+            'user': 'admin'
+        }, {
+            'context': getContext,
+            'function': self.service._update_keystone_password,
+            'user': 'admin'
+        }, {
+            'context': getContext,
+            'function': self.service._update_keystone_password,
+            'user': 'barbican'
+        }, {
+            'context': getContext,
+            'function': self.service._update_keystone_password,
+            'user': 'fm'
+        }, {
+            'context': getContext,
+            'function': self.service._update_keystone_password,
+            'user': 'mtce'
+        }, {
+            'context': getContext,
+            'function': self.service._update_keystone_password,
+            'user': 'patching'
+        }, {
+            'context': getContext,
+            'function': self.service._update_keystone_password,
+            'user': 'usm'
+        }, {
+            'context': getContext,
+            'function': self.service._update_keystone_password,
+            'user': 'vim'
+        }]
+
+        self.assertEqual(endpoints, config_dict)
+
+    @mock.patch("oslo_context.context.RequestContext")
+    def test_get_keystone_callback_endpoints_system_controller(self, requestCtx):
+        mock_config_update_hosts = mock.MagicMock()
+        mock_config_apply_runtime_manifest = mock.MagicMock()
+        mock_kube_app_AppOperator = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.manager.ConductorManager._config_update_hosts',
+                       mock_config_update_hosts)
+        p.start().return_value = '1234'
+        self.addCleanup(p.stop)
+
+        p2 = mock.patch('sysinv.conductor.manager.ConductorManager._config_apply_runtime_manifest',
+                        mock_config_apply_runtime_manifest)
+        p2.start()
+        self.addCleanup(p2.stop)
+
+        p3 = mock.patch('sysinv.conductor.manager.kube_app.AppOperator',
+                         mock_kube_app_AppOperator)
+        p3.audit_local_registry_secrets = 'audit_local_registry_secrets_function'
+        self.service._app = p3
+
+        mock_dbapi = mock.MagicMock()
+        mock_isystem = mock.MagicMock()
+        mock_isystem.distributed_cloud_role = constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER
+        mock_dbapi.isystem_get_one.return_value = mock_isystem
+        self.service.dbapi = mock_dbapi
+
+        requestCtx.return_value = "context"
+
+        endpoints = self.service._get_keystone_callback_endpoints()
+        getContext = requestCtx(user='admin', tenant='admin', is_admin=True)
+
+        config_dict = [{
             "function": self.service._app.audit_local_registry_secrets,
             "context": getContext,
             "user": "admin"
