@@ -90,6 +90,10 @@ class CephPuppet(openstack.OpenstackBasePuppet):
         ms_bind_ipv6 = (netaddr.IPAddress(mon_0_ip).version ==
                         constants.IPV6_FAMILY)
 
+        # If we have ipv6 enabled, we must turn off ipv4
+        # otherwise Ceph will not work properly on kernel 6.6
+        ms_bind_ipv4 = not ms_bind_ipv6
+
         skip_osds_during_restore = \
             (utils.is_std_system(self.dbapi) and
             ceph_backend.task == constants.SB_TASK_RESTORE)
@@ -99,6 +103,7 @@ class CephPuppet(openstack.OpenstackBasePuppet):
 
         config = {
             'ceph::ms_bind_ipv6': ms_bind_ipv6,
+            'ceph::ms_bind_ipv4': ms_bind_ipv4,
 
             'platform::ceph::params::service_enabled': True,
 
