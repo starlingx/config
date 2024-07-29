@@ -12,7 +12,12 @@
 #   - 'localities' - default now is <region>
 #   - 'organization' - default now is 'starlingx'
 #
-# During rollback, HTTPS certificate is deleted if created by this script.
+# - If user upgraded with HTTPS and Docker Registry certificates not managed
+#   by cert-manager (legacy configuration), the certificates are stored in
+#   the expected secrets to keep the support in next version.
+#
+# - During rollback, HTTPS and Docker Registry certificates CRDs are deleted
+#   if created by this script.
 
 import logging as LOG
 import subprocess
@@ -28,6 +33,7 @@ from oslo_serialization import base64
 RETRIES = 3
 
 KUBE_CMD = 'kubectl --kubeconfig=/etc/kubernetes/admin.conf '
+KUBE_IGNORE_NOT_FOUND = ' --ignore-not-found=true'
 AUTO_CREATED_TAG = '.auto_created_cert-'
 
 K8S_RESOURCES_TMP_FILENAME = '/tmp/update_cert.yml'
@@ -37,6 +43,21 @@ CONFIG_FOLDER = '/opt/platform/config/'
 OPENLDAP_CERT_NAME = 'system-openldap-local-certificate'
 HTTPS_CERT_NAME = 'system-restapi-gui-certificate'
 REGISTRY_CERT_NAME = 'system-registry-local-certificate'
+
+CERT_FILES = {
+    HTTPS_CERT_NAME: '/etc/ssl/private/server-cert.pem',
+    REGISTRY_CERT_NAME: '/etc/ssl/private/registry-cert.crt'
+}
+
+KEY_FILES = {
+    HTTPS_CERT_NAME: '/etc/ssl/private/server-cert.pem',
+    REGISTRY_CERT_NAME: '/etc/ssl/private/registry-cert.key'
+}
+
+CERT_SUBJECT_INTERNAL = {
+    HTTPS_CERT_NAME: 'StarlingX',
+    REGISTRY_CERT_NAME: 'registry.local'
+}
 
 
 def get_distributed_cloud_role():
@@ -71,7 +92,7 @@ def _get_primary_pool(network_type):
     if sub.returncode == 0:
         return stdout.decode('utf-8').rstrip('\n')
     else:
-        LOG.error('Command failed:\n %s\n. %s\n%s\n'
+        LOG.error('Command failed:\n%s\n%s.\n%s.'
                   % (cmd, stdout.decode('utf-8'), stderr.decode('utf-8')))
         raise Exception(f'Cannot retrieve primary {network_type} pool.')
 
@@ -88,7 +109,7 @@ def get_primary_oam_ip():
     if sub.returncode == 0:
         return stdout.decode('utf-8').rstrip('\n')
     else:
-        LOG.error('Command failed:\n %s\n. %s\n%s\n'
+        LOG.error('Command failed:\n%s\n%s.\n%s.'
                   % (cmd, stdout.decode('utf-8'), stderr.decode('utf-8')))
         raise Exception('Cannot retrieve OAM IP.')
 
@@ -105,10 +126,10 @@ def create_platform_certificates(to_release):
         cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     stdout, stderr = sub.communicate()
     if sub.returncode != 0:
-        LOG.error('Command failed:\n %s\n. %s\n%s\n'
+        LOG.error('Command failed:\n%s\n%s.\n%s.'
                   % (cmd, stdout.decode('utf-8'), stderr.decode('utf-8')))
         raise Exception('Cannot create platform certificates.')
-    LOG.info('Successfully created platform certificates. Output:\n%s\n'
+    LOG.info('Successfully created platform certificates. Output:\n%s'
              % stdout.decode('utf-8'))
 
 
@@ -124,7 +145,7 @@ def certificate_exists(certificate, namespace='deployment'):
     if sub.returncode == 0:
         return certificate in stdout.decode('utf-8').splitlines()
     else:
-        LOG.error('Command failed:\n %s\n. %s\n%s\n'
+        LOG.error('Command failed:\n%s\n%s.\n%s.'
                   % (cmd, stdout.decode('utf-8'), stderr.decode('utf-8')))
         raise Exception('Cannot retrieve existent certificates '
                         'from namespace: %s.' % namespace)
@@ -142,7 +163,7 @@ def retrieve_certificate(certificate, namespace='deployment'):
     if sub.returncode == 0:
         return stdout.decode('utf-8')
     else:
-        LOG.error('Command failed:\n %s\n. %s\n%s\n'
+        LOG.error('Command failed:\n%s\n%s.\n%s.'
                   % (get_cmd, stdout.decode('utf-8'), stderr.decode('utf-8')))
         raise Exception('Cannot dump Certificate %s from namespace: %s.'
                         % (certificate, namespace))
@@ -152,7 +173,7 @@ def delete_certificate(certificate, namespace='deployment'):
     """Delete certificate from k8s
     """
     delete_cmd = (KUBE_CMD + 'delete certificate ' + certificate + ' -n ' +
-                  namespace)
+                  namespace + KUBE_IGNORE_NOT_FOUND)
 
     sub = subprocess.Popen(
         delete_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -160,10 +181,28 @@ def delete_certificate(certificate, namespace='deployment'):
     if sub.returncode == 0:
         return stdout.decode('utf-8')
     else:
-        LOG.error('Command failed:\n %s\n. %s\n%s\n' % (
+        LOG.error('Command failed:\n%s\n%s.\n%s.' % (
             delete_cmd, stdout.decode('utf-8'), stderr.decode('utf-8')))
         raise Exception('Cannot delete Certificate %s from namespace: %s.'
                         % (certificate, namespace))
+
+
+def delete_secret(secret, namespace='deployment'):
+    """Delete certificate from k8s
+    """
+    delete_cmd = (KUBE_CMD + 'delete secret ' + secret + ' -n ' +
+                  namespace + KUBE_IGNORE_NOT_FOUND)
+
+    sub = subprocess.Popen(
+        delete_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    stdout, stderr = sub.communicate()
+    if sub.returncode == 0:
+        return stdout.decode('utf-8')
+    else:
+        LOG.error('Command failed:\n%s\n%s.\n%s.' % (
+            delete_cmd, stdout.decode('utf-8'), stderr.decode('utf-8')))
+        raise Exception('Cannot delete secret %s from namespace: %s.'
+                        % (secret, namespace))
 
 
 def get_old_default_CN_by_cert(certificate):
@@ -178,21 +217,21 @@ def get_old_default_CN_by_cert(certificate):
     return default_CN_by_cert[certificate]
 
 
-def find_root_ca(intermediate_ca):
-    """Search for the RCA of the ICA provided
+def find_root_ca(certificate):
+    """Search for the RCA of the certificate provided
     """
-    if sysinv_utils.verify_self_signed_ca_cert(intermediate_ca):
-        LOG.warning("system-local-ca is using an RCA to sign platform certs.")
-        return intermediate_ca
+    if sysinv_utils.verify_self_signed_ca_cert(certificate):
+        return certificate
 
     with open(TRUSTED_BUNDLE_FILEPATH, 'r') as file:
         bundle = file.read().encode('utf-8')
-        for cert_obj in sysinv_utils.extract_certs_from_pem(bundle):
-            cert = cert_obj.public_bytes(
+        for rca_obj in sysinv_utils.extract_certs_from_pem(bundle):
+            rca = rca_obj.public_bytes(
                 serialization.Encoding.PEM).decode('utf-8')
-            if sysinv_utils.verify_cert_issuer(intermediate_ca, cert):
-                return cert
-    LOG.error("Root CA not found for system-local-ca. Data will be empty.")
+            if sysinv_utils.verify_cert_issuer(certificate, rca):
+                return rca
+    LOG.error("Root CA not found for %s. Data will be empty."
+              % certificate)
     return ""
 
 
@@ -225,12 +264,12 @@ def apply_k8s_yml(resources_yml):
                            stderr=subprocess.PIPE)
     stdout, stderr = sub.communicate()
     if sub.returncode != 0:
-        LOG.error('Command failed:\n %s\n. %s\n%s\n' % (
+        LOG.error('Command failed:\n%s\n%s.\n%s.' % (
             apply_cmd, stdout.decode('utf-8'), stderr.decode('utf-8')))
         raise Exception('Cannot apply k8s resource file.')
     else:
         os.remove(K8S_RESOURCES_TMP_FILENAME)
-        LOG.info('K8s resources applied. Output:\n%s\n'
+        LOG.info('K8s resources applied. Output:\n%s'
                  % stdout.decode('utf-8'))
 
 
@@ -332,17 +371,27 @@ def reconfigure_certificates_subject():
             update_certificate(cert, certificate_short_name[cert])
 
 
-def create_platform_certificates_updated_file_flag(version):
+def check_platform_certificates_updated_file_flag():
+    return os.path.isfile(
+        sysinv_utils.constants.PLATFORM_CERTIFICATES_UPDATED_IN_UPGRADE)
+
+
+def remove_platform_certificates_updated_file_flag():
+    try:
+        os.remove(
+            sysinv_utils.constants.PLATFORM_CERTIFICATES_UPDATED_IN_UPGRADE)
+    except OSError:
+        pass
+
+
+def create_platform_certificates_updated_file_flag():
+    remove_platform_certificates_updated_file_flag()
     sysinv_utils.touch(
         sysinv_utils.constants.PLATFORM_CERTIFICATES_UPDATED_IN_UPGRADE)
 
 
 def get_cert_auto_creation_filename(cert_name, version):
     return CONFIG_FOLDER + version + '/' + AUTO_CREATED_TAG + cert_name
-
-
-def create_cert_auto_creation_file_flag(cert_name, version):
-    sysinv_utils.touch(get_cert_auto_creation_filename(cert_name, version))
 
 
 def check_cert_auto_creation_file_flag(cert_name, version):
@@ -356,15 +405,90 @@ def remove_cert_auto_creation_file_flag(cert_name, version):
         pass
 
 
-def restore_https_certificate_config(to_release):
-    if check_cert_auto_creation_file_flag(HTTPS_CERT_NAME, to_release):
-        delete_certificate(HTTPS_CERT_NAME)
+def create_cert_auto_creation_file_flag(cert_name, version):
+    remove_cert_auto_creation_file_flag(cert_name, version)
+    sysinv_utils.touch(get_cert_auto_creation_filename(cert_name, version))
 
 
-def register_https_certificate_config(to_release):
-    remove_cert_auto_creation_file_flag(HTTPS_CERT_NAME, to_release)
-    if not certificate_exists(HTTPS_CERT_NAME):
-        create_cert_auto_creation_file_flag(HTTPS_CERT_NAME, to_release)
+def read_all_certs_from_file(filepath):
+    """Retrieve certificate(s) from file
+    """
+    bundle = ''
+    with open(filepath, 'r') as file:
+        certs = sysinv_utils.extract_certs_from_pem(
+            file.read().encode('utf-8'))
+        for cert in certs:
+            bundle += cert.public_bytes(
+                serialization.Encoding.PEM).decode('utf-8')
+    return bundle
+
+
+def read_key_from_file(filepath):
+    """Retrieve private key from file
+    """
+    cmd = 'openssl pkey -in ' + filepath
+
+    sub = subprocess.Popen(
+        cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    stdout, stderr = sub.communicate()
+    if sub.returncode == 0:
+        return stdout.decode('utf-8')
+    else:
+        LOG.error('Command failed:\n%s\n%s.\n%s.'
+                  % (cmd, stdout.decode('utf-8'), stderr.decode('utf-8')))
+        raise Exception('Cannot read private key %s from file.'
+                        % (filepath))
+
+
+def cert_file_exists(certificate):
+    return os.path.exists(CERT_FILES[certificate])
+
+
+def cert_file_internal(certificate):
+    cert_subject = str(sysinv_utils.get_certificate_from_file(
+        CERT_FILES[certificate]).subject)
+    return cert_subject == \
+        '<Name(CN=' + CERT_SUBJECT_INTERNAL[certificate] + ')>'
+
+
+def save_from_file_to_secret(certificate, namespace='deployment'):
+    tls_crt = read_all_certs_from_file(CERT_FILES[certificate])
+    tls_key = read_key_from_file(KEY_FILES[certificate])
+
+    secret_body = create_tls_secret_body(certificate,
+                                         namespace,
+                                         tls_crt,
+                                         tls_key,
+                                         find_root_ca(tls_crt))
+    apply_k8s_yml(secret_body)
+
+
+def adapt_legacy_certificate_config(to_release):
+    affected_certs = [HTTPS_CERT_NAME, REGISTRY_CERT_NAME]
+    legacy_cert_config = False
+    for cert in affected_certs:
+        if not certificate_exists(cert):
+            if cert_file_exists(cert) and not cert_file_internal(cert):
+                save_from_file_to_secret(cert)
+                legacy_cert_config = True
+            else:
+                create_cert_auto_creation_file_flag(cert, to_release)
+                LOG.warning("Certificate %s will be generated "
+                            "with default values." % cert)
+    if legacy_cert_config:
+        LOG.warning("Warning: Legacy certificate configuration will "
+                    "remain after upgrade.")
+
+
+def restore_legacy_certificate_config(to_release):
+    affected_certs = [HTTPS_CERT_NAME, REGISTRY_CERT_NAME]
+    for cert in affected_certs:
+        if check_cert_auto_creation_file_flag(cert, to_release):
+            delete_certificate(cert)
+            remove_cert_auto_creation_file_flag(cert, to_release)
+        else:
+            if not certificate_exists(cert):
+                delete_secret(cert)
 
 
 def main():
@@ -397,13 +521,18 @@ def main():
         LOG.info("%s invoked with from_release = %s to_release = %s "
                  "action = %s"
                  % (sys.argv[0], from_release, to_release, action))
+        if check_platform_certificates_updated_file_flag():
+            LOG.info("Platform certificates already updated before. "
+                     "Skipping.")
+            return 0
+
         for retry in range(0, RETRIES):
             try:
-                register_https_certificate_config(to_release)
+                adapt_legacy_certificate_config(to_release)
                 update_system_local_ca_secret()
                 reconfigure_certificates_subject()
                 create_platform_certificates(to_release)
-                create_platform_certificates_updated_file_flag(to_release)
+                create_platform_certificates_updated_file_flag()
                 LOG.info("Successfully created/updated required platform "
                          "certificates.")
             except Exception as e:
@@ -426,7 +555,8 @@ def main():
                  % (sys.argv[0], from_release, to_release, action))
         for retry in range(0, RETRIES):
             try:
-                restore_https_certificate_config(to_release)
+                restore_legacy_certificate_config(to_release)
+                remove_platform_certificates_updated_file_flag()
                 LOG.info("Successfully restored legacy certificate "
                          "config.")
             except Exception as e:
