@@ -29,7 +29,6 @@ if (( $# != 3 && $# != 4 )); then
     exit 1
 fi
 
-PLATFORM_APPLICATION_PATH='/usr/local/share/applications/helm'
 UPGRADE_IN_PROGRESS_APPS_FILE='/etc/platform/.upgrade_in_progress_apps'
 
 RECOVER_RESULT_SLEEP=30
@@ -136,12 +135,34 @@ if [ "$ACTION" == "activate" ]; then
         sleep $RECOVER_RESULT_SLEEP
     done
 
+    # Get the current k8s version
+    K8S_VERSIONS=$(system kube-version-list)
+    ACTIVE_K8S_VERSION=$(echo "$K8S_VERSIONS" | grep ' True ' | grep ' active ' | awk -F '|' '{print $2}' | tr -d ' ')
+
+    # Get compatibles apps with current k8s version
+    COMPATIBLES_APPS=$(sudo sysinv-app query ${ACTIVE_K8S_VERSION})
+    COMPATIBLES_APPS_FORMATED=$(echo "$COMPATIBLES_APPS" | paste -sd '|')
+
+    # Get all loads apps
+    APPS_LOADED=$(system application-list | head -n-1 | tail -n+4 | awk '{print $2}')
+
+    # Check and log compatible and not compatible apps
+    for APP in $APPS_LOADED; do
+        if [[ "${APP}" =~ (${COMPATIBLES_APPS_FORMATED}) ]]; then
+            log "${APP} has an upgrade compatible tarball and will be updated."
+        else
+            log "${APP} does not have an upgrade compatible tarball and will remain at its current version."
+            continue
+        fi
+    done
+
+    # Get compatibles tarballs path with current k8s version
     # Sort applications by version. Lower versions are attempted first.
-    APPS_SORTED_BY_VERSION=$(find $PLATFORM_APPLICATION_PATH/* | sort -V)
+    COMPATIBLES_APPS_TARBALL_PATH=$(sudo sysinv-app query ${ACTIVE_K8S_VERSION} --include-path | sort -V)
 
     LAST_APP_CHECKED=""
     # Get the list of applications installed in the new release
-    for fqpn_app in $APPS_SORTED_BY_VERSION; do
+    for fqpn_app in $COMPATIBLES_APPS_TARBALL_PATH; do
         # Extract the app name and version from the tarball name: app_name-version.tgz
         re='^(.*)-([0-9]+\.[0-9]+-[0-9]+).tgz'
         [[ "$(basename $fqpn_app)" =~ $re ]]
@@ -158,16 +179,6 @@ if [ "$ACTION" == "activate" ]; then
 
         # If the last iteration for the same app was sucessful no further updates are necessary
         if [ "${LAST_APP_CHECKED}" == "${UPGRADE_APP_NAME}" ] && [[ "${EXISTING_APP_STATUS}" =~ ^(uploaded|applied)$ ]]; then
-            continue
-        fi
-
-        # Confirm application is upgradable
-        # TODO: move nginx back to the supported platform applications list when
-        #       fluxcd application upgrade is supported
-        if [[ "${UPGRADE_APP_NAME}" =~ ^(platform-integ-apps|nginx-ingress-controller|snmp|metrics-server|auditd|ptp-notification|istio|cert-manager|oidc-auth-apps)$ ]]; then
-            log "${UPGRADE_APP_NAME} is a supported platform application."
-        else
-            log "${UPGRADE_APP_NAME} is not a supported platform application. skipping..."
             continue
         fi
 
