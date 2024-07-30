@@ -18,8 +18,13 @@ from sysinv.tests.db import utils as dbutils
 
 
 class InterfaceDataNetworkTestCase(base.FunctionalTest):
-    def setUp(self):
+    def setUp(self, host_locked=False):
         super(InterfaceDataNetworkTestCase, self).setUp()
+
+        if host_locked:
+            admin = constants.ADMIN_LOCKED
+        else:
+            admin = constants.ADMIN_UNLOCKED
 
         p = mock.patch.object(api_if_v1, '_get_lower_interface_macs')
         self.mock_lower_macs = p.start()
@@ -41,7 +46,7 @@ class InterfaceDataNetworkTestCase(base.FunctionalTest):
             hostname='controller-0',
             personality=constants.CONTROLLER,
             subfunctions=constants.WORKER,
-            administrative=constants.ADMIN_UNLOCKED,
+            administrative=admin,
             invprovision=constants.PROVISIONED,
         )
         self.datanetwork0 = dbutils.create_test_datanetwork(
@@ -112,7 +117,7 @@ class InterfaceDataNetworkCreateTestCase(InterfaceDataNetworkTestCase):
         sriov0_assign_dn1 = dbutils.post_get_test_interface_datanetwork(
                 interface_uuid=self.if_sriov0.uuid,
                 datanetwork_uuid=self.datanetwork1.uuid)
-        self._post_and_check(sriov0_assign_dn1, expect_errors=True)
+        self._post_and_check(sriov0_assign_dn1, expect_errors=False)
 
         # system interface-datanetwork-remove {uuid}
         self.delete('/interface_datanetworks/%s'
@@ -138,3 +143,35 @@ class InterfaceDataNetworkCreateTestCase(InterfaceDataNetworkTestCase):
         self._post_and_check(sriov1_assign_dn, expect_errors=True)
 
         self.mock_utils_is_aio_simplex_system.return_value = True
+
+
+class InterfaceDataNetworkMultipleCreateTestCase(InterfaceDataNetworkTestCase):
+    def setUp(self):
+        super(InterfaceDataNetworkMultipleCreateTestCase, self).setUp(
+            constants.ADMIN_LOCKED)
+
+    def test_assign_interface_multiple_datanetwork(self):
+        # system interface-datanetwork-assign controller-0 data0 dn0
+        data0_assign_dn = dbutils.post_get_test_interface_datanetwork(
+                interface_uuid=self.if_data0.uuid,
+                datanetwork_uuid=self.datanetwork0.uuid)
+        self._post_and_check(data0_assign_dn, expect_errors=False)
+
+        # system interface-datanetwork-list controller-0
+        if_dn_list = self.get_json('/ihosts/%s/interface_datanetworks'
+                                 % self.controller.uuid, expect_errors=False)
+        self.assertEqual('dn0', if_dn_list['interface_datanetworks'][0]['datanetwork_name'])
+
+        # Assign the same data network again
+        self._post_and_check(data0_assign_dn, expect_errors=True)
+
+        # Assign a different data network to the same interface
+        data0_assign_dn1 = dbutils.post_get_test_interface_datanetwork(
+                interface_uuid=self.if_data0.uuid,
+                datanetwork_uuid=self.datanetwork1.uuid)
+        self._post_and_check(data0_assign_dn1, expect_errors=False)
+
+        # system interface-datanetwork-remove {uuid}
+        self.delete('/interface_datanetworks/%s'
+                    % if_dn_list['interface_datanetworks'][0]['uuid'],
+                    expect_errors=False)

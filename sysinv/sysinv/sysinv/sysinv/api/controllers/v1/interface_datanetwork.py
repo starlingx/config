@@ -145,7 +145,12 @@ class InterfaceDataNetworkController(rest.RestController):
 
         self._check_interface_class(interface_obj)
         self._check_interface_mtu(interface_obj, datanetwork_obj)
-        self._check_duplicate_interface_datanetwork(interface_datanetwork_dict)
+
+        if interface_obj.iftype == constants.INTERFACE_CLASS_PCI_SRIOV:
+            self._check_duplicate_interface_datanetwork(interface_datanetwork_dict)
+        else:
+            self._check_interface_datanetwork_used(interface_datanetwork_dict)
+
         self._check_iftype_network_type(interface_obj, datanetwork_obj)
         self._check_datanetwork_used(interface_obj, datanetwork_obj)
 
@@ -258,6 +263,25 @@ class InterfaceDataNetworkController(rest.RestController):
                 " Data Network '%s' already assigned."
                 % (ifdn['ifname'],
                     ifdn['datanetwork_name']))
+        raise wsme.exc.ClientSideError(msg)
+
+    @staticmethod
+    def _query_datanetwork_interface(interface_datanetwork):
+        try:
+            result = pecan.request.dbapi.interface_datanetwork_query(
+                interface_datanetwork)
+        except exception.InterfaceDataNetworkNotFoundByKeys:
+            return None
+        return result
+
+    def _check_interface_datanetwork_used(self, interface_datanetwork):
+        ifdn = self._query_datanetwork_interface(interface_datanetwork)
+        if not ifdn:
+            return
+        msg = _("Interface '%s' assignment with Data Network '%s' "
+                "already exists."
+                % (ifdn['ifname'],
+                   ifdn['datanetwork_name']))
         raise wsme.exc.ClientSideError(msg)
 
     @staticmethod
