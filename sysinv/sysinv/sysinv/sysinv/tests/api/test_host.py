@@ -2720,6 +2720,7 @@ class TestPatch(TestHost):
     def test_lock_action_controller(self):
         self._test_lock_action_controller()
 
+    @mock.patch('sysinv.common.usm_service.is_usm_authapi_ready', lambda: True)
     def test_lock_action_controller_during_upgrade_starting(self):
         # Create controller-0
         self._create_controller_0(

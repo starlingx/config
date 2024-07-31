@@ -7,7 +7,9 @@
 
 # USM Unified Software Management Handling
 
+import os
 from oslo_log import log
+import tsconfig.tsconfig as tsc
 
 from sysinv.common import exception
 from sysinv.common import constants
@@ -85,12 +87,20 @@ def get_host_deploy(dbapi, hostname):
     return None
 
 
+def is_usm_authapi_ready():
+    return os.path.exists(tsc.VOLATILE_CONTROLLER_CONFIG_COMPLETE)
+
+
 def get_platform_upgrade(dbapi, usm_only=False):
     """
     Get upgrade object from either sysinv db or USM service.
     Upgrade object is from USM service if the service is present,
     if not, the object is from sysinv db.
     """
+
+    # Authorized USM APIs are available only after bootstrap & unlock
+    if not is_usm_authapi_ready():
+        raise exception.NotFound()
 
     upgrade = None
     region_name = get_region_name(dbapi)

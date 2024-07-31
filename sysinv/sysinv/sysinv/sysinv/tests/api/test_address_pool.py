@@ -552,6 +552,7 @@ class TestPatchMixin(object):
         self.assertEqual(addrpool.uuid, c1_address.pool_uuid)
         self.assertIsNone(c1_address.ifname)
 
+    @mock.patch('sysinv.common.usm_service.is_usm_authapi_ready', lambda: True)
     def test_fail_modify_oam_during_platform_upgrade(self):
         dbutils.create_test_upgrade(state=constants.UPGRADE_STARTING)
         addrpool = self.find_addrpool_by_networktype(constants.NETWORK_TYPE_OAM)

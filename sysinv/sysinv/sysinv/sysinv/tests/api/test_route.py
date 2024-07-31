@@ -8,6 +8,7 @@
 Tests for the API route methods.
 """
 
+import mock
 from six.moves import http_client
 
 from oslo_utils import uuidutils
@@ -198,6 +199,7 @@ class TestPostUpgrade(RouteTestCase):
         self.dbapi = db_api.get_instance()
         self._create_platform_upgrade()
 
+    @mock.patch('sysinv.common.usm_service.is_usm_authapi_ready', lambda: True)
     def test_create_route_during_disallowed_upgrade_state(self):
 
         for upgrade_state in DISALLOWED_UPGRADE_STATES:
@@ -271,6 +273,7 @@ class TestDeleteUpgrade(RouteTestCase):
         self.dbapi = db_api.get_instance()
         self._create_platform_upgrade()
 
+    @mock.patch('sysinv.common.usm_service.is_usm_authapi_ready', lambda: True)
     def test_delete_route_during_disallowed_upgrade_state(self):
         route_db = dbutils.create_test_route(
             interface_id=self.interface.id,
