@@ -5117,6 +5117,10 @@ class ManagerTestCase(base.DbTestCase):
 
         config_dict = [{
             'context': getContext,
+            'function': self.service._app.audit_local_registry_secrets,
+            'user': 'sysinv'
+        }, {
+            'context': getContext,
             'function': self.service._update_keystone_password,
             'user': 'sysinv'
         }, {
@@ -5187,6 +5191,10 @@ class ManagerTestCase(base.DbTestCase):
         getContext = requestCtx(user='admin', tenant='admin', is_admin=True)
 
         config_dict = [{
+            "function": self.service._app.audit_local_registry_secrets,
+            "context": getContext,
+            "user": "sysinv"
+        }, {
             "function": self.service._app.audit_local_registry_secrets,
             "context": getContext,
             "user": "admin"
