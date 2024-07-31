@@ -259,6 +259,15 @@ class Client(object):
                     LOG.exception("Failed to load StrongSwan connection configurations: %s" % err)
                     return False
 
+                rekey = subprocess.run(['swanctl', '--rekey', '--ike', constants.IKE_SA_NAME,
+                                        '--reauth'], stdout=subprocess.PIPE,
+                                        stderr=subprocess.PIPE, check=False)
+
+                if rekey.returncode != 0:
+                    err = "Error: %s" % (rekey.stderr.decode("utf-8"))
+                    LOG.exception("Failed to rekey IKE SA with StrongSwan: %s" % err)
+                    return False
+
                 LOG.info('IPsec certificate renewed successfully')
 
         return True
