@@ -17407,9 +17407,7 @@ class ConductorManager(service.PeriodicService):
         :param host: an ihost object
         :param mgmt_mac: mac address of management interface
         """
-        if (os.path.isfile(constants.ANSIBLE_BOOTSTRAP_FLAG) and
-                host.hostname == constants.CONTROLLER_0_HOSTNAME):
-
+        if host.hostname == constants.CONTROLLER_0_HOSTNAME:
             self.dbapi.ihost_update(host.uuid,
                                     {'mgmt_mac': mgmt_mac})
         else:
