@@ -21,7 +21,6 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-import os
 import pecan
 from pecan import rest
 import uuid
@@ -458,8 +457,7 @@ def _update_host_mgmt_mac(host, mgmt_mac):
     """Update host mgmt mac to reflect interface change.
     """
 
-    if (os.path.isfile(constants.ANSIBLE_BOOTSTRAP_FLAG) and
-            mgmt_mac is not None):
+    if mgmt_mac is not None:
         # This must be called during management interface provisioning
         # following controller-0 bootstrap.
         if host['mgmt_mac'] != mgmt_mac:
