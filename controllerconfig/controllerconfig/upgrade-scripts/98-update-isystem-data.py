@@ -42,14 +42,19 @@ def main():
     LOG.basicConfig(filename="/var/log/software.log",
                     format=log_format, level=LOG.INFO, datefmt="%FT%T")
 
-    try:
-        conn = psycopg2.connect("dbname=sysinv user=postgres port=%s"
-                                % postgres_port)
-    except Exception as e:
-        LOG.exception(f"Error connecting to database: {e}")
-        return 1
-
     if action in ["activate", "activate-rollback"]:
+        try:
+            # This username/password authentication is required in activate
+            # or rollback actions to connect to the database
+            # For migration, we don't need username/password and host. Peer
+            # authentication is available in the case of migration
+            username, password = get_db_credentials()
+            conn = psycopg2.connect("dbname=sysinv user=%s password=%s \
+                                     host=localhost port=%s"
+                                    % (username, password, postgres_port))
+        except Exception as e:
+            LOG.exception(f"Error connecting to database: {e}")
+            return 1
         try:
             LOG.info(f"Updating software_version from {from_release} \
                      to {to_release}\n")
@@ -71,6 +76,22 @@ def update_isystem_software_version(conn, new_sw_version):
         f"UPDATE i_system SET software_version='{new_sw_version}';"
     db_update(conn, update_isystem_software_version_query)
     LOG.info(f"Updated software_version to {new_sw_version}")
+
+
+def get_db_credentials():
+    import re
+    import configparser
+
+    configparser = configparser.ConfigParser()
+    configparser.read('/etc/sysinv/sysinv.conf')
+    conn_string = configparser['database']['connection']
+    match = re.match(r'postgresql\+psycopg2://([^:]+):([^@]+)@', conn_string)
+    if match:
+        username = match.group(1)
+        password = match.group(2)
+        return username, password
+    else:
+        raise Exception("Failed to get database credentials from sysinv.conf")
 
 
 def db_query(conn, query):
