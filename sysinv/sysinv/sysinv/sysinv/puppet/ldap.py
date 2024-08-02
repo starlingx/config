@@ -47,7 +47,7 @@ class LdapPuppet(base.BasePuppet):
         """
         # TODO(fcorream): Remove OLD_ANSIBLE_BOOTSTRAP_COMPLETED_FLAG
         # just needed for upgrade to R9 ( 24.09 )
-        is_upgrading = utils.is_upgrade_in_progress(self.dbapi)[0]
+        is_upgrading = self.is_upgrade_in_progress_cached()[0]
 
         bootstrap_completed = \
             os.path.isfile(constants.ANSIBLE_BOOTSTRAP_COMPLETED_FLAG) or \

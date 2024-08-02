@@ -344,3 +344,15 @@ class BasePuppet(object):
             if helm_common.LABEL_COMPUTE_LABEL == obj.label_key:
                 return True
         return False
+
+    def is_upgrade_in_progress_cached(self):
+        """Checks whether a platform upgrade is in progress.
+        Uses caching to avoid multiple calls."""
+        if '_is_upgrade_in_progress_cache' not in self.context:
+            try:
+                self.context['_is_upgrade_in_progress_cache'] = (
+                    utils.is_upgrade_in_progress(self.dbapi)
+                )
+            except exception.NotFound:
+                self.context['_is_upgrade_in_progress_cache'] = (False, None)
+        return self.context['_is_upgrade_in_progress_cache']
