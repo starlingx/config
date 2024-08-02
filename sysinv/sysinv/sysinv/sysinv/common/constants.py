@@ -2591,6 +2591,7 @@ PLATFORM_FIREWALL_SM_PORT_2 = 2223
 PLATFORM_FIREWALL_NTP_PORT = 123
 PLATFORM_FIREWALL_PTP_PORT_1 = 319
 PLATFORM_FIREWALL_PTP_PORT_2 = 320
+PLATFORM_FIREWALL_HTTP_PORT = 8080
 
 # CState support. Whether the path exists depends on hardware support and driver availability.
 # Validating the existence of the path is important.

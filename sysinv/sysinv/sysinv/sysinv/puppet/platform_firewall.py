@@ -300,13 +300,19 @@ class PlatformFirewallPuppet(base.BasePuppet):
         if (dc_role != constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD):
             http_service_port = self._get_http_service_port()
             if (http_service_port):
-                tcp_ports.append(http_service_port)
+                if (http_service_port not in tcp_ports):
+                    tcp_ports.remove(constants.PLATFORM_FIREWALL_HTTP_PORT)
+                    tcp_ports.append(http_service_port)
+            else:
+                tcp_ports.remove(constants.PLATFORM_FIREWALL_HTTP_PORT)
+        else:
+            tcp_ports.remove(constants.PLATFORM_FIREWALL_HTTP_PORT)
 
         if (dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER):
             tcp_ports.extend(self._get_oam_dc_tcp_ports())
 
-        if (_is_ceph_enabled(self.dbapi)):
-            tcp_ports.append(constants.PLATFORM_CEPH_PARAMS_RGW_PORT)
+        if (not _is_ceph_enabled(self.dbapi)):
+            tcp_ports.remove(constants.PLATFORM_CEPH_PARAMS_RGW_PORT)
 
         udp_ports = self._get_oam_common_udp_ports()
 
