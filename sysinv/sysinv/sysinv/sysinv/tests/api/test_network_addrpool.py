@@ -437,6 +437,106 @@ class TestPostMixin(NetworkAddrpoolTestCase):
         self.assertEqual(4, len(ip4_list))
         self.assertEqual(4, len(ip6_list))
 
+    def test_failure_create_network_addrpool_cluster_pod_before_oam(self):
+        """ validate creating cluster pod before oam, fails
+            validate creating cluster pod after oam, succeeds
+        """
+        # negative test for cluster pod before oam
+        net_type = constants.NETWORK_TYPE_CLUSTER_POD
+        ndict = self.get_post_object(self.networks[net_type].uuid,
+                                     self.address_pools['cluster-pod-ipv4'].uuid)
+        response = self.post_json(self.API_PREFIX,
+                                  ndict,
+                                  headers=self.API_HEADERS,
+                                  expect_errors=True)
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+        msg = "Cluster-pod address-pool can not be added before OAM address-pool of same IP family"
+        self.assertIn(msg, response.json['error_message'])
+
+        # add primary oam before cluster pod
+        net_type = constants.NETWORK_TYPE_OAM
+        ndict = self.get_post_object(self.networks[net_type].uuid,
+                                     self.address_pools['oam-ipv4'].uuid)
+        response = self.post_json(self.API_PREFIX,
+                                  ndict,
+                                  headers=self.API_HEADERS)
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(response.status_code, http_client.OK)
+
+        net_type = constants.NETWORK_TYPE_CLUSTER_POD
+        ndict = self.get_post_object(self.networks[net_type].uuid,
+                                     self.address_pools['cluster-pod-ipv4'].uuid)
+        response = self.post_json(self.API_PREFIX,
+                                  ndict,
+                                  headers=self.API_HEADERS)
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(response.status_code, http_client.OK)
+
+    def test_failure_delete_network_addrpool_oam_before_cluster_pod(self):
+        """ validate deleting oam before cluster pod, fails
+            validate deleting oam after cluster pod, succeeds
+        """
+        # add primary oam before cluster pod
+        net_type = constants.NETWORK_TYPE_OAM
+        ndict = self.get_post_object(self.networks[net_type].uuid,
+                                     self.address_pools['oam-ipv4'].uuid)
+        response = self.post_json(self.API_PREFIX,
+                                  ndict,
+                                  headers=self.API_HEADERS)
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(response.status_code, http_client.OK)
+
+        net_type = constants.NETWORK_TYPE_CLUSTER_POD
+        ndict = self.get_post_object(self.networks[net_type].uuid,
+                                     self.address_pools['cluster-pod-ipv4'].uuid)
+        response = self.post_json(self.API_PREFIX,
+                                  ndict,
+                                  headers=self.API_HEADERS)
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(response.status_code, http_client.OK)
+
+        # add secondary oam before cluster pod
+        net_type = constants.NETWORK_TYPE_OAM
+        ndict = self.get_post_object(self.networks[net_type].uuid,
+                                     self.address_pools['oam-ipv6'].uuid)
+        response = self.post_json(self.API_PREFIX,
+                                  ndict,
+                                  headers=self.API_HEADERS)
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(response.status_code, http_client.OK)
+        oam_pool_uuid = response.json['uuid']
+
+        net_type = constants.NETWORK_TYPE_CLUSTER_POD
+        ndict = self.get_post_object(self.networks[net_type].uuid,
+                                     self.address_pools['cluster-pod-ipv6'].uuid)
+        response = self.post_json(self.API_PREFIX,
+                                  ndict,
+                                  headers=self.API_HEADERS)
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(response.status_code, http_client.OK)
+        cpod_pool_uuid = response.json['uuid']
+
+        # negative test for oam before cluster-pod
+        response = self.delete(self.get_single_url(oam_pool_uuid),
+                               headers=self.API_HEADERS,
+                               expect_errors=True)
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+        msg = "oam address-pool can not be deleted before cluster-pod address-pool of same IP family"
+        self.assertIn(msg, response.json['error_message'])
+
+        # oam after cluster-pod
+        response = self.delete(self.get_single_url(cpod_pool_uuid),
+                        headers=self.API_HEADERS,
+                        expect_errors=False)
+        self.assertEqual(response.status_code, http_client.NO_CONTENT)
+
+        response = self.delete(self.get_single_url(oam_pool_uuid),
+                        headers=self.API_HEADERS,
+                        expect_errors=False)
+        self.assertEqual(response.status_code, http_client.NO_CONTENT)
+
     def test_success_create_network_addrpool_secondary_cluster_dual_stack_1(self):
         """ send cluster dual-stack secondary configuration in the order
             - cluster-host, cluster-service, cluster-pod
@@ -466,7 +566,16 @@ class TestPostMixin(NetworkAddrpoolTestCase):
 
         self.mock_rpcapi_update_kubernetes_dual_stack_config.assert_not_called()
 
-        # add primary
+        # add primary oam before cluster pod
+        net_type = constants.NETWORK_TYPE_OAM
+        ndict = self.get_post_object(self.networks[net_type].uuid,
+                                     self.address_pools['oam-ipv4'].uuid)
+        response = self.post_json(self.API_PREFIX,
+                                  ndict,
+                                  headers=self.API_HEADERS)
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(response.status_code, http_client.OK)
+
         net_type = constants.NETWORK_TYPE_CLUSTER_POD
         ndict = self.get_post_object(self.networks[net_type].uuid,
                                      self.address_pools['cluster-pod-ipv4'].uuid)
@@ -518,7 +627,16 @@ class TestPostMixin(NetworkAddrpoolTestCase):
 
         self.mock_rpcapi_update_kubernetes_dual_stack_config.assert_not_called()
 
-        # add secondary
+        # add secondary oam before cluster pod
+        net_type = constants.NETWORK_TYPE_OAM
+        ndict = self.get_post_object(self.networks[net_type].uuid,
+                                     self.address_pools['oam-ipv6'].uuid)
+        response = self.post_json(self.API_PREFIX,
+                                  ndict,
+                                  headers=self.API_HEADERS)
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(response.status_code, http_client.OK)
+
         net_type = constants.NETWORK_TYPE_CLUSTER_POD
         ndict = self.get_post_object(self.networks[net_type].uuid,
                                      self.address_pools['cluster-pod-ipv6'].uuid)
@@ -584,7 +702,16 @@ class TestPostMixin(NetworkAddrpoolTestCase):
 
         self.mock_rpcapi_update_kubernetes_dual_stack_config.assert_not_called()
 
-        # add primary
+        # add primary oam before cluster pod
+        net_type = constants.NETWORK_TYPE_OAM
+        ndict = self.get_post_object(self.networks[net_type].uuid,
+                                     self.address_pools['oam-ipv4'].uuid)
+        response = self.post_json(self.API_PREFIX,
+                                  ndict,
+                                  headers=self.API_HEADERS)
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(response.status_code, http_client.OK)
+
         net_type = constants.NETWORK_TYPE_CLUSTER_POD
         ndict = self.get_post_object(self.networks[net_type].uuid,
                                      self.address_pools['cluster-pod-ipv4'].uuid)
@@ -622,7 +749,16 @@ class TestPostMixin(NetworkAddrpoolTestCase):
 
         self.mock_rpcapi_update_kubernetes_dual_stack_config.assert_not_called()
 
-        # add secondary
+        # add secondary oam before cluster-pod
+        net_type = constants.NETWORK_TYPE_OAM
+        ndict = self.get_post_object(self.networks[net_type].uuid,
+                                     self.address_pools['oam-ipv6'].uuid)
+        response = self.post_json(self.API_PREFIX,
+                                  ndict,
+                                  headers=self.API_HEADERS)
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(response.status_code, http_client.OK)
+
         net_type = constants.NETWORK_TYPE_CLUSTER_POD
         ndict = self.get_post_object(self.networks[net_type].uuid,
                                      self.address_pools['cluster-pod-ipv6'].uuid)
