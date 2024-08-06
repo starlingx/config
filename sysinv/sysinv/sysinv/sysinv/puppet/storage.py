@@ -287,21 +287,43 @@ class StoragePuppet(base.BasePuppet):
 
     def _is_ceph_filesystem_enabled(self, host):
         filesystems = self.dbapi.host_fs_get_by_ihost(host.id)
+        is_aio_dx = utils.is_aio_duplex_system(self.dbapi)
+        ceph_backend = self.dbapi.storage_backend_get_list_by_type(
+            backend_type=constants.SB_TYPE_CEPH)
+
         config = {}
+        filesystem_size = 0
+        filesystem_enabled = False
 
-        for fs in filesystems:
-            if (fs.name == constants.FILESYSTEM_NAME_CEPH and
-                    fs.state not in [constants.HOST_FS_STATUS_DELETING,
+        # If this is AIO-DX and has ceph storage backend configured
+        # then force enabling the ceph filesystem using the size from
+        # ceph_mon
+        if (is_aio_dx and ceph_backend):
+            ceph_mon = self.dbapi.ceph_mon_get_list(limit=1)
+            if ceph_mon:
+                filesystem_size = ceph_mon[0].ceph_mon_gib
+                filesystem_enabled = True
+
+        # If ceph filesystem is not configured using ceph_mon data,
+        # get the information from the system inventory
+        if not filesystem_enabled:
+            for fs in filesystems:
+                if (fs.name == constants.FILESYSTEM_NAME_CEPH and
+                        fs.state not in [constants.HOST_FS_STATUS_DELETING,
                                      constants.HOST_FS_STATUS_DELETING_ON_UNLOCK]):
-                config.update({
-                    'platform::filesystem::ceph::params::ceph_enabled': True,
-                    'platform::filesystem::ceph::params::lv_size': fs.size,
-                })
-                return config
+                    filesystem_size = fs.size
+                    filesystem_enabled = True
 
-        config.update({
-            'platform::filesystem::ceph::params::ceph_enabled': False,
-        })
+        if filesystem_enabled:
+            config.update({
+                'platform::filesystem::ceph::params::ceph_enabled': filesystem_enabled,
+                'platform::filesystem::ceph::params::lv_size': filesystem_size,
+            })
+        else:
+            config.update({
+                'platform::filesystem::ceph::params::ceph_enabled': False,
+            })
+
         return config
 
     def _get_host_fs_config(self, host):

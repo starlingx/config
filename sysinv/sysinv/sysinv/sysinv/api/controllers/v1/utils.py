@@ -546,7 +546,12 @@ def check_node_ceph_mon_growth(host, ceph_mon_gib, cgtsvg_max_free_gib):
     if cgtsvg_growth_gib is None:
         cgtsvg_growth_gib = ceph_mon_gib - constants.SB_CEPH_MON_GIB
 
-    LOG.info("check_node_ceph_mon_growth hostname: %s, ceph_mon_gib: %s, "
+    if cutils.is_aio_duplex_system(pecan.request.dbapi):
+        LOG.debug("check_node_ceph_mon_growth: this is aio-dx - "
+            "calculate required space for host-fs ceph-lv too")
+        cgtsvg_growth_gib = 2 * cgtsvg_growth_gib
+
+    LOG.debug("check_node_ceph_mon_growth hostname: %s, ceph_mon_gib: %s, "
              "cgtsvg_growth_gib: %s, cgtsvg_max_free_gib: %s"
              % (hostname, ceph_mon_gib, cgtsvg_growth_gib,
                 cgtsvg_max_free_gib))
@@ -570,15 +575,9 @@ def check_node_ceph_mon_growth(host, ceph_mon_gib, cgtsvg_max_free_gib):
         raise wsme.exc.ClientSideError(msg)
 
 
-def check_all_ceph_mon_growth(ceph_mon_gib, host=None):
-    """ Check all nodes (except controllers) filesystem with growth limitation,
-        host is used only when mon is creating and check current node,
-        when mon update, host is None and check all nodes of mon list.
+def check_all_ceph_mon_growth(ceph_mon_gib):
+    """ Check all nodes from mon list for filesystem growth limitation.
     """
-    if host is not None:
-        cgtsvg_max_free_gib = get_node_cgtsvg_limit(host)
-        check_node_ceph_mon_growth(host, ceph_mon_gib, cgtsvg_max_free_gib)
-
     ceph_mons = pecan.request.dbapi.ceph_mon_get_list()
     for mon in ceph_mons:
         ceph_mon_host = pecan.request.dbapi.ihost_get(mon['forihostid'])

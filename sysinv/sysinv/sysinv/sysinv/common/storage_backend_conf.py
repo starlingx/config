@@ -230,7 +230,7 @@ class StorageBackendConfig(object):
             if (addr.name in hostif2ph) and (addr.family == addr_pool.family):
                 ph = hostif2ph[addr.name]
                 ph2ipaddr[ph] = addr.address
-        return ph2ipaddr
+        return network_type, ph2ipaddr
 
     @staticmethod
     def is_ceph_backend_ready(api):

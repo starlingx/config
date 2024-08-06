@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2021 Wind River Systems, Inc.
+# Copyright (c) 2013-2021,2024 Wind River Systems, Inc.
 #
 
 import copy
@@ -36,6 +36,7 @@ from oslo_utils import uuidutils
 
 from sysinv._i18n import _
 from sysinv.api.controllers.v1 import base
+from sysinv.api.controllers.v1 import ceph_mon as ceph_mon_utils
 from sysinv.api.controllers.v1 import collection
 from sysinv.api.controllers.v1 import link
 from sysinv.api.controllers.v1 import types
@@ -583,6 +584,13 @@ def _check_backend_ceph(req, storage_ceph, confirmed=False):
 
     # Additional checks based on operation
     if req == constants.SB_API_OP_CREATE:
+        # Check has free space to create ceph-mon
+        controller_hosts = pecan.request.dbapi.ihost_get_by_personality(
+            constants.CONTROLLER)
+        ceph_mon_gib = constants.SB_CEPH_MON_GIB
+        for host in controller_hosts:
+            ceph_mon_utils._check_node_has_free_disk_space(host, ceph_mon_gib)
+
         # The ceph backend must be associated with a storage tier
         tierId = storage_ceph.get('tier_id') or storage_ceph.get('tier_uuid')
         if not tierId:

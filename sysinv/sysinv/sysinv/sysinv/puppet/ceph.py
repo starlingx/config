@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2017-2022 Wind River Systems, Inc.
+# Copyright (c) 2017-2022,2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -55,8 +55,13 @@ class CephPuppet(openstack.OpenstackBasePuppet):
         if not ceph_backend:
             return {}  # ceph is not configured
 
-        ceph_mon_ips = StorageBackendConfig.get_ceph_mon_ip_addresses(
+        network_type, ceph_mon_ips = StorageBackendConfig.get_ceph_mon_ip_addresses(
             self.dbapi)
+
+        network_type_names = {constants.NETWORK_TYPE_MGMT: "management",
+                            constants.NETWORK_TYPE_CLUSTER_HOST: "cluster_host"}
+
+        ceph_network = network_type_names[network_type]
 
         if not ceph_mon_ips:
             return {}  # system configuration is not yet ready
@@ -106,6 +111,7 @@ class CephPuppet(openstack.OpenstackBasePuppet):
             'ceph::ms_bind_ipv4': ms_bind_ipv4,
 
             'platform::ceph::params::service_enabled': True,
+            'platform::ceph::params::ceph_network': ceph_network,
 
             'platform::ceph::params::floating_mon_host':
                 constants.CONTROLLER_HOSTNAME,
