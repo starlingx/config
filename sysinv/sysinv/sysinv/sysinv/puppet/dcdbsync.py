@@ -75,7 +75,7 @@ class DCDBsyncPuppet(openstack.OpenstackBasePuppet):
         }
 
         if utils.is_openstack_applied(self.dbapi):
-            is_upgrading, upgrade = utils.is_upgrade_in_progress(self.dbapi)
+            is_upgrading, upgrade = self.is_upgrade_in_progress_cached()
             if is_upgrading:
                 old_config = self._operator.read_system_config(upgrade.from_release)
                 keys_to_copy = [
@@ -118,7 +118,7 @@ class DCDBsyncPuppet(openstack.OpenstackBasePuppet):
         }
 
         if utils.is_openstack_applied(self.dbapi):
-            is_upgrading, upgrade = utils.is_upgrade_in_progress(self.dbapi)
+            is_upgrading, upgrade = self.is_upgrade_in_progress_cached()
             if is_upgrading:
                 old_config = self._operator.read_secure_system_config(upgrade.from_release)
                 keys_to_copy = [
