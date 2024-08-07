@@ -173,6 +173,13 @@ class LabelAssignTestCase(LabelTestCase):
         }
         self.assign_labels_failure(host_uuid, topology_mgr_label)
 
+    def test_create_validated_labels_unsupported(self):
+        host_uuid = self.worker.uuid
+        cpu_mgr_label = {
+            'kube-cpu-mgr-policy': 'none',
+        }
+        self.assign_labels_failure(host_uuid, cpu_mgr_label)
+
     @mock.patch('sysinv.api.controllers.v1.label._get_system_enabled_k8s_plugins',
                 mock_get_system_enabled_k8s_plugins_return_plugins)
     def test_create_plugin_labels_on_supported_node(self):

@@ -378,6 +378,10 @@ def _semantic_check_worker_labels(body):
                 raise wsme.exc.ClientSideError(
                     _(
                         "Invalid value for %s label." % constants.KUBE_CPU_MANAGER_LABEL))
+            elif label_value == constants.KUBE_CPU_MANAGER_VALUES[0]:
+                raise wsme.exc.ClientSideError(
+                    _(
+                        "Setting kube-cpu-mgr-policy to 'none' is not supported"))
         elif label_key == constants.KUBE_POWER_MANAGER_LABEL:
             if label_value != constants.KUBE_POWER_MANAGER_VALUE:
                 raise wsme.exc.ClientSideError(
