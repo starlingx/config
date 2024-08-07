@@ -42,6 +42,7 @@ from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils as cutils
 from sysinv import objects
+from sysinv.common.storage_utils import StorageRookUtils
 
 LOG = log.getLogger(__name__)
 
@@ -432,6 +433,9 @@ def _create_default_ceph_rook_db_entries():
 
 
 def _check_backend_ceph_rook(req, storage_ceph_rook, confirmed=False):
+
+    storage_utils = StorageRookUtils(pecan.request.dbapi)
+
     # check for the backend parameters
     capabilities = storage_ceph_rook.get('capabilities', {})
 
@@ -550,6 +554,16 @@ def _check_backend_ceph_rook(req, storage_ceph_rook, confirmed=False):
         except exception.KubeAppNotFound:
             pass
 
+        in_use_ceph_tiers = storage_utils.get_tiers()
+        if in_use_ceph_tiers:
+            raise wsme.exc.ClientSideError(_("Storage-backend '%s' cannot be deleted "
+                                             "when there are Storage Tiers (%s) in '%s' state." %
+                                             (storage_ceph_rook['name'],
+                                              ", ".join(tier.name for tier in in_use_ceph_tiers),
+                                              constants.SB_TIER_STATUS_IN_USE,)))
+
+        # TODO: Add a new blocker if there is host-fs ceph
+
     # Check for confirmation
     if not confirmed:
         _options_str = _get_options_string(storage_ceph_rook)
@@ -662,6 +676,16 @@ def _create(storage_ceph_rook):
     system = pecan.request.dbapi.isystem_get_one()
     storage_ceph_rook['forisystemid'] = system.id
     storage_ceph_rook_obj = pecan.request.dbapi.storage_ceph_rook_create(storage_ceph_rook)
+
+    # Mark the storage tier as in-use
+    try:
+        pecan.request.dbapi.storage_tier_update(
+            storage_ceph_rook['tier_id'],
+            {'forbackendid': storage_ceph_rook_obj.id})
+    except exception.StorageTierNotFound as e:
+        # Shouldn't happen. Log exception. Backend is created but tier status
+        # is not updated.
+        LOG.exception(e)
 
     # Retreive the main StorageBackend object.
     storage_backend_obj = pecan.request.dbapi.storage_backend_get(storage_ceph_rook_obj.id)
@@ -876,6 +900,14 @@ def _delete(sb_uuid):
     _check_backend_ceph_rook(constants.SB_API_OP_DELETE,
                         storage_ceph_rook_obj.as_dict(),
                         True)
+
+    try:
+        cluster_rook_ceph = pecan.request.dbapi.cluster_query(
+                            {'name': constants.CLUSTER_CEPH_ROOK_DEFAULT_NAME})
+        pecan.request.dbapi.cluster_destroy(cluster_rook_ceph.uuid)
+    except exception.ClusterNotFound as e:
+        # Shouldn't happen. Log exception. Try to delete the backend anyway
+        LOG.exception(e)
 
     try:
         pecan.request.dbapi.storage_backend_destroy(storage_ceph_rook_obj.uuid)

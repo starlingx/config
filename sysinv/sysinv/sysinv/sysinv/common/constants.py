@@ -578,6 +578,10 @@ SB_TASK_RESIZE_CEPH_MON_LV = 'resize-ceph-mon-lv'
 SB_TASK_ADD_OBJECT_GATEWAY = 'add-object-gateway'
 SB_TASK_RESTORE = 'restore'
 
+# Rook-ceph Failure Domain
+CEPH_ROOK_CLUSTER_HOST_FAIL_DOMAIN = 'host'
+CEPH_ROOK_CLUSTER_OSD_FAIL_DOMAIN = 'osd'
+
 # Storage backend ceph-mon-lv size
 SB_CEPH_MON_GIB = 20
 SB_CEPH_MON_GIB_MIN = 20
@@ -607,6 +611,11 @@ CEPH_ROOK_DEPLOYMENTS_SUPPORTED = [CEPH_ROOK_DEPLOYMENT_CONTROLLER,
 # Storage: Minimum number of monitors
 MIN_STOR_MONITORS_MULTINODE = 2
 MIN_STOR_MONITORS_AIO = 1
+
+ISTOR_ACTIVE_STATES = {
+    SB_STATE_CONFIGURING_WITH_APP,
+    SB_STATE_CONFIGURED,
+}
 
 # Suffix used in LVM volume name to indicate that the
 # volume is actually a thin pool.  (And thin volumes will

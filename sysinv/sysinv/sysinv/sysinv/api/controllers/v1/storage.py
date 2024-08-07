@@ -41,6 +41,7 @@ from sysinv.api.controllers.v1 import link
 from sysinv.api.controllers.v1 import types
 from sysinv.api.controllers.v1 import utils
 from sysinv.common import ceph
+from sysinv.common.storage_utils import StorageRookUtils
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils as cutils
@@ -580,74 +581,6 @@ class StorageController(rest.RestController):
                          constants.STOR_FUNCTION_OSD,
                          constants.SB_STATE_CONFIGURING_ON_UNLOCK))
 
-    def _get_replication_factor(self, storage_backend):
-        if not storage_backend:
-            if utils.is_aio_simplex_system(pecan.request.dbapi):
-                return constants.AIO_SX_CEPH_REPLICATION_FACTOR_DEFAULT
-            return constants.CEPH_REPLICATION_FACTOR_DEFAULT
-
-        replication = storage_backend.capabilities.get(constants.CEPH_BACKEND_REPLICATION_CAP, None)
-        if not replication:
-            raise exception.SysinvException(
-                '{} missing from storage backend {}.'.format(
-                    constants.CEPH_BACKEND_REPLICATION_CAP,
-                    storage_backend.name))
-
-        try:
-            replication = int(replication)
-        except ValueError:
-            raise exception.SysinvException(
-                '{} from storage backend {} must be a integer.'.format(
-                    constants.CEPH_BACKEND_REPLICATION_CAP,
-                    storage_backend.name))
-
-        return replication
-
-    def _get_rook_hosts(self, caps, only_rook=False):
-        if caps.get('deployment_model', '') == constants.CEPH_ROOK_DEPLOYMENT_CONTROLLER:
-            hosts = pecan.request.dbapi.ihost_get_by_personality(constants.CONTROLLER)
-        elif caps.get('deployment_model', '') == constants.CEPH_ROOK_DEPLOYMENT_DEDICATED:
-            hosts = pecan.request.dbapi.ihost_get_by_personality(constants.WORKER)
-        else:
-            hosts = pecan.request.dbapi.ihost_get_list()
-
-        if only_rook:
-            hosts_rook = []
-            for host in hosts:
-                try:
-                    host_fs = pecan.request.dbapi.host_fs_get_by_name_ihost(
-                                    host.uuid, constants.FILESYSTEM_NAME_CEPH)
-                    functions = host_fs['capabilities']['functions']
-                    if (constants.FILESYSTEM_CEPH_FUNCTION_MONITOR in functions or
-                            constants.FILESYSTEM_CEPH_FUNCTION_OSD in functions):
-                        hosts_rook.append(host)
-                except exception.HostFSNameNotFound:
-                    LOG.warn(f"Host {host.uuid} does not have host-fs ceph")
-            LOG.debug(f"hosts_rook: {hosts_rook}")
-            return hosts_rook
-
-        LOG.debug(f"hosts: {hosts}")
-        return hosts
-
-    def _get_osd_count(self, ceph_rook_backend, stor_to_remove):
-        hosts_by_deployment_model = self._get_rook_hosts(ceph_rook_backend.get('capabilities', {}))
-        host_with_osds_count = 0
-        osds_count = 0
-        for host in hosts_by_deployment_model:
-            istors = pecan.request.dbapi.istor_get_by_ihost(host.uuid)
-            has_osd = False
-
-            for stor in istors:
-                if (stor.function == constants.STOR_FUNCTION_OSD and
-                        stor.state == constants.SB_STATE_CONFIGURED):
-                    if stor_to_remove.uuid != stor.uuid:
-                        has_osd = True
-                        osds_count += 1
-            if has_osd:
-                host_with_osds_count += 1
-
-        return host_with_osds_count, osds_count
-
     def delete_stor(self, stor_uuid, remove_from_cluster=False, force=False):
         """Delete a stor"""
 
@@ -706,37 +639,61 @@ class StorageController(rest.RestController):
                         # if this is the last OSD on this host.
                         if (stor.function == constants.STOR_FUNCTION_OSD and
                                 len(pecan.request.dbapi.istor_get_all(stor.forihostid)) == 0):
-                            fs = pecan.request.dbapi.host_fs_get_by_name_ihost(
-                                    stor.forihostid, constants.FILESYSTEM_NAME_CEPH)
-                            capabilities = fs.capabilities
-                            capabilities['functions'].remove(constants.FILESYSTEM_CEPH_FUNCTION_OSD)
-                            values = {'capabilities': capabilities}
-                            pecan.request.dbapi.host_fs_update(fs.uuid, values)
+                            fs = None
+                            try:
+                                fs = pecan.request.dbapi.host_fs_get_by_name_ihost(
+                                        stor.forihostid, constants.FILESYSTEM_NAME_CEPH)
+                            except exception.HostFSNameNotFound:
+                                pass
+
+                            if fs:
+                                capabilities = fs.capabilities
+                                capabilities['functions'].remove(constants.FILESYSTEM_CEPH_FUNCTION_OSD)
+                                values = {'capabilities': capabilities}
+                                pecan.request.dbapi.host_fs_update(fs.uuid, values)
+
+                        stors_in_same_tier = pecan.request.dbapi.istor_get_by_tier(stor['fortierid'])
+                        if len(stors_in_same_tier) == 0:
+                            pecan.request.dbapi.storage_tier_update(stor['fortierid'],
+                                                                    {"status": constants.SB_TIER_STATUS_DEFINED})
+
                         return
 
-                    replication_factor = self._get_replication_factor(ceph_rook_backend)
-                    host_with_osds_count, osds_count = self._get_osd_count(ceph_rook_backend, stor)
-                    deployment_model = ceph_rook_backend.get("capabilities", {}).get("deployment_model", "")
+                    storage_utils = StorageRookUtils(pecan.request.dbapi)
+
+                    replication_factor = storage_utils.get_replication_factor()[0]
+                    count_per_tier = storage_utils.get_osd_count(stor)[2]
+                    deployment_model = storage_utils.get_deployment_model()
 
                     # Compare replication_factor with OSDs count when the remove is
                     # not forced and deployment model is not open.
                     if not force and deployment_model != constants.CEPH_ROOK_DEPLOYMENT_OPEN:
-                        if cutils.is_aio_simplex_system(pecan.request.dbapi):
-                            # Compare replication_factor with OSD count when is simplex enviroment
-                            if osds_count < replication_factor:
-                                err_msg = "This stor cannot be removed. The configured OSD count must be greater " \
-                                          "than or equal to the replication factor."
-                                raise wsme.exc.ClientSideError(_(err_msg))
+
+                        failure_domain = storage_utils.get_failure_domain()
+
+                        err_msg = ("This stor cannot be removed. {entity} must be greater "
+                                   "than or equal to the replication factor.")
+
+                        tier = next((tier for tier in count_per_tier if tier["tier"].name == stor.tier_name), None)
+                        if tier:
+                            if failure_domain == constants.CEPH_ROOK_CLUSTER_OSD_FAIL_DOMAIN:
+                                entity = f"The number of OSDs in tier {tier['tier'].name}"
+                                count = tier["per_osd"]
+                            else:
+                                entity = f"The number of OSDs in tier {tier['tier'].name}"
+                                count = tier["per_host"]
+                            if count < replication_factor:
+                                raise wsme.exc.ClientSideError(_(err_msg.format(entity=entity, count=count)))
                         else:
-                            # Compare replication_factor with HOSTS WITH OSDs when is not simplex env
-                            if host_with_osds_count < replication_factor:
-                                err_msg = "This stor cannot be removed. Hosts with configured OSDs must be greater " \
-                                          "than or equal to the replication factor."
-                                raise wsme.exc.ClientSideError(_(err_msg))
+                            err_msg = (f"This stor cannot be removed: stor tier {stor.tier_name} not found.")
+                            raise wsme.exc.ClientSideError(_(err_msg))
 
                     LOG.info(f"Updating stor with uuid {stor_uuid} to {delete_state} state")
                     istor_values = {'state': delete_state}
                     pecan.request.dbapi.istor_update(stor_uuid, istor_values)
+
+                    pecan.request.dbapi.storage_backend_update(ceph_rook_backend.uuid,
+                                                               {"state": constants.SB_STATE_CONFIGURING_WITH_APP})
 
                 else:
                     # If the rook-ceph app is in progress, the delete stor is not initialized.
@@ -836,9 +793,13 @@ def _check_host(stor):
     ihost = pecan.request.dbapi.ihost_get(ihost_id)
     stor_model = ceph.get_ceph_storage_model()
 
+    has_ceph_backend = StorageBackendConfig.has_backend(pecan.request.dbapi,
+                                                        constants.SB_TYPE_CEPH)
+    has_ceph_rook_backend = StorageBackendConfig.has_backend(pecan.request.dbapi,
+                                                             constants.SB_TYPE_CEPH_ROOK)
+
     # semantic check: whether OSD can be added to this host.
-    if StorageBackendConfig.has_backend(pecan.request.dbapi,
-                                        constants.SB_TYPE_CEPH):
+    if has_ceph_backend:
         if stor_model == constants.CEPH_STORAGE_MODEL:
             if ihost.personality != constants.STORAGE:
                 msg = ("Storage model is '%s'. Storage devices can only be added "
@@ -867,8 +828,7 @@ def _check_host(stor):
                 raise wsme.exc.ClientSideError(_("Host %s must be locked." %
                                                  ihost['hostname']))
 
-    elif StorageBackendConfig.has_backend(pecan.request.dbapi,
-                                        constants.SB_TYPE_CEPH_ROOK):
+    elif has_ceph_rook_backend:
         sb_name = constants.SB_DEFAULT_NAMES[constants.SB_TYPE_CEPH_ROOK]
         sb = pecan.request.dbapi.storage_backend_get_by_name(sb_name)
         dm = sb.capabilities.get(constants.CEPH_ROOK_BACKEND_DEPLOYMENT_CAP,
@@ -887,20 +847,18 @@ def _check_host(stor):
                 raise wsme.exc.ClientSideError(msg)
 
     # semantic check: whether system has a ceph backend
-    if (not StorageBackendConfig.has_backend(pecan.request.dbapi,
-                                             constants.SB_TYPE_CEPH) and
-        not StorageBackendConfig.has_backend(pecan.request.dbapi,
-                                             constants.SB_TYPE_CEPH_ROOK)):
+    if not has_ceph_backend and not has_ceph_rook_backend:
         raise wsme.exc.ClientSideError(_(
             "System must have either a %s or a %s backend" % (
                 constants.SB_TYPE_CEPH,
                 constants.SB_TYPE_CEPH_ROOK)))
 
-    # semantic check: whether host can be locked or unsafely force locked based on
-    # ceph monitors availability
-    if not cutils.is_aio_system(pecan.request.dbapi):
-        unsafe = ihost['action'] == constants.FORCE_UNSAFE_LOCK_ACTION
-        utils.check_node_lock_ceph_mon(ihost, unsafe=unsafe)
+    if not has_ceph_rook_backend:
+        # semantic check: whether host can be locked or unsafely force locked based on
+        # ceph monitors availability
+        if not cutils.is_aio_system(pecan.request.dbapi):
+            unsafe = ihost['action'] == constants.FORCE_UNSAFE_LOCK_ACTION
+            utils.check_node_lock_ceph_mon(ihost, unsafe=unsafe)
 
 
 def _check_disk(stor):
@@ -1172,25 +1130,21 @@ def _create(stor):
 
     if function == constants.STOR_FUNCTION_OSD:
         # Get the tier the stor should be associated with
-        tierId = stor.get('fortierid') or stor.get('tier_uuid')
-        if not tierId:
-            # Get the available tiers. If only one exists (the default tier)
-            # then add it.
-            default_ceph_tier_name = constants.SB_TIER_DEFAULT_NAMES[
-                constants.SB_TIER_TYPE_CEPH]
+        tier_id = stor.get('fortierid') or stor.get('tier_uuid')
+        if not tier_id:
+            # Get the available tiers. If only one exists then add it.
             tier_list = pecan.request.dbapi.storage_tier_get_list()
-            if (len(tier_list) == 1 and
-                    tier_list[0].name == default_ceph_tier_name):
-                tierId = tier_list[0].uuid
+            if (len(tier_list) == 1):
+                tier_id = tier_list[0].uuid
             else:
                 raise wsme.exc.ClientSideError(
                     _("Multiple storage tiers are present. A tier is required "
                       "for stor creation."))
 
         try:
-            tier = pecan.request.dbapi.storage_tier_get(tierId)
+            tier = pecan.request.dbapi.storage_tier_get(tier_id)
         except exception.StorageTierNotFound:
-            raise wsme.exc.ClientSideError(_("No tier with id %s found.") % tierId)
+            raise wsme.exc.ClientSideError(_("No tier with id %s found.") % tier_id)
 
         create_attrs['fortierid'] = tier.id
 

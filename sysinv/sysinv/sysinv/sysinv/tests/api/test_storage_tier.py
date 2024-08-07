@@ -2,7 +2,7 @@
 # -*- encoding: utf-8 -*-
 #
 #
-# Copyright (c) 2017-2023 Wind River Systems, Inc.
+# Copyright (c) 2017-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -515,7 +515,7 @@ class StorageTierIndependentTCs(base.FunctionalTest):
         self.assertEqual(http_client.BAD_REQUEST, response.status_int)
         self.assertEqual('application/json', response.content_type)
         self.assertTrue(response.json['error_message'])
-        self.assertIn('Storage Tier %s cannot be deleted.' %
+        self.assertIn("Storage Tier '%s' cannot be deleted." %
                       constants.SB_TIER_DEFAULT_NAMES[constants.SB_TIER_TYPE_CEPH],
                       response.json['error_message'])
 
@@ -523,7 +523,7 @@ class StorageTierIndependentTCs(base.FunctionalTest):
         self.assertEqual(http_client.BAD_REQUEST, response.status_int)
         self.assertEqual('application/json', response.content_type)
         self.assertTrue(response.json['error_message'])
-        self.assertIn('Storage Tier platinum cannot be deleted. It is in-use',
+        self.assertIn("Storage Tier 'platinum' cannot be deleted. It is in-use",
                       response.json['error_message'])
 
         with mock.patch.object(ceph_utils.CephApiOperator, 'crushmap_tier_delete'):
@@ -585,6 +585,23 @@ class StorageTierDependentTCs(base.FunctionalTest):
             operational='disabled',
             availability='online',
             invprovision='unprovisioned')
+        return self.dbapi.ihost_create(ihost_dict)
+
+    def _create_worker_ihost(self, hostname):
+        self.host_index += 1
+        ihost_dict = dbutils.get_test_ihost(
+            id=self.host_index,
+            forisystemid=self.system.id,
+            hostname=hostname,
+            uuid=uuidutils.generate_uuid(),
+            mgmt_mac="{}-{}".format(hostname, self.host_index),
+            mgmt_ip="{}-{}".format(hostname, self.host_index),
+            personality='worker',
+            administrative='locked',
+            operational='disabled',
+            availability='online',
+            invprovision='unprovisioned',
+            subfunctions='worker')
         return self.dbapi.ihost_create(ihost_dict)
 
     def _create_storage_mon(self, hostname, ihost_id):
@@ -877,3 +894,273 @@ class StorageTierDependentTCs(base.FunctionalTest):
             constants.SB_TIER_TYPE_CEPH],
                          backend_list['storage_backends'][0]['name'])
         self.assertEqual('ceph-gold', backend_list['storage_backends'][1]['name'])
+
+    def test_cluster_rook_tier_host_osd(self):
+        worker_0 = self._create_worker_ihost("worker-0")
+
+        disk_0 = dbutils.create_test_idisk(device_node='/dev/sdb',
+                                           device_path='/dev/disk/by-path/pci-0000:00:0d.0-ata-2.0',
+                                           forihostid=worker_0.id)
+        disk_1 = dbutils.create_test_idisk(device_node='/dev/sdc',
+                                           device_path='/dev/disk/by-path/pci-0000:00:0d.0-ata-3.0',
+                                           forihostid=worker_0.id)
+
+        # Add the default ceph-rook backend
+        values = {
+            'backend': constants.SB_TYPE_CEPH_ROOK,
+            'capabilities': {constants.CEPH_ROOK_BACKEND_DEPLOYMENT_CAP:
+                             constants.CEPH_ROOK_DEPLOYMENT_OPEN},
+            'confirmed': True
+        }
+        response_backend = self.post_json('/storage_ceph_rook', values, expect_errors=False)
+        self.assertEqual(http_client.OK, response_backend.status_int)
+        self.assertEqual(constants.SB_TYPE_CEPH_ROOK,  # Expected
+                         self.get_json('/storage_ceph_rook/%s/' %
+                                       response_backend.json['uuid'])['backend'])  # Result
+
+        # Create a logical volume
+        dbutils.create_test_lvg(lvm_vg_name='cgts-vg',
+                                forihostid=worker_0.id)
+
+        # Make sure default storage tier is present
+        tier_list = self.get_json('/storage_tiers', expect_errors=False)
+        self.assertEqual(constants.SB_TIER_DEFAULT_NAMES[
+            constants.SB_TIER_TYPE_CEPH],
+                         tier_list['storage_tiers'][0]['name'])
+        self.assertEqual(constants.SB_TIER_STATUS_DEFINED,
+                         tier_list['storage_tiers'][0]['status'])
+
+        # get cluster
+        cluster_list = self.get_json('/clusters', expect_errors=False)
+        self.assertEqual(constants.CLUSTER_CEPH_ROOK_DEFAULT_NAME,
+                         cluster_list['clusters'][0]['name'])
+        saved_cluster_db_uuid = cluster_list['clusters'][0]['uuid']
+
+        # Patch management network for ceph
+        self.dbapi = dbapi.get_instance()
+        p = mock.patch.object(self.dbapi, 'networks_get_by_type')
+        p.start().return_value = [{'network_type': constants.NETWORK_TYPE_MGMT}]
+        self.addCleanup(p.stop)
+
+        # Make sure default storage tier is defined
+        tier_list = self.get_json('/storage_tiers', expect_errors=False)
+        self.assertEqual(constants.SB_TIER_DEFAULT_NAMES[
+            constants.SB_TIER_TYPE_CEPH],
+                         tier_list['storage_tiers'][0]['name'])
+        self.assertEqual(constants.SB_TIER_STATUS_DEFINED,
+                         tier_list['storage_tiers'][0]['status'])
+        default_tier_uuid = tier_list['storage_tiers'][0]['uuid']
+
+        # add a stor
+        values = {'ihost_uuid': worker_0.uuid,
+                  'idisk_uuid': disk_0.uuid,
+                  'tier_uuid': default_tier_uuid}
+
+        response = self.post_json('/istors', values, expect_errors=False)
+        self.assertEqual(http_client.OK, response.status_int)
+        self.assertEqual(default_tier_uuid,
+                         self.get_json('/istors/%s/' % response.json['uuid'])['tier_uuid'])  # Result
+
+        # Verify the tier state was changed to in-use
+        tier_list = self.get_json('/storage_tiers', expect_errors=False)
+        self.assertEqual(constants.SB_TIER_DEFAULT_NAMES[
+            constants.SB_TIER_TYPE_CEPH],
+                         tier_list['storage_tiers'][0]['name'])
+        self.assertEqual(constants.SB_TIER_STATUS_IN_USE,
+                         tier_list['storage_tiers'][0]['status'])
+
+        # Create a second storage tier without a cluster
+        values = {}
+        response = self.post_json('/storage_tiers', values, expect_errors=True)
+        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+        self.assertEqual('application/json', response.content_type)
+        self.assertTrue(response.json['error_message'])
+        self.assertIn('No cluster information was provided for tier creation.',
+                      response.json['error_message'])
+
+        # Create a second storage tier without a name
+        values = {'cluster_uuid': saved_cluster_db_uuid}
+        response = self.post_json('/storage_tiers', values, expect_errors=True)
+        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+        self.assertEqual('application/json', response.content_type)
+        self.assertTrue(response.json['error_message'])
+        self.assertIn('Storage tier (%s) already present' % constants.SB_TIER_DEFAULT_NAMES[
+            constants.SB_TIER_TYPE_CEPH],
+                      response.json['error_message'])
+
+        # Create a second storage tier
+        values = {'cluster_uuid': saved_cluster_db_uuid,
+                  'name': 'gold'}
+        with mock.patch.object(ceph_utils.CephApiOperator, 'crushmap_tiers_add'):
+            response = self.post_json('/storage_tiers', values, expect_errors=True)
+        self.assertEqual(http_client.OK, response.status_int)
+
+        confirm = self.get_json('/storage_tiers/%s/' % response.json['uuid'])
+        self.assertEqual(confirm['uuid'], response.json['uuid'])
+        self.assertEqual(confirm['name'], 'gold')
+        self.assertEqual(confirm['type'], constants.SB_TIER_TYPE_CEPH)
+        self.assertEqual(confirm['status'], constants.SB_TIER_STATUS_DEFINED)
+        self.assertEqual(confirm['backend_uuid'], response_backend.json['uuid'])
+        self.assertEqual(confirm['cluster_uuid'], saved_cluster_db_uuid)
+        self.assertEqual(confirm['stors'], [])
+        self.assertEqual(confirm['capabilities'], {})
+        saved_tier_uuid = response.json['uuid']
+
+        # add a stor not specifying a tier
+        values = {'ihost_uuid': worker_0.uuid,
+                  'idisk_uuid': disk_1.uuid}
+
+        response = self.post_json('/istors', values, expect_errors=True)
+        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+        self.assertEqual('application/json', response.content_type)
+        self.assertTrue(response.json['error_message'])
+        self.assertIn('Multiple storage tiers are present. A tier is required for stor creation.',
+                      response.json['error_message'])
+
+        # add a stor specifying a tier
+        values = {'ihost_uuid': worker_0.uuid,
+                  'idisk_uuid': disk_1.uuid,
+                  'tier_uuid': saved_tier_uuid}
+
+        response = self.post_json('/istors', values, expect_errors=True)
+        self.assertEqual(http_client.OK, response.status_int)
+        self.assertEqual(saved_tier_uuid,
+                         self.get_json('/istors/%s/' % response.json['uuid'])['tier_uuid'])  # Result
+
+        # Verify the tier state has changed
+        tier_list = self.get_json('/storage_tiers', expect_errors=False)
+        self.assertEqual('gold', tier_list['storage_tiers'][1]['name'])
+        self.assertEqual(constants.SB_TIER_STATUS_IN_USE,
+                         tier_list['storage_tiers'][1]['status'])
+
+        # validate the cluster view
+        cluster_list = self.get_json('/clusters', expect_errors=False)
+        self.assertEqual(constants.CLUSTER_CEPH_ROOK_DEFAULT_NAME, cluster_list['clusters'][0]['name'])
+
+        response = self.get_json('/clusters/%s' % cluster_list['clusters'][0]['uuid'],
+                                 expect_errors=False)
+        self.assertEqual(constants.SB_TIER_DEFAULT_NAMES[
+            constants.SB_TIER_TYPE_CEPH],
+                         response['tiers'][0]['name'])
+        self.assertEqual('gold', response['tiers'][1]['name'])
+
+        # validate the tier view
+        tier_list = self.get_json('/storage_tiers', expect_errors=False)
+        self.assertEqual(constants.SB_TIER_DEFAULT_NAMES[
+            constants.SB_TIER_TYPE_CEPH],
+                         tier_list['storage_tiers'][0]['name'])
+        self.assertEqual('gold', tier_list['storage_tiers'][1]['name'])
+
+        response = self.get_json('/storage_tiers/%s' % tier_list['storage_tiers'][0]['uuid'],
+                                 expect_errors=False)
+        self.assertEqual(constants.SB_TIER_DEFAULT_NAMES[
+            constants.SB_TIER_TYPE_CEPH],
+                         response['name'])
+
+        response = self.get_json('/storage_tiers/%s' % tier_list['storage_tiers'][1]['uuid'],
+                                 expect_errors=False)
+        self.assertEqual('gold', response['name'])
+
+        exclusive_ceph_backend_list = [constants.SB_TYPE_CEPH, constants.SB_TYPE_CEPH_ROOK]
+
+        # Add the ceph backend for the new tier without specifying a backend name
+        values = {
+            'backend': constants.SB_TYPE_CEPH,
+            'capabilities': {'test_bparam3': 'foo'},
+            'confirmed': True
+        }
+        response = self.post_json('/storage_ceph', values, expect_errors=True)
+        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+        self.assertEqual('application/json', response.content_type)
+        self.assertTrue(response.json['error_message'])
+        self.assertIn('Only one backend between %s is supported.' %
+                        ', '.join(exclusive_ceph_backend_list),
+                        response.json['error_message'])
+
+    def test_rook_tier_delete(self):
+        worker_0 = self._create_worker_ihost("worker-0")
+
+        # Add the default ceph-rook backend
+        values = {
+            'backend': constants.SB_TYPE_CEPH_ROOK,
+            'capabilities': {constants.CEPH_ROOK_BACKEND_DEPLOYMENT_CAP:
+                             constants.CEPH_ROOK_DEPLOYMENT_OPEN},
+            'confirmed': True
+        }
+        response_backend = self.post_json('/storage_ceph_rook', values, expect_errors=False)
+        self.assertEqual(http_client.OK, response_backend.status_int)
+        self.assertEqual(constants.SB_TYPE_CEPH_ROOK,  # Expected
+                         self.get_json('/storage_ceph_rook/%s/' %
+                                       response_backend.json['uuid'])['backend'])  # Result
+
+        # Create a logical volume
+        dbutils.create_test_lvg(lvm_vg_name='cgts-vg',
+                                forihostid=worker_0.id)
+
+        # Make sure default storage tier is present
+        tier_list = self.get_json('/storage_tiers', expect_errors=False)
+        self.assertEqual(constants.SB_TIER_DEFAULT_NAMES[
+            constants.SB_TIER_TYPE_CEPH],
+                         tier_list['storage_tiers'][0]['name'])
+        self.assertEqual(constants.SB_TIER_STATUS_DEFINED,
+                         tier_list['storage_tiers'][0]['status'])
+
+        # get cluster
+        cluster_list = self.get_json('/clusters', expect_errors=False)
+        self.assertEqual(constants.CLUSTER_CEPH_ROOK_DEFAULT_NAME,
+                         cluster_list['clusters'][0]['name'])
+        cluster_uuid = cluster_list['clusters'][0]['uuid']
+
+        values = {'cluster_uuid': cluster_uuid,
+                  'name': 'platinum',
+                  'status': constants.SB_TIER_STATUS_IN_USE}
+        response = self.post_json('/storage_tiers', values, expect_errors=True)
+        self.assertEqual(http_client.OK, response.status_int)
+
+        values = {'cluster_uuid': cluster_uuid,
+                  'name': 'gold'}
+        response = self.post_json('/storage_tiers', values, expect_errors=True)
+        self.assertEqual(http_client.OK, response.status_int)
+
+        tier_list = self.get_json('/storage_tiers')
+        uuid_map = {}
+        for tier in tier_list['storage_tiers']:
+            uuid_map.update({tier['name']: tier['uuid']})
+
+        response = self.delete('/storage_tiers/%s' % uuid_map[
+            constants.SB_TIER_DEFAULT_NAMES[constants.SB_TIER_TYPE_CEPH]],
+                               expect_errors=True)
+        self.assertEqual(http_client.NO_CONTENT, response.status_int)
+
+        tier_list = self.get_json('/storage_tiers')
+        tiers_name = [t['name'] for t in tier_list['storage_tiers']]
+        self.assertEqual(len(tiers_name), 2)
+        self.assertIn("platinum", tiers_name)
+        self.assertIn("gold", tiers_name)
+
+        response = self.delete('/storage_tiers/%s' % uuid_map['platinum'], expect_errors=True)
+        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+        self.assertEqual('application/json', response.content_type)
+        self.assertTrue(response.json['error_message'])
+        self.assertIn("Storage Tier 'platinum' cannot be deleted. It is in-use",
+                      response.json['error_message'])
+
+        response = self.delete('/storage_tiers/%s' % uuid_map['gold'], expect_errors=True)
+        self.assertEqual(http_client.NO_CONTENT, response.status_int)
+
+        tier_list = self.get_json('/storage_tiers')
+        tiers_name = [t['name'] for t in tier_list['storage_tiers']]
+        self.assertEqual(len(tiers_name), 1)
+        self.assertIn("platinum", tiers_name)
+
+        response = self.delete('/storage_tiers/%s' % uuid_map['platinum'], expect_errors=True)
+        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+        self.assertEqual('application/json', response.content_type)
+        self.assertTrue(response.json['error_message'])
+        self.assertIn("Storage Tier 'platinum' cannot be deleted. At least one Storage Tier is required.",
+                      response.json['error_message'])
+
+        tier_list = self.get_json('/storage_tiers')
+        tier_names = [t['name'] for t in tier_list['storage_tiers']]
+        self.assertEqual(len(tier_names), 1)
+        self.assertIn("platinum", tiers_name)

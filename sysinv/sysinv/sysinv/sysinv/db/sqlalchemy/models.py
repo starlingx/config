@@ -1005,8 +1005,8 @@ class StorageTier(Base):
     capabilities = Column(JSONEncodedDict)
 
     forbackendid = Column(Integer,
-                          ForeignKey('storage_ceph.id', ondelete='CASCADE'))
-    # 'stor_backend' one-to-one backref created from StorageCeph 'tier'
+                          ForeignKey('storage_backend.id', ondelete='CASCADE'))
+    # 'stor_backend' one-to-one backref created from StorageBackend 'tier'
 
     forclusterid = Column(Integer,
                           ForeignKey('clusters.id', ondelete='CASCADE'))
@@ -1034,6 +1034,11 @@ class StorageBackend(Base):
     forisystemid = Column(Integer,
                           ForeignKey('i_system.id', ondelete='CASCADE'))
 
+    tier = relationship("StorageTier", lazy="selectin", uselist=False,
+                         backref=backref("stor_backend", lazy="selectin"),
+                         foreign_keys="[StorageTier.forbackendid]",
+                         cascade="all")
+
     system = relationship("isystem", lazy="selectin", join_depth=1)
 
     __mapper_args__ = {
@@ -1057,11 +1062,6 @@ class StorageCeph(StorageBackend):
     network = Column(String(255), default=constants.NETWORK_TYPE_MGMT)
     tier_id = Column(Integer,
                      ForeignKey('storage_tiers.id'))
-
-    tier = relationship("StorageTier", lazy="selectin", uselist=False,
-                         backref=backref("stor_backend", lazy="selectin"),
-                         foreign_keys="[StorageTier.forbackendid]",
-                         cascade="all")
 
     __mapper_args__ = {
         'polymorphic_identity': 'ceph',

@@ -1609,7 +1609,7 @@ def create_test_storage_tier(**kw):
     # Let DB generate ID if it isn't specified explicitly
     if 'id' not in kw:
         del storage_tier['id']
-        dbapi = db_api.get_instance()
+    dbapi = db_api.get_instance()
     return dbapi.storage_tier_create(storage_tier)
 
 
