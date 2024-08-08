@@ -26,6 +26,7 @@ override_dh_install:
 	install -p -D -m 644 debian/tmpfiles.conf $(CURDIR)/debian/tmp/usr/lib/tmpfiles.d/sysinv.conf
 	install -p -D -m 700 $(CURDIR)/scripts/kube-cert-rotation.sh $(CURDIR)/debian/tmp/usr/bin/kube-cert-rotation.sh
 	install -p -D -m 700 $(CURDIR)/scripts/ipsec-cert-renew.sh $(CURDIR)/debian/tmp/usr/bin/ipsec-cert-renew.sh
+	install -p -D -m 700 $(CURDIR)/scripts/ipsec-swap-certificates.py $(CURDIR)/debian/tmp/usr/bin/ipsec-swap-certificates
 	dh_install
 
 override_dh_python3:
