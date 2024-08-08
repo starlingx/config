@@ -13087,7 +13087,7 @@ class ConductorManager(service.PeriodicService):
                         if constants.DRBD_CEPH in (drbd_fs_updated - drbd_fs_resized):
                             if (not standby_host or (standby_host and
                                  constants.DRBD_CEPH in self._drbd_fs_sync())):
-                                # patch_gib /var/lib/ceph/mon-a
+                                # patch_gib /var/lib/ceph/mon-float
                                 drbd_dev = "drbd9"
                                 drbd_lv = "ceph-float-lv"
                                 if self._resize2fs_drbd_dev(context, retry_attempts,
