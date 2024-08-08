@@ -296,9 +296,9 @@ class StoragePuppet(base.BasePuppet):
         filesystem_enabled = False
 
         # If this is AIO-DX and has ceph storage backend configured
-        # then force enabling the ceph filesystem using the size from
-        # ceph_mon
-        if (is_aio_dx and ceph_backend):
+        # then force enabling the ceph filesystem on controllers using
+        # the size from ceph_mon
+        if (is_aio_dx and ceph_backend and host.personality == constants.CONTROLLER):
             ceph_mon = self.dbapi.ceph_mon_get_list(limit=1)
             if ceph_mon:
                 filesystem_size = ceph_mon[0].ceph_mon_gib
