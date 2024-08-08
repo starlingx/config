@@ -21,6 +21,8 @@ OAM_COMMON = {
             constants.OPENSTACK_BARBICAN_PARAMS_API_PORT,
             constants.OPENSTACK_KEYSTONE_PARAMS_API_PORT,
             constants.PLATFORM_FM_PARAMS_API_PORT,
+            constants.PLATFORM_FIREWALL_HTTP_PORT,
+            constants.PLATFORM_CEPH_PARAMS_RGW_PORT,
         },
     "udp":
         {
