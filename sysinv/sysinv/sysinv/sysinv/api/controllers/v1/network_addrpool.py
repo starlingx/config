@@ -248,6 +248,15 @@ class NetworkAddresspoolController(rest.RestController):
             pecan.request.rpcapi.update_kubernetes_dual_stack_config(pecan.request.context,
                                                                      addrpool.family, disable)
 
+    def _address_pools_get_by_network_type(self, network_type):
+        network_pools = list()
+        network = pecan.request.dbapi.networks_get_by_type(network_type)
+        if network:
+            network_pools = pecan.request.dbapi.address_pools_get_by_network(
+                network[0].id
+            )
+        return network_pools
+
     def _create_network_addrpool(self, network_addrpool):
         # Perform syntactic validation
         network_addrpool.validate_syntax()
@@ -295,6 +304,18 @@ class NetworkAddresspoolController(rest.RestController):
         net_pool_list = pecan.request.dbapi.network_addrpool_get_by_pool_id(pool.id)
         if len(net_pool_list):
             msg = ("Address pool already in use by another network")
+            raise wsme.exc.ClientSideError(msg)
+
+        # Make sure cluster-pod address-pool is not added before OAM
+        # address-pool of same IP family.
+        if network.type == constants.NETWORK_TYPE_CLUSTER_POD \
+                and pool.family not in [
+                oam_pool.family for oam_pool in
+                self._address_pools_get_by_network_type(
+                    constants.NETWORK_TYPE_OAM
+                )]:
+            msg = ("Cluster-pod address-pool can not be added before OAM "
+                   "address-pool of same IP family")
             raise wsme.exc.ClientSideError(msg)
 
         result = pecan.request.dbapi.network_addrpool_create({'address_pool_id': pool.id,
@@ -355,6 +376,18 @@ class NetworkAddresspoolController(rest.RestController):
             # this operation is blocked for now
             msg = (f"Cannot remove primary pool '{pool.name}' from '{network.name}'"
                    f" with type {network['type']}")
+            raise wsme.exc.ClientSideError(msg)
+
+        # Make sure OAM pool is not deleted before deleting cluster-pod
+        # address-pool of same IP family.
+        if network.type == constants.NETWORK_TYPE_OAM and pool.family in [
+            cluster_pod_pool.family for cluster_pod_pool in
+            self._address_pools_get_by_network_type(
+                constants.NETWORK_TYPE_CLUSTER_POD
+            )
+        ]:
+            msg = ("oam address-pool can not be deleted before cluster-pod "
+                   "address-pool of same IP family")
             raise wsme.exc.ClientSideError(msg)
 
         hosts = None
