@@ -11,6 +11,7 @@ from sysinv.common.usm_service import UsmUpgrade
 
 
 class TestUSMService(TestCase):
+    @mock.patch('sysinv.common.usm_service.is_usm_authapi_ready', lambda: True)
     @mock.patch('sysinv.common.usm_service.get_software_upgrade')
     def test_get_platform_upgrade_with_usm_service(self, mock_get_software_upgrade):
         usm_deploy = {
@@ -30,6 +31,7 @@ class TestUSMService(TestCase):
 
         self.assertEqual(result, expected_response)
 
+    @mock.patch('sysinv.common.usm_service.is_usm_authapi_ready', lambda: True)
     def test_get_platform_upgrade_without_usm_service(self):
         mock_dbapi_response = {
             "from_release": "1.0",

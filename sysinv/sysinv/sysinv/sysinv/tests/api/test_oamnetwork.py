@@ -339,6 +339,7 @@ class TestPatchMixin(OAMNetworkTestCase):
         self._test_patch_fail(patch_obj, http_client.BAD_REQUEST,
                               error_message)
 
+    @mock.patch('sysinv.common.usm_service.is_usm_authapi_ready', lambda: True)
     def test_patch_oam_during_platform_upgrade(self):
         oam_floating_ip = self.oam_subnet[2]
         oam_c0_ip = self.oam_subnet[3]

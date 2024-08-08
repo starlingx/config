@@ -396,6 +396,7 @@ class TestPostKubeUpgrade(TestKubeUpgrade,
             self.host.id)
         self.assertEqual('v1.43.1', kube_host_upgrade.target_version)
 
+    @mock.patch('sysinv.common.usm_service.is_usm_authapi_ready', lambda: True)
     def test_create_platform_upgrade_exists(self):
         # Test creation of upgrade when platform upgrade in progress
         dbutils.create_test_load(software_version=dbutils.SW_VERSION_NEW,
@@ -414,6 +415,7 @@ class TestPostKubeUpgrade(TestKubeUpgrade,
         self.assertIn("upgrade cannot be done while a platform upgrade",
                       result.json['error_message'])
 
+    @mock.patch('sysinv.common.usm_service.is_usm_authapi_ready', lambda: True)
     def test_create_upgrade_exists(self):
         # Test creation of upgrade when upgrade already exists
         dbutils.create_test_kube_upgrade(
@@ -432,6 +434,7 @@ class TestPostKubeUpgrade(TestKubeUpgrade,
         self.assertIn("upgrade is already in progress",
                       result.json['error_message'])
 
+    @mock.patch('sysinv.common.usm_service.is_usm_authapi_ready', lambda: True)
     def test_create_target_version_does_not_exist(self):
         # Test creation of upgrade when target version doesn't exist
         create_dict = dbutils.post_get_test_kube_upgrade(to_version='v1.45.45')
@@ -445,6 +448,7 @@ class TestPostKubeUpgrade(TestKubeUpgrade,
         self.assertIn("version v1.45.45 is not available",
                       result.json['error_message'])
 
+    @mock.patch('sysinv.common.usm_service.is_usm_authapi_ready', lambda: True)
     def test_create_upgrade_path_not_supported(self):
         # Test creation of upgrade when upgrade path is not supported
         create_dict = dbutils.post_get_test_kube_upgrade(to_version='v1.43.3')
@@ -458,6 +462,7 @@ class TestPostKubeUpgrade(TestKubeUpgrade,
         self.assertIn("version v1.43.1 cannot upgrade to",
                       result.json['error_message'])
 
+    @mock.patch('sysinv.common.usm_service.is_usm_authapi_ready', lambda: True)
     def test_create_current_version_not_active(self):
         # Test creation of upgrade when current version is not active
         self.kube_get_version_states_result = {'v1.42.1': 'available',

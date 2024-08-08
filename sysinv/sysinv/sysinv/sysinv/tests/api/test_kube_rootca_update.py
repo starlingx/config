@@ -296,6 +296,7 @@ class TestPostKubeRootCAUpdate(TestKubeRootCAUpdate,
                 "is in progress",
                       result.json['error_message'])
 
+    @mock.patch('sysinv.common.usm_service.is_usm_authapi_ready', lambda: True)
     def test_create_platform_upgrade_exists(self):
         # Test creation of rootca update when platform upgrade in progress
         dbutils.create_test_load(software_version=dbutils.SW_VERSION_NEW,

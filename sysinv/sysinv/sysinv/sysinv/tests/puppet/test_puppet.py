@@ -138,6 +138,7 @@ class PlatformUpgradeOpenstackAIODuplexHostTestCase(PuppetOperatorTestSuiteMixin
                                                     dbbase.BaseCephStorageBackendMixin,
                                                     dbbase.PlatformUpgradeTestCase):
 
+    @mock.patch('sysinv.common.usm_service.is_usm_authapi_ready', lambda: True)
     def test_update_system_config(self):
         mock_open = mock.mock_open(read_data=self.fake_hieradata)
         with mock.patch('six.moves.builtins.open', mock_open):
@@ -152,6 +153,7 @@ class PlatformUpgradeOpenstackAIODuplexHostTestCase(PuppetOperatorTestSuiteMixin
                 any_order=True
             )
 
+    @mock.patch('sysinv.common.usm_service.is_usm_authapi_ready', lambda: True)
     def test_update_secure_system_config(self):
         mock_open = mock.mock_open(read_data=self.fake_hieradata)
         with mock.patch('six.moves.builtins.open', mock_open):
