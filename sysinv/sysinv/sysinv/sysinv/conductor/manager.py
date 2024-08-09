@@ -19852,7 +19852,7 @@ class ConductorManager(service.PeriodicService):
             LOG.debug("A kubernetes upgrade is not in progress")
 
     @periodic_task.periodic_task(spacing=CONF.conductor_periodic_task_intervals.prune_runtime_config)
-    def _audit_prune_runtime_config(self):
+    def _audit_prune_runtime_config(self, context):
         self._prune_runtime_config_table()
 
     def _prune_stale_backup_alarms(self, context):
