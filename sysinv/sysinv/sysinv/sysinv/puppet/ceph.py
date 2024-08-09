@@ -274,10 +274,9 @@ class CephPuppet(openstack.OpenstackBasePuppet):
         mon_lv_size = None
         if ceph_mon:
             mon_lv_size = ceph_mon.ceph_mon_gib
-
-        if mon_lv_size is None:
-            mon_lv_size = constants.SB_CEPH_MON_GIB
-        config['platform::ceph::params::mon_lv_size'] = mon_lv_size
+            if mon_lv_size is None:
+                mon_lv_size = constants.SB_CEPH_MON_GIB
+            config['platform::ceph::params::mon_lv_size'] = mon_lv_size
 
         return config
 
