@@ -39,7 +39,6 @@ ADDITIONAL_SYSTEMCONTROLLER_USERS = [
     'dcorch',
     'dcmanager',
     'dcdbsync',
-    'dcagent'
 ]
 
 ADDITIONAL_SUBCLOUD_USERS = [
@@ -108,11 +107,6 @@ ADDITIONAL_SYSTEMCONTROLLER_SERVICES = [
         'description': 'DCOrch DBsync service',
         'type': 'dcorch-dbsync'
     },
-    {
-        'name': 'dcagent',
-        'description': 'DCAgent service',
-        'type': 'dcagent'
-    },
 ]
 
 ADDITIONAL_SUBCLOUD_SERVICES = [
@@ -159,6 +153,11 @@ SERVICES_WITH_ADITIONAL_SYSTEMCONTROLLER_ENDPOINTS = [
 # DC services where endpoints will be created in RegionOne
 SERVICES_WITH_ADITIONAL_DC_ENDPOINTS = [
     'dcdbsync'
+]
+
+# DC services where endpoints will be created only in the subcloud
+SERVICES_WITH_ADITIONAL_SUBCLOUD_ENDPOINTS = [
+    'dcagent'
 ]
 
 SERVICES_WITHOUT_PUBLIC_ENDPOINT = [
@@ -488,6 +487,10 @@ def run_endpoint_config(puppet_operator: puppet.PuppetOperator,
     if is_systemcontroller or is_subcloud:
         services_with_endpoints.extend(
             SERVICES_WITH_ADITIONAL_DC_ENDPOINTS
+        )
+    if is_subcloud:
+        services_with_endpoints.extend(
+            SERVICES_WITH_ADITIONAL_SUBCLOUD_ENDPOINTS
         )
 
     users_to_create = []
