@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2017 Wind River Systems, Inc.
+# Copyright (c) 2013-2017,2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -25,8 +25,8 @@ class ControllerFS(base.SysinvObject):
             'size': utils.int_or_none,
             'logical_volume': utils.str_or_none,
             'replicated': utils.bool_or_none,
-
             'state': utils.str_or_none,
+            'capabilities': utils.dict_or_none,
 
             'forisystemid': utils.int_or_none,
             'isystem_uuid': utils.str_or_none,

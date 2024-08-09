@@ -1140,6 +1140,7 @@ class ControllerFs(Base):
     logical_volume = Column(String(64))
     replicated = Column(Boolean, default=False)
     state = Column(String(255))
+    capabilities = Column(JSONEncodedDict)
 
     forisystemid = Column(Integer,
                           ForeignKey('i_system.id', ondelete='CASCADE'))
@@ -2155,6 +2156,8 @@ class HostFs(Base):
     size = Column(Integer)
     logical_volume = Column(String(64))
     state = Column(String(255))
+    capabilities = Column(JSONEncodedDict)
+
     forihostid = Column(Integer, ForeignKey('i_host.id', ondelete='CASCADE'))
 
     host = relationship("ihost", lazy="joined", join_depth=1)

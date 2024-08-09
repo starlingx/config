@@ -24,6 +24,7 @@ class HostFS(base.SysinvObject):
         'size': utils.int_or_none,
         'logical_volume': utils.str_or_none,
         'state': utils.str_or_none,
+        'capabilities': utils.dict_or_none,
 
         'forihostid': int,
         'ihost_uuid': utils.str_or_none,

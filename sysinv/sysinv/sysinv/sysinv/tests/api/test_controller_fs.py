@@ -9,7 +9,10 @@ Tests for the API / controller-fs / methods.
 """
 
 import mock
+
+from oslo_serialization import jsonutils
 from six.moves import http_client
+
 from sysinv.tests.api import base
 from sysinv.tests.db import base as dbbase
 from sysinv.tests.db import utils as dbutils
@@ -88,12 +91,15 @@ class ApiControllerFSTestCaseMixin(base.FunctionalTest,
                                                 sort_dir)
 
     def _create_db_object(self, controller_fs_name, controller_fs_size,
-                          controller_lv, obj_id=None):
+                          controller_lv, capabilities=None, obj_id=None):
+        if capabilities is None:
+            capabilities = {"functions": []}
         return dbutils.create_test_controller_fs(id=obj_id,
                                                  uuid=None,
                                                  name=controller_fs_name,
                                                  forisystemid=self.system.id,
                                                  state=str({'status': constants.CONTROLLER_FS_AVAILABLE}),
+                                                 capabilities=capabilities,
                                                  size=controller_fs_size,
                                                  logical_volume=controller_lv,
                                                  replicated=True,
@@ -548,6 +554,120 @@ class ApiControllerFSPutTestSuiteMixin(ApiControllerFSTestCaseMixin):
         # Verify a NO CONTENT response is given
         self.assertEqual(response.status_code, http_client.NO_CONTENT)
 
+    def test_put_success_remove_monitor_function(self):
+        # Rook Ceph must be as storage backend
+        backend = dbutils.get_test_ceph_rook_storage_backend()
+        self.dbapi.storage_ceph_rook_create(backend)
+
+        # Must be AIO-DX
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_DUPLEX
+        system_dict['system_type'] = constants.TIS_AIO_BUILD
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+
+        self._create_controller_1(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_LOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Create a logical volume
+        dbutils.create_test_lvg(lvm_vg_name='cgts-vg',
+                                forihostid=self.host.id)
+
+        controller_fs = self.post_json('/controller_fs',
+                                       {'name': 'ceph-float', 'size': 20},
+                                       headers=self.API_HEADERS,
+                                       expect_errors=False)
+
+        capabilities = {"functions": []}
+        self.put_json(self.get_update_url(self.system.uuid),
+                      [[{
+                          "path": "/name",
+                          "value": "ceph-float",
+                          "op": "replace"},
+                          {
+                          "path": "/capabilities",
+                          "value": jsonutils.dumps(capabilities),
+                          "op": "replace"}]],
+                      headers=self.API_HEADERS,
+                      expect_errors=False)
+
+        response = self.get_json(self.get_show_url(controller_fs.json['uuid']),
+                                 headers=self.API_HEADERS,
+                                 expect_errors=False)
+
+        self.assertEqual(response['capabilities'], capabilities)
+
+    def test_put_success_add_monitor_function(self):
+        # Rook Ceph must be as storage backend
+        backend = dbutils.get_test_ceph_rook_storage_backend()
+        self.dbapi.storage_ceph_rook_create(backend)
+
+        # Must be AIO-DX
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_DUPLEX
+        system_dict['system_type'] = constants.TIS_AIO_BUILD
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+
+        # Create a logical volume
+        dbutils.create_test_lvg(lvm_vg_name='cgts-vg',
+                                forihostid=self.host.id)
+
+        cap = {"functions": []}
+        controller_fs = self._create_db_object('ceph-float',
+                                               20,
+                                               'ceph-float-lv',
+                                               cap)
+
+        cap_updated = {"functions": ["monitor"]}
+        self.put_json(self.get_update_url(self.system.uuid),
+                      [[{
+                          "path": "/name",
+                          "value": "ceph-float",
+                          "op": "replace"},
+                          {
+                          "path": "/capabilities",
+                          "value": jsonutils.dumps(cap_updated),
+                          "op": "replace"}]],
+                      headers=self.API_HEADERS,
+                      expect_errors=False)
+
+        response = self.get_json(self.get_show_url(controller_fs.uuid),
+                                 headers=self.API_HEADERS,
+                                 expect_errors=False)
+
+        self.assertEqual(response['capabilities'], cap_updated)
+
+    def test_put_fail_function_for_not_ceph_float_fs(self):
+        # Rook Ceph must be as storage backend
+        backend = dbutils.get_test_ceph_rook_storage_backend()
+        self.dbapi.storage_ceph_rook_create(backend)
+
+        # Must be AIO-DX
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_DUPLEX
+        system_dict['system_type'] = constants.TIS_AIO_BUILD
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+
+        cap_updated = {"functions": ["monitor"]}
+        response = self.put_json(self.get_update_url(self.system.uuid),
+                                 [[{
+                                     "path": "/name",
+                                     "value": "platform",
+                                     "op": "replace"},
+                                   {
+                                     "path": "/capabilities",
+                                     "value": jsonutils.dumps(cap_updated),
+                                     "op": "replace"}]],
+                                 headers=self.API_HEADERS,
+                                 expect_errors=True)
+
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+        self.assertIn("ControllerFs update failed: update functions are only",
+                      response.json['error_message'])
+
 
 class ApiControllerFSDetailTestSuiteMixin(ApiControllerFSTestCaseMixin):
     """ Controller FileSystem detail operations
@@ -740,6 +860,14 @@ class ApiControllerFSPostTestSuiteMixin(ApiControllerFSTestCaseMixin):
 
         self.assertEqual(response.content_type, 'application/json')
         self.assertEqual(response.status_code, http_client.OK)
+
+        url = self.get_show_url(response.json['uuid'])
+        response = self.get_json(url,
+                                 headers=self.API_HEADERS,
+                                 expect_errors=False)
+
+        capabilities = {"functions": ["monitor"]}
+        self.assertEqual(response['capabilities'], capabilities)
 
     def test_post_not_allowed(self):
 

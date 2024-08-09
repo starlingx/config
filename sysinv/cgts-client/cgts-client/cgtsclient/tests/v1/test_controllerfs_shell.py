@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2020 Wind River Systems, Inc.
+# Copyright (c) 2020,2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -18,6 +18,7 @@ FAKE_CONTROLLER_FS = {
     'logical_volume': 'fake-lv',
     'replicated': True,
     'state': 'available',
+    'capabilities': {"functions": []},
     'created_at': None,
     'updated_at': None
 }
@@ -92,6 +93,7 @@ class ControllerFsTest(test_shell.ShellTest):
         self.assertIn(str(FAKE_CONTROLLER_FS['logical_volume']), results)
         self.assertIn(str(FAKE_CONTROLLER_FS['replicated']), results)
         self.assertIn(str(FAKE_CONTROLLER_FS['state']), results)
+        self.assertIn(str(FAKE_CONTROLLER_FS['capabilities']), results)
 
     def test_controller_fs_show(self):
         self.make_env()
@@ -103,6 +105,7 @@ class ControllerFsTest(test_shell.ShellTest):
         self.assertIn(str(FAKE_CONTROLLER_FS['logical_volume']), result)
         self.assertIn(str(FAKE_CONTROLLER_FS['replicated']), result)
         self.assertIn(str(FAKE_CONTROLLER_FS['state']), result)
+        self.assertIn(str(FAKE_CONTROLLER_FS['capabilities']), result)
         self.assertIn(str(FAKE_CONTROLLER_FS['created_at']), result)
         self.assertIn(str(FAKE_CONTROLLER_FS['updated_at']), result)
 

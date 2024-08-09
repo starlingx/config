@@ -28,6 +28,8 @@ from wsme import types as wtypes
 import wsmeext.pecan as wsme_pecan
 
 from oslo_log import log
+from oslo_serialization import jsonutils
+
 from sysinv._i18n import _
 from sysinv.api.controllers.v1 import base
 from sysinv.api.controllers.v1 import collection
@@ -71,6 +73,9 @@ class ControllerFs(base.APIBase):
     state = wtypes.text
     "The state of controller_fs indicates a drbd file system resize operation"
 
+    capabilities = {wtypes.text: types.apidict}
+    "ControllerFS capabilities"
+
     forisystemid = int
     "The isystemid that this controller_fs belongs to"
 
@@ -104,6 +109,7 @@ class ControllerFs(base.APIBase):
                                                'uuid',
                                                'name',
                                                'size',
+                                               'capabilities',
                                                'logical_volume',
                                                'replicated',
                                                'state',
@@ -528,14 +534,22 @@ def _create(controller_fs):
             controller_fs['size'] > cgtsvg_max_free_GiB):
         msg = _("ControllerFs creation failed: size for fs '{}' should be in the "
                 "the range ({}, {}).".format(constants.FILESYSTEM_NAME_CEPH_DRBD,
-                                            constants.SB_CEPH_MON_GIB_MIN,
-                                            cgtsvg_max_free_GiB))
+                                             constants.SB_CEPH_MON_GIB_MIN,
+                                             cgtsvg_max_free_GiB))
         raise wsme.exc.ClientSideError(msg)
+
+    capabilities = {"functions": []}
+
+    rook_ceph = pecan.request.dbapi.storage_backend_get_list_by_type(
+                    backend_type=constants.SB_TYPE_CEPH_ROOK)
+    if rook_ceph and controller_fs['name'] == constants.FILESYSTEM_NAME_CEPH_DRBD:
+        capabilities['functions'] = [constants.FILESYSTEM_CEPH_FUNCTION_MONITOR]
 
     data = {
         'name': controller_fs['name'],
         'state': str({'status': constants.CONTROLLER_FS_CREATING_IN_PROGRESS}),
         'size': controller_fs['size'],
+        'capabilities': capabilities,
         'logical_volume': constants.FILESYSTEM_LV_DICT[controller_fs['name']],
         'replicated': True,
     }
@@ -634,6 +648,65 @@ def _delete(controller_fs):
         LOG.error("%s with exception %s" % (msg, e))
         pecan.request.dbapi.controller_fs_update(controller_fs['uuid'], {
             'state': str({'status': constants.CONTROLLER_FS_AVAILABLE})})
+        raise wsme.exc.ClientSideError(msg)
+
+
+def _check_capabilities(fs_name, functions):
+    """Checking Capabilties."""
+
+    if fs_name != constants.FILESYSTEM_NAME_CEPH_DRBD:
+        msg = _("ControllerFs update failed: update functions are only "
+                "supported for %s filesystem with %s storage backend." % (
+                    constants.FILESYSTEM_NAME_CEPH_DRBD,
+                    constants.SB_TYPE_CEPH_ROOK))
+        raise wsme.exc.ClientSideError(msg)
+
+    rook_ceph = pecan.request.dbapi.storage_backend_get_list_by_type(
+                    backend_type=constants.SB_TYPE_CEPH_ROOK)
+    if not rook_ceph:
+        msg = _("{} must be configured as the storage backend to add/remove "
+                "the monitor function.") % constants.SB_TYPE_CEPH_ROOK
+        raise wsme.exc.ClientSideError(msg)
+
+    for function in functions:
+        if function not in constants.HOSTFS_CEPH_FUNCTIONS_SUPPORTED:
+            msg = _("ControllerFs update failed: only the following functions "
+                    "are supported: %s. Got '%s'." % (
+                        str(constants.HOSTFS_CEPH_FUNCTIONS_SUPPORTED), function))
+            raise wsme.exc.ClientSideError(msg)
+
+
+def _check_fs_resizing(fs_name, fs_size, valid_fs_list, controllers_lvg_updated):
+    """Checking Resizes."""
+
+    if fs_name not in valid_fs_list.keys():
+        msg = _("ControllerFs update failed: invalid filesystem "
+                "'%s' " % fs_name)
+        raise wsme.exc.ClientSideError(msg)
+    elif not cutils.is_int_like(fs_size):
+        msg = _("ControllerFs update failed: filesystem '%s' "
+                "size must be an integer " % fs_name)
+        raise wsme.exc.ClientSideError(msg)
+    elif int(fs_size) <= int(valid_fs_list[fs_name]):
+        msg = _("ControllerFs update failed: size for filesystem '%s' "
+                "should be bigger than %s " % (fs_name, valid_fs_list[fs_name]))
+        raise wsme.exc.ClientSideError(msg)
+    elif not controllers_lvg_updated:
+        msg = _("ControllerFs update failed: controllers have pending LVG "
+                "updates, please retry again later.")
+        raise wsme.exc.ClientSideError(msg)
+
+    if fs_name in constants.SUPPORTED_REPLICATED_FILEYSTEM_LIST:
+        if utils.is_drbd_fs_resizing():
+            raise wsme.exc.ClientSideError(
+                _("A drbd sync operation is currently in progress. "
+                "Retry again later.")
+            )
+
+    if (fs_name == constants.FILESYSTEM_NAME_CEPH_DRBD and
+            cutils.is_floating_monitor_assigned(pecan.request.dbapi)):
+        msg = _("ControllerFs update failed: %s has the monitor function assigned, "
+                "please remove it before resizing." % constants.FILESYSTEM_NAME_CEPH_DRBD)
         raise wsme.exc.ClientSideError(msg)
 
 
@@ -760,6 +833,10 @@ class ControllerFsController(rest.RestController):
         reboot_required = False
         modified_fs = []
         update_fs_list = []
+        fs_name = None
+        fs_size = None
+        update_capabilities = False
+        update_size = False
         for p_list in patch:
             p_obj_list = jsonpatch.JsonPatch(p_list)
             for p_obj in p_obj_list:
@@ -771,32 +848,20 @@ class ControllerFsController(rest.RestController):
                         raise wsme.exc.ClientSideError(msg)
                     else:
                         update_fs_list.append(fs_name)
+                elif p_obj['path'] == '/capabilities':
+                    p_obj['value'] = jsonutils.loads(p_obj['value'])
+                    _check_capabilities(fs_name,
+                                        p_obj['value']['functions'])
+                    update_capabilities = True
                 elif p_obj['path'] == '/size':
-                    size = p_obj['value']
+                    fs_size = p_obj['value']
+                    update_size = True
 
-            if fs_name not in valid_fs_list.keys():
-                msg = _("ControllerFs update failed: invalid filesystem "
-                        "'%s' " % fs_name)
-                raise wsme.exc.ClientSideError(msg)
-            elif not cutils.is_int_like(size):
-                msg = _("ControllerFs update failed: filesystem '%s' "
-                        "size must be an integer " % fs_name)
-                raise wsme.exc.ClientSideError(msg)
-            elif int(size) <= int(valid_fs_list[fs_name]):
-                msg = _("ControllerFs update failed: size for filesystem '%s' "
-                        "should be bigger than %s " % (fs_name, valid_fs_list[fs_name]))
-                raise wsme.exc.ClientSideError(msg)
-            elif not controllers_lvg_updated:
-                msg = _("ControllerFs update failed: controllers have pending LVG "
-                        "updates, please retry again later.")
-                raise wsme.exc.ClientSideError(msg)
-
-            if fs_name in constants.SUPPORTED_REPLICATED_FILEYSTEM_LIST:
-                if utils.is_drbd_fs_resizing():
-                    raise wsme.exc.ClientSideError(
-                        _("A drbd sync operation is currently in progress. "
-                          "Retry again later.")
-                    )
+            if update_size:
+                _check_fs_resizing(fs_name,
+                                   fs_size,
+                                   valid_fs_list,
+                                   controllers_lvg_updated)
 
             modified_fs += [fs_name]
 
@@ -819,35 +884,47 @@ class ControllerFsController(rest.RestController):
             if not replaced:
                 controller_fs_list_new += [fs]
 
-        cgtsvg_growth_gib = _check_controller_multi_fs_data(
-                               pecan.request.context,
-                               controller_fs_list_new)
+        if update_size:
+            cgtsvg_growth_gib = _check_controller_multi_fs_data(
+                                    pecan.request.context,
+                                    controller_fs_list_new)
+            if _check_controller_state():
+                _check_controller_multi_fs(controller_fs_list_new,
+                                           cgtsvg_growth_gib=cgtsvg_growth_gib)
+                for fs in controller_fs_list_new:
+                    if fs.name in modified_fs:
+                        value = {
+                            'size': fs.size,
+                            'capabilities': fs.capabilities
+                        }
+                        if fs.replicated:
+                            state = {'status': constants.CONTROLLER_FS_RESIZING_IN_PROGRESS}
+                            value.update({'state': str(state)})
+                        if update_capabilities:
+                            state = {'status': constants.CONTROLLER_FS_RECONFIGURE_WITH_APP}
+                            value.update({'state': str(state)})
+                        pecan.request.dbapi.controller_fs_update(fs.uuid, value)
+            try:
+                # perform rpc to conductor to perform config apply
+                pecan.request.rpcapi.update_storage_config(
+                        pecan.request.context,
+                        update_storage=False,
+                        reinstall_required=reinstall_required,
+                        reboot_required=reboot_required,
+                        filesystem_list=modified_fs,
+                        sm_reconfig=False)
+            except Exception as e:
+                msg = _("Failed to update filesystem size ")
+                LOG.error("%s with patch %s with exception %s" % (msg, patch, e))
+                raise wsme.exc.ClientSideError(msg)
 
-        if _check_controller_state():
-            _check_controller_multi_fs(controller_fs_list_new,
-                                       cgtsvg_growth_gib=cgtsvg_growth_gib)
+        elif update_capabilities:
             for fs in controller_fs_list_new:
                 if fs.name in modified_fs:
-                    value = {'size': fs.size}
-                    if fs.replicated:
-                        value.update({'state': str({'status': constants.CONTROLLER_FS_RESIZING_IN_PROGRESS})})
-                    pecan.request.dbapi.controller_fs_update(fs.uuid, value)
-
-        try:
-            # perform rpc to conductor to perform config apply
-            pecan.request.rpcapi.update_storage_config(
-                    pecan.request.context,
-                    update_storage=False,
-                    reinstall_required=reinstall_required,
-                    reboot_required=reboot_required,
-                    filesystem_list=modified_fs,
-                    sm_reconfig=False
-            )
-
-        except Exception as e:
-            msg = _("Failed to update filesystem size ")
-            LOG.error("%s with patch %s with exception %s" % (msg, patch, e))
-            raise wsme.exc.ClientSideError(msg)
+                    state = {'status': constants.CONTROLLER_FS_RECONFIGURE_WITH_APP}
+                    values = {'capabilities': fs.capabilities,
+                              'state': str(state)}
+                    pecan.request.dbapi.controller_fs_update(fs.uuid, values)
 
     @cutils.synchronized(LOCK_NAME)
     @wsme_pecan.wsexpose(None, types.uuid, status_code=204)

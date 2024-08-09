@@ -11,6 +11,8 @@
 from cgtsclient.common import utils
 from cgtsclient import exc
 
+from oslo_serialization import jsonutils
+
 
 def _find_fs(cc, name_or_uuid):
     if name_or_uuid.isdigit():
@@ -35,10 +37,10 @@ def _find_fs(cc, name_or_uuid):
 
 def _print_controller_fs_show(controller_fs):
     fields = ['uuid', 'name', 'size', 'logical_volume', 'replicated', 'state',
-              'created_at', 'updated_at']
+              'capabilities', 'created_at', 'updated_at']
 
     labels = ['uuid', 'name', 'size', 'logical_volume', 'replicated', 'state',
-              'created_at', 'updated_at']
+              'capabilities', 'created_at', 'updated_at']
 
     data = [(f, getattr(controller_fs, f)) for f in fields]
     utils.print_tuple_list(data, labels)
@@ -57,8 +59,17 @@ def _print_controller_fs_show(controller_fs):
 @utils.arg('--format',
            choices=['table', 'yaml', 'value'],
            help="specify the output format, defaults to table")
+@utils.arg('--functions',
+           metavar='<function1,function2,...>',
+           default=None,
+           help='Controller filesystem functions')
 def do_controllerfs_modify(cc, args):
-    """Modify controller filesystem sizes."""
+    """Modify the size or functions of a filesystem"""
+
+    field_list = ['functions']
+    user_specified_fields = dict((k, v) for (k, v) in vars(args).items()
+                                 if k in field_list and not (v is None))
+    functions = user_specified_fields.get('functions')
 
     patch_list = []
     for attr in args.attributes[0]:
@@ -67,10 +78,28 @@ def do_controllerfs_modify(cc, args):
             db_name, size = attr.split("=", 1)
             patch.append({'op': 'replace', 'path': '/name', 'value': db_name})
             patch.append({'op': 'replace', 'path': '/size', 'value': size})
-            patch_list.append(patch)
         except ValueError:
-            raise exc.CommandError('Attributes must be a list of '
-                                   'FS_NAME=SIZE not "%s"' % attr)
+            if functions is None:
+                raise exc.CommandError('Filesystem resize attributes must be '
+                                       'FS_NAME=SIZE not "%s"' % attr)
+            # Functions provided, but size was not specified.
+            # Eg.: controllerfs-modify ceph-float --functions=monitor
+            patch.append({'op': 'replace', 'path': '/name', 'value': attr})
+
+        if functions is not None:
+            if len(args.attributes[0]) == 1:
+                capabilities = {}
+                capabilities['functions'] = [f for f in functions.split(',') if f]
+                patch.append({
+                    'op': 'replace',
+                    'path': '/capabilities',
+                    'value': jsonutils.dumps(capabilities)
+                })
+            else:
+                raise exc.CommandError('Alter functions are only supported '
+                                       'for one filesystem at a time.')
+
+        patch_list.append(patch)
 
     try:
         cc.controller_fs.update_many(cc.isystem.list()[0].uuid, patch_list)
@@ -98,8 +127,9 @@ def _print_controllerfs_list(cc, args):
         field_labels = args.column
     else:
         field_labels = ['UUID', 'FS Name', 'Size in GiB', 'Logical Volume',
-                        'Replicated', 'State']
-        fields = ['uuid', 'name', 'size', 'logical_volume', 'replicated', 'state']
+                        'Replicated', 'State', 'Capabilities']
+        fields = ['uuid', 'name', 'size', 'logical_volume', 'replicated',
+                  'state', 'capabilities']
 
     utils.print_list(controller_fs_list, fields, field_labels,
                      sortby=0, output_format=args.format)

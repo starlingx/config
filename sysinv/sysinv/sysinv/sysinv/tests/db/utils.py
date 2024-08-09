@@ -467,6 +467,7 @@ def get_test_controller_fs(**kw):
         'logical_volume': kw.get('logical_volume'),
         'replicated': kw.get('replicated', False),
         'state': kw.get('state'),
+        'capabilities': kw.get('capabilities'),
 
         'forisystemid': kw.get('forisystemid', None),
     }
@@ -1049,6 +1050,7 @@ def get_test_host_fs(**kw):
         'logical_volume': kw.get('logical_volume', 'scratch-lv'),
         'forihostid': kw.get('forihostid', 1),
         'state': kw.get('state'),
+        'capabilities': kw.get('capabilities'),
     }
     return host_fs
 
@@ -1060,6 +1062,37 @@ def create_test_host_fs(**kw):
     dbapi = db_api.get_instance()
     forihostid = host_fs['forihostid']
     return dbapi.host_fs_create(forihostid, host_fs)
+
+
+def get_test_istors(**kw):
+    istor = {
+        'id': kw.get('id', 2),
+        'uuid': kw.get('uuid'),
+        'forihostid': kw.get('forihostid', 1),
+        'ihost_uuid': kw.get('ihost_uuid', '1be26c0b-03f2-4d2e-ae87-c02d7f33c781'),
+        'fortierid': kw.get('fortierid', None),
+        'tier_uuid': kw.get('tier_uuid', None),
+        'tier_name': kw.get('tier_name', None),
+        'osdid': kw.get('osdid', 0),
+        'idisk_uuid': kw.get('idisk_uuid', '2991d71b-f553-4f1c-bdbe-cc04f69ff830'),
+        'state': kw.get('state', 'configuring-with-app'),
+        'function': kw.get('function', 'osd'),
+        'capabilities': kw.get('capabilities', None),
+        'journal_location': kw.get('journal_location', None),
+        'journal_size_mib': kw.get('journal_size_mib', None),
+        'journal_path': kw.get('journal_path', None)
+    }
+
+    return istor
+
+
+def create_test_istors(**kw):
+    istor = get_test_istors(**kw)
+    if 'uuid' not in kw:
+        del istor['uuid']
+    dbapi = db_api.get_instance()
+    forihostid = istor['forihostid']
+    return dbapi.istor_create(forihostid, istor)
 
 
 def get_test_lvg(**kw):

@@ -10,6 +10,7 @@ Tests for the API / host-fs / methods.
 
 import mock
 import uuid
+from oslo_serialization import jsonutils
 from six.moves import http_client
 from sysinv.tests.api import base
 from sysinv.tests.db import base as dbbase
@@ -81,15 +82,18 @@ class ApiHostFSTestCaseMixin(base.FunctionalTest,
                                                            sort_attr,
                                                            sort_dir)
 
-    def _create_db_object(self, host_fs_name, host_fs_size,
-                          host_lv, fs_state, obj_id=None):
+    def _create_db_object(self, host_fs_name, host_fs_size, host_lv,
+                          fs_state, capabilities=None, obj_id=None):
+        if capabilities is None:
+            capabilities = {"functions": []}
         return dbutils.create_test_host_fs(id=obj_id,
                                            uuid=None,
                                            name=host_fs_name,
                                            forihostid=self.host.id,
                                            size=host_fs_size,
                                            logical_volume=host_lv,
-                                           state=fs_state)
+                                           state=fs_state,
+                                           capabilities=capabilities)
 
 
 class ApiHostFSListTestSuiteMixin(ApiHostFSTestCaseMixin):
@@ -449,6 +453,321 @@ class ApiHostFSPutTestSuiteMixin(ApiHostFSTestCaseMixin):
         self.assertIn("Failed to update filesystem size for controller-1",
                       response.json['error_message'])
 
+    def test_put_fail_function_for_not_ceph_filesystem(self):
+        # Create a provisioned host
+        self.host = self._create_test_host(personality=constants.CONTROLLER,
+                                           unit=1,
+                                           invprovision=constants.PROVISIONED)
+
+        # Rook Ceph or Ceph must be as storage backend for ceph fs
+        backend = dbutils.get_test_storage_backend(backend=constants.SB_TYPE_CEPH_ROOK)
+        self.dbapi.storage_ceph_rook_create(backend)
+
+        # Add host fs for the new host
+        self.host_fs_first = self._create_db_object('instances',
+                                                    10,
+                                                    'instances-lv',
+                                                    constants.HOST_FS_STATUS_READY)
+
+        response = self.put_json(self.get_update_many_url(self.host.uuid),
+                                 [[{"path": "/name",
+                                    "value": "instances",
+                                    "op": "replace"},
+                                   {"path": "/capabilities",
+                                    "value": '{"functions": ["monitor"]}',
+                                    "op": "replace"}]],
+                                 headers=self.API_HEADERS,
+                                 expect_errors=True)
+
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+        self.assertIn("HostFs update failed: update functions are only "
+                      "supported for %s filesystem with ceph-rook storage backend." %
+                        constants.FILESYSTEM_NAME_CEPH,
+                      response.json['error_message'])
+
+    def test_put_fail_function_not_supported(self):
+        # Create a provisioned host
+        self.host = self._create_test_host(personality=constants.CONTROLLER,
+                                           unit=1,
+                                           invprovision=constants.PROVISIONED)
+
+        # Rook Ceph or Ceph must be as storage backend for ceph fs
+        backend = dbutils.get_test_storage_backend(backend=constants.SB_TYPE_CEPH_ROOK)
+        self.dbapi.storage_ceph_rook_create(backend)
+
+        # Add host fs for the new host
+        self.host_fs_first = self._create_db_object('ceph',
+                                                    10,
+                                                    'ceph-lv',
+                                                    constants.HOST_FS_STATUS_READY)
+
+        response = self.put_json(self.get_update_many_url(self.host.uuid),
+                                 [[{"path": "/name",
+                                    "value": "ceph",
+                                    "op": "replace"},
+                                   {"path": "/capabilities",
+                                    "value": '{"functions": ["invalid"]}',
+                                    "op": "replace"}]],
+                                 headers=self.API_HEADERS,
+                                 expect_errors=True)
+
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+        self.assertIn("HostFs update failed: only the following functions are supported",
+                      response.json['error_message'])
+
+    def test_put_success_add_monitor_function(self):
+        # Create a provisioned host
+        self.host = self._create_test_host(personality=constants.CONTROLLER,
+                                           unit=1,
+                                           invprovision=constants.PROVISIONED)
+
+        # Rook Ceph or Ceph must be as storage backend for ceph fs
+        backend = dbutils.get_test_storage_backend(backend=constants.SB_TYPE_CEPH_ROOK)
+        self.dbapi.storage_ceph_rook_create(backend)
+
+        # Add host fs for the new host
+        self.host_fs_first = self._create_db_object('ceph',
+                                                    10,
+                                                    'ceph-lv',
+                                                    constants.HOST_FS_STATUS_READY,
+                                                    {"functions": ["osd"]})
+
+        capabilities = {"functions": ["monitor", "osd"]}
+        self.put_json(self.get_update_many_url(self.host.uuid),
+                      [[{"path": "/name",
+                          "value": "ceph",
+                          "op": "replace"},
+                        {"path": "/capabilities",
+                          "value": jsonutils.dumps(capabilities),
+                          "op": "replace"}]],
+                      headers=self.API_HEADERS,
+                      expect_errors=False)
+
+        url = self.get_single_fs_url(self.host_fs_first.uuid)
+        response = self.get_json(url,
+                                 headers=self.API_HEADERS,
+                                 expect_errors=False)
+
+        self.assertEqual(response['capabilities'], capabilities)
+
+    def test_put_fail_remove_osd_function(self):
+        # Create a provisioned host
+        self.host = self._create_test_host(personality=constants.CONTROLLER,
+                                           unit=1,
+                                           invprovision=constants.PROVISIONED)
+
+        # Rook Ceph or Ceph must be as storage backend for ceph fs
+        backend = dbutils.get_test_storage_backend(backend=constants.SB_TYPE_CEPH_ROOK)
+        self.dbapi.storage_ceph_rook_create(backend)
+
+        # Add host fs for the new host
+        self.host_fs_first = self._create_db_object('ceph',
+                                                    10,
+                                                    'ceph-lv',
+                                                    constants.HOST_FS_STATUS_READY,
+                                                    {"functions": ["monitor", "osd"]})
+
+        response = self.put_json(self.get_update_many_url(self.host.uuid),
+                                 [[{"path": "/name",
+                                    "value": "ceph",
+                                    "op": "replace"},
+                                   {"path": "/capabilities",
+                                    "value": '{"functions": ["monitor"]}',
+                                    "op": "replace"}]],
+                                 headers=self.API_HEADERS,
+                                 expect_errors=True)
+
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+        self.assertIn("please use the host-stor-delete to remove the osd function",
+                      response.json['error_message'])
+
+        response = self.put_json(self.get_update_many_url(self.host.uuid),
+                                [[{"path": "/name",
+                                  "value": "ceph",
+                                  "op": "replace"},
+                                {"path": "/capabilities",
+                                  "value": '{"functions": []}',
+                                  "op": "replace"}]],
+                                headers=self.API_HEADERS,
+                                expect_errors=True)
+
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+        self.assertIn("please use the host-stor-delete to remove the osd function",
+                      response.json['error_message'])
+
+    def test_put_success_remove_monitor_function_case_1(self):
+        """ Removing the monitor function from ceph host-fs in ready state.
+            Initial functions: monitor and osd.
+        """
+        # Create a provisioned host
+        self.host = self._create_test_host(personality=constants.CONTROLLER,
+                                           unit=1,
+                                           invprovision=constants.PROVISIONED)
+
+        # Rook Ceph or Ceph must be as storage backend for ceph fs
+        backend = dbutils.get_test_storage_backend(backend=constants.SB_TYPE_CEPH_ROOK)
+        self.dbapi.storage_ceph_rook_create(backend)
+
+        # Add host fs for the new host
+        self.host_fs_first = self._create_db_object('ceph',
+                                                    10,
+                                                    'ceph-lv',
+                                                    constants.HOST_FS_STATUS_READY,
+                                                    {"functions": ["monitor", "osd"]})
+
+        # Create a provisioned physical volume in database
+        dbutils.create_test_pv(lvm_vg_name='cgts-vg',
+                               forihostid=self.host.id,
+                               pv_state='provisioned')
+
+        # Create a logical volume
+        dbutils.create_test_lvg(lvm_vg_name='cgts-vg',
+                                forihostid=self.host.id)
+
+        capabilities = {"functions": ["osd"]}
+        self.put_json(self.get_update_many_url(self.host.uuid),
+                      [[{"path": "/name",
+                          "value": "ceph",
+                          "op": "replace"},
+                        {"path": "/capabilities",
+                          "value": jsonutils.dumps(capabilities),
+                          "op": "replace"}]],
+                      headers=self.API_HEADERS,
+                      expect_errors=False)
+
+        url = self.get_single_fs_url(self.host_fs_first.uuid)
+        response = self.get_json(url,
+                                 headers=self.API_HEADERS,
+                                 expect_errors=False)
+
+        self.assertEqual(response['capabilities'], capabilities)
+
+    def test_put_success_remove_monitor_function_case_2(self):
+        """ Removing the monitor function from ceph host-fs in ready status.
+            Initial function: monitor.
+        """
+        # Create a provisioned host
+        self.host = self._create_test_host(personality=constants.CONTROLLER,
+                                           unit=1,
+                                           invprovision=constants.PROVISIONED)
+
+        # Rook Ceph or Ceph must be as storage backend for ceph fs
+        backend = dbutils.get_test_storage_backend(backend=constants.SB_TYPE_CEPH_ROOK)
+        self.dbapi.storage_ceph_rook_create(backend)
+
+        # Add host fs for the new host
+        self.host_fs_first = self._create_db_object('ceph',
+                                                    10,
+                                                    'ceph-lv',
+                                                    constants.HOST_FS_STATUS_READY,
+                                                    {"functions": ["monitor"]})
+
+        capabilities = {"functions": []}
+        self.put_json(self.get_update_many_url(self.host.uuid),
+                      [[{"path": "/name",
+                          "value": "ceph",
+                          "op": "replace"},
+                        {"path": "/capabilities",
+                          "value": jsonutils.dumps(capabilities),
+                          "op": "replace"}]],
+                      headers=self.API_HEADERS,
+                      expect_errors=False)
+
+        url = self.get_single_fs_url(self.host_fs_first.uuid)
+        response = self.get_json(url,
+                                 headers=self.API_HEADERS,
+                                 expect_errors=False)
+
+        self.assertEqual(response['capabilities'], capabilities)
+
+    def test_put_success_remove_monitor_function_case_3(self):
+        """ Removing the last monitor function in use.
+            Initial function: monitor.
+        """
+        # Create a provisioned host
+        self.host = self._create_test_host(personality=constants.CONTROLLER,
+                                           unit=1,
+                                           invprovision=constants.PROVISIONED)
+
+        # Rook Ceph or Ceph must be as storage backend for ceph fs
+        backend = dbutils.get_test_storage_backend(backend=constants.SB_TYPE_CEPH_ROOK)
+        self.dbapi.storage_ceph_rook_create(backend)
+
+        # Add host fs for the new host
+        self.host_fs_first = self._create_db_object('ceph',
+                                                    10,
+                                                    'ceph-lv',
+                                                    constants.HOST_FS_STATUS_IN_USE,
+                                                    {"functions": ["monitor"]})
+
+        capabilities = {"functions": []}
+        response = self.put_json(self.get_update_many_url(self.host.uuid),
+                                 [[{"path": "/name",
+                                    "value": "ceph",
+                                    "op": "replace"},
+                                   {"path": "/capabilities",
+                                    "value": jsonutils.dumps(capabilities),
+                                    "op": "replace"}]],
+                                 headers=self.API_HEADERS,
+                                 expect_errors=True)
+
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+        self.assertIn("it is not possible to remove the last monitor in use",
+                      response.json['error_message'])
+
+    def test_put_success_resizing_and_functions_for_ceph(self):
+        # Create a provisioned host
+        self.host = self._create_test_host(personality=constants.CONTROLLER,
+                                           unit=1,
+                                           invprovision=constants.PROVISIONED)
+
+        # Rook Ceph or Ceph must be as storage backend for ceph fs
+        backend = dbutils.get_test_storage_backend(backend=constants.SB_TYPE_CEPH_ROOK)
+        self.dbapi.storage_ceph_rook_create(backend)
+
+        # Add host fs for the new host
+        self.host_fs_first = self._create_db_object('ceph',
+                                                    10,
+                                                    'ceph-lv',
+                                                    constants.HOST_FS_STATUS_READY)
+
+        # Create a provisioned physical volume in database
+        dbutils.create_test_pv(lvm_vg_name='cgts-vg',
+                               forihostid=self.host.id,
+                               pv_state='provisioned')
+
+        # Create a logical volume
+        dbutils.create_test_lvg(lvm_vg_name='cgts-vg',
+                                forihostid=self.host.id)
+
+        size = 11
+        capabilities = {"functions": []}
+        self.put_json(self.get_update_many_url(self.host.uuid),
+                      [[{"path": "/name",
+                         "value": "ceph",
+                         "op": "replace"},
+                        {"path": "/size",
+                         "value": size,
+                         "op": "replace"},
+                        {"path": "/capabilities",
+                         "value": jsonutils.dumps(capabilities),
+                         "op": "replace"}]],
+                      headers=self.API_HEADERS,
+                      expect_errors=False)
+
+        url = self.get_single_fs_url(self.host_fs_first.uuid)
+        response = self.get_json(url,
+                                 headers=self.API_HEADERS,
+                                 expect_errors=False)
+
+        self.assertEqual(response['capabilities'], capabilities)
+        self.assertEqual(response['size'], size)
+
 
 class ApiHostFSDetailTestSuiteMixin(ApiHostFSTestCaseMixin):
     """ Host FileSystem detail operations
@@ -558,8 +877,8 @@ class ApiHostFSPostTestSuiteMixin(ApiHostFSTestCaseMixin):
         self.assertIn("Unsupported filesystem",
                       response.json['error_message'])
 
-    # Test a valid POST operation with an optional filesystem allowed to
-    # be created
+    # Test a valid POST operation with an optional filesystem
+    # allowed to be created.
     def test_post_allowed(self):
 
         # Rook Ceph or Ceph must be as storage backend for ceph fs
@@ -571,11 +890,19 @@ class ApiHostFSPostTestSuiteMixin(ApiHostFSTestCaseMixin):
                                 forihostid=self.host.id)
 
         response = self.post_json('/host_fs',
-                                {'ihost_uuid': self.host.uuid,
-                                 'name': 'ceph',
-                                 'size': 10},
-                            headers=self.API_HEADERS,
-                            expect_errors=False)
+                                  {'ihost_uuid': self.host.uuid,
+                                   'name': 'ceph',
+                                   'size': 10},
+                                  headers=self.API_HEADERS,
+                                  expect_errors=False)
 
         self.assertEqual(response.content_type, 'application/json')
         self.assertEqual(response.status_code, http_client.OK)
+
+        url = self.get_single_fs_url(response.json['uuid'])
+        response = self.get_json(url,
+                                 headers=self.API_HEADERS,
+                                 expect_errors=False)
+
+        capabilities = {"functions": ["monitor"]}
+        self.assertEqual(response['capabilities'], capabilities)

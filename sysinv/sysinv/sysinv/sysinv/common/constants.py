@@ -600,25 +600,24 @@ LVM_POOL_SUFFIX = '-pool'
 
 # Host-fs States
 HOST_FS_STATUS_CREATE_IN_SVC = "Creating"
-HOST_FS_STATUS_READY = "Ready"
-HOST_FS_STATUS_IN_USE = "In-Use"
-HOST_FS_STATUS_CREATE_IN_SVC = "Creating"
 HOST_FS_STATUS_CREATE_ON_UNLOCK = "Creating (on unlock)"
 HOST_FS_STATUS_DELETING = "Deleting"
 HOST_FS_STATUS_DELETING_ON_UNLOCK = "Deleting (on unlock)"
+HOST_FS_STATUS_IN_USE = "In-Use"
 HOST_FS_STATUS_MODIFYING = "Modifying"
+HOST_FS_STATUS_READY = "Ready"
+HOST_FS_STATUS_RECONFIGURE_WITH_APP = "Reconfigure with App"
 HOST_FS_STATUS_UPDATE_ERROR = "Error"
 
 # Controller DRBD File System Resizing States
-CONTROLLER_FS_RESIZING_IN_PROGRESS = 'drbd_fs_resizing_in_progress'
 
+CONTROLLER_FS_AVAILABLE = 'available'
 CONTROLLER_FS_CREATING_IN_PROGRESS = 'drbd_fs_creating_in_progress'
 CONTROLLER_FS_CREATING_ON_UNLOCK = 'drbd_fs_creating_on_unlock'
-CONTROLLER_FS_AVAILABLE = 'available'
-
 CONTROLLER_FS_DELETING_IN_PROGRESS = 'drbd_fs_deleting_in_progress'
 CONTROLLER_FS_DELETED = 'deleted'
-
+CONTROLLER_FS_RECONFIGURE_WITH_APP = 'reconfigure-with-app'
+CONTROLLER_FS_RESIZING_IN_PROGRESS = 'drbd_fs_resizing_in_progress'
 CONTROLLER_FS_UPDATE_ERROR = 'drbd_fs_update_error'
 
 # DRBD File Systems
@@ -629,6 +628,10 @@ DRBD_DC_VAULT = 'dc-vault'
 DRBD_ETCD = 'etcd'
 DRBD_DOCKER_DISTRIBUTION = 'docker-distribution'
 DRBD_CEPH = 'ceph-float'
+
+# File system functions
+FILESYSTEM_CEPH_FUNCTION_MONITOR = 'monitor'
+FILESYSTEM_CEPH_FUNCTION_OSD = 'osd'
 
 # File system names
 FILESYSTEM_NAME_BACKUP = 'backup'
@@ -685,6 +688,11 @@ HOSTFS_CREATION_ALLOWED = [
     FILESYSTEM_NAME_IMAGE_CONVERSION,
     FILESYSTEM_NAME_INSTANCES,
     FILESYSTEM_NAME_CEPH,
+]
+
+HOSTFS_CEPH_FUNCTIONS_SUPPORTED = [
+    FILESYSTEM_CEPH_FUNCTION_MONITOR,
+    FILESYSTEM_CEPH_FUNCTION_OSD
 ]
 
 HOSTFS_SUPPORTED_LIST = [

@@ -3685,6 +3685,30 @@ def get_enabled_controller_filesystem(dbapi, fs_name):
     return None
 
 
+def count_local_monitors_assigned(dbapi):
+    """ Count hostfs with monitor function """
+    count = 0
+    hostfs_list = dbapi.host_fs_get_list()
+    for fs in hostfs_list:
+        if fs['name'] == constants.FILESYSTEM_NAME_CEPH:
+                functions = fs['capabilities']['functions']
+                if constants.FILESYSTEM_CEPH_FUNCTION_MONITOR in functions:
+                    count += 1
+    return count
+
+
+def is_floating_monitor_assigned(dbapi):
+    try:
+        controller_fs = dbapi.controller_fs_get_by_name(
+                            constants.FILESYSTEM_NAME_CEPH_DRBD)
+        functions = controller_fs.capabilities.get('functions', [])
+        if constants.FILESYSTEM_CEPH_FUNCTION_MONITOR in functions:
+            return True
+    except exception.ControllerFSNameNotFound:
+        pass
+    return False
+
+
 def get_rpm_package(load_version, package_name):
     """Search for a package or its initial characters in a specific
     load version. First, it will look in the patch directory, if it

@@ -36,6 +36,7 @@ from sysinv._i18n import _
 from sysinv.api.controllers.v1 import base
 from sysinv.api.controllers.v1 import collection
 from sysinv.api.controllers.v1 import disk
+from sysinv.api.controllers.v1 import host_fs
 from sysinv.api.controllers.v1 import link
 from sysinv.api.controllers.v1 import types
 from sysinv.api.controllers.v1 import utils
@@ -534,6 +535,18 @@ class StorageController(rest.RestController):
             # Now remove the stor from DB
             pecan.request.dbapi.istor_remove_disk_association(stor_uuid)
             pecan.request.dbapi.istor_destroy(stor_uuid)
+            # Now remove the osd function from the ceph host filesystem
+            # if this is the last OSD on this host.
+            if StorageBackendConfig.has_backend(pecan.request.dbapi,
+                                                constants.SB_TYPE_CEPH_ROOK):
+                if (stor.function == constants.STOR_FUNCTION_OSD and
+                        len(pecan.request.dbapi.istor_get_all(stor.forihostid)) == 0):
+                    fs = pecan.request.dbapi.host_fs_get_by_name_ihost(
+                            stor.forihostid, constants.FILESYSTEM_NAME_CEPH)
+                    capabilities = fs.capabilities
+                    capabilities['functions'].remove(constants.FILESYSTEM_CEPH_FUNCTION_OSD)
+                    values = {'capabilities': capabilities}
+                    pecan.request.dbapi.host_fs_update(fs.uuid, values)
         except Exception as e:
             LOG.exception(e)
             raise
@@ -1007,6 +1020,22 @@ def _create(stor):
                 " for journal functions."))
 
     if osd_create is True:
+        # Using rook-ceph backend, when an OSD is created it should
+        # trigger the creation of the ceph host filesystem to store OSD metadata.
+        if StorageBackendConfig.has_backend(pecan.request.dbapi,
+                                            constants.SB_TYPE_CEPH_ROOK):
+            try:
+                fs = {
+                    "name": constants.FILESYSTEM_NAME_CEPH,
+                    "size": constants.SB_CEPH_MON_GIB,
+                    "ihost_uuid": ihost['uuid']
+                }
+                host_fs.host_fs_create(fs)
+            except wsme.exc.ClientSideError as e:
+                msg = "Filesystem name (%s) already present" % \
+                    constants.FILESYSTEM_NAME_CEPH
+                if str(e) != msg:
+                    raise e
         # Get the next free OSD ID in the system
         stors = pecan.request.dbapi.istor_get_list(sort_key='osdid', sort_dir='asc')
         stors_ids = [s['osdid'] for s in stors if s['osdid'] is not None]
@@ -1070,7 +1099,11 @@ def _create(stor):
             # because Rook uses the disk as an OSD only when wiped, without any disk label.
             rpcapi = agent_rpcapi.AgentAPI()
             idisk = pecan.request.dbapi.idisk_get(idisk_uuid)
-            rpcapi.disk_prepare(pecan.request.context, ihost.uuid, idisk.as_dict(),
+            # removing datetime fields because JSON serialization
+            idisk_dict = idisk.as_dict()
+            del idisk_dict["updated_at"]
+            del idisk_dict["created_at"]
+            rpcapi.disk_prepare(pecan.request.context, ihost.uuid, idisk_dict,
                                 True, False)
 
         pecan.request.rpcapi.update_ceph_osd_config(pecan.request.context,
