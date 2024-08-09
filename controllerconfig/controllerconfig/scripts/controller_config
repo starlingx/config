@@ -43,7 +43,7 @@ IPSEC_DELAY=5
 SWANCTL_CONF_FILE=/etc/swanctl/swanctl.conf
 SWANCTL_ACTIVE_CONF_FILE=/etc/swanctl/swanctl_active.conf
 SWANCTL_STANDBY_CONF_FILE=/etc/swanctl/swanctl_standby.conf
-IPSEC_SERVER_PORT=54724
+IPSEC_SERVER_PORT=64764
 
 OS_ID=$(grep '^ID=' /etc/os-release | cut -f2- -d= | sed -e 's/\"//g')
 if [ "$OS_ID" == "debian" ]

@@ -30,7 +30,7 @@ IMA_POLICY=/etc/ima.policy
 FIRST_BOOT="/etc/platform/.first_boot"
 IPSEC_RETRIES=3
 IPSEC_DELAY=5
-IPSEC_SERVER_PORT=54724
+IPSEC_SERVER_PORT=64764
 
 # Copy of /opt/platform required for worker_services
 VOLATILE_PLATFORM_PATH=$VOLATILE_PATH/cpe_upgrade_opt_platform
