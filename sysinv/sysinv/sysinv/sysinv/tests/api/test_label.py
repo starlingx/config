@@ -1,4 +1,4 @@
-# Copyright (c) 2019 Wind River Systems, Inc.
+# Copyright (c) 2019-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -154,9 +154,13 @@ class LabelAssignTestCase(LabelTestCase):
             'kube-topology-mgr-policy': 'restricted',
         }
         self.assign_labels(host_uuid, topology_mgr_label)
+        memory_mgr_label = {
+            'kube-memory-mgr-policy': 'Static',
+        }
+        self.assign_labels(host_uuid, memory_mgr_label)
 
         input_data = {}
-        for input_label in [cpu_mgr_label, topology_mgr_label]:
+        for input_label in [cpu_mgr_label, topology_mgr_label, memory_mgr_label]:
             input_data.update(input_label)
 
         response_data = self.get_host_labels(host_uuid)
@@ -172,6 +176,10 @@ class LabelAssignTestCase(LabelTestCase):
             'kube-topology-mgr-policy': 'invalid',
         }
         self.assign_labels_failure(host_uuid, topology_mgr_label)
+        memory_mgr_label = {
+            'kube-memory-mgr-policy': 'invalid',
+        }
+        self.assign_labels_failure(host_uuid, memory_mgr_label)
 
     def test_create_validated_labels_unsupported(self):
         host_uuid = self.worker.uuid

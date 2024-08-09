@@ -2209,7 +2209,9 @@ SRIOVDP_LABEL = 'sriovdp=enabled'
 SRIOVDP_VHOSTNET_LABEL = 'sriovdp-vhostnet=enabled'
 KUBE_TOPOLOGY_MANAGER_LABEL = 'kube-topology-mgr-policy'
 KUBE_CPU_MANAGER_LABEL = 'kube-cpu-mgr-policy'
+KUBE_MEMORY_MANAGER_LABEL = 'kube-memory-mgr-policy'
 KUBE_POWER_MANAGER_LABEL = 'power-management'
+
 
 # Accepted label values
 KUBE_TOPOLOGY_MANAGER_VALUES = [
@@ -2221,6 +2223,10 @@ KUBE_TOPOLOGY_MANAGER_VALUES = [
 KUBE_CPU_MANAGER_VALUES = [
     'none',
     'static'
+]
+KUBE_MEMORY_MANAGER_VALUES = [
+    'None',
+    'Static'
 ]
 KUBE_POWER_MANAGER_VALUE = 'enabled'
 # Default DNS service domain

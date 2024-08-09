@@ -5,12 +5,17 @@
 
 import keyring
 import os
+import ruamel.yaml as yaml
+import re
+import numpy as np
 
 from oslo_log import log as logging
 from oslo_serialization import base64
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils
+from ruamel.yaml.compat import StringIO
+from sysinv.common import kubernetes
 
 from tsconfig import tsconfig
 
@@ -733,17 +738,63 @@ class PlatformPuppet(base.BasePuppet):
             })
         return config
 
+    def _get_kubelet_eviction_hard_config_MiB(self, host):
+        newyaml = yaml.YAML()
+
+        configmap_name = 'kubelet-config'
+        eviction_threshold_memory_Mi = 100
+
+        try:
+            kube_operator = kubernetes.KubeOperator()
+            node_status = kube_operator.kube_get_node_status(host.hostname)
+
+            configmap = kube_operator.kube_read_config_map(
+                    configmap_name, 'kube-system')
+
+            # Parse the configmap to get the eviction hard memory value
+            stream = StringIO(configmap.data['kubelet'])
+            kubelet_config = newyaml.load(stream)
+            eviction_hard = kubelet_config['evictionHard']['memory.available']
+            pattern = r'^\d+(?:[.,]\d+)?\s*(Gi|%|Mi)$'
+
+            if re.match(pattern, str(eviction_hard)):
+                eviction_hard_values = re.findall(r'\d+', eviction_hard)
+                if eviction_hard.endswith('Gi'):
+                    eviction_threshold_memory_Mi = int(eviction_hard_values[0]) * 1024
+                elif re.search(r'%$', eviction_hard):
+                    capacity_memory = node_status.status.capacity.get("memory", "0")
+                    capacity_bytes = int(capacity_memory[:-2]) * 1024
+                    # Below code matches kubernetes code where percentage with type
+                    # float32 is passed to function where it is type casted to float64
+                    # giving long precision value
+                    memory_for_percentage = int(float(np.float32(eval(
+                                            eviction_hard_values[0]) / 100)) * capacity_bytes)
+                    eviction_threshold_memory_Mi = memory_for_percentage / (1024 * 1024)
+                else:
+                    eviction_threshold_memory_Mi = int(eviction_hard_values[0])
+            else:
+                raise Exception("Eviction threshold value is expected to be in Mi,Gi,{}"
+                                      "units. It's value now is {}".format("%",
+                                                            eviction_hard))
+        except Exception as ex:
+            LOG.error("Unable to retrieve kubelet hard eviction memory. Error:%s" % ex)
+        return eviction_threshold_memory_Mi
+
     def _get_host_memory_config(self, host):
         config = {}
         if constants.WORKER in utils.get_personalities(host):
+
             host_memory = self.dbapi.imemory_get_by_ihost(host.id)
             memory_numa_list = utils.get_numa_index_list(host_memory)
+            num_of_numa_nodes = len(memory_numa_list)
+            eviction_threshold_memory = self._get_kubelet_eviction_hard_config_MiB(host)
 
             platform_cpus_no_threads = self._get_platform_cpu_list(host)
             platform_core_count = len(platform_cpus_no_threads)
 
             platform_nodes = []
             vswitch_nodes = []
+            k8s_reserved_nodes = []
 
             hugepages_2Ms = []
             hugepages_1Gs = []
@@ -765,6 +816,26 @@ class PlatformPuppet(base.BasePuppet):
                 platform_node = "\"node%d:%dMB:%d\"" % (
                     node, platform_size, platform_core_count)
                 platform_nodes.append(platform_node)
+
+                # Converting all memory in MiB into bytes because for the case where
+                # eviction threshold memory is in percentage it updates reserved memory
+                # in Bytes. Hence, converting all data as it also updates
+                # memory_manager_state file in bytes.
+                reserved_memory = int(platform_size * (1024 * 1024))
+                reserved_memory += \
+                    int(eviction_threshold_memory * (1024 * 1024)) // num_of_numa_nodes
+                if node == 0:
+                    # For k8s reserved memory allocation, the distribution of eviction hard
+                    # memory for multi numa is not explained in document. So, the decided
+                    # calculation is below.
+                    # When eviction hard memory value (x) is even but number of numa nodes(N)
+                    # are odd, eviction hard memory is distributed as h(i=0) = int(x/N) + x % N
+                    # and h(i>0) = int(x/N) where h(i) = hard-eviction amount
+                    # for numa node i.
+                    reserved_memory += \
+                        int(eviction_threshold_memory * (1024 * 1024)) % num_of_numa_nodes
+                platform_reserved_memory = '{}:memory={}'.format(node, reserved_memory)
+                k8s_reserved_nodes.append(platform_reserved_memory)
 
                 vswitch_size = memory.vswitch_hugepages_size_mib
                 vswitch_pages = memory.vswitch_hugepages_reqd \
@@ -830,6 +901,7 @@ class PlatformPuppet(base.BasePuppet):
 
             platform_reserved_memory = "(%s)" % ' '.join(platform_nodes)
             vswitch_reserved_memory = "(%s)" % ' '.join(vswitch_nodes)
+            k8s_reserved_memory = "\"%s\"" % ';'.join(k8s_reserved_nodes)
 
             nr_hugepages_2Ms = "(%s)" % ' '.join(hugepages_2Ms)
             nr_hugepages_1Gs = "(%s)" % ' '.join(hugepages_1Gs)
@@ -843,6 +915,8 @@ class PlatformPuppet(base.BasePuppet):
             config.update({
                 'platform::compute::params::worker_base_reserved':
                     platform_reserved_memory,
+                'platform::kubernetes::params::k8s_reserved_memory':
+                    k8s_reserved_memory,
                 'platform::compute::params::compute_vswitch_reserved':
                     vswitch_reserved_memory,
                 'platform::compute::hugepage::params::nr_hugepages_2M':
