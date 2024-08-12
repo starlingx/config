@@ -90,14 +90,14 @@ def make_application_query(k8s_ver, include_path=False):
         [x['version'].lstrip('v') for x in kubernetes.get_kube_versions()]
 
     if target_version not in supported_versions:
-        print("Error: The supplied version is not supported. Exiting...")
+        print("Error: The supplied version is not supported. Exiting...", file=sys.stderr)
         sys.exit(1)
 
     # If target_version is less than current version, throw an error and exit.
     if LooseVersion(target_version) < LooseVersion(version):
         print(
             "Error: Target version cannot be lower than the current version."
-            " Exiting..."
+            " Exiting...", file=sys.stderr
         )
         sys.exit(1)
 
@@ -107,10 +107,18 @@ def make_application_query(k8s_ver, include_path=False):
         app_name = app.name
         bundle = dbapi.kube_app_bundle_get_all(name=app_name)
 
+        # The kube_app_bundle table maps the contents of the application folder. If no instances of
+        # that application are returned, it will be ignored from the update. This usually happens
+        # for third-party applications.
+        if not bundle:
+            LOG.warning("Skipping update for {} because it is not listed on database table "
+                        "that maps the content of the applications folder.".format(app_name))
+            continue
+
         if len(bundle) > 1:
             print(
-                "Error: App: {app_name} Should only have 1 bundle object! "
-                "Exiting..."
+                f"Error: App: {app_name} Should only have 1 bundle object! "
+                "Exiting...", file=sys.stderr
             )
             sys.exit(1)
 
@@ -162,4 +170,4 @@ def main():
         include_path = True if '--include-path' in sys.argv else False
         CONF.action.func(CONF.action.k8s_ver, include_path=include_path)
     else:
-        print(f"Unsupported action verb: {CONF.action.name}")
+        print(f"Unsupported action verb: {CONF.action.name}", file=sys.stderr)
