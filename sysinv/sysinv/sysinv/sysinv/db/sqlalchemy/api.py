@@ -27,6 +27,7 @@ from oslo_db import exception as db_exc
 from oslo_db.sqlalchemy import enginefacade
 from oslo_db.sqlalchemy import utils as db_utils
 
+from sqlalchemy import case
 from sqlalchemy import func
 from sqlalchemy import insert
 from sqlalchemy import inspect
@@ -5966,6 +5967,32 @@ class Connection(api.Connection):
         query = model_query(models.AddressPools)
         return _paginate_query(models.AddressPools, limit, marker,
                                sort_key, sort_dir, query)
+
+    @db_objects.objectify(objects.address_pool)
+    def address_pools_get_by_network_type(self, network_type):
+        # primary and secondary address pool if exists, in order.
+        query = model_query(models.AddressPools)
+        query = (
+            query.join(
+                models.NetworkAddressPools,
+                models.NetworkAddressPools.address_pool_id ==
+                models.AddressPools.id
+            )
+        )
+        query = (
+            query.join(
+                models.Networks,
+                models.Networks.id == models.NetworkAddressPools.network_id
+            )
+        )
+        query = query.filter(models.Networks.type == network_type)
+        query = query.order_by(
+            case(
+                [(models.AddressPools.id == models.Networks.address_pool_id, 0)],
+                else_=1
+            ).asc()
+        )
+        return query.all()
 
     @db_objects.objectify(objects.address_pool)
     def address_pools_get_by_interface(self, interface_id,

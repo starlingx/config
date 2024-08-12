@@ -29,6 +29,10 @@ class AddressPoolManager(base.Manager):
         path = '/v1/addrpools'
         return self._list(path, "addrpools")
 
+    def list_by_network_type(self, network_type):
+        path = "/v1/addrpools?network_type=%s" % network_type
+        return self._list(path, "addrpools")
+
     def get(self, pool_id):
         path = '/v1/addrpools/%s' % pool_id
         try:
