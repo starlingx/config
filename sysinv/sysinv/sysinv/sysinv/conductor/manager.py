@@ -7315,6 +7315,7 @@ class ConductorManager(service.PeriodicService):
     PUPPET_RUNTIME_CLASS_PARTITIONS = 'platform::partitions::runtime'
     PUPPET_RUNTIME_CLASS_DOCKERDISTRIBUTION = 'platform::dockerdistribution::runtime'
     PUPPET_RUNTIME_CLASS_USERS = 'platform::users::runtime'
+    PUPPET_RUNTIME_CLASS_OSDS = 'platform::ceph::runtime_osds'
     PUPPET_RUNTIME_FILES_DOCKER_REGISTRY_KEY_FILE = constants.DOCKER_REGISTRY_KEY_FILE
     PUPPET_RUNTIME_FILES_DOCKER_REGISTRY_CERT_FILE = constants.DOCKER_REGISTRY_CERT_FILE
     PUPPET_RUNTIME_FILES_DOCKER_REGISTRY_PKCS1_KEY_FILE = constants.DOCKER_REGISTRY_PKCS1_KEY_FILE
@@ -7323,7 +7324,8 @@ class ConductorManager(service.PeriodicService):
     PUPPET_RUNTIME_FILTER_CLASSES = [
         PUPPET_RUNTIME_CLASS_ROUTES,
         PUPPET_RUNTIME_CLASS_DOCKERDISTRIBUTION,
-        PUPPET_RUNTIME_CLASS_USERS
+        PUPPET_RUNTIME_CLASS_USERS,
+        PUPPET_RUNTIME_CLASS_OSDS
     ]
     PUPPET_RUNTIME_FILTER_FILES = [
         PUPPET_RUNTIME_FILES_DOCKER_REGISTRY_KEY_FILE,
@@ -7338,15 +7340,9 @@ class ConductorManager(service.PeriodicService):
         PUPPET_RUNTIME_FILES_DOCKER_CERT_FILE
     ]
 
-    def _check_ready_route_runtime_config(self):
+    def _check_ready_class_runtime(self, filter_class):
         if self._check_runtime_class_apply_in_progress(
-                [self.PUPPET_RUNTIME_CLASS_ROUTES]):
-            return False
-        return True
-
-    def _check_ready_users_runtime_config(self):
-        if self._check_runtime_class_apply_in_progress(
-                [self.PUPPET_RUNTIME_CLASS_USERS]):
+                [filter_class]):
             return False
         return True
 
@@ -7384,7 +7380,7 @@ class ConductorManager(service.PeriodicService):
         check_wait = False
         for filter_class in filter_classes:
             if filter_class == self.PUPPET_RUNTIME_CLASS_ROUTES:
-                if not self._check_ready_route_runtime_config():
+                if not self._check_ready_class_runtime(self.PUPPET_RUNTIME_CLASS_ROUTES):
                     LOG.info("config type %s filter_mapping %s False (check)" %
                              (CONFIG_APPLY_RUNTIME_MANIFEST, filter_class))
                     check_wait = True
@@ -7394,8 +7390,13 @@ class ConductorManager(service.PeriodicService):
                              (CONFIG_APPLY_RUNTIME_MANIFEST, filter_class))
                     # This is not dependent on RPC message, so continue to wait
                     return False
+            if filter_class == self.PUPPET_RUNTIME_CLASS_OSDS:
+                if not self._check_ready_class_runtime(self.PUPPET_RUNTIME_CLASS_OSDS):
+                    LOG.info("config type %s filter_mapping %s False (wait)" %
+                             (CONFIG_APPLY_RUNTIME_MANIFEST, filter_class))
+                    check_wait = True
             if filter_class == self.PUPPET_RUNTIME_CLASS_USERS:
-                if not self._check_ready_users_runtime_config():
+                if not self._check_ready_class_runtime(self.PUPPET_RUNTIME_CLASS_USERS):
                     LOG.info("config type %s filter_mapping %s False (check)" %
                              (CONFIG_APPLY_RUNTIME_MANIFEST, filter_class))
                     check_wait = True
@@ -10317,10 +10318,11 @@ class ConductorManager(service.PeriodicService):
                 "personalities": host.personality,
                 "host_uuids": [host.uuid],
                 "stor_uuid": stor_uuid,
-                "classes": ['platform::ceph::runtime_osds'],
+                "classes": [self.PUPPET_RUNTIME_CLASS_OSDS],
                 puppet_common.REPORT_STATUS_CFG: puppet_common.REPORT_CEPH_OSD_CONFIG
             }
-            self._config_apply_runtime_manifest(context, config_uuid, config_dict)
+            self._config_apply_runtime_manifest(context, config_uuid, config_dict,
+                                                filter_classes=[self.PUPPET_RUNTIME_CLASS_OSDS])
 
     def update_ceph_external_config(self, context, sb_uuid, services):
         """Update the manifests for Cinder/Glance External Ceph backend"""
@@ -10751,6 +10753,10 @@ class ConductorManager(service.PeriodicService):
                 self.report_ceph_osd_config_success, [host_uuid, stor_uuid],
                 self.report_ceph_osd_config_failure, [host_uuid, stor_uuid, error]
             )
+
+            self._clear_runtime_class_apply_in_progress(classes_list=iconfig.get('classes'),
+                                                        host_uuids=iconfig.get('host_uuids'))
+
         elif reported_cfg == puppet_common.REPORT_CEPH_RADOSGW_CONFIG:
             if status == puppet_common.REPORT_SUCCESS:
                 # Configuration was successful
@@ -13857,10 +13863,14 @@ class ConductorManager(service.PeriodicService):
                 self, config_type, config_uuid, config_dict, force):
             # check if already in deferred list, and if so, replace duplicate with latest config
             for drc in self._host_deferred_runtime_config:
+                duplicate_config = True
+                for key, value in config_dict.items():
+                    if drc['config_dict'].get(key) != value:
+                        duplicate_config = False
+                        break
+
                 if (drc['config_type'] == config_type and
-                        drc['config_dict'].get('classes') == config_dict.get('classes') and
-                        drc['config_dict'].get('personalities') == config_dict.get('personalities') and
-                        drc['config_dict'].get('host_uuids') == config_dict.get('host_uuids') and
+                        duplicate_config and
                         drc.get('force') == force):
                     LOG.info("config runtime replacing entry duplicate config %s with config_uuid=%s" %
                             (drc, config_uuid))
