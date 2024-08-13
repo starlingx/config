@@ -12,9 +12,10 @@ import subprocess
 import sys
 
 from controllerconfig.common import log
-from sysinv.common import constants
-from sysinv.common import service_parameter as sp_constants
-from sysinv.ipsec_auth.common import constants as ips_constants
+from six.moves import configparser
+from sysinv.common import constants as consts
+from sysinv.common import service_parameter as sp_consts
+from sysinv.ipsec_auth.common import constants as ips_consts
 
 LOG = log.get_logger(__name__)
 
@@ -45,31 +46,32 @@ def main():
 
     log.configure()
 
-    if from_release == "22.12" and action == "activate":
-        try:
-            LOG.info(f"Enable IPsec on system from the release "
-                     f"{from_release} to {to_release}")
-            LOG.info("Update mtce_heartbeat_failure_action to alarm, "
-                     "before IPsec is enabled.")
-            update_heartbeat_failure(
-                sp_constants.SERVICE_PARAM_PLAT_MTCE_HBS_FAILURE_ACTION_ALARM)
-            LOG.info("Remove mgmt_ipsec in capabilities of "
-                     "sysinv i_host table")
-            remove_mgmt_ipsec(port)
-            LOG.info("Start ipsec-server service")
-            start_ipsec_server()
-            LOG.info("Configure IPsec on each node of the environment")
-            configure_ipsec_on_nodes(to_release)
-            LOG.info("Update heartbeat_failure_action to default value "
-                     "(fail). IPsec is enabled.")
-            update_heartbeat_failure(
-                constants.SERVICE_PARAM_PLAT_MTCE_HBS_FAILURE_ACTION_DEFAULT)
-        except Exception as ex:
-            LOG.exception(ex)
-            print(ex)
-            return 1
-    else:
-        LOG.info(f"Nothing to do for action {action}.")
+    if get_system_mode() != "simplex":
+        if from_release == "22.12" and action == "activate":
+            try:
+                LOG.info(f"Enable IPsec on system from the release "
+                         f"{from_release} to {to_release}")
+                LOG.info("Update mtce_heartbeat_failure_action to alarm, "
+                         "before IPsec is enabled.")
+                update_heartbeat_failure(
+                    sp_consts.SERVICE_PARAM_PLAT_MTCE_HBS_FAILURE_ACTION_ALARM)
+                LOG.info("Remove mgmt_ipsec in capabilities of "
+                         "sysinv i_host table")
+                remove_mgmt_ipsec(port)
+                LOG.info("Start ipsec-server service")
+                start_ipsec_server()
+                LOG.info("Configure IPsec on each node of the environment")
+                configure_ipsec_on_nodes(to_release)
+                LOG.info("Update heartbeat_failure_action to default value "
+                         "(fail). IPsec is enabled.")
+                update_heartbeat_failure(
+                    consts.SERVICE_PARAM_PLAT_MTCE_HBS_FAILURE_ACTION_DEFAULT)
+            except Exception as ex:
+                LOG.exception(ex)
+                print(ex)
+                return 1
+            return 0
+    LOG.info(f"Nothing to do for action {action}.")
 
 
 def start_ipsec_server():
@@ -111,7 +113,7 @@ def remove_mgmt_ipsec(postgres_port):
             capabilities = json.loads(record[1].strip())
 
             if 'mgmt_ipsec' in capabilities and \
-               capabilities['mgmt_ipsec'] != ips_constants.MGMT_IPSEC_ENABLED:
+               capabilities['mgmt_ipsec'] != ips_consts.MGMT_IPSEC_ENABLED:
                 del capabilities['mgmt_ipsec']
 
                 capabilities = json.dumps(capabilities)
@@ -196,6 +198,20 @@ def configure_ipsec_on_nodes(to_release):
         raise Exception('Failed to enable IPsec on all hosts.')
     LOG.info('Successfully enabled IPsec on all hosts. Output:\n%s\n'
              % stdout.decode('utf-8'))
+
+
+def get_system_mode():
+    ini_str = '[DEFAULT]\n' + open('/etc/platform/platform.conf', 'r').read()
+
+    config_applied = configparser.RawConfigParser()
+    config_applied.read_string(ini_str)
+
+    if config_applied.has_option('DEFAULT', 'system_mode'):
+        system_mode = config_applied.get('DEFAULT', 'system_mode')
+    else:
+        system_mode = None
+
+    return system_mode
 
 
 if __name__ == "__main__":
