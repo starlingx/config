@@ -16,6 +16,7 @@ import sys
 from psycopg2.extras import RealDictCursor
 import psycopg2
 
+from six.moves import configparser
 from sysinv.common import constants
 
 DEFAULT_POSTGRES_PORT = 5432
@@ -48,17 +49,35 @@ def main():
     LOG.basicConfig(filename="/var/log/software.log",
                     format=log_format, level=LOG.INFO, datefmt="%FT%T")
 
-    if from_release == "22.12" and action == "migrate":
-        try:
-            LOG.info("Update mgmt_ipsec in capabilities of "
-                     "sysinv i_host table,"
-                     f"from the release {from_release} to {to_release} with "
-                     f"action: {action}")
-            update_mgmt_ipsec(constants.MGMT_IPSEC_UPGRADING, postgres_port)
-        except Exception as ex:
-            LOG.exception(ex)
-            print(ex)
-            return 1
+    if get_system_mode() != "simplex":
+        if from_release == "22.12" and action == "migrate":
+            try:
+                LOG.info("Update mgmt_ipsec in capabilities of "
+                         "sysinv i_host table,"
+                         f"from the release {from_release} to {to_release} "
+                         f"with action: {action}")
+                update_mgmt_ipsec(constants.MGMT_IPSEC_UPGRADING,
+                                  postgres_port)
+            except Exception as ex:
+                LOG.exception(ex)
+                print(ex)
+                return 1
+            return 0
+    LOG.info(f"Nothing to do for action {action}.")
+
+
+def get_system_mode():
+    ini_str = '[DEFAULT]\n' + open('/etc/platform/platform.conf', 'r').read()
+
+    config_applied = configparser.RawConfigParser()
+    config_applied.read_string(ini_str)
+
+    if config_applied.has_option('DEFAULT', 'system_mode'):
+        system_mode = config_applied.get('DEFAULT', 'system_mode')
+    else:
+        system_mode = None
+
+    return system_mode
 
 
 def update_mgmt_ipsec(value, port):
