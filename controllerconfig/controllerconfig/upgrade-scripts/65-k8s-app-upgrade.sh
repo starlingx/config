@@ -41,9 +41,10 @@ UPDATE_RESULT_SLEEP=30
 UPDATE_RESULT_ATTEMPTS=30  # ~15 min to update app
 COMMAND_RETRY_SLEEP=30
 COMMAND_RETRY_ATTEMPTS=10  # ~5 min to wait on a retried command.
+SOFTWARE_LOG_PATH='/var/log/software.log'
 
 function log {
-    echo "$(date -Iseconds | cut -d'+' -f1): ${NAME}[$$]: INFO: $*" >> "/var/log/software.log" 2>&1
+    echo "$(date -Iseconds | cut -d'+' -f1): ${NAME}[$$]: INFO: $*" >> "$SOFTWARE_LOG_PATH" 2>&1
 }
 
 function verify_apps_are_not_recovering {
@@ -140,7 +141,10 @@ if [ "$ACTION" == "activate" ]; then
     ACTIVE_K8S_VERSION=$(echo "$K8S_VERSIONS" | grep ' True ' | grep ' active ' | awk -F '|' '{print $2}' | tr -d ' ')
 
     # Get compatibles apps with current k8s version
-    COMPATIBLES_APPS=$(sudo sysinv-app query ${ACTIVE_K8S_VERSION})
+
+    # TODO(dbarbosa): Remove "--log-file /var/log/software.log" after fixing the issue with logs of
+    # the "sysinv-app query <k8s-target-version>" being logged to stdout.
+    COMPATIBLES_APPS=$(sudo sysinv-app --log-file ${SOFTWARE_LOG_PATH} query ${ACTIVE_K8S_VERSION})
     COMPATIBLES_APPS_FORMATED=$(echo "$COMPATIBLES_APPS" | paste -sd '|')
 
     # Get all loads apps
@@ -158,7 +162,10 @@ if [ "$ACTION" == "activate" ]; then
 
     # Get compatibles tarballs path with current k8s version
     # Sort applications by version. Lower versions are attempted first.
-    COMPATIBLES_APPS_TARBALL_PATH=$(sudo sysinv-app query ${ACTIVE_K8S_VERSION} --include-path | sort -V)
+
+    # TODO(dbarbosa): Remove "--log-file /var/log/software.log" after fixing the issue with logs of
+    # the "sysinv-app query <k8s-target-version>" being logged to stdout.
+    COMPATIBLES_APPS_TARBALL_PATH=$(sudo sysinv-app --log-file ${SOFTWARE_LOG_PATH} query ${ACTIVE_K8S_VERSION} --include-path | sort -V)
 
     LAST_APP_CHECKED=""
     # Get the list of applications installed in the new release
