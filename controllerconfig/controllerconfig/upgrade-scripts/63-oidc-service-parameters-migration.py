@@ -60,12 +60,14 @@ class PostgresAPI(object):
 
 
 class OidcServiceParametersMigrator(object):
-    def __init__(self) -> None:
+    def __init__(self, action=None) -> None:
         self.action_handlers = {
             "activate": self.activate,
             "activate-rollback": self.activate_rollback
         }
-        self.db = PostgresAPI()
+        self.db = None
+        if action in self.action_handlers:
+            self.db = PostgresAPI()
 
     def apply(self):
 
@@ -140,7 +142,7 @@ def main():
         parser.add_argument("postgres_port", type=int)
     args = parser.parse_args()
 
-    oidc_sp_migrator = OidcServiceParametersMigrator()
+    oidc_sp_migrator = OidcServiceParametersMigrator(action=args.action)
 
     if is_upgrading(args) or is_rollingback(args):
         try:
