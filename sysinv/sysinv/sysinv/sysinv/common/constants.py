@@ -2646,6 +2646,8 @@ ISSUER = "Issuer"
 DEPLOY_STATE_HOST = 'host'  # host is being deploy
 DEPLOY_STATE_HOST_FAILED = 'host-failed'  # host deployment failed
 DEPLOY_STATE_COMPLETED = 'completed'
+DEPLOY_STATE_HOST_ROLLBACK = 'host-rollback'
+DEPLOY_STATE_HOST_ROLLBACK_DONE = 'host-rollback-done'
 
 # USM deploy host state
 DEPLOY_HOST_PENDING = 'pending'  # host is pending for new deployment

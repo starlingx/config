@@ -186,16 +186,16 @@ class PuppetOperator(object):
 
     def _is_controller0_downgrade(self, host, hiera_file):
         """
-        check if controller-0 will execute a downgrade for a version
-         using mgmt_ip.yaml.
-         for AIO-SX it is not relevant
+        Check if controller-0 will execute a downgrade for a version
+        using mgmt_ip.yaml
         """
-        if (tsc.system_mode != constants.SYSTEM_MODE_SIMPLEX and
-            host.hostname == constants.CONTROLLER_0_HOSTNAME and
+        if (host.hostname == constants.CONTROLLER_0_HOSTNAME and
                 not os.path.exists(hiera_file)):
             try:
                 upgrade = usm_service.get_platform_upgrade(self.dbapi)
-                if (upgrade.state == constants.UPGRADE_ABORTING_ROLLBACK):
+                if upgrade.state in [constants.UPGRADE_ABORTING_ROLLBACK,
+                                     constants.DEPLOY_STATE_HOST_ROLLBACK,
+                                     constants.DEPLOY_STATE_HOST_ROLLBACK_DONE]:
                     LOG.info("controller-0 downgrade for a version using <ip>.yaml")
                     return True
             except Exception:
@@ -278,7 +278,7 @@ class PuppetOperator(object):
         if self._is_controller0_downgrade(host, hiera_file):
             mgmt_address = self._get_address_by_name(
                 constants.CONTROLLER_0_HOSTNAME, constants.NETWORK_TYPE_MGMT)
-            filename = mgmt_address + ".yaml"
+            filename = "%s.yaml" % mgmt_address.address
 
         with io.open(os.path.join(path, filename), 'r',
                      encoding='utf-8') as yaml_file:
