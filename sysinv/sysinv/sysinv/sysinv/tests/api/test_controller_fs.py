@@ -99,6 +99,22 @@ class ApiControllerFSTestCaseMixin(base.FunctionalTest,
                                                  replicated=True,
                                                  isystem_uuid=self.system.uuid)
 
+    def _create_controller_0(self, subfunction=None, numa_nodes=1, **kw):
+        return self._create_test_host(
+            personality=constants.CONTROLLER,
+            subfunction=subfunction,
+            numa_nodes=numa_nodes,
+            unit=0,
+            **kw)
+
+    def _create_controller_1(self, subfunction=None, numa_nodes=1, **kw):
+        return self._create_test_host(
+            personality=constants.CONTROLLER,
+            subfunction=subfunction,
+            numa_nodes=numa_nodes,
+            unit=1,
+            **kw)
+
 
 class ApiControllerFSListTestSuiteMixin(ApiControllerFSTestCaseMixin):
     """ Controller FileSystem List GET operations
@@ -617,7 +633,7 @@ class ApiControllerFSDeleteTestSuiteMixin(ApiControllerFSTestCaseMixin):
     def setUp(self):
         super(ApiControllerFSDeleteTestSuiteMixin, self).setUp()
 
-    def test_delete_not_allowed(self):
+    def test_invalid_delete(self):
         response = self.delete('/controller_fs/%s' %
                                   self.controller_fs_third.uuid,
                                   headers=self.API_HEADERS,
@@ -636,6 +652,12 @@ class ApiControllerFSDeleteTestSuiteMixin(ApiControllerFSTestCaseMixin):
                                                 20,
                                                 'ceph-float-lv')
 
+        self._create_controller_1(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_LOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
         system_dict = self.system.as_dict()
         system_dict['system_mode'] = constants.SYSTEM_MODE_DUPLEX
         system_dict['system_type'] = constants.TIS_AIO_BUILD
@@ -648,6 +670,27 @@ class ApiControllerFSDeleteTestSuiteMixin(ApiControllerFSTestCaseMixin):
 
         self.assertEqual(response.status_code, http_client.NO_CONTENT)
 
+    def test_delete_not_allowed(self):
+
+        backend = dbutils.get_test_storage_backend(backend=constants.SB_TYPE_CEPH_ROOK)
+        self.dbapi.storage_ceph_rook_create(backend)
+        controller_fs = self._create_db_object('ceph-float',
+                                                20,
+                                                'ceph-float-lv')
+
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_DUPLEX
+        system_dict['system_type'] = constants.TIS_AIO_BUILD
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+
+        response = self.delete('/controller_fs/%s' %
+                                  controller_fs.uuid,
+                                  headers=self.API_HEADERS,
+                                  expect_errors=True)
+
+        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+        self.assertIn("Failed to delete:", response.json['error_message'])
+
 
 class ApiControllerFSPostTestSuiteMixin(ApiControllerFSTestCaseMixin):
     """ Controller FileSystem post operations
@@ -655,7 +698,7 @@ class ApiControllerFSPostTestSuiteMixin(ApiControllerFSTestCaseMixin):
     def setUp(self):
         super(ApiControllerFSPostTestSuiteMixin, self).setUp()
 
-    def test_post_not_allowed(self):
+    def test_invalid_post(self):
         response = self.post_json('/controller_fs',
                                   {'name': 'test',
                                    'size': 10},
@@ -672,6 +715,12 @@ class ApiControllerFSPostTestSuiteMixin(ApiControllerFSTestCaseMixin):
         # Rook Ceph must be as storage backend
         backend = dbutils.get_test_storage_backend(backend=constants.SB_TYPE_CEPH_ROOK)
         self.dbapi.storage_ceph_rook_create(backend)
+
+        self._create_controller_1(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_LOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
 
         # Must be AIO-DX
         system_dict = self.system.as_dict()
@@ -691,3 +740,28 @@ class ApiControllerFSPostTestSuiteMixin(ApiControllerFSTestCaseMixin):
 
         self.assertEqual(response.content_type, 'application/json')
         self.assertEqual(response.status_code, http_client.OK)
+
+    def test_post_not_allowed(self):
+
+        # Rook Ceph must be as storage backend
+        backend = dbutils.get_test_storage_backend(backend=constants.SB_TYPE_CEPH_ROOK)
+        self.dbapi.storage_ceph_rook_create(backend)
+
+        # Must be AIO-DX
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_DUPLEX
+        system_dict['system_type'] = constants.TIS_AIO_BUILD
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+
+        # Create a logical volume
+        dbutils.create_test_lvg(lvm_vg_name='cgts-vg',
+                                forihostid=self.host.id)
+
+        response = self.post_json('/controller_fs',
+                                  {'name': 'ceph-float',
+                                   'size': 20},
+                                  headers=self.API_HEADERS,
+                                  expect_errors=True)
+
+        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+        self.assertIn("Failed to create:", response.json['error_message'])

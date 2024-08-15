@@ -550,11 +550,11 @@ def _create(controller_fs):
             len(controller_hosts) == 1):
         data['state'] = str({'status': constants.CONTROLLER_FS_CREATING_ON_UNLOCK})
 
-    elif all(chost.get('administrative') == constants.ADMIN_UNLOCKED and
-             chost.get('operational') == constants.OPERATIONAL_ENABLED
-             for chost in controller_hosts) and len(controller_hosts) > 1:
+    elif not (any(chost.get('administrative') == constants.ADMIN_LOCKED and
+          chost.get('availability') == constants.AVAILABILITY_ONLINE
+          for chost in controller_hosts) and len(controller_hosts) > 1):
         msg = _("Failed to create: It is only possible to create the "
-                "controllerfs FS with the standby controller locked.")
+                "controllerfs with the standby controller locked.")
         raise wsme.exc.ClientSideError(msg)
 
     new_controller_fs = pecan.request.dbapi.controller_fs_create(data)
@@ -606,12 +606,11 @@ def _delete(controller_fs):
     controller_hosts = pecan.request.dbapi.ihost_get_by_personality(
         constants.CONTROLLER
     )
-    if (all(chost.get('administrative') == constants.ADMIN_UNLOCKED and
-            chost.get('operational') == constants.OPERATIONAL_ENABLED
-            for chost in controller_hosts) and
-            len(controller_hosts) > 1):
+    if not (any(chost.get('administrative') == constants.ADMIN_LOCKED and
+          chost.get('availability') == constants.AVAILABILITY_ONLINE
+          for chost in controller_hosts) and len(controller_hosts) > 1):
         msg = _("Failed to delete: It is only possible to delete the "
-                "controllerfs FS with the standby controller locked.")
+                "controllerfs with the standby controller locked.")
         raise wsme.exc.ClientSideError(msg)
 
     try:
