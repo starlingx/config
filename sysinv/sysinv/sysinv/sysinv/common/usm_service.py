@@ -18,6 +18,7 @@ from sysinv.common.rest_api import rest_api_request
 
 
 LOG = log.getLogger(__name__)
+token = None
 
 
 # NOTE (bqian) for compatibility, create a software upgrade
@@ -50,8 +51,18 @@ def get_usm_endpoint(token):
     return token.get_service_internal_url("usm", "usm")
 
 
+def _get_token(region_name):
+    global token
+    if not token or token.is_expired():
+        LOG.debug("Requesting a new token")
+        token = get_token(region_name)
+    else:
+        LOG.debug("Token is still valid. Reusing.")
+    return token
+
+
 def get_software_upgrade(region_name, timeout=30):
-    token = get_token(region_name)
+    token = _get_token(region_name)
     endpoint = get_usm_endpoint(token)
 
     if not endpoint:
@@ -66,7 +77,7 @@ def get_software_upgrade(region_name, timeout=30):
 def get_host_deploy(dbapi, hostname):
 
     region_name = get_region_name(dbapi)
-    token = get_token(region_name)
+    token = _get_token(region_name)
     endpoint = get_usm_endpoint(token)
 
     if not endpoint:
