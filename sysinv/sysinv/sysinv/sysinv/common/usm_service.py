@@ -92,8 +92,13 @@ def get_host_deploy(dbapi, hostname):
     if hostname is None:
         return hostlist
 
+    if type(hostlist) is not list:
+        hostlist = [hostlist]
+
     for host in hostlist:
-        if host['hostname'] == hostname:
+        if type(host) is not dict:
+            break
+        if host.get('hostname') == hostname:
             return host
     return None
 
