@@ -1218,17 +1218,6 @@ SERVICE_PARAM_PLAT_MTCE_MNFA_TIMEOUT_DEFAULT = 0
 
 SERVICE_PARAM_NAME_PLAT_CONFIG_VIRTUAL = 'virtual_system'
 
-# Intel NIC driver version parameter
-SERVICE_PARAM_NAME_PLAT_CONFIG_INTEL_NIC_DRIVER_VERSION = 'intel_nic_driver_version'
-# Valid 'intel_nic_driver_version' values
-#   The last entry is used as the default. Currently 'cvl-4.0.1' was kept as
-#   default to avoid upgrade issues. In case there's need to update default
-#   in the future, other handling/migration will be required.
-SERVICE_PARAM_PLAT_CONFIG_INTEL_CVL_VALUES = (
-    'cvl-2.54',
-    'cvl-4.10',
-    'cvl-4.0.1')
-
 # Intel NIC out of tree drivers parameter
 SERVICE_PARAM_NAME_PLATFORM_OOT = 'out_of_tree_drivers'
 SERVICE_PARAM_PLAT_KERNEL_OOT_VALUES = (

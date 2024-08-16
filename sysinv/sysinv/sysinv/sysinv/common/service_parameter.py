@@ -271,15 +271,6 @@ def _validate_ldap_access_filter(name, value):
     _validate_not_empty(name, value)
 
 
-def _validate_intel_nic_driver_version(name, value):
-    """Check if Intel NIC driver version value is valid"""
-
-    if value not in constants.SERVICE_PARAM_PLAT_CONFIG_INTEL_CVL_VALUES:
-        raise wsme.exc.ClientSideError(_(
-            "Parameter '{}' value must be one of {}".format(
-                name, constants.SERVICE_PARAM_PLAT_CONFIG_INTEL_CVL_VALUES)))
-
-
 def _validate_intel_pstate(name, value):
     """Check if intel_pstate value is valid"""
 
@@ -834,7 +825,6 @@ def get_k8s_configmap_name(parameter):
 PLATFORM_CONFIG_PARAMETER_OPTIONAL = [
     constants.SERVICE_PARAM_NAME_PLAT_CONFIG_VIRTUAL,
     constants.SERVICE_PARAM_NAME_PLATFORM_MAX_CPU_PERCENTAGE,
-    constants.SERVICE_PARAM_NAME_PLAT_CONFIG_INTEL_NIC_DRIVER_VERSION,
     constants.SERVICE_PARAM_NAME_PLAT_CONFIG_INTEL_PSTATE,
     constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_API_WORKERS,
 ]
@@ -848,8 +838,6 @@ PLATFORM_CONFIG_PARAMETER_VALIDATOR = {
         _validate_boolean,
     constants.SERVICE_PARAM_NAME_PLATFORM_MAX_CPU_PERCENTAGE:
         _validate_max_cpu_min_percentage,
-    constants.SERVICE_PARAM_NAME_PLAT_CONFIG_INTEL_NIC_DRIVER_VERSION:
-        _validate_intel_nic_driver_version,
     constants.SERVICE_PARAM_NAME_PLAT_CONFIG_INTEL_PSTATE:
         _validate_intel_pstate,
     constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_API_WORKERS:
@@ -859,8 +847,6 @@ PLATFORM_CONFIG_PARAMETER_VALIDATOR = {
 PLATFORM_CONFIG_PARAMETER_RESOURCE = {
     constants.SERVICE_PARAM_NAME_PLAT_CONFIG_VIRTUAL:
         'platform::params::virtual_system',
-    constants.SERVICE_PARAM_NAME_PLAT_CONFIG_INTEL_NIC_DRIVER_VERSION:
-        'platform::compute::grub::params::g_intel_nic_driver_version',
     constants.SERVICE_PARAM_NAME_PLAT_CONFIG_INTEL_PSTATE:
         'platform::compute::grub::params::g_intel_pstate',
     constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_API_WORKERS:
