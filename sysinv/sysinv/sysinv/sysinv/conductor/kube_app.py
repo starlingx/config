@@ -1388,7 +1388,7 @@ class AppOperator(object):
             override_file = helm_utils.build_overrides_filename(chart.name)
 
             for f in os.listdir(chart.chart_os_path):
-                if f.endswith("system-overrides.yaml"):
+                if f.endswith("-system-overrides.yaml"):
                     chart_system_overrides_path = os.path.join(chart.chart_os_path, f)
                     break
             else:
@@ -2722,7 +2722,7 @@ class AppOperator(object):
             self._update_app_status(
                 app, new_progress=constants.APP_PROGRESS_GENERATE_OVERRIDES)
 
-            app.charts = self._get_list_of_charts(app)
+            app.charts = self._get_list_of_charts(app, include_disabled=True)
 
             helm_files = self._helm.generate_helm_application_overrides(
                     app.sync_overrides_dir, app.name, mode, cnamespace=None,
