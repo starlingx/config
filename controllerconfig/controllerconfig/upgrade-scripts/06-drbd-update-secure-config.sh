@@ -15,7 +15,15 @@
 #   - Activate drbd secure config on both controllers since
 #     both controllers (DX,STD,STORAGE) are already upgraded in
 #     activate phase.
-
+# - During rollback
+#   - Since rollback restores the database and puppet hieradata
+#     from previous release, it is not necessary to develop an
+#     activate-rollback script for these actions.
+#
+# Note: The 'drbdsync-modify' command modifies an entry in the
+#       system configuration database, located in a specific directory
+#       related to the current platform version. Potential paths could
+#       include '/var/lib/postgresql/<current version>/'.
 NAME=$(basename $0)
 
 # The migration scripts are passed these parameters:
