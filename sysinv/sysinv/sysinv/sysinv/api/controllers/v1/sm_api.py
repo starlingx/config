@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2016-2018 Wind River Systems, Inc.
+# Copyright (c) 2016-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -18,10 +18,18 @@ SM_API_PORT = 7777
 SM_API_PATH = "http://{host}:{port}".\
     format(host=SM_API_HOST, port=SM_API_PORT)
 
+token = None
+
 
 def _get_token():
-    system = pecan.request.dbapi.isystem_get_one()
-    return get_token(system.region_name)
+    global token
+    if not token or token.is_expired():
+        LOG.debug("Requesting a new token.")
+        system = pecan.request.dbapi.isystem_get_one()
+        token = get_token(system.region_name)
+    else:
+        LOG.debug("Token is still valid. Reusing.")
+    return token
 
 
 def swact_pre_check(hostname, timeout):
