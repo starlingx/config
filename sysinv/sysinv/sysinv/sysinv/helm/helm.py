@@ -9,7 +9,10 @@
 from __future__ import absolute_import
 
 import eventlet
+import glob
 import os
+import re
+import sys
 import tempfile
 import yaml
 
@@ -81,8 +84,67 @@ class HelmOperator(object):
     def __init__(self, dbapi=None):
         self.dbapi = dbapi
 
+        # Audit discoverable app plugins to remove any stale plugins that may
+        # have been removed since this host was last tasked to manage
+        # applications
+        self.audit_plugins()
+
         # Find all plugins for apps, charts per app, and fluxcd operators
         self.discover_plugins()
+
+    def audit_plugins(self):
+        """ Verify that only enabled application plugins are discoverable """
+
+        # An enabled plugin will have a python path configuration file name with the
+        # following format: stx_app-platform-integ-apps-1.0-8.pth
+        PTH_PATTERN = re.compile(
+            f"{common.HELM_OVERRIDES_PATH}/([\w-]+)/(\d+\.\d+-\d+.*)/plugins")
+
+        pattern = f"{common.APP_PLUGIN_PATH}/{common.APP_PTH_PREFIX}*.pth"
+        discoverable_pths = glob.glob(pattern)
+        LOG.debug(f"PluginHelper: Discoverable app plugins: {discoverable_pths}")
+
+        # Examine existing pth files to make sure they are still valid
+        for pth in discoverable_pths:
+            with open(pth, 'r') as f:
+                contents = f.readlines()
+
+            if len(contents) == 1:
+                plugin_folder = contents[0].strip('\n')
+                LOG.debug(f"PluginHelper: Plugin Path: {plugin_folder}")
+                match = PTH_PATTERN.match(plugin_folder)
+                if match:
+                    app = match.group(1)
+                    ver = match.group(2)
+                    try:
+                        app_obj = self.dbapi.kube_app_get(app)
+                        if app_obj.app_version == ver:
+                            LOG.info(f"PluginHelper: App {app}, version {ver}: Found "
+                                     "valid plugin")
+                            continue
+                        else:
+                            LOG.warning("PluginHelper: Stale plugin pth file "
+                                        f"found {pth}: Wrong plugin version "
+                                        f"enabled {ver} != {app_obj.app_version}")
+                    except exception.KubeAppNotFound:
+                        LOG.warning("PluginHelper: Stale plugin pth file found "
+                                    f"{pth}: App is not active.")
+                else:
+                    LOG.warning(f"PluginHelper: Invalid pth file {pth}: Invalid "
+                                "name or version.")
+
+                # Remove plugin folder from sys.path
+                try:
+                    sys.path.remove(plugin_folder)
+                except ValueError:
+                    LOG.warning(f"Failed to remove directory {plugin_folder} from sys.path "
+                                f"while evaluating invalid plugin .pth file {pth}.")
+            else:
+                LOG.warning(f"PluginHelper: Invalid pth file {pth}: Only one path "
+                            "is expected.")
+
+            LOG.info(f"PluginHelper: Removing invalid plugin pth: {pth}")
+            os.remove(pth)
 
     @utils.synchronized(LOCK_NAME)
     def discover_plugins(self):

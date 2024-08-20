@@ -79,8 +79,6 @@ TARFILE_TRANSFER_CHUNK_SIZE = 1024 * 512
 LOCK_NAME_APP_REAPPLY = 'app_reapply'
 LOCK_NAME_PROCESS_APP_METADATA = 'process_app_metadata'
 
-STX_APP_PLUGIN_PATH = '/var/stx_app/plugins'
-
 CHART_UPLOAD_COPY_ERROR_CODE = 1
 CHART_UPLOAD_FILE_EXISTS_ERROR_CODE = 2
 CHART_UPLOAD_VERSION_EXISTS_ERROR_CODE = 3
@@ -160,10 +158,7 @@ class AppOperator(object):
         if not os.path.isfile(constants.ANSIBLE_BOOTSTRAP_FLAG):
             self._clear_stuck_applications()
 
-        # Audit discoverable app plugins to remove any stale plugins that may
-        # have been removed since this host was last tasked to manage
-        # applications
-        self._plugins.audit_plugins()
+        self._plugins.activate_apps_plugins()
 
     def activate_app_plugins(self, rpc_app):
         app = AppOperator.Application(rpc_app)
@@ -3890,64 +3885,13 @@ class AppImageParser(object):
 class PluginHelper(object):
     """ Utility class to help manage application plugin lifecycle """
 
-    # An enabled plugin will have a python path configuration file name with the
-    # following format: stx_app-platform-integ-apps-1.0-8.pth
-    PTH_PREFIX = 'stx_app-'
-    PTH_PATTERN = re.compile("{}/([\w-]+)/(\d+\.\d+-\d+.*)/plugins".format(
-        common.HELM_OVERRIDES_PATH))
-
     def __init__(self, dbapi, helm_op):
         self._dbapi = dbapi
         self._helm_op = helm_op
-        self._system_path = STX_APP_PLUGIN_PATH
 
     def _get_pth_fqpn(self, app):
         return "{}/{}{}-{}.pth".format(
-            self._system_path, self.PTH_PREFIX, app.name, app.version)
-
-    def audit_plugins(self):
-        """ Verify that only enabled application plugins are discoverable """
-
-        pattern = '{}/{}*.pth'.format(self._system_path, self.PTH_PREFIX)
-        discoverable_pths = glob.glob(pattern)
-        LOG.debug("PluginHelper: Discoverable app plugins: %s" % discoverable_pths)
-
-        # Examine existing pth files to make sure they are still valid
-        for pth in discoverable_pths:
-            with open(pth, 'r') as f:
-                contents = f.readlines()
-
-            if len(contents) == 1:
-                LOG.debug("PluginHelper: Plugin Path: %s" % contents[0])
-                match = self.PTH_PATTERN.match(contents[0])
-                if match:
-                    app = match.group(1)
-                    ver = match.group(2)
-                    try:
-                        app_obj = self._dbapi.kube_app_get(app)
-                        if app_obj.app_version == ver:
-                            LOG.info("PluginHelper: App %s, version %s: Found "
-                                     "valid plugin" % (app, ver))
-                            continue
-                        else:
-                            LOG.warning("PluginHelper: Stale plugin pth file "
-                                        "found %s: Wrong plugin version "
-                                        "enabled %s != %s." % (
-                                            pth, ver, app_obj.app_version))
-                    except exception.KubeAppNotFound:
-                        LOG.warning("PluginHelper: Stale plugin pth file found"
-                                    " %s: App is not active." % pth)
-                else:
-                    LOG.warning("PluginHelper: Invalid pth file %s: Invalid "
-                                "name or version." % pth)
-            else:
-                LOG.warning("PluginHelper: Invalid pth file %s: Only one path"
-                            " is expected." % pth)
-
-            LOG.info("PluginHelper: Removing invalid plugin pth: %s" % pth)
-            os.remove(pth)
-
-        self.activate_apps_plugins()
+            common.APP_PLUGIN_PATH, common.APP_PTH_PREFIX, app.name, app.version)
 
     def activate_apps_plugins(self):
         # Examine existing applications in an applying/restoring state and make
