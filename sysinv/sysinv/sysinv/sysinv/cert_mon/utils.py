@@ -60,6 +60,7 @@ CERT_NAMESPACE_SUBCLOUD_CONTROLLER = 'sc-cert'
 DC_ROLE_UNDETECTED = 'unknown'
 
 ENDPOINT_LOCK_NAME = "sysinv-endpoints"
+CERT_INSTALL_LOCK_NAME = "sysinv-certs"
 
 LOG = log.getLogger(__name__)
 CONF = cfg.CONF
