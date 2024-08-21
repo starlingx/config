@@ -8184,6 +8184,221 @@ Deletes an address pool
 
 This operation does not accept a request body.
 
+---------------------
+Network Address Pools
+---------------------
+
+These APIs allow the display and configuration of Network to Address Pool associations.
+
+*************************************************************************
+Shows detailed information about all network to address pool associations
+*************************************************************************
+
+.. rest_method:: GET /v1/network_addresspools
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+computeFault (400, 500, ...), serviceUnavailable (503), badRequest (400),
+unauthorized (401), forbidden (403), badMethod (405), overLimit (413),
+itemNotFound (404)
+
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "network_addresspools", "plain", "xsd:list", "The list of Network Addresspool association objects."
+   "id", "plain", "xsd:integer", "The network to address pool association ID for this object."
+   "uuid", "plain", "csapi:UUID", "The universally unique identifier for this object."
+   "address_pool_id", "plain", "xsd:integer", "the address pool's ID."
+   "address_pool_uuid", "plain", "csapi:UUID", "The address pool's universally unique identifier."
+   "address_pool_name", "plain", "xsd:string", "The address pool's name."
+   "network_id", "plain", "xsd:integer", "The network's ID."
+   "network_uuid", "plain", "csapi:UUID", "The network's universally unique identifier."
+   "network_name", "plain", "xsd:string", "The network's name."
+
+::
+
+   {
+      "network_addresspools": [
+         {
+            "id": 1,
+            "uuid": "f8208170-fe3f-44ed-8c48-662f8c48466c",
+            "address_pool_id": 1,
+            "address_pool_uuid": "412aebff-9a86-40b1-a379-752f00a0c3a0",
+            "address_pool_name": "management-ipv6",
+            "network_id": 1,
+            "network_uuid": "b5650530-490c-4333-9574-d30eeb565d49",
+            "network_name": "mgmt"
+         },
+         {
+            "id": 2,
+            "uuid": "55a0d2df-0ef0-4238-91a0-eff1e72ff05a",
+            "address_pool_id": 2,
+            "address_pool_uuid": "05fde56d-f26a-4ea4-8b32-1ebf868743e2",
+            "address_pool_name": "pxeboot",
+            "network_id": 2,
+            "network_uuid": "bbb1bdf8-3aac-43a0-be45-992d7c777132",
+            "network_name": "pxeboot"
+         },
+         {
+            "id": 3,
+            "uuid": "a1d33ee2-2ad7-41fa-90f1-a5523c2bf079",
+            "address_pool_id": 3,
+            "address_pool_uuid": "b46512d7-5404-4daa-a64d-fc510e0c5864",
+            "address_pool_name": "oam-ipv6",
+            "network_id": 3,
+            "network_uuid": "99963794-8048-47b4-b769-77e21561f189",
+            "network_name": "oam"
+         }
+      ]
+   }
+
+This operation does not accept a request body.
+
+*******************************************************************************
+Shows detailed information about a specific network to address pool association
+*******************************************************************************
+
+.. rest_method:: GET /v1/network_addresspools/​{network_addrpool_id}​
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+computeFault (400, 500, ...), serviceUnavailable (503), badRequest (400),
+unauthorized (401), forbidden (403), badMethod (405), overLimit (413),
+itemNotFound (404)
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "network_addrpool_id", "URI", "csapi:UUID", "The unique identifier of an existing network to address pool association."
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "id", "plain", "xsd:integer", "The network to address pool association ID for this object."
+   "uuid", "plain", "csapi:UUID", "The universally unique identifier for this object."
+   "address_pool_id", "plain", "xsd:integer", "The address pool ID."
+   "address_pool_uuid", "plain", "csapi:UUID", "The address pool universally unique identifier."
+   "address_pool_name", "plain", "xsd:string", "The address pool name."
+   "network_id", "plain", "xsd:integer", "The network ID."
+   "network_uuid", "plain", "csapi:UUID", "The network universally unique identifier."
+   "network_name", "plain", "xsd:string", "The network name."
+
+::
+
+   {
+      "id": 1,
+      "uuid": "f8208170-fe3f-44ed-8c48-662f8c48466c",
+      "address_pool_id": 1,
+      "address_pool_uuid": "412aebff-9a86-40b1-a379-752f00a0c3a0",
+      "address_pool_name": "management-ipv6",
+      "network_id": 1,
+      "network_uuid": "b5650530-490c-4333-9574-d30eeb565d49",
+      "network_name": "mgmt",
+   }
+
+This operation does not accept a request body.
+
+******************************************
+Adds a network to address pool association
+******************************************
+
+.. rest_method:: POST /v1/network_addresspools
+
+This will create an association between a network and an address pool.
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+Conflict (409)
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "address_pool_uuid", "plain", "csapi:UUID", "The universally unique identifier for the address pool."
+   "network_uuid", "plain", "csapi:UUID", "The universally unique identifier for the network."
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "id", "plain", "xsd:integer", "The network to address pool association ID."
+   "uuid", "plain", "csapi:UUID", "The universally unique identifier for this object."
+   "address_pool_id", "plain", "xsd:integer", "the address pool's ID."
+   "address_pool_uuid", "plain", "csapi:UUID", "The address pool's universally unique identifier."
+   "address_pool_name", "plain", "xsd:string", "The address pool's name."
+   "network_id", "plain", "xsd:integer", "The network's ID."
+   "network_uuid", "plain", "csapi:UUID", "The network's universally unique identifier."
+   "network_name", "plain", "xsd:string", "The network's name."
+
+::
+
+   {
+      "address_pool_uuid": "4affb8fb-6b67-467a-9674-cfa6743ca5c5",
+      "network_uuid": "5ffef0c2-3c4e-4946-b67d-3cecda7c1246"
+   }
+
+::
+
+   {
+      "id": 6,
+      "uuid": "0f1ab4ad-3962-49f7-b20c-bca519d752b6",
+      "address_pool_id": 8,
+      "address_pool_uuid": "4affb8fb-6b67-467a-9674-cfa6743ca5c5",
+      "address_pool_name": "admin-ipv4",
+      "network_id": 8,
+      "network_uuid": "5ffef0c2-3c4e-4946-b67d-3cecda7c1246",
+      "network_name": "admin",
+   }
+
+
+*********************************************
+Removes a network to address pool association
+*********************************************
+
+.. rest_method:: DELETE /v1/network_addresspools/​{network_addrpool_id}​
+
+This will remove address pool from the network.
+
+**Normal response codes**
+
+204
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "network_addrpool_id", "URI", "csapi:UUID", "The unique identifier of an existing Network to address pool association."
+
+This operation does not accept a request body.
+
 ----------
 Addresses
 ----------
