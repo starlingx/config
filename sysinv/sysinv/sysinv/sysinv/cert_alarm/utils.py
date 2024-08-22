@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2021 Wind River Systems, Inc.
+# Copyright (c) 2021-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -71,7 +71,7 @@ CERT_SNAPSHOT is a dict of dict. Each entry is per certificate.
 }
 """
 
-TOKEN_CACHE = certmon_utils.TokenCache('internal')
+TOKEN_CACHE = certmon_utils.get_internal_token_cache()
 
 
 def get_cert_expiration_date(cert):
