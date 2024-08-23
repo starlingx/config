@@ -822,6 +822,7 @@ class PlatformCertRenew(CertificateRenew):
         else:
             return False
 
+    @utils.lockutils.synchronized(utils.CERT_INSTALL_LOCK_NAME)
     def update_platform_certificate(self, event_data, cert_type, force=False):
         """Update a platform certificate
 
@@ -873,12 +874,10 @@ class RestApiCertRenew(PlatformCertRenew):
 
     def update_certificate(self, event_data):
         LOG.info('RestApiCertRenew: Secret changes detected. Initiating certificate update')
+        self.update_platform_certificate(event_data, constants.CERT_MODE_SSL, force=True)
         token = self.context.get_token()
         system_uuid = utils.get_isystems_uuid(token)
-        ret = utils.enable_https(token, system_uuid)
-
-        if ret is True:
-            self.update_platform_certificate(event_data, constants.CERT_MODE_SSL, force=True)
+        utils.enable_https(token, system_uuid)
 
 
 class RegistryCertRenew(PlatformCertRenew):
