@@ -15,11 +15,13 @@
 # +---------------------+---------------------+
 #
 
-import sys
 import argparse
+import datetime
+import logging as LOG
 import psycopg2
 import subprocess
-import logging as LOG
+import sys
+import time
 
 SUCCESS = 0
 ERROR = 1
@@ -57,6 +59,108 @@ class PostgresAPI(object):
         with self.conn.cursor() as cur:
             cur.execute(query)
         self.conn.commit()
+        return cur.rowcount != 0
+
+
+class ServiceParametersApplier(object):
+    """
+    The main purpose of this class is to safely apply service parameters
+    previously configured in the system.
+
+    The command: "system service-parameters-apply kubernetes" will triggers
+    many system events including the restarting of the kube-apiserver.
+
+    Restarting the kube-apiserver is a critical process, many apps and
+    services depends on it, so the script must do proper handling when applying
+    service parameters to the system.
+    """
+    def __init__(self) -> None:
+        self.KUBE_CMD = 'kubectl --kubeconfig=/etc/kubernetes/admin.conf '
+        self.SP_APPLY_CMD = 'system service-parameter-apply kubernetes'
+        self.sts = '{.status.conditions[?(@.type=="Ready")].status}'
+        self.dt = '{.status.conditions[?(@.type=="Ready")].lastTransitionTime}'
+        self.LAST_TRANSITION_TIME_CMD = "get pods -n kube-system " + \
+            "kube-apiserver-{{controller}} -o jsonpath=\'" + \
+            "%s %s\'" % (self.dt, self.sts)
+        self.status_ctrl = dict({'controller-0': {}, 'controller-1': {}})
+
+    def __system_cmd(self, command: str) -> str:
+        sub = subprocess.Popen(["bash", "-c", command],
+                               stdout=subprocess.PIPE,
+                               stderr=subprocess.PIPE)
+        stdout, stderr = sub.communicate()
+        if sub.returncode != 0:
+            return ''
+        return stdout.decode('utf-8')
+
+    def __get_available_controllers(self):
+        controllers = ['controller-0', 'controller-1']
+        command = self.KUBE_CMD + 'get node'
+        result = self.__system_cmd(command=command)
+        for controller in controllers:
+            if controller not in result:
+                controllers.remove(controller)
+        return controllers
+
+    def __service_parameter_apply(self) -> None:
+        command = "source /etc/platform/openrc && %s" % self.SP_APPLY_CMD
+        LOG.info('Applying service parameters...')
+        self.__system_cmd(command)
+
+    def __get_last_transition_time(self, controller):
+        command = self.KUBE_CMD + self.LAST_TRANSITION_TIME_CMD.replace(
+            "{{controller}}", controller)
+        result = self.__system_cmd(command)
+        if len(result.split(' ')) != 2 or result == ' ':
+            return 0.0, False
+        [timestamp, status] = result.split(' ')
+        timestamp = timestamp.replace("Z", "+00:00")
+        epoch_time = datetime.datetime.fromisoformat(timestamp).timestamp()
+        return epoch_time, status == 'True'
+
+    def __register_last_transition_time(self):
+        for controller in self.__get_available_controllers():
+            last_t_time, _ = self.__get_last_transition_time(controller)
+            self.status_ctrl[controller]['last_t_time'] = last_t_time
+
+    def __wait_kube_apiserver_ready(self):
+        avail_controllers = self.__get_available_controllers()
+        n_controllers = len(avail_controllers)
+        n_apiserver_ready = 0
+        for controller in avail_controllers:
+            LOG.info("%s: Waiting kube-apiserver to restart" % controller)
+            for _ in range(0, 240):
+                time.sleep(1)
+                t_time, status = self.__get_last_transition_time(controller)
+                if self.status_ctrl[controller]['last_t_time'] != t_time \
+                   and status:
+                    LOG.info("%s: Kube-apiserver is ready!" % controller)
+                    n_apiserver_ready += 1
+                    break
+        if n_controllers != n_apiserver_ready:
+            LOG.error("Timeout restarting Kube-apiserver")
+            return
+        LOG.info("Service parameters applied")
+
+    def apply(self):
+        """
+        Step-1: Register the lastTransitionTime
+
+        Step-2: Send 'system service-parameters-apply kubernetes' command.
+
+        Step-3: Waiting to kube-apiserver restart, check for each available
+        controller if they match the expected ready condition, this will let us
+        know when kube-apiserver has successfully restarted and ready to
+        receive requests.
+        """
+        # Step-1:
+        self.__register_last_transition_time()
+
+        # Step-2:
+        self.__service_parameter_apply()
+
+        # Step-3:
+        self.__wait_kube_apiserver_ready()
 
 
 class OidcServiceParametersMigrator(object):
@@ -69,19 +173,6 @@ class OidcServiceParametersMigrator(object):
         if action in self.action_handlers:
             self.db = PostgresAPI()
 
-    def apply(self):
-
-        """
-        Apply service parameters
-        """
-        command = 'system service-parameter-apply kubernetes'
-        cmd = "source /etc/platform/openrc && %s" % command
-
-        sub = subprocess.Popen(["bash", "-c", cmd],
-                               stdout=subprocess.PIPE,
-                               stderr=subprocess.PIPE)
-        sub.communicate()
-
     def renaming(self):
         """
         Update the OIDC service parameters names.
@@ -90,11 +181,13 @@ class OidcServiceParametersMigrator(object):
                                   'oidc_groups_claim',
                                   'oidc_issuer_url',
                                   'oidc_username_claim']
-
+        was_renamed = False
         for parameter in legacy_oidc_parameters:
             query = "update service_parameter set name='%s' where name='%s';"\
                 % (parameter.replace('_', '-'), parameter)
-            self.db.db_update(query)
+            if self.db.db_update(query):
+                was_renamed = True
+        return was_renamed
 
     def execute_action(self, action: str) -> int:
         if action in self.action_handlers:
@@ -106,11 +199,11 @@ class OidcServiceParametersMigrator(object):
         """
         Start migration process
         """
-        LOG.info("Renaming legacy OIDC parameters service parameters...")
-        self.renaming()
-        LOG.info("Applying service parameters...")
-        self.apply()
-        LOG.info("OIDC Service Parameters has been renamed")
+        if self.renaming():
+            LOG.info("OIDC: Legacy service parameters has been renamed")
+            ServiceParametersApplier().apply()
+            return SUCCESS
+        LOG.info("OIDC: No legacy parameters were renamed")
         return SUCCESS
 
     def activate_rollback(self) -> int:
