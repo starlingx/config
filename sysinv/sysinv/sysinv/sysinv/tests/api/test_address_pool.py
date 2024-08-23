@@ -1834,6 +1834,68 @@ class TestList(AddressPoolTestCase):
             num,
             len(response[self.RESULT_KEY]))
 
+    def test_address_pool_list_by_network_type_secondary_ipv6(self):
+        path = f"{self.API_PREFIX}?network_type=oam"
+        oam_pools = self.get_json(path)
+        self.assertEqual(1, len(oam_pools[self.RESULT_KEY]))
+
+        # add secondary oam pool to oam network.
+        network = self._find_network_by_type(constants.NETWORK_TYPE_OAM)
+        oam_pool_secondary_name = "oam-ipv6"
+        addrpool2 = self._create_test_address_pool(
+            name=oam_pool_secondary_name, subnet=dbbase.OAM_SUBNET_IPV6
+        )
+        dbutils.create_test_network_addrpool(
+            address_pool_id=addrpool2.id, network_id=network.id
+        )
+
+        # test address pools by network type
+        # secondary address pool is always as second entry.
+        oam_pools = self.get_json(path)
+        self.assertEqual(2, len(oam_pools[self.RESULT_KEY]))
+        self.assertEqual(oam_pool_secondary_name, oam_pools[self.RESULT_KEY][1]['name'])
+
+    def test_address_pool_list_by_network_type_secondary_ipv4(self):
+        path = f"{self.API_PREFIX}?network_type=oam"
+
+        # delete oam network and pools
+        oam_pool = self.find_addrpool_by_networktype(constants.NETWORK_TYPE_OAM)
+        network = self._find_network_by_type(constants.NETWORK_TYPE_OAM)
+        self.dbapi.network_destroy(network.id)
+        self.delete(self.get_single_url(oam_pool.uuid), headers=self.API_HEADERS)
+
+        # create IPv4 address pool before creating IPv6 address pool
+        oam_pool_secondary_name = "oam-ipv4"
+        addrpool2 = self._create_test_address_pool(
+            name=oam_pool_secondary_name, subnet=dbbase.OAM_SUBNET_IPV4
+        )
+
+        # validate there are still no address pools associated to oam.
+        oam_pools = self.get_json(path)
+        self.assertEqual(0, len(oam_pools[self.RESULT_KEY]))
+
+        # recreate oam network with primary IPv6 address pool
+        self._create_test_network(
+            'oam', constants.NETWORK_TYPE_OAM,
+            [dbbase.OAM_SUBNET_IPV6], link_addresses=True
+        )
+        network = self._find_network_by_type(constants.NETWORK_TYPE_OAM)
+
+        # validate there is only primary address pool on oam.
+        oam_pools = self.get_json(path)
+        self.assertEqual(1, len(oam_pools[self.RESULT_KEY]))
+
+        # add IPv4 address pool to oam network as secondary
+        dbutils.create_test_network_addrpool(
+            address_pool_id=addrpool2.id, network_id=network.id
+        )
+
+        # validate list by network_type is not based upon creation order.
+        # i.e. secondary address pool is always as second entry.
+        oam_pools = self.get_json(path)
+        self.assertEqual(2, len(oam_pools[self.RESULT_KEY]))
+        self.assertEqual(oam_pool_secondary_name, oam_pools[self.RESULT_KEY][1]['name'])
+
 
 class IPv4TestPost(TestPostMixin,
                    AddressPoolTestCase):

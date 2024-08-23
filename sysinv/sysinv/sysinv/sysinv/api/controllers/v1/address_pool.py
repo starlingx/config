@@ -270,6 +270,14 @@ class AddressPoolController(rest.RestController):
     def __init__(self, parent=None, **kwargs):
         self._parent = parent
 
+    def _get_address_pool_collection_by_network_type(self, network_type):
+        addrpools = pecan.request.dbapi.address_pools_get_by_network_type(
+            network_type
+        )
+        return AddressPoolCollection.convert_with_links(
+            addrpools, None, url=None, expand=False,
+            sort_key=None, sort_dir=None)
+
     def _get_address_pool_collection(self, parent_uuid,
                                      marker=None, limit=None, sort_key=None,
                                      sort_dir=None, expand=False,
@@ -909,10 +917,18 @@ class AddressPoolController(rest.RestController):
         return sec_pools
 
     @wsme_pecan.wsexpose(AddressPoolCollection, types.uuid, types.uuid, int,
-                         wtypes.text, wtypes.text)
+                         wtypes.text, wtypes.text, wtypes.text)
     def get_all(self, parent_uuid=None,
-                marker=None, limit=None, sort_key='id', sort_dir='asc'):
+                marker=None, limit=None,
+                network_type=None,
+                sort_key='id', sort_dir='asc'):
         """Retrieve a list of IP Address Pools."""
+        if network_type:
+            # returns primary and secondary address pools (if exists, in order)
+            # for given network type.
+            return self._get_address_pool_collection_by_network_type(
+                network_type)
+
         return self._get_address_pool_collection(parent_uuid, marker, limit,
                                                  sort_key, sort_dir)
 
