@@ -622,13 +622,14 @@ class Health(object):
 
         health_ok = health_ok and success
 
-        success, from_release, to_release = self._check_patch_current()
-        output += _('All hosts are patch current: [%s]\n') \
-            % (Health.SUCCESS_MSG if success else Health.FAIL_MSG)
-        if not success:
-            output += _('Deployment in progress: %s to %s\n' % (from_release, to_release))
+        if context._user_id != "usm":
+            success, from_release, to_release = self._check_patch_current()
+            output += _('All hosts are patch current: [%s]\n') \
+                % (Health.SUCCESS_MSG if success else Health.FAIL_MSG)
+            if not success:
+                output += _('Deployment in progress: %s to %s\n' % (from_release, to_release))
 
-        health_ok = health_ok and success
+            health_ok = health_ok and success
 
         if StorageBackendConfig.has_backend(
                 self._dbapi,
