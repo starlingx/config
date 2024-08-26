@@ -81,3 +81,7 @@ COMPONENT_LABEL_KEY = 'app.starlingx.io/component'
 
 # Namespace Label values
 COMPONENT_LABEL_VALUE_PLATFORM = 'platform'
+
+# Application plugins
+APP_PLUGIN_PATH = '/var/stx_app/plugins'
+APP_PTH_PREFIX = 'stx_app-'
