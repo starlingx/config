@@ -32,6 +32,12 @@ from oslo_serialization import base64
 
 RETRIES = 3
 
+# At the end of activation, wait for configuration to finish
+# before moving to the next scripts.
+# 40 attempts * 30 seconds ~= 20 min max
+WAIT_RECONFIG_ATTEMPTS = 40
+WAIT_RECONFIG_SLEEP = 30
+
 KUBE_CMD = 'kubectl --kubeconfig=/etc/kubernetes/admin.conf '
 KUBE_IGNORE_NOT_FOUND = ' --ignore-not-found=true'
 AUTO_CREATED_TAG = '.auto_created_cert-'
@@ -491,6 +497,43 @@ def restore_legacy_certificate_config(to_release):
                 delete_secret(cert)
 
 
+def wait_system_reconfiguration():
+    cmd = "source /etc/platform/openrc && \
+        fm alarm-list --query alarm_id=250.001"
+
+    # Stop after two sequential attempts without 250.001 alarms. This avoids
+    # missing the transition between two alarms.
+    one_attempt_clear = False
+    for attempt in range(WAIT_RECONFIG_ATTEMPTS):
+        LOG.info("Waiting out-of-date alarms to clear. Attempt %s of %s."
+                 % (attempt + 1, WAIT_RECONFIG_ATTEMPTS))
+        # Sleep first as to allow cert-mon to start installing the new certs
+        sleep(WAIT_RECONFIG_SLEEP)
+
+        sub = subprocess.Popen(
+            cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        stdout, stderr = sub.communicate()
+
+        # Wait HTTPS cert in case system was HTTP
+        if not os.path.isfile(CERT_FILES[HTTPS_CERT_NAME]):
+            LOG.info("HTTPS certificate isn't ready yet.")
+            continue
+
+        if sub.returncode == 0:
+            if stdout.decode('utf-8').rstrip('\n') == "":
+                if one_attempt_clear:
+                    return
+                one_attempt_clear = True
+            else:
+                one_attempt_clear = False
+        else:
+            LOG.error('Command failed:\n%s\n%s.\n%s.'
+                      % (cmd, stdout.decode('utf-8'), stderr.decode('utf-8')))
+    LOG.error("NOTICE: Out-of-date alarms didn't clear out after more than %s \
+              seconds. Ignoring and continuing with the upgrade activation."
+              % str(WAIT_RECONFIG_ATTEMPTS * WAIT_RECONFIG_SLEEP))
+
+
 def main():
     action = None
     from_release = None
@@ -532,6 +575,7 @@ def main():
                 update_system_local_ca_secret()
                 reconfigure_certificates_subject()
                 create_platform_certificates(to_release)
+                wait_system_reconfiguration()
                 create_platform_certificates_updated_file_flag()
                 LOG.info("Successfully created/updated required platform "
                          "certificates.")
