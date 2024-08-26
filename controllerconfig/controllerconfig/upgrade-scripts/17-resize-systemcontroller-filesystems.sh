@@ -151,6 +151,8 @@ if [[ "$ACTION" == "activate" ]]; then
     fi
     log "Filesystems resizing for DC System Controller finished successfully for \
         from release $FROM_RELEASE to $TO_RELEASE with action $ACTION"
+elif [[ "$ACTION" == "activate-rollback" ]]; then
+    log "The $ACTION action is not reversible for this script."
 else
     log "No actions required for from release $FROM_RELEASE to $TO_RELEASE with action $ACTION"
 fi
