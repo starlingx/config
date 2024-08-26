@@ -661,10 +661,6 @@ class ServiceParameterController(rest.RestController):
             # NIC driver version, intel_pstate or sysinv_api_workers.
             new_name = None
             if section == constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG and \
-                    name == constants.SERVICE_PARAM_NAME_PLAT_CONFIG_INTEL_NIC_DRIVER_VERSION:
-                new_name = name
-
-            elif section == constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG and \
                     name == constants.SERVICE_PARAM_NAME_PLAT_CONFIG_INTEL_PSTATE:
                 new_name = name
 
@@ -823,10 +819,6 @@ class ServiceParameterController(rest.RestController):
             # the Intel NIC driver version, intel_pstate or sysinv_api_workers
             name = None
             if parameter.section == constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG and \
-                    parameter.name == constants.SERVICE_PARAM_NAME_PLAT_CONFIG_INTEL_NIC_DRIVER_VERSION:
-                name = parameter.name
-
-            elif parameter.section == constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG and \
                    parameter.name == constants.SERVICE_PARAM_NAME_PLAT_CONFIG_INTEL_PSTATE:
                 name = parameter.name
 
