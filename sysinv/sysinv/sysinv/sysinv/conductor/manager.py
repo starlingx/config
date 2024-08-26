@@ -1576,7 +1576,7 @@ class ConductorManager(service.PeriodicService):
                             # So then this is a valid lease.
                             # Create the line and add it.
                             line = self._dnsmasq_host_entry_to_string(
-                                    ip, 'pxeboot-' + str(host.id),
+                                    ip, host.hostname,
                                     host.mgmt_mac)
                             LOG.info("%s: adding '%s' from leases to %s" % (
                                 func, line.strip(), dnsmasq_hosts_file))
