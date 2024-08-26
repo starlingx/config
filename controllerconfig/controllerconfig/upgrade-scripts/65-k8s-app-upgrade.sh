@@ -31,6 +31,11 @@ fi
 
 UPGRADE_IN_PROGRESS_APPS_FILE='/etc/platform/.upgrade_in_progress_apps'
 
+TIMEOUT=600
+KUBE_SYSTEM_NAMESPACE="kube-system"
+CERT_MANAGER_NAMESPACE="cert-manager"
+
+SLEEP_RECONCILIATION=60
 RECOVER_RESULT_SLEEP=30
 RECOVER_RESULT_ATTEMPTS=30 # ~15 min to recover app
 DELETE_RESULT_SLEEP=10
@@ -114,6 +119,47 @@ function retry_command {
 
     log "Retrying command: ${COMMAND} - Succeeded!"
     return 0
+}
+
+function check_pod_readiness {
+    # Check the status of nginx-ingress-controller and cert-manager pods
+
+    # Helmrelease reconciliation is not called immediately after the app update request is made.
+    # To ensure that the pod status is due to the new version and not the previous installation,
+    # a 1 minute delay is being added.
+    log "Waiting 1 minute to make sure the reconciliation was called"
+    sleep $SLEEP_RECONCILIATION
+
+    # Wait for the Nginx Ingress Controller pods to be ready in the background
+    kubectl wait --for=condition=ready pod --all=true -n $KUBE_SYSTEM_NAMESPACE -lapp.kubernetes.io/name=ingress-nginx --timeout=${TIMEOUT}s
+    PID1=$!
+
+    # Wait for the Cert Manager pods to be ready in the background
+    kubectl wait --for=condition=ready pod --all=true -n $CERT_MANAGER_NAMESPACE -lapp=cert-manager --timeout=${TIMEOUT}s
+    PID2=$!
+
+    # Wait for both processes to finish
+    log "Waiting for Nginx Ingress Controller Pod Status ..."
+    wait $PID1
+    RESULT1=$?
+
+    log "Waiting for Cert-manager Pod Status ..."
+    wait $PID2
+    RESULT2=$?
+
+    # Check the results and provide specific messages
+    if [ $RESULT1 -eq 0 ] && [ $RESULT2 -eq 0 ]; then
+        log "All required pods for Ingress Nginx Ingress and Cert Manager are ready."
+    elif [ $RESULT1 -ne 0 ] && [ $RESULT2 -eq 0 ]; then
+        log "ERROR: Ingress NGINX pods did not become ready within the timeout period."
+        exit 1
+    elif [ $RESULT1 -eq 0 ] && [ $RESULT2 -ne 0 ]; then
+        log "ERROR: Cert Manager pods did not become ready within the timeout period."
+        exit 1
+    else
+        log "ERROR: Both Ingress Nginx Ingress Controller and Cert Manager pods did not become ready within the timeout period."
+        exit 1
+    fi
 }
 
 log "Starting Kubernetes application updates from release $FROM_RELEASE to $TO_RELEASE with action $ACTION"
@@ -271,6 +317,9 @@ if [ "$ACTION" == "activate" ]; then
 
         LAST_APP_CHECKED=${UPGRADE_APP_NAME}
     done
+
+    # Check the status of nginx-ingress-controller and cert-manager pods
+    check_pod_readiness
 
     log "Completed Kubernetes application updates for release $FROM_RELEASE to $TO_RELEASE with action $ACTION"
 else
