@@ -1955,17 +1955,11 @@ class ConductorManager(service.PeriodicService):
 
         if (host.personality == constants.CONTROLLER and
                 constants.WORKER in tsc.subfunctions):
-            if constants.LOWLATENCY in host.subfunctions:
-                pxe_config = "pxe-smallsystem_lowlatency-install-%s" % sw_version
-            else:
-                pxe_config = "pxe-smallsystem-install-%s" % sw_version
+            pxe_config = "pxe-smallsystem-install-%s" % sw_version
         elif host.personality == constants.CONTROLLER:
             pxe_config = "pxe-controller-install-%s" % sw_version
         elif host.personality == constants.WORKER:
-            if constants.LOWLATENCY in host.subfunctions:
-                pxe_config = "pxe-worker_lowlatency-install-%s" % sw_version
-            else:
-                pxe_config = "pxe-worker-install-%s" % sw_version
+            pxe_config = "pxe-worker-install-%s" % sw_version
         elif host.personality == constants.STORAGE:
             pxe_config = "pxe-storage-install-%s" % sw_version
 
