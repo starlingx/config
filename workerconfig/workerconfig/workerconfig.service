@@ -6,6 +6,7 @@ After=affine-platform.sh.service
 After=opt-platform.service
 After=sysinv-agent.service
 After=network-online.target
+After=ipsec.service
 Before=config.service worker-config-gate.service
 Before=goenabled.service
 

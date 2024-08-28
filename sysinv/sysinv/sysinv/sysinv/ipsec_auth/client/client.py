@@ -69,11 +69,14 @@ class Client(object):
             encryption_algorithm=serialization.NoEncryption()
         )
 
-        # TODO: Save PRK2 in LUKS Filesystem
         prk2_file = constants.CERT_NAME_PREFIX + \
                         self.hostname[constants.UNIT_HOSTNAME] + '.key'
+
+        prk2_luks_path = constants.LUKS_DIR_IPSEC_KEYS + prk2_file
         prk2_path = constants.CERT_SYSTEM_LOCAL_PRIVATE_DIR + prk2_file
-        utils.save_data(prk2_path, prk2_bytes)
+
+        utils.save_data(prk2_luks_path, prk2_bytes)
+        utils.create_symlink(prk2_luks_path, prk2_path)
 
         return prk2
 
@@ -81,8 +84,8 @@ class Client(object):
     def _generate_ak1(self, puk1_data):
         ak1 = os.urandom(32)
 
-        # TODO: Save AK1 in LUKS Filesystem
-        utils.save_data(constants.TMP_AK1_FILE, ak1)
+        # Save AK1 in LUKS Filesystem
+        utils.save_data(constants.LUKS_AK1_FILE, ak1)
 
         return ak1
 
@@ -101,7 +104,7 @@ class Client(object):
     def _generate_message_3(self):
         message = {}
 
-        puk1_data = utils.load_data(constants.TMP_PUK1_FILE)
+        puk1_data = utils.load_data(constants.LUKS_PUK1_FILE)
         puc_data = utils.load_data(constants.TRUSTED_CA_CERT_1_PATH)
 
         LOG.info("Generate RSA Private Key (PRK2).")
@@ -177,8 +180,9 @@ class Client(object):
                 LOG.exception("%s" % msg)
                 return False
 
-            utils.save_data(constants.TMP_PUK1_FILE, key)
-
+            utils.save_data(constants.LUKS_PUK1_FILE, key)
+            utils.save_data(constants.TRUSTED_ROOT_CA_CERT_1_PATH, root_ca_cert)
+            utils.save_data(constants.TRUSTED_CA_CERT_1_PATH, ca_cert)
             if self.op_code == constants.OP_CODE_INITIAL_AUTH:
                 utils.save_data(constants.TRUSTED_ROOT_CA_CERT_0_PATH, root_ca_cert)
                 utils.save_cert_bundle(ca_cert, constants.TRUSTED_CA_CERT_0_PREFIX)
@@ -211,8 +215,11 @@ class Client(object):
             cert_file = constants.CERT_NAME_PREFIX + \
                 self.hostname[constants.UNIT_HOSTNAME] + '.crt'
 
+            cert_luks_path = constants.LUKS_DIR_IPSEC_CERTS + cert_file
             cert_path = constants.CERT_SYSTEM_LOCAL_DIR + cert_file
-            utils.save_data(cert_path, cert)
+
+            utils.save_data(cert_luks_path, cert)
+            utils.create_symlink(cert_luks_path, cert_path)
 
             if self.op_code == constants.OP_CODE_INITIAL_AUTH:
                 if self.personality == constants.CONTROLLER:
