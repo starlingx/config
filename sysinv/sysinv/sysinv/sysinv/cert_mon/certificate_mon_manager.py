@@ -90,8 +90,8 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
         super(CertificateMonManager, self).__init__(CONF)
         self.mon_threads = []
         self.audit_thread = None
-        self.token_cache = utils.TokenCache('internal')
-        self.dc_token_cache = utils.TokenCache('dc')
+        self.token_cache = utils.get_internal_token_cache()
+        self.dc_token_cache = utils.get_dc_token_cache()
         self.dc_monitor = None
         self.systemlocalcacert_monitor = None
         self.restapicert_monitor = None

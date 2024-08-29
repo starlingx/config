@@ -54,12 +54,6 @@ CONF = cfg.CONF
 
 class MonitorContext(object):
     """Context data for watches"""
-
-    # Reuse cached tokens across all contexts
-    # (i.e. all watches reuse these caches)
-    token_cache = utils.TokenCache('internal')
-    dc_token_cache = utils.TokenCache('dc')
-
     def __init__(self):
         self.dc_role = None
         self.kubernetes_namespace = None
@@ -67,15 +61,18 @@ class MonitorContext(object):
     def initialize(self):
         self.dc_role = utils.get_dc_role()
 
+    # Reuse cached tokens across all contexts
+    # (i.e. all watches reuse these caches)
+
     @staticmethod
     def get_token():
         """Uses the cached local access token"""
-        return MonitorContext.token_cache.get_token()
+        return utils.get_cached_token()
 
     @staticmethod
     def get_dc_token():
         """Uses the cached DC token for subcloud"""
-        return MonitorContext.dc_token_cache.get_token()
+        return utils.get_cached_dc_token()
 
 
 class CertUpdateEventData(object):

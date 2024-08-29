@@ -67,6 +67,9 @@ CONF = cfg.CONF
 
 dc_role = DC_ROLE_UNDETECTED
 
+internal_token_cache = None
+dc_token_cache = None
+
 
 def update_admin_ep_cert(token, ca_crt, tls_crt, tls_key):
     service_type = 'platform'
@@ -220,7 +223,7 @@ def get_subclouds_from_dcmanager(token, invalid_deploy_states=None):
 def is_subcloud_online(subcloud_name, token=None):
     """Check if subcloud is online"""
     if not token:
-        token = get_token()
+        token = get_cached_token()
     subcloud_info = get_subcloud(token, subcloud_name)
     if not subcloud_info:
         LOG.error('Cannot find subcloud %s' % subcloud_name)
@@ -233,7 +236,7 @@ def query_subcloud_online_with_deploy_state(
 ):
     """Check if subcloud is online and not in an invalid deploy state"""
     if not token:
-        token = get_token()
+        token = get_cached_token()
     subcloud_info = get_subcloud(token, subcloud_name)
     if not subcloud_info:
         LOG.error("Cannot find subcloud %s" % subcloud_name)
@@ -578,7 +581,7 @@ def get_endpoint_certificate(endpoint, timeout_secs=10):
 def get_dc_role():
     global dc_role
     if dc_role == DC_ROLE_UNDETECTED:
-        token = get_token()
+        token = get_cached_token()
         if not token:
             raise Exception('Failed to obtain keystone token')
         service_type = 'platform'
@@ -758,7 +761,32 @@ class TokenCache(object):
             LOG.debug("TokenCache %s, Acquiring new token, previous token: %s",
                       self._token_type, self._token)
             self._token = self._getter_func()
+        else:
+            LOG.debug("TokenCache %s, Token is still valid, reusing token: %s",
+                      self._token_type, self._token)
         return self._token
+
+
+def get_internal_token_cache():
+    global internal_token_cache
+    if not internal_token_cache:
+        internal_token_cache = TokenCache("internal")
+    return internal_token_cache
+
+
+def get_cached_token():
+    return get_internal_token_cache().get_token()
+
+
+def get_dc_token_cache():
+    global dc_token_cache
+    if not dc_token_cache:
+        dc_token_cache = TokenCache("dc")
+    return dc_token_cache
+
+
+def get_cached_dc_token():
+    return get_dc_token_cache().get_token()
 
 
 class SubcloudSysinvEndpointCache(object):
