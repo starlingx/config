@@ -15,6 +15,8 @@ from controllerconfig.common import log
 from six.moves import configparser
 from sysinv.common import constants as consts
 from sysinv.common import service_parameter as sp_consts
+
+from sysinv.common.kubernetes import KUBERNETES_ADMIN_CONF
 from sysinv.ipsec_auth.common import constants as ips_consts
 
 LOG = log.get_logger(__name__)
@@ -47,9 +49,9 @@ def main():
     log.configure()
 
     if get_system_mode() != "simplex":
-        if from_release == "22.12" and action == "activate":
+        if to_release == "24.09" and action == "activate":
             try:
-                LOG.info(f"Enable IPsec on system from the release "
+                LOG.info(f"Enable IPsec on system from release "
                          f"{from_release} to {to_release}")
                 LOG.info("Update mtce_heartbeat_failure_action to alarm, "
                          "before IPsec is enabled.")
@@ -61,15 +63,38 @@ def main():
                 LOG.info("Start ipsec-server service")
                 start_ipsec_server()
                 LOG.info("Configure IPsec on each node of the environment")
-                configure_ipsec_on_nodes(to_release)
+                configure_ipsec_on_nodes(action)
                 LOG.info("Update heartbeat_failure_action to default value "
-                         "(fail). IPsec is enabled.")
+                         "(fail).")
                 update_heartbeat_failure(
                     consts.SERVICE_PARAM_PLAT_MTCE_HBS_FAILURE_ACTION_DEFAULT)
+                LOG.info("IPsec is enabled.")
             except Exception as ex:
                 LOG.exception(ex)
                 print(ex)
                 return 1
+            return 0
+        elif from_release == "24.09" and action == "activate-rollback":
+            try:
+                LOG.info("Deactivate IPsec on system from release "
+                         f"{from_release} to {to_release}")
+                LOG.info("Update mtce_heartbeat_failure_action to alarm, "
+                         "before IPsec is disabled.")
+                update_heartbeat_failure(
+                    sp_consts.SERVICE_PARAM_PLAT_MTCE_HBS_FAILURE_ACTION_ALARM)
+                LOG.info("Disable IPsec on all hosts.")
+                configure_ipsec_on_nodes(action)
+                LOG.info("Delete IPsec CertificateRequests from k8s.")
+                delete_ipsec_certificate_requests()
+                LOG.info("Update heartbeat_failure_action to default value "
+                         "(fail).")
+                update_heartbeat_failure(
+                    consts.SERVICE_PARAM_PLAT_MTCE_HBS_FAILURE_ACTION_DEFAULT)
+                LOG.info("IPsec is disabled.")
+            except Exception as ex:
+                LOG.exception(ex)
+                print(ex)
+                return 2
             return 0
     LOG.info(f"Nothing to do for action {action}.")
 
@@ -112,8 +137,7 @@ def remove_mgmt_ipsec(postgres_port):
             host_uuid = record[0].strip()
             capabilities = json.loads(record[1].strip())
 
-            if 'mgmt_ipsec' in capabilities and \
-               capabilities['mgmt_ipsec'] != ips_consts.MGMT_IPSEC_ENABLED:
+            if 'mgmt_ipsec' in capabilities:
                 del capabilities['mgmt_ipsec']
 
                 capabilities = json.dumps(capabilities)
@@ -135,6 +159,56 @@ def remove_mgmt_ipsec(postgres_port):
         LOG.error('Failed to connect to sysinv database:'
                   '\n%s. \n%s.' % (stdout, stderr))
         raise Exception(stderr)
+
+
+def delete_ipsec_certificate_requests():
+    """Delete IPsec Certificate Requests from kubernetes resource."""
+    namespace = ips_consts.NAMESPACE_DEPLOYMENT
+    get_cmd = ['kubectl', '--kubeconfig', KUBERNETES_ADMIN_CONF,
+               '-n', namespace,
+               'get', ips_consts.CERTIFICATE_REQUEST_RESOURCE,
+               '--no-headers', '-o', 'custom-columns=NAME:metadata.name']
+
+    sub_get = subprocess.Popen(
+        get_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        universal_newlines=True)
+
+    stdout, stderr = sub_get.communicate()
+    if sub_get.returncode != 0:
+        LOG.error('Failed to get Certificate Requests from namespace: %s'
+                  '\n%s. \n%s' % (namespace, stdout, stderr))
+        raise Exception(stderr)
+
+    if len(stdout) == 0:
+        LOG.warn('No CertificateRequests present in system.'
+                 '\n Skipping delete ipsec certificates stage.')
+        return
+
+    ipsec_certs = [cert for cert in stdout.split('\n')
+                   if 'system-ipsec-certificate' in cert]
+
+    if len(ipsec_certs) > 0:
+        delete_cmd = [
+            'kubectl', '--kubeconfig', KUBERNETES_ADMIN_CONF,
+            '-n', namespace, 'delete',
+            ips_consts.CERTIFICATE_REQUEST_RESOURCE] + ipsec_certs
+
+        sub_del = subprocess.Popen(
+            delete_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            universal_newlines=True)
+        stdout, stderr = sub_del.communicate()
+
+        if sub_del.returncode == 0:
+            LOG.info('CertificateRequests deleted: %s' % (ipsec_certs))
+        else:
+            LOG.error('Command failed:\n %s\n. %s\n%s\n'
+                      % (delete_cmd, stdout.decode('utf-8'),
+                         stderr.decode('utf-8')))
+            raise Exception('Cannot delete CertificateRequests '
+                            'from namespace: %s.' % (namespace))
+    else:
+        LOG.info('No CertificateRequests needed to be deleted.')
+    return
 
 
 def execute_system_cmd(api_cmd, exc_msg):
@@ -176,27 +250,28 @@ def get_admin_credentials():
     return credentials
 
 
-def configure_ipsec_on_nodes(to_release):
+def configure_ipsec_on_nodes(action):
     """Run ansible playbook to enable and configure IPsec on nodes
     """
     playbooks_root = '/usr/share/ansible/stx-ansible/playbooks'
-    upgrade_script = 'enable-ipsec-on-nodes-in-upgrade.yml'
+    upgrade_script = 'configure-ipsec-on-nodes.yml'
     ssh_credentials = get_admin_credentials()
 
-    cmd = 'ansible-playbook {}/{} -e "software_version={} \
-        ansible_ssh_user={} ansible_ssh_pass={} \
+    cmd = 'ansible-playbook {}/{} -t {} -e \
+        "ansible_ssh_user={} ansible_ssh_pass={} \
         ansible_become_pass={}"'.format(
-        playbooks_root, upgrade_script, to_release, ssh_credentials[0],
+        playbooks_root, upgrade_script, action, ssh_credentials[0],
         ssh_credentials[1], ssh_credentials[1])
 
     sub = subprocess.Popen(
         cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     stdout, stderr = sub.communicate()
     if sub.returncode != 0:
-        LOG.error('Command failed:\n %s\n. %s\n%s\n'
-                  % (cmd, stdout.decode('utf-8'), stderr.decode('utf-8')))
-        raise Exception('Failed to enable IPsec on all hosts.')
-    LOG.info('Successfully enabled IPsec on all hosts. Output:\n%s\n'
+        LOG.error('Command failed:\n %s\n%s\n'
+                  % (stdout.decode('utf-8'), stderr.decode('utf-8')))
+        raise Exception(f'Failed to perform {action} action to configure '
+                        f'IPsec on all hosts.')
+    LOG.info('Successfully configured IPsec on all hosts. Output:\n%s\n'
              % stdout.decode('utf-8'))
 
 
