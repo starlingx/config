@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Copyright (C) 2019 Intel Corporation
-# Copyright (c) 2021-2023 Wind River Systems, Inc.
+# Copyright (c) 2021-2024 Wind River Systems, Inc.
 #
 
 . /usr/bin/tsconfig
@@ -44,7 +44,7 @@ time_left_s() {
     else
         local time_left_s=""
         local exp_date=""
-        exp_date=$(echo "${CERT_EXP_DATES}" | grep "$1" | grep -oE '[a-zA-Z]{3} [0-3][0-9], [0-9]{4} ([0-1][0-9]|2[0-3]):[0-5][0-9] UTC')
+        exp_date=$(echo "${CERT_EXP_DATES}" | grep "^$1 " | grep -oE '[a-zA-Z]{3} [0-3][0-9], [0-9]{4} ([0-1][0-9]|2[0-3]):[0-5][0-9] UTC')
         if [ "x${exp_date}" != "x" ]; then
             exp_date_s=$(date -d "${exp_date}" +%s)
             current_date_s=$(date +%s)
@@ -226,6 +226,14 @@ if [ ${ERR} -eq 0 ]; then
         RESTART_SYSINV=1
         RESTART_CERT_MON=1
     elif [ ${result} -eq 1 ]; then
+        ERR=1
+    fi
+fi
+# Renew cert super-admin.conf
+if [ ${ERR} -eq 0 ]; then
+    renew_cert 'super-admin.conf'
+    result=$?
+    if [ ${result} -eq 1 ]; then
         ERR=1
     fi
 fi
