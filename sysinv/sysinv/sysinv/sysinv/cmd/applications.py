@@ -8,17 +8,25 @@
 System Inventory Application Verification & Validation Utility.
 """
 
+import io
+import os
+import re
+import ruamel.yaml as yaml
 import sys
 
 from distutils.version import LooseVersion
 from oslo_config import cfg
 from oslo_log import log
 
+from sysinv.api.controllers.v1 import kube_app as kube_api
+from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import kubernetes
 from sysinv.common import service
 from sysinv.common.app_metadata import verify_application
 from sysinv.common.app_metadata import verify_application_tarball
+from sysinv.common import utils as cutils
+from sysinv.conductor import kube_app
 from sysinv.db import api
 
 CONF = cfg.CONF
@@ -140,6 +148,98 @@ def make_application_query(k8s_ver, include_path=False):
         print(app)
 
 
+def load_metadata_of_apps(apps_metadata):
+    """ Extracts the tarball and loads the metadata of the
+    loaded/applied applications.
+
+    :param apps_metadata: metadata dictionary of the applications
+    """
+
+    dbapi = api.get_instance()
+    kube_app_helper = kube_api.KubeAppHelper(dbapi)
+
+    # All installed K8S Apps.
+    try:
+        db_apps = dbapi.kube_app_get_all()
+    except exception.KubeAppNotFound:
+        LOG.error("Unable to obtain K8s app list.")
+        return
+
+    loaded_apps = []
+    for app in db_apps:
+        loaded_apps.append(app.name)
+
+    for app_bundle in os.listdir(constants.HELM_APP_ISO_INSTALL_PATH):
+        # Get the app name from the tarball name
+        app_name = None
+        pattern = re.compile("^(.*)-([0-9]+\.[0-9]+-[0-9]+)")
+
+        match = pattern.search(app_bundle)
+        if match:
+            app_name = match.group(1)
+
+        # Extract the tarball for only the loaded applications
+        if app_name in loaded_apps:
+            # Proceed with extracting the tarball
+            tarball_name = '{}/{}'.format(
+                constants.HELM_APP_ISO_INSTALL_PATH, app_bundle)
+
+            with cutils.TempDirectory() as app_path:
+                if not cutils.extract_tarfile(app_path, tarball_name):
+                    LOG.error("Failed to extract tar file {}.".format(
+                        os.path.basename(tarball_name)))
+                    continue
+
+                # If checksum file is included in the tarball, verify its contents.
+                if not cutils.verify_checksum(app_path):
+                    LOG.error("Checksum validation failed for %s." % tarball_name)
+                    continue
+
+                try:
+                    name, version, patches = \
+                        kube_app_helper._verify_metadata_file(
+                            app_path, None, None)
+                except exception.SysinvException as e:
+                    LOG.error("Extracting tarfile for %s failed: %s." % (
+                        tarball_name, str(e)))
+                    continue
+
+                metadata_file = os.path.join(app_path, constants.APP_METADATA_FILE)
+
+                if os.path.exists(metadata_file):
+                    with io.open(metadata_file, 'r', encoding='utf-8') as f:
+                        # The RoundTripLoader removes the superfluous quotes by default.
+                        # Set preserve_quotes=True to preserve all the quotes.
+                        # The assumption here: there is just one yaml section
+                        metadata = yaml.load(
+                            f, Loader=yaml.RoundTripLoader, preserve_quotes=True)
+
+                if name and metadata:
+                    # Update metadata only if it was not loaded during conductor init
+                    # The reason is that we don't want to lose the modified version
+                    # by loading the default metadata from the bundled app.
+                    kube_app.AppOperator.update_and_process_app_metadata(
+                        apps_metadata, name, metadata)
+
+
+def get_reorder_apps():
+    """Reorders apps based on the metada.yaml presenting the application tarball
+
+    The purpose of this function is to print the updated apps
+    order based on the metadata.yaml of the tarballs.
+    """
+
+    apps_metadata = {constants.APP_METADATA_APPS: {},
+                     constants.APP_METADATA_PLATFORM_MANAGED_APPS: {},
+                     constants.APP_METADATA_DESIRED_STATES: {},
+                     constants.APP_METADATA_ORDERED_APPS: []}
+
+    load_metadata_of_apps(apps_metadata)
+
+    for app in apps_metadata[constants.APP_METADATA_ORDERED_APPS]:
+        print(app)
+
+
 def add_action_parsers(subparsers):
     parser = subparsers.add_parser('verify-metadata')
     parser.set_defaults(func=verify_application_metadata)
@@ -153,6 +253,9 @@ def add_action_parsers(subparsers):
     parser.set_defaults(func=make_application_query)
     parser.add_argument('k8s_ver', nargs=1)
     parser.add_argument('--include-path', action='store_true', default=False)
+
+    parser = subparsers.add_parser('get_reorder_apps')
+    parser.set_defaults(func=get_reorder_apps)
 
 
 CONF.register_cli_opt(
@@ -169,5 +272,7 @@ def main():
     elif CONF.action.name == "query":
         include_path = True if '--include-path' in sys.argv else False
         CONF.action.func(CONF.action.k8s_ver, include_path=include_path)
+    elif CONF.action.name == "get_reorder_apps":
+        CONF.action.func()
     else:
         print(f"Unsupported action verb: {CONF.action.name}", file=sys.stderr)

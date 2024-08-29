@@ -47,6 +47,8 @@ UPDATE_RESULT_ATTEMPTS=30  # ~15 min to update app
 COMMAND_RETRY_SLEEP=30
 COMMAND_RETRY_ATTEMPTS=10  # ~5 min to wait on a retried command.
 SOFTWARE_LOG_PATH='/var/log/software.log'
+SYSINV_LOG_PATH='/var/log/sysinv.log'
+CRITICAL_APPS='nginx-ingress-controller cert-manager'
 
 function log {
     echo "$(date -Iseconds | cut -d'+' -f1): ${NAME}[$$]: INFO: $*" >> "$SOFTWARE_LOG_PATH" 2>&1
@@ -131,25 +133,18 @@ function check_pod_readiness {
     sleep $SLEEP_RECONCILIATION
 
     # Wait for the Nginx Ingress Controller pods to be ready in the background
-    kubectl wait --for=condition=ready pod --all=true -n $KUBE_SYSTEM_NAMESPACE -lapp.kubernetes.io/name=ingress-nginx --timeout=${TIMEOUT}s
-    PID1=$!
-
-    # Wait for the Cert Manager pods to be ready in the background
-    kubectl wait --for=condition=ready pod --all=true -n $CERT_MANAGER_NAMESPACE -lapp=cert-manager --timeout=${TIMEOUT}s
-    PID2=$!
-
-    # Wait for both processes to finish
     log "Waiting for Nginx Ingress Controller Pod Status ..."
-    wait $PID1
+    kubectl --kubeconfig=/etc/kubernetes/admin.conf wait --for=condition=ready pod --all=true -n $KUBE_SYSTEM_NAMESPACE -lapp.kubernetes.io/name=ingress-nginx --timeout=${TIMEOUT}s
     RESULT1=$?
 
+    # Wait for the Cert Manager pods to be ready in the background
     log "Waiting for Cert-manager Pod Status ..."
-    wait $PID2
+    kubectl --kubeconfig=/etc/kubernetes/admin.conf wait --for=condition=ready pod --all=true -n $CERT_MANAGER_NAMESPACE -lapp=cert-manager --timeout=${TIMEOUT}s
     RESULT2=$?
 
-    # Check the results and provide specific messages
+    # Check the results and provide specific message
     if [ $RESULT1 -eq 0 ] && [ $RESULT2 -eq 0 ]; then
-        log "All required pods for Ingress Nginx Ingress and Cert Manager are ready."
+        log "All required pods for Ingress Nginx Controller and Cert Manager are ready."
     elif [ $RESULT1 -ne 0 ] && [ $RESULT2 -eq 0 ]; then
         log "ERROR: Ingress NGINX pods did not become ready within the timeout period."
         exit 1
@@ -162,60 +157,47 @@ function check_pod_readiness {
     fi
 }
 
-log "Starting Kubernetes application updates from release $FROM_RELEASE to $TO_RELEASE with action $ACTION"
+function update_in_series {
+    log "App ${EXISTING_APP_NAME} needs to be updated serially"
+    # Wait on the upload, should be quick
+    for tries in $(seq 1 $UPDATE_RESULT_ATTEMPTS); do
+        UPDATING_APP_INFO=$(system application-show $UPGRADE_APP_NAME --column name --column app_version --column status --format yaml)
+        UPDATING_APP_NAME=$(echo ${UPDATING_APP_INFO} | sed 's/.*name:[[:space:]]\(\S*\).*/\1/')
+        UPDATING_APP_VERSION=$(echo ${UPDATING_APP_INFO} | sed 's/.*app_version:[[:space:]]\(\S*\).*/\1/')
+        UPDATING_APP_STATUS=$(echo ${UPDATING_APP_INFO} | sed 's/.*status:[[:space:]]\(\S*\).*/\1/')
 
-if [ "$ACTION" == "activate" ]; then
-    # remove upgrade in progress file
-    [[ -f $UPGRADE_IN_PROGRESS_APPS_FILE ]] && rm -f $UPGRADE_IN_PROGRESS_APPS_FILE
-
-    # move the costly source command in the if branch, so only execute when needed.
-    source /etc/platform/openrc
-    source /etc/platform/platform.conf
-
-    for tries in $(seq 1 $RECOVER_RESULT_ATTEMPTS); do
-        if verify_apps_are_not_recovering; then
+        if [ "${UPDATING_APP_NAME}" == "${UPGRADE_APP_NAME}" ] && \
+        [ "${UPDATING_APP_VERSION}" == "${UPGRADE_APP_VERSION}" ] && \
+        [ "${UPDATING_APP_STATUS}" == "applied" ]; then
+            ALARMS=$(fm alarm-list --nowrap --uuid --query "alarm_id=750.005;entity_type_id=k8s_application;entity_instance_id=${UPGRADE_APP_NAME}" | head -n-1 | tail -n+4 | awk '{print $2}')
+            for alarm in ${ALARMS}; do
+                log "$NAME: [Warning] A stale 750.005 Application Update In Progress alarm was found for ${UPGRADE_APP_NAME}. Clearing it (UUID: ${alarm})."
+                fm alarm-delete $alarm
+            done
+            log "$NAME: ${UPGRADE_APP_NAME} has been updated to version ${UPGRADE_APP_VERSION} from version ${EXISTING_APP_VERSION}"
             break
-        elif [ $tries == $RECOVER_RESULT_ATTEMPTS ]; then
-            log "Exceeded maximum application recovery time of $(date -u -d @"$((RECOVER_RESULT_ATTEMPTS*RECOVER_RESULT_SLEEP))" +"%Mm%Ss"). Execute upgrade-activate again when all applications are uploaded or applied."
-            exit 1
         fi
-        sleep $RECOVER_RESULT_SLEEP
+        sleep $UPDATE_RESULT_SLEEP
     done
 
-    # Get the current k8s version
-    K8S_VERSIONS=$(system kube-version-list)
-    ACTIVE_K8S_VERSION=$(echo "$K8S_VERSIONS" | grep ' True ' | grep ' active ' | awk -F '|' '{print $2}' | tr -d ' ')
+    if [ $tries == $UPDATE_RESULT_ATTEMPTS ]; then
+        log "$NAME: ${UPGRADE_APP_NAME}, version ${UPGRADE_APP_VERSION}, was not updated in the alloted time. Exiting for manual intervention..."
+        exit 1
+    fi
 
-    # Get compatibles apps with current k8s version
+    if [ $tries != $UPDATE_RESULT_ATTEMPTS ] && [ "${UPDATING_APP_VERSION}" == "${EXISTING_APP_VERSION}" ] ; then
+        log "$NAME: ${UPGRADE_APP_NAME}, version ${UPGRADE_APP_VERSION}, update failed and was rolled back. Exiting for manual intervention..."
+        exit 1
+    fi
+}
 
-    # TODO(dbarbosa): Remove "--log-file /var/log/software.log" after fixing the issue with logs of
-    # the "sysinv-app query <k8s-target-version>" being logged to stdout.
-    COMPATIBLES_APPS=$(sudo sysinv-app --log-file ${SOFTWARE_LOG_PATH} query ${ACTIVE_K8S_VERSION})
-    COMPATIBLES_APPS_FORMATED=$(echo "$COMPATIBLES_APPS" | paste -sd '|')
-
-    # Get all loads apps
-    APPS_LOADED=$(system application-list | head -n-1 | tail -n+4 | awk '{print $2}')
-
-    # Check and log compatible and not compatible apps
-    for APP in $APPS_LOADED; do
-        if [[ "${APP}" =~ (${COMPATIBLES_APPS_FORMATED}) ]]; then
-            log "${APP} has an upgrade compatible tarball and will be updated."
-        else
-            log "${APP} does not have an upgrade compatible tarball and will remain at its current version."
-            continue
-        fi
-    done
-
-    # Get compatibles tarballs path with current k8s version
-    # Sort applications by version. Lower versions are attempted first.
-
-    # TODO(dbarbosa): Remove "--log-file /var/log/software.log" after fixing the issue with logs of
-    # the "sysinv-app query <k8s-target-version>" being logged to stdout.
-    COMPATIBLES_APPS_TARBALL_PATH=$(sudo sysinv-app --log-file ${SOFTWARE_LOG_PATH} query ${ACTIVE_K8S_VERSION} --include-path | sort -V)
+function update_apps {
+    COMPATIBLES_APPS=$1
+    IS_SERIAL_INSTALATION=$2
 
     LAST_APP_CHECKED=""
     # Get the list of applications installed in the new release
-    for fqpn_app in $COMPATIBLES_APPS_TARBALL_PATH; do
+    for fqpn_app in $COMPATIBLES_APPS; do
         # Extract the app name and version from the tarball name: app_name-version.tgz
         re='^(.*)-([0-9]+\.[0-9]+-[0-9]+).tgz'
         [[ "$(basename $fqpn_app)" =~ $re ]]
@@ -281,6 +263,10 @@ if [ "$ACTION" == "activate" ]; then
             applied)
                 log "Updating ${EXISTING_APP_NAME}, from version ${EXISTING_APP_VERSION} to version ${UPGRADE_APP_VERSION} from $fqpn_app"
                 system application-update $fqpn_app
+
+                if [ "$IS_SERIAL_INSTALATION" == "true" ]; then
+                    update_in_series
+                fi
                 ;;
 
             upload-failed)
@@ -317,9 +303,105 @@ if [ "$ACTION" == "activate" ]; then
 
         LAST_APP_CHECKED=${UPGRADE_APP_NAME}
     done
+}
 
-    # Check the status of nginx-ingress-controller and cert-manager pods
+log "Starting Kubernetes application updates from release $FROM_RELEASE to $TO_RELEASE with action $ACTION"
+
+if [ "$ACTION" == "activate" ]; then
+    # remove upgrade in progress file
+    [[ -f $UPGRADE_IN_PROGRESS_APPS_FILE ]] && rm -f $UPGRADE_IN_PROGRESS_APPS_FILE
+
+    # move the costly source command in the if branch, so only execute when needed.
+    source /etc/platform/openrc
+    source /etc/platform/platform.conf
+
+    for tries in $(seq 1 $RECOVER_RESULT_ATTEMPTS); do
+        if verify_apps_are_not_recovering; then
+            break
+        elif [ $tries == $RECOVER_RESULT_ATTEMPTS ]; then
+            log "Exceeded maximum application recovery time of $(date -u -d @"$((RECOVER_RESULT_ATTEMPTS*RECOVER_RESULT_SLEEP))" +"%Mm%Ss"). Execute upgrade-activate again when all applications are uploaded or applied."
+            exit 1
+        fi
+        sleep $RECOVER_RESULT_SLEEP
+    done
+
+    # Get the current k8s version
+    K8S_VERSIONS=$(system kube-version-list)
+    ACTIVE_K8S_VERSION=$(echo "$K8S_VERSIONS" | grep ' True ' | grep ' active ' | awk -F '|' '{print $2}' | tr -d ' ')
+
+    # Get compatibles apps with current k8s version
+    # TODO(dbarbosa): Remove "--log-file ${SOFTWARE_LOG_PATH}" after fixing the issue with logs of
+    # the "sysinv-app query <k8s-target-version>" being logged to stdout.
+    COMPATIBLES_APPS=$(sudo sysinv-app --log-file ${SOFTWARE_LOG_PATH} query ${ACTIVE_K8S_VERSION})
+    COMPATIBLES_APPS_FORMATED=$(echo "$COMPATIBLES_APPS" | paste -sd '|')
+
+    # Get all loads apps
+    APPS_LOADED=$(system application-list | head -n-1 | tail -n+4 | awk '{print $2}')
+
+    # Check and log compatible and not compatible apps
+    for APP in $APPS_LOADED; do
+        if [[ "${APP}" =~ (${COMPATIBLES_APPS_FORMATED}) ]]; then
+            log "${APP} has an upgrade compatible tarball and will be updated."
+        else
+            log "${APP} does not have an upgrade compatible tarball and will remain at its current version."
+            continue
+        fi
+    done
+
+    # Get list of apps that need to be installed serially due to application dependencies.
+    # TODO(dbarbosa): Remove "--log-file ${SOFTWARE_LOG_PATH}" after fixing the issue with logs of
+    # the "sysinv-app query <k8s-target-version>" being logged to stdout.
+    ALL_SYSTEM_SERIAL_APPLICATION=$(sudo sysinv-app --log-file ${SYSINV_LOG_PATH} get_reorder_apps)
+
+    # Get compatibles tarballs path with current k8s version
+    # Sort applications by version. Lower versions are attempted first.
+    # TODO(dbarbosa): Remove "--log-file ${SOFTWARE_LOG_PATH}" after fixing the issue with logs of
+    # the "sysinv-app query <k8s-target-version>" being logged to stdout.
+    COMPATIBLES_APPS_TARBALL_PATH=$(sudo sysinv-app --log-file ${SOFTWARE_LOG_PATH} query ${ACTIVE_K8S_VERSION} --include-path | sort -V)
+
+    CRITICAL_APPS_PATHS=""
+
+    # From the list of COMPATIBLES_APPS_TARBALL_PATH, apps that have priority for installation by the platform are separated.
+    for app in $CRITICAL_APPS; do
+        # Get the first matching path for the app
+        matched_path=$(echo "$COMPATIBLES_APPS_TARBALL_PATH" | grep -m 1 "/$app-")
+
+        # Add the matched path to MATCHED_PATHS if found
+        if [ -n "$matched_path" ]; then
+            CRITICAL_APPS_PATHS+="$matched_path "
+            # Remove the matched path from COMPATIBLES_APPS_TARBALL_PATH
+            COMPATIBLES_APPS_TARBALL_PATH=$(echo "$COMPATIBLES_APPS_TARBALL_PATH" | grep -v "$matched_path")
+        fi
+    done
+
+    APPS_IN_SERIAL_PATH=''
+    APPS_IN_PARALLEL_PATHS=''
+
+    # Find matches between ALL_SYSTEM_SERIAL_APPLICATION and COMPATIBLES_APPS_TARBALL_PATH and save
+    # to APPS_IN_SERIAL_PATH
+    for app in $ALL_SYSTEM_SERIAL_APPLICATION; do
+        # Find the corresponding path in COMPATIBLES_APPS_TARBALL_PATH
+        matched_path=$(echo "$COMPATIBLES_APPS_TARBALL_PATH" | grep -m 1 "/$app-")
+
+        # If a match is found, append it to APPS_IN_SERIAL_PATH
+        if [ -n "$matched_path" ]; then
+            APPS_IN_SERIAL_PATH="${APPS_IN_SERIAL_PATH}${matched_path} "
+        fi
+    done
+
+    # Find unmatched paths between ALL_SYSTEM_SERIAL_APPLICATION and COMPATIBLES_APPS_TARBALL_PATH
+    # and save to APPS_IN_PARALLEL_PATHS
+    for path in $COMPATIBLES_APPS_TARBALL_PATH; do
+        if ! echo -e "$APPS_IN_SERIAL_PATH" | grep -q "$path"; then
+            APPS_IN_PARALLEL_PATHS="${APPS_IN_PARALLEL_PATHS}${path} "
+        fi
+    done
+
+    update_apps "$CRITICAL_APPS_PATHS" "true"
     check_pod_readiness
+
+    update_apps "$APPS_IN_PARALLEL_PATHS" "false"
+    update_apps "$APPS_IN_SERIAL_PATH" "true"
 
     log "Completed Kubernetes application updates for release $FROM_RELEASE to $TO_RELEASE with action $ACTION"
 else
