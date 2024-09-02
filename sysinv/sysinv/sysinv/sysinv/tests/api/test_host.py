@@ -106,6 +106,15 @@ class TestHost(base.FunctionalTest, dbbase.BaseHostTestCase):
         self.mock_patch_api_drop_host = p.start()
         self.addCleanup(p.stop)
 
+        # Mock the USM API
+        p = mock.patch('sysinv.common.usm_service.UsmHostUpgrade.get_by_hostname')
+        self.mock_usm_service_get_by_hostname = p.start()
+        self.mock_usm_service_get_by_hostname.return_value = None
+        self.addCleanup(p.stop)
+        p = mock.patch('tsconfig.tsconfig.SW_VERSION', "0.0")
+        self.mock_tsconfig_sw_version = p.start()
+        self.addCleanup(p.stop)
+
         # Behave as if the API is running on controller-0
         p = mock.patch('socket.gethostname')
         self.mock_socket_gethostname = p.start()
