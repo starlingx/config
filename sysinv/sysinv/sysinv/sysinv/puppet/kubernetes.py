@@ -400,7 +400,12 @@ class KubernetesPuppet(base.BasePuppet):
                     cmd = ['kubectl', 'get', 'cm', '-n', 'kube-system',
                            'kubeadm-config', '-o=jsonpath={.data.ClusterConfiguration}',
                            KUBECONFIG]
-                    subprocess.check_call(cmd, stdout=f)  # pylint: disable=not-callable
+                    try:
+                        subprocess.check_call(cmd, stdout=f, timeout=30)  # pylint: disable=not-callable
+                    except subprocess.TimeoutExpired:
+                        LOG.error("Command %s: timed out." % cmd)
+                        os.unlink(temp_kubeadm_config_view)
+                        raise
 
                 # We will use a custom key to encrypt kubeadm certificates
                 # to make sure all hosts decrypt using the same key
@@ -431,10 +436,15 @@ class KubernetesPuppet(base.BasePuppet):
                 cmd = [kubeadm_path, 'init', 'phase', 'upload-certs', '--upload-certs', '--config',
                        temp_kubeadm_config_view]
 
-                subprocess.check_call(cmd)  # pylint: disable=not-callable
+                try:
+                    subprocess.check_call(cmd, timeout=30)  # pylint: disable=not-callable
+                except subprocess.TimeoutExpired:
+                    LOG.error("Command %s: timed out." % cmd)
+                    os.unlink(temp_kubeadm_config_view)
+                    raise
+                os.unlink(temp_kubeadm_config_view)
                 join_cmd_additions = \
                     " --control-plane --certificate-key %s" % key
-                os.unlink(temp_kubeadm_config_view)
 
                 # Configure the IP address of the API Server for the controller host.
                 # If not set the default network interface will be used, which does not
@@ -445,7 +455,12 @@ class KubernetesPuppet(base.BasePuppet):
 
             cmd = ['kubeadm', KUBECONFIG, 'token', 'create', '--print-join-command',
                    '--description', 'Bootstrap token for %s' % host.hostname]
-            join_cmd = subprocess.check_output(cmd, universal_newlines=True)  # pylint: disable=not-callable
+            try:
+                join_cmd = subprocess.check_output(  # pylint: disable=not-callable
+                    cmd, universal_newlines=True, timeout=30)
+            except subprocess.TimeoutExpired:
+                LOG.error("Command %s: timed out." % cmd)
+                raise
             join_cmd_additions += \
                 " --cri-socket /var/run/containerd/containerd.sock"
             join_cmd = join_cmd.strip() + join_cmd_additions

@@ -17897,6 +17897,13 @@ class ConductorManager(service.PeriodicService):
     def kube_upgrade_kubelet(self, context, host_uuid):
         """Upgrade the kubernetes kubelet on this host"""
 
+        def manifest_apply_failed_state(context, host_obj):
+            kube_host_upgrade_obj = objects.kube_host_upgrade.get_by_host_id(
+                context, host_obj.id)
+            kube_host_upgrade_obj.status = \
+                kubernetes.KUBE_HOST_UPGRADING_KUBELET_FAILED
+            kube_host_upgrade_obj.save()
+
         host_obj = objects.host.get_by_uuid(context, host_uuid)
         host_name = host_obj.hostname
         kube_host_upgrade_obj = objects.kube_host_upgrade.get_by_host_id(
@@ -17923,7 +17930,12 @@ class ConductorManager(service.PeriodicService):
             "host_uuids": [host_uuid],
             "classes": [puppet_class]
         }
-        self._config_apply_runtime_manifest(context, config_uuid, config_dict)
+        try:
+            self._config_apply_runtime_manifest(context, config_uuid, config_dict)
+        except Exception:
+            LOG.error("Manifest apply failed for host %s with config_uuid %s" %
+                      (host_name, config_uuid))
+            return manifest_apply_failed_state(context, host_obj)
 
         # Wait for the manifest to be applied
         LOG.debug("Waiting for config apply on host %s" % host_name)
@@ -17941,12 +17953,7 @@ class ConductorManager(service.PeriodicService):
             LOG.debug("Waiting for config apply on host %s" % host_name)
         else:
             LOG.warning("Manifest apply failed for host %s" % host_name)
-            kube_host_upgrade_obj = objects.kube_host_upgrade.get_by_host_id(
-                context, host_obj.id)
-            kube_host_upgrade_obj.status = \
-                kubernetes.KUBE_HOST_UPGRADING_KUBELET_FAILED
-            kube_host_upgrade_obj.save()
-            return
+            return manifest_apply_failed_state(context, host_obj)
 
         # Wait for the kubelet to start with the new version
         kube_operator = kubernetes.KubeOperator()
@@ -17967,12 +17974,7 @@ class ConductorManager(service.PeriodicService):
             LOG.debug("Waiting for kubelet update on host %s" % host_name)
         else:
             LOG.warning("Kubelet upgrade failed for host %s" % host_name)
-            kube_host_upgrade_obj = objects.kube_host_upgrade.get_by_host_id(
-                context, host_obj.id)
-            kube_host_upgrade_obj.status = \
-                kubernetes.KUBE_HOST_UPGRADING_KUBELET_FAILED
-            kube_host_upgrade_obj.save()
-            return
+            return manifest_apply_failed_state(context, host_obj)
 
         # The kubelet update was successful
         kube_host_upgrade_obj = objects.kube_host_upgrade.get_by_host_id(
