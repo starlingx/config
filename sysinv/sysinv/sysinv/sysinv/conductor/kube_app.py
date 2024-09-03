@@ -4166,13 +4166,21 @@ class FluxCDHelper(object):
 
     def check_pod_completed(self, pod):
         """Pod is of the form returned by self._kube.kube_get_pods_by_selector.
+
         Returns: true if last probe shows the container 'Ready' status is False
                  and the reason is PodCompleted
         """
-        conditions = list([x for x in pod.status.conditions if x.type == 'Ready'])
-        if not conditions:
+        conditions = pod.status.conditions if pod.status.conditions is not None else []
+
+        if conditions:
+            ready_conditions = list([x for x in conditions if x.type == 'Ready'])
+            if not ready_conditions:
+                LOG.debug(f"Pod {pod.metadata.name} is not ready")
+                return False
+            return (ready_conditions[0].status == 'False' and ready_conditions[0].reason == 'PodCompleted')
+        else:
+            LOG.warning(f"No conditions are available for pod {pod.metadata.name} at the moment")
             return False
-        return (conditions[0].status == 'False' and conditions[0].reason == 'PodCompleted')
 
     def verify_pods_status_for_release(self, chart_obj):
         """ chart_obj has the information required to query for pods associated
