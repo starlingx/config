@@ -19,6 +19,7 @@
 # - During rollback, HTTPS and Docker Registry certificates CRDs are deleted
 #   if created by this script.
 
+import json
 import logging as LOG
 import subprocess
 import sys
@@ -28,6 +29,9 @@ import yaml
 
 from cryptography.hazmat.primitives import serialization
 from sysinv.common import utils as sysinv_utils
+from sysinv.common.rest_api import get_token
+from sysinv.common.rest_api import rest_api_request
+
 from oslo_serialization import base64
 
 RETRIES = 3
@@ -135,7 +139,7 @@ def create_platform_certificates(to_release):
         LOG.error('Command failed:\n%s\n%s.\n%s.'
                   % (cmd, stdout.decode('utf-8'), stderr.decode('utf-8')))
         raise Exception('Cannot create platform certificates.')
-    LOG.info('Successfully created platform certificates. Output:\n%s'
+    LOG.info('Successfully created platform certificates. Output: %s'
              % stdout.decode('utf-8'))
 
 
@@ -275,7 +279,7 @@ def apply_k8s_yml(resources_yml):
         raise Exception('Cannot apply k8s resource file.')
     else:
         os.remove(K8S_RESOURCES_TMP_FILENAME)
-        LOG.info('K8s resources applied. Output:\n%s'
+        LOG.info('K8s resources applied. Output: %s'
                  % stdout.decode('utf-8'))
 
 
@@ -486,18 +490,44 @@ def adapt_legacy_certificate_config(to_release):
                     "remain after upgrade.")
 
 
-def restore_legacy_certificate_config(to_release):
-    affected_certs = [HTTPS_CERT_NAME, REGISTRY_CERT_NAME]
-    for cert in affected_certs:
-        if check_cert_auto_creation_file_flag(cert, to_release):
-            delete_certificate(cert)
-            remove_cert_auto_creation_file_flag(cert, to_release)
-        else:
-            if not certificate_exists(cert):
-                delete_secret(cert)
+def disable_https():
+    token = get_token(get_region_name())
+    sysinv_url = token.get_service_internal_url(
+        sysinv_utils.constants.SERVICE_TYPE_PLATFORM,
+        sysinv_utils.constants.SYSINV_USERNAME)
+
+    system_uuid = ''
+    api_cmd = sysinv_url + '/isystems'
+    res = rest_api_request(token, "GET", api_cmd)['isystems']
+    if len(res) == 1:
+        system = res[0]
+        system_uuid = system['uuid']
+    else:
+        raise Exception('Failed to access system data')
+
+    api_cmd_headers = dict()
+    api_cmd_headers['Content-type'] = "application/json"
+    api_cmd_headers['User-Agent'] = "sysinv/1.0"
+
+    api_cmd = api_cmd + '/' + system_uuid
+
+    patch = []
+    patch.append(
+        {'op': 'replace', 'path': '/https_enabled', 'value': 'false'})
+    res = rest_api_request(
+        token, "PATCH", api_cmd, api_cmd_headers, json.dumps(patch))
+    if res['capabilities']['https_enabled'] is False:
+        LOG.info('Disable https patch request succeeded')
+    else:
+        raise Exception('Disable https failed! resp=%s' % res)
+
+    try:
+        os.remove(CERT_FILES[HTTPS_CERT_NAME])
+    except OSError:
+        pass
 
 
-def wait_system_reconfiguration():
+def wait_system_reconfiguration(from_release='22.12'):
     cmd = "source /etc/platform/openrc && \
         fm alarm-list --query alarm_id=250.001"
 
@@ -514,10 +544,11 @@ def wait_system_reconfiguration():
             cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout, stderr = sub.communicate()
 
-        # Wait HTTPS cert in case system was HTTP
-        if not os.path.isfile(CERT_FILES[HTTPS_CERT_NAME]):
-            LOG.info("HTTPS certificate isn't ready yet.")
-            continue
+        if from_release == '22.12':
+            # Wait HTTPS cert in case system was HTTP
+            if not os.path.isfile(CERT_FILES[HTTPS_CERT_NAME]):
+                LOG.info("HTTPS certificate isn't ready yet.")
+                continue
 
         if sub.returncode == 0:
             if stdout.decode('utf-8').rstrip('\n') == "":
@@ -532,6 +563,20 @@ def wait_system_reconfiguration():
     LOG.error("NOTICE: Out-of-date alarms didn't clear out after more than %s \
               seconds. Ignoring and continuing with the upgrade activation."
               % str(WAIT_RECONFIG_ATTEMPTS * WAIT_RECONFIG_SLEEP))
+
+
+def restore_legacy_certificate_config(from_release):
+    affected_certs = [HTTPS_CERT_NAME, REGISTRY_CERT_NAME]
+    for cert in affected_certs:
+        if check_cert_auto_creation_file_flag(cert, from_release):
+            delete_certificate(cert)
+            remove_cert_auto_creation_file_flag(cert, from_release)
+            if cert == HTTPS_CERT_NAME:
+                disable_https()
+                wait_system_reconfiguration(from_release)
+        else:
+            if not certificate_exists(cert):
+                delete_secret(cert)
 
 
 def main():
@@ -593,13 +638,13 @@ def main():
                 return 0
 
     # Activate rollback
-    if (action == 'activate-rollback' and from_release == '22.12'):
+    if (action == 'activate-rollback' and from_release == '24.09'):
         LOG.info("%s invoked with from_release = %s to_release = %s "
                  "action = %s"
                  % (sys.argv[0], from_release, to_release, action))
         for retry in range(0, RETRIES):
             try:
-                restore_legacy_certificate_config(to_release)
+                restore_legacy_certificate_config(from_release)
                 remove_platform_certificates_updated_file_flag()
                 LOG.info("Successfully restored legacy certificate "
                          "config.")
