@@ -18,6 +18,7 @@ from sysinv.tests.api import base
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common.address_pool import ADDRESS_TO_ID_FIELD_INDEX
+from sysinv.common.usm_service import UsmUpgrade
 from sysinv.tests.db import base as dbbase
 from sysinv.tests.db import utils as dbutils
 
@@ -553,7 +554,12 @@ class TestPatchMixin(object):
         self.assertIsNone(c1_address.ifname)
 
     @mock.patch('sysinv.common.usm_service.is_usm_authapi_ready', lambda: True)
-    def test_fail_modify_oam_during_platform_upgrade(self):
+    @mock.patch('sysinv.common.usm_service.get_platform_upgrade')
+    def test_fail_modify_oam_during_platform_upgrade(self, mock_get_platform_upgrade):
+        usm_deploy = UsmUpgrade("in_progress",
+                                "0.0",
+                                "0.0")
+        mock_get_platform_upgrade.return_value = usm_deploy
         dbutils.create_test_upgrade(state=constants.UPGRADE_STARTING)
         addrpool = self.find_addrpool_by_networktype(constants.NETWORK_TYPE_OAM)
         response = self.patch_oam_fail(addrpool, http_client.BAD_REQUEST,

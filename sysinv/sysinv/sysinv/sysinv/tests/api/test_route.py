@@ -21,22 +21,29 @@ from sysinv.tests.db import utils as dbutils
 
 
 # route updates are disallowed prior to controller-0 upgrade or during abort
-DISALLOWED_UPGRADE_STATES = [
-    constants.UPGRADE_STARTING,
-    constants.UPGRADE_STARTED,
-    constants.UPGRADE_DATA_MIGRATION,
-    constants.UPGRADE_DATA_MIGRATION_COMPLETE,
-    constants.UPGRADE_DATA_MIGRATION_FAILED,
-
-    constants.UPGRADE_ABORTING,
-    constants.UPGRADE_ABORT_COMPLETING,
-    constants.UPGRADE_ABORTING_ROLLBACK
+DISALLOWED_DEPLOY_STATES = [
+    constants.DEPLOY_STATE_START,
+    constants.DEPLOY_STATE_START_DONE,
+    constants.DEPLOY_STATE_START_FAILED,
+    constants.DEPLOY_STATE_HOST_ROLLBACK,
+    constants.DEPLOY_STATE_HOST_ROLLBACK_DONE,
+    constants.DEPLOY_STATE_HOST_ROLLBACK_FAILED,
+    constants.DEPLOY_STATE_ACTIVATE_ROLLBACK,
+    constants.DEPLOY_STATE_ACTIVATE_ROLLBACK_DONE,
+    constants.DEPLOY_STATE_ACTIVATE_ROLLBACK_FAILED,
+    constants.DEPLOY_STATE_ACTIVATE_ROLLBACK_PENDING,
 ]
 
 # route updates are allowed after controller-0 is upgraded
-ALLOWED_UPGRADE_STATES = [
-    s for s in constants.PLATFORM_UPGRADE_STATES
-    if s not in DISALLOWED_UPGRADE_STATES]
+ALLOWED_DEPLOY_STATES = [
+    constants.DEPLOY_STATE_HOST,
+    constants.DEPLOY_STATE_HOST_DONE,
+    constants.DEPLOY_STATE_HOST_FAILED,
+    constants.DEPLOY_STATE_ACTIVATE,
+    constants.DEPLOY_STATE_ACTIVATE_DONE,
+    constants.DEPLOY_STATE_ACTIVATE_FAILED,
+    constants.DEPLOY_STATE_COMPLETED,
+]
 
 
 class RouteTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
@@ -201,38 +208,36 @@ class TestPostUpgrade(RouteTestCase):
 
     @mock.patch('sysinv.common.usm_service.is_usm_authapi_ready', lambda: True)
     def test_create_route_during_disallowed_upgrade_state(self):
+        for upgrade_state in DISALLOWED_DEPLOY_STATES:
+            response = {"state": upgrade_state, "from_release": "0.0", "to_release": "1.0"}
+            with mock.patch('sysinv.common.usm_service.get_software_upgrade') as mock_get_software_upgrade:
+                mock_get_software_upgrade.return_value = response
 
-        for upgrade_state in DISALLOWED_UPGRADE_STATES:
-            self.dbapi.software_upgrade_update(
-                self.upgrade.uuid,
-                {'state': upgrade_state})
-
-            self._test_create_route_fail(
-                self.interface,
-                family=4,
-                network='10.10.10.0',
-                prefix=24,
-                gateway=str(self.system_controller_subnet[1]),
-                status_code=http_client.CONFLICT,
-                error_message=("An Upgrade is in progress with state %s" %
-                               upgrade_state)
-            )
+                self._test_create_route_fail(
+                    self.interface,
+                    family=4,
+                    network='10.10.10.0',
+                    prefix=24,
+                    gateway=str(self.system_controller_subnet[1]),
+                    status_code=http_client.CONFLICT,
+                    error_message=("An Upgrade is in progress with state %s" %
+                                   upgrade_state)
+                )
 
     def test_create_route_during_allowed_upgrade_state(self):
         network_subnet = 0
-        for upgrade_state in ALLOWED_UPGRADE_STATES:
-            self.dbapi.software_upgrade_update(
-                self.upgrade.uuid,
-                {'state': upgrade_state})
-
+        for upgrade_state in ALLOWED_DEPLOY_STATES:
+            response = {"state": upgrade_state, "from_release": "0.0", "to_release": "1.0"}
             network_subnet += 10
-            self._test_create_route_success(
-                self.interface,
-                family=4,
-                network='10.10.%s.0' % network_subnet,
-                prefix=24,
-                gateway=str(self.system_controller_subnet[1]),
-            )
+            with mock.patch('sysinv.common.usm_service.get_software_upgrade') as mock_get_software_upgrade:
+                mock_get_software_upgrade.return_value = response
+                self._test_create_route_success(
+                    self.interface,
+                    family=4,
+                    network='10.10.%s.0' % network_subnet,
+                    prefix=24,
+                    gateway=str(self.system_controller_subnet[1]),
+                )
 
 
 class TestDelete(RouteTestCase):
@@ -282,37 +287,37 @@ class TestDeleteUpgrade(RouteTestCase):
             prefix=24,
             gateway=str(self.oam_subnet[1]))
 
-        for upgrade_state in DISALLOWED_UPGRADE_STATES:
-            self.dbapi.software_upgrade_update(
-                self.upgrade.uuid,
-                {'state': upgrade_state})
+        for upgrade_state in DISALLOWED_DEPLOY_STATES:
+            response = {"state": upgrade_state, "from_release": "0.0", "to_release": "1.0"}
+            with mock.patch('sysinv.common.usm_service.get_software_upgrade') as mock_get_software_upgrade:
+                mock_get_software_upgrade.return_value = response
 
-            response = self.delete(self.get_single_url(route_db.uuid),
-                                   headers=self.API_HEADERS,
-                                   expect_errors=True)
-            # Check HTTP response is failed
-            error_message = ("An Upgrade is in progress with state %s" %
-                             upgrade_state)
-            self.assertEqual('application/json', response.content_type)
-            self.assertEqual(response.status_code, http_client.CONFLICT)
-            self.assertIn(error_message, response.json['error_message'])
+                response = self.delete(self.get_single_url(route_db.uuid),
+                                       headers=self.API_HEADERS,
+                                       expect_errors=True)
+                # Check HTTP response is failed
+                error_message = ("An Upgrade is in progress with state %s" %
+                                 upgrade_state)
+                self.assertEqual('application/json', response.content_type)
+                self.assertEqual(response.status_code, http_client.CONFLICT)
+                self.assertIn(error_message, response.json['error_message'])
 
     def test_delete_route_during_allowed_upgrade_state(self):
-        for upgrade_state in ALLOWED_UPGRADE_STATES:
-            self.dbapi.software_upgrade_update(
-                self.upgrade.uuid,
-                {'state': upgrade_state})
+        for upgrade_state in ALLOWED_DEPLOY_STATES:
+            response = {"state": upgrade_state, "from_release": "0.0", "to_release": "1.0"}
+            with mock.patch('sysinv.common.usm_service.get_software_upgrade') as mock_get_software_upgrade:
+                mock_get_software_upgrade.return_value = response
 
-            route_db = dbutils.create_test_route(
-                interface_id=self.interface.id,
-                family=4,
-                network='10.10.10.0',
-                prefix=24,
-                gateway=str(self.oam_subnet[1]))
+                route_db = dbutils.create_test_route(
+                    interface_id=self.interface.id,
+                    family=4,
+                    network='10.10.10.0',
+                    prefix=24,
+                    gateway=str(self.oam_subnet[1]))
 
-            response = self.delete(self.get_single_url(route_db.uuid),
-                                   headers=self.API_HEADERS)
-            self.assertEqual(response.status_code, http_client.NO_CONTENT)
+                response = self.delete(self.get_single_url(route_db.uuid),
+                                       headers=self.API_HEADERS)
+                self.assertEqual(response.status_code, http_client.NO_CONTENT)
 
 
 class TestList(RouteTestCase):

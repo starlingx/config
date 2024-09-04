@@ -4,11 +4,16 @@
 #
 
 import mock
-
 from sysinv.common import constants
+from sysinv.common import exception
+from sysinv.common.usm_service import UsmUpgrade
 
 from sysinv.tests.db import base as dbbase
 from sysinv.tests.puppet import base
+
+
+def _not_found():
+    raise exception.NotFound()
 
 
 class PuppetOperatorTestSuiteMixin(base.PuppetTestCaseMixin):
@@ -139,7 +144,13 @@ class PlatformUpgradeOpenstackAIODuplexHostTestCase(PuppetOperatorTestSuiteMixin
                                                     dbbase.PlatformUpgradeTestCase):
 
     @mock.patch('sysinv.common.usm_service.is_usm_authapi_ready', lambda: True)
-    def test_update_system_config(self):
+    @mock.patch('sysinv.common.usm_service.get_platform_upgrade')
+    def test_update_system_config(self, mock_get_platform_upgrade):
+        usm_deploy = UsmUpgrade("in_progress",
+                                "0.0",
+                                "0.0")
+        mock_get_platform_upgrade.return_value = usm_deploy
+
         mock_open = mock.mock_open(read_data=self.fake_hieradata)
         with mock.patch('six.moves.builtins.open', mock_open):
             super(PlatformUpgradeOpenstackAIODuplexHostTestCase, self).test_update_system_config()
@@ -154,7 +165,12 @@ class PlatformUpgradeOpenstackAIODuplexHostTestCase(PuppetOperatorTestSuiteMixin
             )
 
     @mock.patch('sysinv.common.usm_service.is_usm_authapi_ready', lambda: True)
-    def test_update_secure_system_config(self):
+    @mock.patch('sysinv.common.usm_service.get_platform_upgrade')
+    def test_update_secure_system_config(self, mock_get_platform_upgrade):
+        usm_deploy = UsmUpgrade("in_progress",
+                                "0.0",
+                                "0.0")
+        mock_get_platform_upgrade.return_value = usm_deploy
         mock_open = mock.mock_open(read_data=self.fake_hieradata)
         with mock.patch('six.moves.builtins.open', mock_open):
             super(PlatformUpgradeOpenstackAIODuplexHostTestCase, self).test_update_secure_system_config()

@@ -32,21 +32,6 @@ class TestUSMService(TestCase):
 
         self.assertEqual(result, expected_response)
 
-    @mock.patch('sysinv.common.usm_service.is_usm_authapi_ready', lambda: True)
-    def test_get_platform_upgrade_without_usm_service(self):
-        mock_dbapi_response = {
-            "from_release": "1.0",
-            "to_release": "2.0",
-            "state": "in_progress"
-        }
-
-        mock_dbapi = mock.Mock()
-        mock_dbapi.software_upgrade_get_one.return_value = mock_dbapi_response
-
-        result = get_platform_upgrade(mock_dbapi)
-
-        self.assertEqual(result, mock_dbapi_response)
-
     @mock.patch('sysinv.common.usm_service.get_usm_endpoint')
     @mock.patch('sysinv.common.usm_service._get_token')
     @mock.patch('sysinv.common.usm_service.get_region_name')

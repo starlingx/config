@@ -2632,12 +2632,36 @@ MANUAL = "Manual"
 ISSUER = "Issuer"
 
 # USM deploy state
-DEPLOY_STATE_HOST = 'host'  # host is being deploy
-DEPLOY_STATE_HOST_FAILED = 'host-failed'  # host deployment failed
-DEPLOY_STATE_COMPLETED = 'completed'
+# pre-host deploy
+DEPLOY_STATE_START = 'start'
+DEPLOY_STATE_START_DONE = 'start-done'
+DEPLOY_STATE_START_FAILED = 'start-failed'
+
+# host-deploy
+DEPLOY_STATE_HOST = 'host'
+DEPLOY_STATE_HOST_DONE = 'host-done'
+DEPLOY_STATE_HOST_FAILED = 'host-failed'
+
+# host-rollback
 DEPLOY_STATE_HOST_ROLLBACK = 'host-rollback'
 DEPLOY_STATE_HOST_ROLLBACK_FAILED = 'host-rollback-failed'
 DEPLOY_STATE_HOST_ROLLBACK_DONE = 'host-rollback-done'
+DEPLOY_STATE_HOST_ROLLBACK_FAILED = 'host-rollback-failed'
+
+# activate
+DEPLOY_STATE_ACTIVATE = 'activate'
+DEPLOY_STATE_ACTIVATE_DONE = 'activate-done'
+DEPLOY_STATE_ACTIVATE_FAILED = 'activate-failed'
+
+# activate rollback
+DEPLOY_STATE_ACTIVATE_ROLLBACK = 'activate-rollback'
+DEPLOY_STATE_ACTIVATE_ROLLBACK_DONE = 'activate-rollback-done'
+DEPLOY_STATE_ACTIVATE_ROLLBACK_FAILED = 'activate-rollback-failed'
+DEPLOY_STATE_ACTIVATE_ROLLBACK_PENDING = 'activate-rollback-pending'
+
+# completed
+DEPLOY_STATE_COMPLETED = 'completed'
+
 
 DEPLOY_STATE_HOST_STATES = [
     DEPLOY_STATE_HOST,

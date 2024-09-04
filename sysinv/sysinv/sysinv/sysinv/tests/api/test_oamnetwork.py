@@ -14,6 +14,7 @@ from six.moves import http_client
 from oslo_utils import uuidutils
 
 from sysinv.common import constants
+from sysinv.common.usm_service import UsmUpgrade
 from sysinv.tests.api import base
 from sysinv.tests.db import base as dbbase
 from sysinv.tests.db import utils as dbutils
@@ -340,7 +341,13 @@ class TestPatchMixin(OAMNetworkTestCase):
                               error_message)
 
     @mock.patch('sysinv.common.usm_service.is_usm_authapi_ready', lambda: True)
-    def test_patch_oam_during_platform_upgrade(self):
+    @mock.patch('sysinv.common.usm_service.get_platform_upgrade')
+    def test_patch_oam_during_platform_upgrade(self, mock_get_platform_upgrade):
+        usm_deploy = UsmUpgrade("in_progress",
+                                "0.0",
+                                "0.0")
+        mock_get_platform_upgrade.return_value = usm_deploy
+
         oam_floating_ip = self.oam_subnet[2]
         oam_c0_ip = self.oam_subnet[3]
         oam_c1_ip = self.oam_subnet[4]

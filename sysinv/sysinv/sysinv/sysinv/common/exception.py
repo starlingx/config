@@ -1709,3 +1709,7 @@ class EtcdOperationFailure(SysinvException):
 
 class UnexpectedEvent(SysinvException):
     message = _("Unexpected event received: %(event)s")
+
+
+class CannotQueryPlatformUpgrade(SysinvException):
+    message = _("Failed to query platform upgrade state")

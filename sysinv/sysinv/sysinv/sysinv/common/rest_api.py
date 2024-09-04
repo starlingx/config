@@ -12,6 +12,7 @@ from six.moves.urllib.request import urlopen
 from six.moves.urllib.request import Request
 from six.moves.urllib.error import HTTPError
 from six.moves.urllib.error import URLError
+import socket
 import ssl
 
 from oslo_log import log
@@ -170,6 +171,68 @@ def rest_api_request(token, method, api_cmd, api_cmd_headers=None,
     finally:
         signal.alarm(0)
         return response
+
+
+def rest_api_request_raise(token, method, api_cmd, api_cmd_headers=None,
+                           api_cmd_payload=None, timeout=10):
+    """
+    Make a rest-api request, raise exceptions for errors
+    Returns: response as a dictionary from json response
+    raise HTTPError and URLError
+
+    This function is slightly different from rest_api_request:
+    1. it actually raise/uncatch exceptions mentioned, rest_api_request
+       eats the exceptions by return response in finally block
+    2. it does NOT wrap the exceptions, so the caller knows the failure of
+       rest-api call, so to perform its own reattempt strategy.
+       The exception is 401, it force token expired and reraise.
+    3. only a dictionary of decoded from json response is return,
+       rest_api_request returns string of error message in the case of error.
+    """
+
+    LOG.info("%s cmd:%s hdr:%s payload:%s" % (method,
+             api_cmd, api_cmd_headers, api_cmd_payload))
+
+    response = None
+    try:
+        request_info = Request(api_cmd)
+        request_info.get_method = lambda: method
+        if token:
+            request_info.add_header("X-Auth-Token", token.get_id())
+        request_info.add_header("Accept", "application/json")
+
+        if api_cmd_headers is not None:
+            for header_type, header_value in api_cmd_headers.items():
+                request_info.add_header(header_type, header_value)
+
+        if api_cmd_payload is not None:
+            request_info.data = encodeutils.safe_encode(api_cmd_payload)
+
+        ca_file = get_system_ca_file()
+        ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH,
+                                                 cafile=ca_file)
+        request = urlopen(request_info, timeout=timeout, context=ssl_context)
+
+        response = request.read()
+
+        if response == "":
+            response = json.loads("{}")
+        else:
+            response = json.loads(response)
+        request.close()
+
+    except HTTPError as e:
+        if 401 == e.code:
+            if token:
+                LOG.info("force token expired")
+                token.set_expired()
+        LOG.warn("HTTP Error e.code=%s e=%s, response %s" % (e.code, e, response))
+        raise
+
+    except socket.timeout:
+        raise si_exception.SysInvSignalTimeout("Timeout sending rest request")
+
+    return response
 
 
 def get_system_ca_file():
