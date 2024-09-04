@@ -36,25 +36,27 @@ RC_CERT_EXP_DATES=$?
 if [ $RC_CERT_EXP_DATES -ne 0 ]; then
     echo "Failed to read certificates with 'kubeadm $CERT_CMD check-expiration. Will assume certs are expired."
 fi
-# Time left in seconds for a cert
-time_left_s() {
-    # A bad return code from kubeadm means we can safely assume all k8s certs have expired
-    if [ $RC_CERT_EXP_DATES -ne 0 ]; then
-        echo 0
-    else
-        local time_left_s=""
-        local exp_date=""
-        exp_date=$(echo "${CERT_EXP_DATES}" | grep "^$1 " | grep -oE '[a-zA-Z]{3} [0-3][0-9], [0-9]{4} ([0-1][0-9]|2[0-3]):[0-5][0-9] UTC')
-        if [ "x${exp_date}" != "x" ]; then
-            exp_date_s=$(date -d "${exp_date}" +%s)
-            current_date_s=$(date +%s)
-            time_left_s=$((${exp_date_s}-${current_date_s}))
-        fi
-        echo ${time_left_s}
-    fi
+
+# Check if k8s certificate exist. Return 0 for no and 1 for yes.
+k8s_cert_exists() {
+    echo "${CERT_EXP_DATES}" | grep "^$1 " 1>/dev/null
+    return $?
 }
 
-# Retrieve a certiticate's valid time by openssl
+# Time left in seconds for a cert
+time_left_s() {
+    local time_left_s=""
+    local exp_date=""
+    exp_date=$(echo "${CERT_EXP_DATES}" | grep "^$1 " | grep -oE '[a-zA-Z]{3} [0-3][0-9], [0-9]{4} ([0-1][0-9]|2[0-3]):[0-5][0-9] UTC')
+    if [ "x${exp_date}" != "x" ]; then
+        exp_date_s=$(date -d "${exp_date}" +%s)
+        current_date_s=$(date +%s)
+        time_left_s=$((${exp_date_s}-${current_date_s}))
+    fi
+    echo ${time_left_s}
+}
+
+# Retrieve a certificate's valid time by openssl
 time_left_s_by_openssl() {
     local time_left_s=""
     local exp_date=""
@@ -75,11 +77,26 @@ time_left_s_by_openssl() {
 renew_cert() {
     local ret=0
     local time_left_s=""
+
+    # A bad return code from kubeadm means we can safely assume all k8s certs have expired
+    if [ $RC_CERT_EXP_DATES -ne 0 ]; then
+        kubeadm $CERT_CMD renew $1
+        if [ $? -ne 0 ]; then
+            ret=1
+        fi
+        return ${ret}
+    fi
+
+    k8s_cert_exists "$1"
+    if [ $? -ne 0 ]; then
+        echo "Skipping certificate ${1} as it does exist in 'kubeadm certs check-expiration'"
+        return ${ret}
+    fi
+
     time_left_s=$(time_left_s "$1")
     if [ "x${time_left_s}" != "x" ]; then
         if [ ${time_left_s} -lt ${CUTOFF_DAYS_S} ]; then
             kubeadm $CERT_CMD renew $1
-
             if [ $? -ne 0 ]; then
                 ret=1
             fi
