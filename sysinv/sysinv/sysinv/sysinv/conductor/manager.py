@@ -19963,6 +19963,8 @@ class ConductorManager(service.PeriodicService):
                 if "volumes" in dex_user_overrides:
                     for entry in dex_user_overrides["volumes"]:
                         secrets.append((entry["secret"]["secretName"], oidc_ns))
+        except exception.HelmOverrideNotFound:
+            LOG.error(f"{app_name}")
         except exception.KubeAppNotFound:
             LOG.info("%s app not present" % app_name)
 
