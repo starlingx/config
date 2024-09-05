@@ -605,20 +605,20 @@ class CertificateController(rest.RestController):
 
     @expose('json')
     @cutils.synchronized(LOCK_NAME)
-    def get_all_certs(self, expired=False, soon_to_expiry=None):
+    def get_all_certs(self, expired=None, soon_to_expiry=None):
         cert_data = pecan.request.rpcapi.get_all_certs(pecan.request.context)
         return self._get_cert_data(cert_data, expired, soon_to_expiry)
 
     @expose('json')
     @cutils.synchronized(LOCK_NAME)
-    def get_all_k8s_certs(self, expired=False, soon_to_expiry=None):
+    def get_all_k8s_certs(self, expired=None, soon_to_expiry=None):
         cert_data = pecan.request.rpcapi.get_all_k8s_certs(pecan.request.context)
         return self._get_cert_data(cert_data, expired, soon_to_expiry)
 
     @staticmethod
     def _get_cert_data(cert_data, expired, soon_to_expiry):
         expired_certs = {}
-        if expired:
+        if expired in ("True", "true"):
             for key, val in cert_data.items():
                 no_of_days = int(val[constants.RESIDUAL_TIME].split('d')[0])
                 if no_of_days < 0:
