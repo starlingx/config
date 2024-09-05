@@ -10617,6 +10617,342 @@ Deletes an external storage backend
 
 This operation does not accept a request body.
 
+-----------------
+Storage Ceph Rook
+-----------------
+
+These APIs allow the create, display, modify and delete of the storage
+ceph rook.
+
+*************************************
+List Ceph Rook storage backends
+*************************************
+
+.. rest_method:: GET /v1/storage_ceph_rook
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+computeFault (400, 500, ...), serviceUnavailable (503), badRequest (400),
+unauthorized (401), forbidden (403), badMethod (405), overLimit (413),
+itemNotFound (404)
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "name (Optional)", "plain", "xsd:string", "The name of the backend (to differentiate between multiple common backends)."
+   "backend (Optional)", "plain", "xsd:string", "Represents the storage backend (file, lvm, or ceph)."
+   "state (Optional)", "plain", "xsd:string", "The state of the backend. It can be configured, configuring-with-app."
+   "task (Optional)", "plain", "xsd:string", "Current task of the corresponding application."
+   "capabilities (Optional)", "plain", "xsd:string", "Meta data for the storage backend"
+   "services (Optional)", "plain", "xsd:string", "The openstack services that are supported by this storage backend."
+   "uuid (Optional)", "plain", "csapi:UUID", "Unique UUID for this rook ceph storage backend."
+   "links (Optional)", "plain", "xsd:list", "A list containing a self link and associated storage backend links."
+   "created_at (Optional)", "plain", "xsd:dateTime", "The time when the object was created."
+   "updated_at (Optional)", "plain", "xsd:dateTime", "The time when the object was last updated."
+
+::
+
+   {
+      "storage_ceph_rook": [
+         {
+            "task": null,
+            "uuid": "ced40c30-5499-48a7-8197-3e1a90b3f402",
+            "links": [
+                  {
+                     "href": "http://192.168.204.2:6385/v1/storage_ceph_rook/ced40c30-5499-48a7-8197-3e1a90b3f402",
+                     "rel": "self"
+                  },
+                  {
+                     "href": "http://192.168.204.2:6385/storage_ceph_rook/ced40c30-5499-48a7-8197-3e1a90b3f402",
+                     "rel": "bookmark"
+                  }
+            ],
+            "created_at": "2018-06-27T13:30:38.557700+00:00",
+            "updated_at": "2018-06-27T13:35:13.213177+00:00",
+            "capabilities": {
+                  "cinder_pool": "cinder-volumes"
+            },
+            "services": "cinder",
+            "state": "configured",
+            "backend": "ceph-external",
+            "name": "ceph-ext-bk"
+         }
+      ]
+   }
+
+This operation does not accept a request body.
+
+*************************************************
+Shows attributes of the Ceph Rook storage backend
+*************************************************
+
+.. rest_method:: GET /v1/storage_ceph_rook/{storage_ceph_rook_uuid}
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+computeFault (400, 500, ...), serviceUnavailable (503), badRequest (400),
+unauthorized (401), forbidden (403), badMethod (405), overLimit (413),
+itemNotFound (404)
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "storage_ceph_rook_uuid", "URI", "csapi:UUID", "The unique identifier of the storage backend."
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "name (Optional)", "plain", "xsd:string", "The name of the backend (to differentiate between multiple common backends)."
+   "backend (Optional)", "plain", "xsd:string", "Represents the storage backend (file, lvm, or ceph)."
+   "state (Optional)", "plain", "xsd:string", "The state of the backend. It can be configured, configuring-with-app."
+   "task (Optional)", "plain", "xsd:string", "Current task of the corresponding application."
+   "capabilities (Optional)", "plain", "xsd:string", "Meta data for the storage backend"
+   "services (Optional)", "plain", "xsd:string", "The openstack services that are supported by this storage backend."
+   "uuid (Optional)", "plain", "csapi:UUID", "Unique UUID for this rook ceph storage backend."
+   "links (Optional)", "plain", "xsd:list", "A list containing a self link and associated storage backend links."
+   "created_at (Optional)", "plain", "xsd:dateTime", "The time when the object was created."
+   "updated_at (Optional)", "plain", "xsd:dateTime", "The time when the object was last updated."
+
+::
+
+   {
+      "storage_ceph_rook": [
+            {
+               "task": null,
+               "uuid": "ced40c30-5499-48a7-8197-3e1a90b3f402",
+               "links": [
+                     {
+                        "href": "http://192.168.204.2:6385/v1/storage_ceph_rook/ced40c30-5499-48a7-8197-3e1a90b3f402",
+                        "rel": "self"
+                     },
+                     {
+                        "href": "http://192.168.204.2:6385/storage_ceph_rook/ced40c30-5499-48a7-8197-3e1a90b3f402",
+                        "rel": "bookmark"
+                     }
+               ],
+               "created_at": "2018-06-27T13:30:38.557700+00:00",
+               "updated_at": "2018-06-27T13:35:13.213177+00:00",
+               "capabilities": {
+                     "cinder_pool": "cinder-volumes"
+               },
+               "services": "cinder",
+               "state": "configured",
+               "backend": "ceph-external",
+               "name": "ceph-ext-bk"
+           }
+      ]
+   }
+
+This operation does not accept a request body.
+
+*************************************
+Add a Ceph Rook storage backend
+*************************************
+
+.. rest_method:: POST /v1/storage_ceph_rook
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+computeFault (400, 500, ...), serviceUnavailable (503), badRequest (400),
+unauthorized (401), forbidden (403), badMethod (405), overLimit (413),
+itemNotFound (404)
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "name(Optional)", "plain", "xsd:string", "Name of this backend."
+   "backend(Optional)", "plain", "xsd:string", "The type of the storage backend."
+   "state(Optional)", "plain", "xsd:string", "The admin state of the storage backend."
+   "task(Optional)", "plain", "xsd:string", "The current task of the storage backend when in ""configuring"" state."
+   "capabilities(Optional)", "plain", "xsd:string", "A dictionary of storage backend capabilities."
+   "services(Optional)", "plain", "xsd:string", "A comma separated list of backend services."
+   "confirmed(Optional)", "plain", "xsd:boolean", "Represent confirmation that the backend operation should proceed"
+   "deployment (Optional)", "plain", "xsd:string", "The deployment model for the storage backend"
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "uuid", "plain", "csapi:UUID", "The universally unique identifier for this object."
+   "links", "plain", "xsd:list", "A list containing a self link and associated storage backend links."
+   "created_at", "plain", "xsd:dateTime", "The time when the object was created."
+   "updated_at", "plain", "xsd:dateTime", "The time when the object was last updated."
+   "backend", "plain", "xsd:string", "The type of the storage backend."
+   "state", "plain", "xsd:string", "The admin state of the storage backend."
+   "name", "plain", "xsd:string", "Name of this backend."
+   "task", "plain", "xsd:string", "The current task of the storage backend when in ""configuring"" state."
+   "services", "plain", "xsd:string", "A comma separated list of backend services."
+   "capabilities", "plain", "xsd:string", "A dictionary of storage backend capabilities."
+   "confirmed", "plain", "xsd:boolean", "Represent confirmation that the backend operation should proceed"
+   "deployment", "plain", "xsd:string", "The deployment model for the storage backend"
+
+::
+
+   {
+      "backend": "ceph-rook",
+      "confirmed" : True
+   }
+
+::
+
+   {
+      "uuid": "fa7a4dae-1b4a-4715-a65e-389196d6b3ea",
+      "links": [
+         {
+            "href": "http://192.168.204.2:6385/v1/storage_ceph_rook/fa7a4dae-1b4a-4715-a65e-389196d6b3ea",
+            "rel": "self"
+         },
+         {
+            "href": "http://192.168.204.2:6385/storage_ceph_rook/fa7a4dae-1b4a-4715-a65e-389196d6b3ea",
+            "rel": "bookmark"
+         }
+      ],
+      "created_at": "2024-08-20T18:24:51.710024+00:00",
+      "updated_at": null,
+      "backend": "ceph-rook",
+      "state": "configuring-with-app",
+      "name": "ceph-rook-store",
+      "task": "uploaded",
+      "services": "block,filesystem",
+      "capabilities": {
+         "deployment_model": "controller",
+         "replication": "1",
+         "min_replication": "1"
+      },
+      "confirmed": false,
+      "deployment": null
+   }
+
+**************************************
+Modifies the Ceph Rook storage backend
+**************************************
+
+.. rest_method:: PATCH /v1/storage_ceph_external/​{storage_ceph_external_id}​
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+badMediaType (415)
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "storage_ceph_external_id", "URI", "csapi:UUID", "The unique identifier of the storage backend."
+   "services (Optional)", "plain", "xsd:string", "The name of the storage service."
+   "capabilities (Optional)", "plain", "xsd:string", "A dictionary of storage backend capabilities."
+   "task (Optional)", "plain", "xsd:string", "Current task of the corresponding application."
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "name (Optional)", "plain", "xsd:string", "Name of this backend."
+   "backend (Optional)", "plain", "xsd:string", "The type of the storage backend."
+   "state (Optional)", "plain", "xsd:string", "The admin state of the storage backend."
+   "task (Optional)", "plain", "xsd:string", "The current task of the storage backend when in ""configuring"" state."
+   "isystem_uuid (Optional)", "plain", "csapi:UUID", "The System UUID which the storage backend belongs to."
+   "capabilities (Optional)", "plain", "xsd:string", "A dictionary of storage backend capabilities."
+   "services (Optional)", "plain", "xsd:string", "A comma separated list of backend services."
+   "ceph_conf (Optional)", "plain", "xsd:integer", "The Ceph External configuration file."
+   "uuid (Optional)", "plain", "csapi:UUID", "The universally unique identifier for this object."
+   "links (Optional)", "plain", "xsd:list", "For convenience, resources contain links to themselves. This allows a client to easily obtain rather than construct resource URIs. The following types of link relations are associated with resources: a self link containing a versioned link to the resource, and a bookmark link containing a permanent link to a resource that is appropriate for long term storage."
+   "created_at (Optional)", "plain", "xsd:dateTime", "The time when the object was created."
+   "updated_at (Optional)", "plain", "xsd:dateTime", "The time when the object was last updated."
+
+::
+
+   [
+      {
+         "path": "/capabilities",
+         "value": '{"replication": 3, "min_replication": 2}',
+         "op": "replace"
+      }
+   ]
+
+::
+
+   {
+      "uuid": "5063cd1a-16ad-4686-8f9c-f4f7e21a756a",
+      "links": [
+         {
+            "href": "http://192.168.204.2:6385/v1/storage_ceph_rook/5063cd1a-16ad-4686-8f9c-f4f7e21a756a",
+            "rel": "self"
+         },
+         {
+            "href": "http://192.168.204.2:6385/storage_ceph_rook/5063cd1a-16ad-4686-8f9c-f4f7e21a756a",
+            "rel": "bookmark"
+         }
+      ],
+      "created_at": "2024-08-20T18:27:39.502884+00:00",
+      "updated_at": "2024-08-20T18:43:52.558888+00:00",
+      "backend": "ceph-rook",
+      "state": "configured",
+      "name": "ceph-rook-store",
+      "task": "applied",
+      "services": "block,filesystem,object",
+      "capabilities": {
+         "replication": 3,
+         "min_replication": 2,
+         "deployment_model": "controller"
+      },
+      "confirmed": false,
+      "deployment": null
+   }
+
+***********************************
+Deletes a Ceph Rook storage backend
+***********************************
+
+.. rest_method:: DELETE /v1/storage_ceph_rook/​{storage_ceph_rook_uuid}​
+
+**Normal response codes**
+
+204
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "storage_ceph_rook_uuid", "URI", "csapi:UUID", "The unique identifier of the storage backend."
+
+This operation does not accept a request body.
+
 --------------
 Storage Tiers
 --------------
