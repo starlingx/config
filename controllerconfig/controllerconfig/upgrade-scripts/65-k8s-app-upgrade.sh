@@ -56,8 +56,11 @@ function verify_apps_are_not_recovering {
     # Scrape app names. Skip header and footer.
     APPS=$(system application-list --nowrap | head -n-1 | tail -n+4 | awk '{print $2}')
     for a in ${APPS}; do
+        log "Checking application ${a} current state..."
+
         # If app is being upgraded then ignore
-        if grep -q $a $UPGRADE_IN_PROGRESS_APPS_FILE; then
+        if [[ -f $UPGRADE_IN_PROGRESS_APPS_FILE ]] && grep -q $a $UPGRADE_IN_PROGRESS_APPS_FILE; then
+            log "${a} is being upgraded."
             continue
         fi
 
@@ -311,8 +314,9 @@ if [ "$ACTION" == "activate" ]; then
         esac
 
         # Include app in upgrade in progress file
-        if ! grep -q "${EXISTING_APP_NAME},${EXISTING_APP_VERSION},${UPGRADE_APP_VERSION}" $UPGRADE_IN_PROGRESS_APPS_FILE; then
+        if [[ ! -f $UPGRADE_IN_PROGRESS_APPS_FILE ]] || ! grep -q "${EXISTING_APP_NAME},${EXISTING_APP_VERSION},${UPGRADE_APP_VERSION}" $UPGRADE_IN_PROGRESS_APPS_FILE; then
             echo "${EXISTING_APP_NAME},${EXISTING_APP_VERSION},${UPGRADE_APP_VERSION}" >> $UPGRADE_IN_PROGRESS_APPS_FILE
+            log "Added ${EXISTING_APP_NAME} to upgrade in progress control file."
         fi
 
         LAST_APP_CHECKED=${UPGRADE_APP_NAME}
