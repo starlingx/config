@@ -804,15 +804,11 @@ class CephOperator(object):
     def check_storage_upgrade_finished(self, upgrade):
         storage_hosts_upgraded = True
 
-        new_target_load = upgrade.to_load
         storage_hosts = self._db_api.ihost_get_by_personality(
             constants.STORAGE)
 
         for host in storage_hosts:
-            host_upgrade = self._db_api.host_upgrade_get_by_host(
-                host.id)
-            if (host_upgrade.target_load != new_target_load or
-                    host_upgrade.software_load != new_target_load):
+            if host.sw_version != upgrade.to_load:
                 LOG.info("Host %s not yet upgraded" % host.id)
                 storage_hosts_upgraded = False
                 break

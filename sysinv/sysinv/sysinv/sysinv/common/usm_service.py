@@ -8,13 +8,13 @@
 # USM Unified Software Management Handling
 
 import os
-from oslo_log import log
-import tsconfig.tsconfig as tsc
 
+from oslo_log import log
 from sysinv.common import exception
 from sysinv.common import constants
 from sysinv.common.rest_api import get_token
 from sysinv.common.rest_api import rest_api_request
+import tsconfig.tsconfig as tsc
 
 
 LOG = log.getLogger(__name__)
@@ -39,6 +39,40 @@ class UsmUpgrade(object):
 
     def __ne__(self, other):
         return not (self == other)
+
+
+class UsmHostUpgrade(object):
+    def __init__(self, hostname, from_sw_version, to_sw_version, state):
+        self.hostname = hostname
+        self.from_sw_version = get_software_version(from_sw_version)
+        self.to_sw_version = get_software_version(to_sw_version)
+        self.state = state
+
+    # backward compatibility
+    @property
+    def software_load(self):
+        return self.from_sw_version
+
+    # backward compatibility
+    @property
+    def target_load(self):
+        return self.to_sw_version
+
+    @staticmethod
+    def get_by_hostname(dbapi, hostname):
+        host_deploy = get_host_deploy(dbapi, hostname)
+        if host_deploy:
+            return UsmHostUpgrade(host_deploy.get("hostname"),
+                                  host_deploy.get("software_release"),
+                                  host_deploy.get("target_release"),
+                                  host_deploy.get("host_state"))
+        return None
+
+    @staticmethod
+    def update_host_sw_version(hostname, sw_version):
+        # TODO(heitormatsui): implement in the future, so that sysinv can
+        #  send software_controller the sw_version reported by the host
+        pass
 
 
 def get_region_name(dbapi):
@@ -144,3 +178,15 @@ def get_platform_upgrade(dbapi, usm_only=False):
         raise exception.NotFound()
 
     return upgrade
+
+
+def get_software_version(version):
+    """
+    Returns software version from given string if a valid format, None otherwise
+    :param version: MM.mm.pp or MM.mm
+    :returns: MM.mm
+    """
+    version_separator = "."
+    if version_separator in version:
+        return ".".join(version.split(version_separator)[:2])
+    return None

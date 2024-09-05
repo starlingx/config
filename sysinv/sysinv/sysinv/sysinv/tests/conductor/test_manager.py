@@ -44,6 +44,7 @@ from sysinv.common import device as dconstants
 from sysinv.common import exception
 from sysinv.common import kubernetes
 from sysinv.common import utils as cutils
+from sysinv.common import usm_service
 from sysinv.conductor import manager
 from sysinv.db.sqlalchemy.api import Connection
 from sysinv.db import api as dbapi
@@ -316,6 +317,10 @@ class ManagerTestCase(base.DbTestCase):
             manager.ConductorManager, 'host_load_matches_sw_version')
         self.mock_host_load_matches_sw_version = \
             self.host_load_matches_sw_version_patcher.start()
+        self.usm_service_get_by_hostname_patcher = mock.patch.object(
+            usm_service.UsmHostUpgrade, 'get_by_hostname')
+        self.mock_usm_service_get_by_hostname = \
+            self.usm_service_get_by_hostname_patcher.start()
         self.mock_host_load_matches_sw_version.return_value = True
         self.addCleanup(self.host_load_matches_sw_version_patcher.stop)
 
@@ -2702,6 +2707,8 @@ class ManagerTestCase(base.DbTestCase):
 
         # Check upgrade where the target sw_version does not match
         self.mock_host_load_matches_sw_version.return_value = False
+        self.mock_usm_service_get_by_hostname.return_value = (
+            usm_service.UsmHostUpgrade("controller-1", "0.0", "0.1", "host-pending"))
         ihost = self._create_test_controller_config_out_of_date('controller-1')
         self.service.configure_ihost(self.context, ihost)
         res = self.dbapi.ihost_get(ihost['uuid'])

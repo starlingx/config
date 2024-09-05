@@ -2477,12 +2477,16 @@ class ConductorManager(service.PeriodicService):
                 [constants.CONTROLLER],
                 host_uuids,
                 reboot=True)
-            host_upgrade = self.dbapi.host_upgrade_get_by_host(host.id)
-            target_load = self.dbapi.load_get(host_upgrade.target_load)
+            host_upgrade = usm_service.UsmHostUpgrade.get_by_hostname(self.dbapi,
+                                                                      host.hostname)
+            if host_upgrade:
+                target_sw_version = host_upgrade.to_sw_version
+            else:
+                target_sw_version = tsc.SW_VERSION
             self._puppet.update_host_config_upgrade(
                 host,
-                target_load.software_version,
-                config_uuid
+                target_sw_version,
+                config_uuid,
             )
 
         self._allocate_addresses_for_host(context, host)
@@ -14821,27 +14825,38 @@ class ConductorManager(service.PeriodicService):
         :param ihost_id: the host id
         :param sw_version: the SW_VERSION from the host
         """
-        host_load = self.dbapi.load_get_by_version(sw_version)
-
         host = self.dbapi.ihost_get(ihost_id)
 
-        version_changed = (host.sw_version != sw_version)
+        version_changed = host.sw_version != sw_version
         if version_changed:
             LOG.info("%s reports version change from %s to %s" %
                      (host.hostname, host.sw_version, sw_version))
             self.dbapi.ihost_update(host.uuid, {'sw_version': sw_version})
 
-        host_upgrade = self.dbapi.host_upgrade_get_by_host(host.id)
+        host_upgrade = usm_service.UsmHostUpgrade.get_by_hostname(self.dbapi,
+                                                                  host.hostname)
+        if host_upgrade:
+            if host_upgrade.state in constants.DEPLOY_HOST_DEPLOYED_STATES:
+                # if USM upgrade in progress and host is deployed target_load is the to_release
+                target_sw_version = host_upgrade.to_sw_version
+            else:
+                # otherwise target_load is from_release
+                target_sw_version = host_upgrade.from_sw_version
+            LOG.info("USM deployment in progress, host_state=%s, %s should be running %s" % (
+                host_upgrade.state, host.hostname, target_sw_version))
+        else:
+            # if no USM upgrade in progress then target_load
+            # is the version the active controller is running
+            target_sw_version = tsc.SW_VERSION
+            LOG.info("No USM deployment in progress, %s should be running %s" % (
+                host.hostname, target_sw_version))
 
-        check_for_alarm = host_upgrade.software_load != host_upgrade.target_load
+        version_match = sw_version == target_sw_version
 
-        if host_upgrade.software_load != host_load.id:
-            host_upgrade.software_load = host_load.id
-            host_upgrade.save(context)
-
-        if host_upgrade.software_load != host_upgrade.target_load:
+        # incorrect load alarm management
+        if not version_match:
+            # if versions don't match, then set the alarm
             entity_instance_id = self._get_fm_entity_instance_id(host)
-
             fault = fm_api.Fault(
                 alarm_id=fm_constants.FM_ALARM_ID_HOST_VERSION_MISMATCH,
                 alarm_state=fm_constants.FM_ALARM_STATE_SET,
@@ -14851,15 +14866,14 @@ class ConductorManager(service.PeriodicService):
                 reason_text=(_("Incorrect software load on %s.") %
                              host.hostname),
                 alarm_type=fm_constants.FM_ALARM_TYPE_7,  # operational
-                probable_cause=fm_constants.ALARM_PROBABLE_CAUSE_7,
-                # configuration error
+                probable_cause=fm_constants.ALARM_PROBABLE_CAUSE_7,  # configuration error
                 proposed_repair_action=_(
                     "Reinstall %s to update applied load." %
                     host.hostname),
                 service_affecting=True)
-
             self.fm_api.set_fault(fault)
-        elif check_for_alarm:
+        else:
+            # otherwise, clear the alarm
             entity_instance_id = self._get_fm_entity_instance_id(host)
             self.fm_api.clear_fault(
                 fm_constants.FM_ALARM_ID_HOST_VERSION_MISMATCH,
@@ -15414,11 +15428,6 @@ class ConductorManager(service.PeriodicService):
         :param host: a host object
         :return: True if host target load matches active sw_version
         """
-        host_upgrade = self.dbapi.host_upgrade_get_by_host(host.id)
-        target_load = self.dbapi.load_get(host_upgrade.target_load)
-        if target_load.software_version != tsc.SW_VERSION:
-            return False
-
         return host.sw_version == tsc.SW_VERSION
 
     def create_barbican_secret(self, context, name, payload):
