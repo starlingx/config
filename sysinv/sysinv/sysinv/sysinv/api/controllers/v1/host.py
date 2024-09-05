@@ -2553,21 +2553,16 @@ class HostController(rest.RestController):
             return True
 
         if upgrade:
-            loads = pecan.request.dbapi.load_get_list()
-            to_load = cutils.get_imported_load(loads)
-
             active_controller = utils.HostHelper.get_active_controller()
-            host_upgrade = objects.host_upgrade.get_by_host_id(
-                pecan.request.context, active_controller.id)
+            host_upgrade = usm_service.UsmHostUpgrade.get_by_hostname(
+                pecan.request.dbapi, active_controller.hostname)
 
-            if ((host_upgrade.target_load != to_load.id) or
-                    (host_upgrade.software_load != to_load.id)):
-                LOG.info("_check_host_delete_during_upgrade %s sw=%s "
-                         "target=%s load=%s" %
-                         (active_controller.hostname,
-                          host_upgrade.target_load,
-                          host_upgrade.software_load,
-                          to_load.id))
+            if (host_upgrade is not None and
+                    host_upgrade.state not in constants.DEPLOY_HOST_DEPLOYED_STATES):
+                LOG.info("_check_host_delete_during_upgrade %s sw=%s target=%s" % (
+                    active_controller.hostname,
+                    host_upgrade.from_sw_version,
+                    host_upgrade.to_sw_version))
                 return False
 
         return True
@@ -3021,6 +3016,7 @@ class HostController(rest.RestController):
                     _("All worker and storage hosts not running a Ceph monitor "
                       "must be locked and offline before this operation can proceed"))
 
+    # TODO(heitormatsui): used only by legacy upgrade endpoint, remove
     def _check_personality_load(self, personality, load):
         hosts = pecan.request.dbapi.ihost_get_by_personality(personality)
         for host in hosts:
@@ -3075,6 +3071,7 @@ class HostController(rest.RestController):
             raise wsme.exc.ClientSideError(
                 _("Host does not support configuration of Max CPU Frequency."))
 
+    # TODO(heitormatsui): used only by legacy upgrade endpoint, remove
     def _check_host_load(self, hostname, load):
         host = pecan.request.dbapi.ihost_get_by_hostname(hostname)
         host_upgrade = objects.host_upgrade.get_by_host_id(
@@ -3085,6 +3082,7 @@ class HostController(rest.RestController):
                 _("%s must be using load %s before this operation can proceed")
                 % (hostname, load.software_version))
 
+    # TODO(heitormatsui): used only by legacy upgrade endpoint, remove
     def _check_storage_downgrade(self, load):
         hosts = pecan.request.dbapi.ihost_get_by_personality(constants.STORAGE)
         # Ensure all storage nodes are downgraded before storage-0
@@ -3099,6 +3097,7 @@ class HostController(rest.RestController):
                           "this operation can proceed")
                         % (constants.STORAGE, load.software_version))
 
+    # TODO(heitormatsui): used only by legacy upgrade endpoint, remove
     def _update_load(self, uuid, body, new_target_load):
         force = body.get('force', False) is True
 
@@ -3779,44 +3778,17 @@ class HostController(rest.RestController):
         try:
             # Check if there's an upgrade in progress
             upgrade = usm_service.get_platform_upgrade(pecan.request.dbapi)
-            if upgrade.state == constants.UPGRADE_UPGRADING_CONTROLLERS:
-                # TODO (bqian) this block will be removed once legacy upgrade is no longer supported
-                host_upgrade = objects.host_upgrade.get_by_host_id(
-                    pecan.request.context, ihost['id'])
-                if host_upgrade.software_load == upgrade.from_load:
+            if upgrade.state in constants.DEPLOY_STATE_HOST_STATES:
+                # USM upgrade, host-unlock is allowed only when it is deployed
+                host_upgrade = usm_service.UsmHostUpgrade.get_by_hostname(
+                    pecan.request.dbapi, ihost['hostname'])
+                if (host_upgrade is not None and
+                        host_upgrade.state not in constants.DEPLOY_HOST_DEPLOYED_STATES):
                     raise wsme.exc.ClientSideError(
                         _("Upgrade is in progress. At this time %s cannot be unlocked"
                           % ihost['hostname']))
-            elif upgrade.state in [constants.DEPLOY_STATE_HOST, constants.DEPLOY_STATE_HOST_FAILED]:
-                # USM upgrade, host-unlock is allowed only when it is deployed
-                host_upgrade = usm_service.get_host_deploy(pecan.request.dbapi, ihost['hostname'])
-                if host_upgrade is not None:
-                    if host_upgrade['host_state'] != constants.DEPLOY_HOST_DEPLOYED:
-                        raise wsme.exc.ClientSideError(
-                            _("Upgrade is in progress. At this time %s cannot be unlocked"
-                              % ihost['hostname']))
         except exception.NotFound:
             pass
-
-        if ihost['hostname'] != constants.CONTROLLER_1_HOSTNAME:
-            return
-
-        # Don't allow unlock of controller-1 if it is being upgraded
-        try:
-            upgrade = usm_service.get_platform_upgrade(pecan.request.dbapi)
-        except exception.NotFound:
-            # No upgrade in progress
-            return
-
-        if upgrade.state == constants.UPGRADE_DATA_MIGRATION:
-            msg = _("Can not unlock %s while migrating data. "
-                    "Wait for data migration to complete." % ihost['hostname'])
-            raise wsme.exc.ClientSideError(msg)
-        elif upgrade.state == constants.UPGRADE_DATA_MIGRATION_FAILED:
-            msg = _("Can not unlock %s because data migration "
-                    "failed. Please abort upgrade and downgrade host." %
-                    ihost['hostname'])
-            raise wsme.exc.ClientSideError(msg)
 
     @staticmethod
     def _semantic_check_duplex_oam_config(ihost):
@@ -5601,11 +5573,10 @@ class HostController(rest.RestController):
                   hostupdate.displayid))
 
         # Semantic Check: Don't unlock when running incorrect software load
-        host_upgrade = objects.host_upgrade.get_by_host_id(
-            pecan.request.context, hostupdate.ihost_orig['id'])
-        if host_upgrade.software_load != host_upgrade.target_load and \
-                hostupdate.ihost_orig['hostname'] != \
-                constants.CONTROLLER_1_HOSTNAME:
+        host_upgrade = usm_service.UsmHostUpgrade.get_by_hostname(
+            pecan.request.dbapi, hostupdate.ihost_orig['hostname'])
+        if (host_upgrade is not None and
+                hostupdate.ihost_orig['sw_version'] != host_upgrade.to_sw_version):
             raise wsme.exc.ClientSideError(
                 _("Can not Unlock a host running the incorrect "
                   "software load. Reinstall the host to correct."))
@@ -6289,76 +6260,22 @@ class HostController(rest.RestController):
             return
 
         if isinstance(upgrade, usm_service.UsmUpgrade):
-            to_host_deploy = usm_service.get_host_deploy(pecan.request.dbapi, to_host['hostname'])
-            if to_host_deploy['host_state'] in [constants.DEPLOY_HOST_DEPLOYED,
-                                                constants.DEPLOY_HOST_ROLLBACK_DEPLOYED]:
+            to_host_deploy = usm_service.UsmHostUpgrade.get_by_hostname(
+                pecan.request.dbapi, to_host['hostname'])
+            if to_host_deploy.state in constants.DEPLOY_HOST_DEPLOYED_STATES:
                 # to host has deployed
                 pass
             else:
-                from_host_deploy = usm_service.get_host_deploy(pecan.request.dbapi, from_host['hostname'])
-                if from_host_deploy['host_state'] in [constants.DEPLOY_HOST_PENDING,
-                                                      constants.DEPLOY_HOST_ROLLBACK_PENDING] and \
-                        to_host_deploy['host_state'] in [constants.DEPLOY_HOST_PENDING,
-                                                         constants.DEPLOY_HOST_ROLLBACK_PENDING]:
+                from_host_deploy = usm_service.UsmHostUpgrade.get_by_hostname(
+                    pecan.request.dbapi, from_host['hostname'])
+                if (from_host_deploy.state in constants.DEPLOY_HOST_PENDING_STATES and
+                        to_host_deploy.state in constants.DEPLOY_HOST_PENDING_STATES):
                     # no host has started deploy yet
                     pass
                 else:
                     err_msg = "Swact is not allowed. " + \
                               "New release has not been deployed to %s" % to_host['hostname']
                     raise wsme.exc.ClientSideError(err_msg)
-        else:
-            # TODO (bqian) below to be removed after USM upgrade cutoff
-            host_upgrade = objects.host_upgrade.get_by_host_id(
-                pecan.request.context, to_host['id'])
-            to_host_load_id = host_upgrade.software_load
-
-            # Get the load names
-            from_sw_version = objects.load.get_by_uuid(
-                pecan.request.context, upgrade.from_load).software_version
-            to_sw_version = objects.load.get_by_uuid(
-                pecan.request.context, upgrade.to_load).software_version
-            to_host_sw_version = objects.load.get_by_uuid(
-                pecan.request.context, to_host_load_id).software_version
-
-            if upgrade.state in [constants.UPGRADE_STARTING,
-                                 constants.UPGRADE_STARTED,
-                                 constants.UPGRADE_DATA_MIGRATION]:
-                # Swacting controllers is not supported until database migration is complete
-                raise wsme.exc.ClientSideError(
-                    _("Swact action not allowed. Upgrade state must be %s") %
-                    (constants.UPGRADE_DATA_MIGRATION_COMPLETE))
-
-            activating_states = [constants.UPGRADE_ACTIVATION_REQUESTED,
-                                 constants.UPGRADE_ACTIVATING]
-            if upgrade.state in activating_states and not force_swact:
-                # Block swacts during activation to prevent interrupting the
-                # upgrade scripts.
-                # Allow swacts during UPGRADE_ACTIVATING_HOSTS as the active
-                # controller may need a lock/unlock if a runtime manifest fails.
-                # Allow force swacts for recovery in edge cases.
-                raise wsme.exc.ClientSideError(
-                    _("Swact action not allowed. Wait until the upgrade-activate "
-                      "command completes"))
-
-            if upgrade.state == constants.UPGRADE_ABORTING:
-                if to_host_load_id == upgrade.to_load:
-                    # Cannot swact to new load if aborting upgrade
-                    raise wsme.exc.ClientSideError(
-                        _("Aborting upgrade: %s must be using load %s before this "
-                          "operation can proceed. Currently using load %s.") %
-                        (to_host['hostname'], from_sw_version, to_host_sw_version))
-            elif upgrade.state == constants.UPGRADE_ABORTING_ROLLBACK:
-                if from_host['software_load'] == from_sw_version and to_host.software_load == to_sw_version:
-                    raise wsme.exc.ClientSideError(_("Aborting upgrade: Unable to swact from %s to %s")
-                        % (from_sw_version, to_sw_version))
-            elif to_host_load_id == upgrade.from_load:
-                # On AIO loads we must abort before we swact back to the old load
-                # Any VMs on the active controller will be lost during the swact
-                if constants.WORKER in to_host.subfunctions:
-                    raise wsme.exc.ClientSideError(
-                        _("Upgrading: %s must be using load %s before this "
-                          "operation can proceed. Currently using load %s.") %
-                        (to_host['hostname'], to_sw_version, to_host_sw_version))
 
     def _semantic_check_swact_kube_rootca_update(self, ihost, force_swact=False):
         """
