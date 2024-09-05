@@ -29,6 +29,7 @@ import yaml
 
 from cryptography.hazmat.primitives import serialization
 from sysinv.common import utils as sysinv_utils
+from sysinv.common.kubernetes import k8s_health_check
 from sysinv.common.rest_api import get_token
 from sysinv.common.rest_api import rest_api_request
 
@@ -124,6 +125,17 @@ def get_primary_oam_ip():
         raise Exception('Cannot retrieve OAM IP.')
 
 
+# Verify readyz endpoint first in methods that call kubeapi
+def test_kubeapi_health(function):
+    def wrapper(*args, **kwargs):
+        if k8s_health_check(tries=30, try_sleep=10, timeout=10):
+            return function(*args, **kwargs)
+        else:
+            raise Exception("Kubeapi is not responsive.")
+    return wrapper
+
+
+@test_kubeapi_health
 def create_platform_certificates(to_release):
     """Run ansible playbook to create platform certificates
     """
@@ -143,6 +155,7 @@ def create_platform_certificates(to_release):
              % stdout.decode('utf-8'))
 
 
+@test_kubeapi_health
 def certificate_exists(certificate, namespace='deployment'):
     """Check if certificate exists
     """
@@ -161,6 +174,7 @@ def certificate_exists(certificate, namespace='deployment'):
                         'from namespace: %s.' % namespace)
 
 
+@test_kubeapi_health
 def retrieve_certificate(certificate, namespace='deployment'):
     """Retrieve certificate (as YAML text)
     """
@@ -179,6 +193,7 @@ def retrieve_certificate(certificate, namespace='deployment'):
                         % (certificate, namespace))
 
 
+@test_kubeapi_health
 def delete_certificate(certificate, namespace='deployment'):
     """Delete certificate from k8s
     """
@@ -197,6 +212,7 @@ def delete_certificate(certificate, namespace='deployment'):
                         % (certificate, namespace))
 
 
+@test_kubeapi_health
 def delete_secret(secret, namespace='deployment'):
     """Delete certificate from k8s
     """
@@ -264,6 +280,7 @@ def create_tls_secret_body(name, namespace, tls_crt, tls_key, ca_crt=''):
     return secret_body
 
 
+@test_kubeapi_health
 def apply_k8s_yml(resources_yml):
     with open(K8S_RESOURCES_TMP_FILENAME, 'w') as yaml_file:
         yaml.safe_dump(resources_yml, yaml_file, default_flow_style=False)
@@ -283,6 +300,45 @@ def apply_k8s_yml(resources_yml):
                  % stdout.decode('utf-8'))
 
 
+def wait_system_reconfiguration(from_release='22.12'):
+    cmd = "source /etc/platform/openrc && \
+        fm alarm-list --query alarm_id=250.001"
+
+    # Stop after two sequential attempts without 250.001 alarms. This avoids
+    # missing the transition between two alarms.
+    one_attempt_clear = False
+    for attempt in range(WAIT_RECONFIG_ATTEMPTS):
+        LOG.info("Waiting out-of-date alarms to clear. Attempt %s of %s."
+                 % (attempt + 1, WAIT_RECONFIG_ATTEMPTS))
+        # Sleep first as to allow cert-mon to start installing the new certs
+        sleep(WAIT_RECONFIG_SLEEP)
+
+        sub = subprocess.Popen(
+            cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        stdout, stderr = sub.communicate()
+
+        if from_release == '22.12':
+            # Wait HTTPS cert in case system is moving from HTTP
+            if not os.path.isfile(CERT_FILES[HTTPS_CERT_NAME]):
+                LOG.info("HTTPS certificate isn't ready yet.")
+                continue
+
+        if sub.returncode == 0:
+            if stdout.decode('utf-8').rstrip('\n') == "":
+                if one_attempt_clear:
+                    return
+                one_attempt_clear = True
+            else:
+                one_attempt_clear = False
+        else:
+            LOG.error('Command failed:\n%s\n%s.\n%s.'
+                      % (cmd, stdout.decode('utf-8'), stderr.decode('utf-8')))
+    LOG.error("NOTICE: Out-of-date alarms didn't clear out after more than %s \
+              seconds. Ignoring and continuing with the upgrade activation."
+              % str(WAIT_RECONFIG_ATTEMPTS * WAIT_RECONFIG_SLEEP))
+
+
+@test_kubeapi_health
 def update_system_local_ca_secret():
     """Update system-local-ca secret
     """
@@ -298,6 +354,7 @@ def update_system_local_ca_secret():
                                              find_root_ca(tls_crt))
 
         apply_k8s_yml(secret_body)
+        wait_system_reconfiguration(from_release='')
 
 
 def update_certificate(certificate, short_name):
@@ -498,7 +555,7 @@ def disable_https():
 
     system_uuid = ''
     api_cmd = sysinv_url + '/isystems'
-    res = rest_api_request(token, "GET", api_cmd)['isystems']
+    res = rest_api_request(token, "GET", api_cmd, timeout=60)['isystems']
     if len(res) == 1:
         system = res[0]
         system_uuid = system['uuid']
@@ -514,9 +571,13 @@ def disable_https():
     patch = []
     patch.append(
         {'op': 'replace', 'path': '/https_enabled', 'value': 'false'})
-    res = rest_api_request(
-        token, "PATCH", api_cmd, api_cmd_headers, json.dumps(patch))
-    if res['capabilities']['https_enabled'] is False:
+    res = rest_api_request(token,
+                           "PATCH",
+                           api_cmd,
+                           api_cmd_headers,
+                           json.dumps(patch),
+                           timeout=60)
+    if (res is not None and res['capabilities']['https_enabled'] is False):
         LOG.info('Disable https patch request succeeded')
     else:
         raise Exception('Disable https failed! resp=%s' % res)
@@ -527,53 +588,15 @@ def disable_https():
         pass
 
 
-def wait_system_reconfiguration(from_release='22.12'):
-    cmd = "source /etc/platform/openrc && \
-        fm alarm-list --query alarm_id=250.001"
-
-    # Stop after two sequential attempts without 250.001 alarms. This avoids
-    # missing the transition between two alarms.
-    one_attempt_clear = False
-    for attempt in range(WAIT_RECONFIG_ATTEMPTS):
-        LOG.info("Waiting out-of-date alarms to clear. Attempt %s of %s."
-                 % (attempt + 1, WAIT_RECONFIG_ATTEMPTS))
-        # Sleep first as to allow cert-mon to start installing the new certs
-        sleep(WAIT_RECONFIG_SLEEP)
-
-        sub = subprocess.Popen(
-            cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        stdout, stderr = sub.communicate()
-
-        if from_release == '22.12':
-            # Wait HTTPS cert in case system was HTTP
-            if not os.path.isfile(CERT_FILES[HTTPS_CERT_NAME]):
-                LOG.info("HTTPS certificate isn't ready yet.")
-                continue
-
-        if sub.returncode == 0:
-            if stdout.decode('utf-8').rstrip('\n') == "":
-                if one_attempt_clear:
-                    return
-                one_attempt_clear = True
-            else:
-                one_attempt_clear = False
-        else:
-            LOG.error('Command failed:\n%s\n%s.\n%s.'
-                      % (cmd, stdout.decode('utf-8'), stderr.decode('utf-8')))
-    LOG.error("NOTICE: Out-of-date alarms didn't clear out after more than %s \
-              seconds. Ignoring and continuing with the upgrade activation."
-              % str(WAIT_RECONFIG_ATTEMPTS * WAIT_RECONFIG_SLEEP))
-
-
 def restore_legacy_certificate_config(from_release):
     affected_certs = [HTTPS_CERT_NAME, REGISTRY_CERT_NAME]
     for cert in affected_certs:
         if check_cert_auto_creation_file_flag(cert, from_release):
             delete_certificate(cert)
-            remove_cert_auto_creation_file_flag(cert, from_release)
             if cert == HTTPS_CERT_NAME:
                 disable_https()
                 wait_system_reconfiguration(from_release)
+            remove_cert_auto_creation_file_flag(cert, from_release)
         else:
             if not certificate_exists(cert):
                 delete_secret(cert)
