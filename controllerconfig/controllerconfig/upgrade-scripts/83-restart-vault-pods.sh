@@ -16,7 +16,7 @@ TO_RELEASE=$2
 ACTION=$3
 
 # Configs
-
+KUBECOMMAND="kubectl --kubeconfig=/etc/kubernetes/admin.conf"
 STATE_APPLIED="applied"
 POD_STATUS_RUNNING="Running"
 POD_STATUS_SEALED="false"
@@ -87,7 +87,7 @@ function update_active_standby {
     local podname
     local podstatus
 
-    pods="$( kubectl get pods -n $VAULT_NS -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.metadata.labels.vault-active}{"\n"}{end}' | grep "^sva-vault-[0-9] " )"
+    pods="$( $KUBECOMMAND get pods -n $VAULT_NS -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.metadata.labels.vault-active}{"\n"}{end}' | grep "^sva-vault-[0-9] " )"
 
     while read -r podname podstatus; do
         if [ "$podstatus" = "true" ]; then
@@ -103,7 +103,7 @@ function delete_pod {
     local pod_name="$1"
     local pod_del_result=""
 
-    pod_del_result="$( kubectl delete pods -n $VAULT_NS "$pod_name" 2>&1 )"
+    pod_del_result="$( $KUBECOMMAND delete pods -n $VAULT_NS "$pod_name" 2>&1 )"
     if [[ "$?" -ne 0 ]] ; then
         log "Error occured during deleting pod $pod_name. Vault upgrade failed. Error: $pod_del_result"
         return 1
@@ -145,8 +145,8 @@ function check_pod_status {
     local pod_running
     local pod_sealed
 
-    pod_running="$( kubectl get pods -n "$VAULT_NS" "$pod_name" -o jsonpath='{.status.phase}' )"
-    pod_sealed="$( kubectl get pods -n "$VAULT_NS" "$pod_name" -o jsonpath='{.metadata.labels.vault-sealed}' )"
+    pod_running="$( $KUBECOMMAND get pods -n "$VAULT_NS" "$pod_name" -o jsonpath='{.status.phase}' )"
+    pod_sealed="$( $KUBECOMMAND get pods -n "$VAULT_NS" "$pod_name" -o jsonpath='{.metadata.labels.vault-sealed}' )"
 
     if [ "$pod_running" != "$POD_STATUS_RUNNING" ]; then
         log "$pod_name is currently in status $pod_running. It must be in status $POD_STATUS_RUNNING."
@@ -164,7 +164,7 @@ function check_pod_version {
     local pod_name="$1"
     local pod_version
 
-    pod_version="$( kubectl get pods -n "$VAULT_NS" "$pod_name" -o jsonpath='{.metadata.labels.vault-version}' )"
+    pod_version="$( $KUBECOMMAND get pods -n "$VAULT_NS" "$pod_name" -o jsonpath='{.metadata.labels.vault-version}' )"
 
     if [ "$pod_version" = "$VAULT_NEW_VERSION" ]; then
         echo "0"
@@ -184,7 +184,7 @@ function check_mi_status {
     local pod_full_name
     local pod_status
 
-    pod_list="$( kubectl get pods -n "$VAULT_NS" -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.status.phase}{"\n"}{end}' | grep "sva-$pod_name" )"
+    pod_list="$( $KUBECOMMAND get pods -n "$VAULT_NS" -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.status.phase}{"\n"}{end}' | grep "sva-$pod_name" )"
     pod_count="$(echo "$pod_list" | grep -c "sva-$pod_name" )"
     if [ "$pod_count" -ne 1 ]; then
         log "Incorrect number of $pod_name pods found: $pod_count"
@@ -245,7 +245,7 @@ update_active_standby
 
 # Delete the standby pods if they are not on the new version
 for standby_pod in $STANDBY_PODS; do
-    current_version="$( kubectl get pods -n $VAULT_NS "$standby_pod" -o jsonpath='{.metadata.labels.vault-version}' )"
+    current_version="$( $KUBECOMMAND get pods -n $VAULT_NS "$standby_pod" -o jsonpath='{.metadata.labels.vault-version}' )"
     if [ "$current_version" != "$VAULT_NEW_VERSION" ]; then
         delete_pod "$standby_pod"
     else
@@ -273,7 +273,7 @@ done
 
 # Delete the active pod if it is not on the new version
 for active_pod in $ACTIVE_PODS; do
-    current_version="$( kubectl get pods -n $VAULT_NS "$active_pod" -o jsonpath='{.metadata.labels.vault-version}' )"
+    current_version="$( $KUBECOMMAND get pods -n $VAULT_NS "$active_pod" -o jsonpath='{.metadata.labels.vault-version}' )"
     if [ "$current_version" != "$VAULT_NEW_VERSION" ]; then
         delete_pod "$active_pod"
     else
