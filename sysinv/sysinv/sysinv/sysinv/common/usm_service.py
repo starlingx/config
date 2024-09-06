@@ -74,6 +74,19 @@ def get_software_upgrade(region_name, timeout=30):
     return response
 
 
+def is_host_next_to_be_deployed(dbapi, hostname):
+    region_name = get_region_name(dbapi)
+    token = _get_token(region_name)
+    endpoint = get_usm_endpoint(token)
+
+    if not endpoint:
+        return None
+
+    endpoint += "/v1/deploy_host/next?hostname=%s" % hostname
+
+    return rest_api_request(token, "GET", endpoint, timeout=10)
+
+
 def get_host_deploy(dbapi, hostname):
 
     region_name = get_region_name(dbapi)
