@@ -12252,6 +12252,269 @@ badMediaType (415)
       "result": "OK"
    }
 
+************************************
+List all Platform Certificates
+************************************
+
+.. rest_method:: GET /v1/certificate/get_all_certs
+
+**Normal response codes**
+
+200
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 80
+
+   "soon_to_expiry", "plain", "xsd:string", "The number of days before the certificate's expiry date"
+   "expired", "plain", "xsd:string", "True to return all expired certificates, False to return all certificates"
+
+**Error response codes**
+
+computeFault (400, 500, ...), serviceUnavailable (503), badRequest (400),
+unauthorized (401), forbidden (403), badMethod (405), overLimit (413),
+itemNotFound (404)
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "Residual Time", "plain", "xsd:string", "The residual time of the certificate"
+   "Version", "plain", "xsd:string", "The algo version for this certificate"
+   "Serial Number", "plain", "xsd:string", "The serial number of the certificate"
+   "Issuer", "plain", "xsd:string", "The issuer of the certificate"
+   "Validity", "plain", "xsd:dictionary", "The validity of the certificate"
+   "Subject", "plain", "xsd:string", "The subject of the certificate"
+   "Subject Public Key Info", "plain", "xsd:dictionary", "The subject public key info"
+   "X509v3 extensions", "plain", "xsd:dictionary", "The X509v3 extensions"
+   "Signature Algorithm", "plain", "xsd:string", "The signature algorithm."
+   "Signature", "plain", "xsd:string", "The signature"
+   "File Path", "plain", "xsd:string", "The certificate file path"
+   "Namespace", "plain", "xsd:string", "The namespace of the k8s certificate's secret"
+   "Secret", "plain", "xsd:string", "The secret name of the k8s certificate"
+
+::
+
+   {
+      "system-openldap-local-certificate":{
+         "Residual Time":"83d",
+         "Version":"v3",
+         "Serial Number":"0x1cc16feb95a4aa296d3818dccb5fbe7e",
+         "Issuer":"CN=starlingx",
+         "Validity":{
+            "Not Before":"August 28 15:04:52 2024",
+            "Not After":"November 26 15:04:52 2024"
+         },
+         "Subject":"CN=system-openldap,O=starlingx,L=593173ae568a4c97878b404e8589b034",
+         "Subject Public Key Info":{
+            "key_size":"(2048 bit)"
+         },
+         "X509v3 extensions":{
+            "X509v3 Key Usage":{
+               "values":"Digital Signature, Key Encipherment",
+               "critical":true
+            },
+            "X509v3 Basic Constraints":{
+               "CA":false,
+               "critical":true
+            },
+            "X509v3 Authority Key Identifier":{
+               "keyid":"0fc82f4901c7fcae3d188bc9f363d5b9602b1024"
+            },
+            "X509v3 Subject Alternative Name":{
+               "DNS":[
+                  "593173ae568a4c97878b404e8589b034.starlingx.local",
+                  "controller",
+                  "controller-0",
+                  "controller-1"
+               ],
+               "IP Address":[
+                  "192.168.0.2",
+                  "192.168.0.3",
+                  "192.168.0.4"
+               ]
+            }
+         },
+         "Signature Algorithm":"sha256WithRSAEncryption",
+         "Signature":"0a17ef4e8eff610a7ddfbff1088561a8f6e7dcf8813076cdca50890c1b13138441e9801b1c4f2be6d",
+         "File Path":"/etc/ldap/certs/openldap-cert.crt",
+         "Renewal":"Automatic",
+         "Namespace":"deployment",
+         "Secret":"system-openldap-local-certificate"
+      },
+      "etcd-ca":{
+         "Residual Time":"3643d",
+         "Version":"v3",
+         "Serial Number":"0x7315491e28aaff4586ce9ad0e5ff2974812837c4",
+         "Issuer":"CN=etcd",
+         "Validity":{
+            "Not Before":"August 28 14:48:05 2024",
+            "Not After":"August 26 14:48:05 2034"
+         },
+         "Subject":"CN=etcd",
+         "Subject Public Key Info":{
+            "key_size":"(4096 bit)"
+         },
+         "X509v3 extensions":{
+            "X509v3 Subject Alternative Name":{
+               "DNS":[
+                  "etcd"
+               ]
+            },
+            "X509v3 Key Usage":{
+               "values":"Digital Signature, Key Encipherment"
+            },
+            "X509v3 Basic Constraints":{
+               "CA":true,
+               "critical":true
+            }
+         },
+         "Signature Algorithm":"sha256WithRSAEncryption",
+         "Signature":"a1e8ca24dd4123bf20d97f0b77ede6a7f4a95fc4fd3a2810c263faefeb0fd8f36618223c555eeb84",
+         "File Path":"/etc/etcd/ca.crt",
+         "Renewal":"Manual"
+      }
+   }
+
+This operation does not accept a request body.
+
+******************************************
+List all K8s tls/Opaque type Certificates
+******************************************
+
+.. rest_method:: GET /v1/certificate/get_all_k8s_certs
+
+**Normal response codes**
+
+200
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 80
+
+   "soon_to_expiry", "plain", "xsd:string", "The number of days before the certificate's expiry date"
+   "expired", "plain", "xsd:string", "True to return all expired certificates, False to return all certificates"
+
+**Error response codes**
+
+computeFault (400, 500, ...), serviceUnavailable (503), badRequest (400),
+unauthorized (401), forbidden (403), badMethod (405), overLimit (413),
+itemNotFound (404)
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "Residual Time", "plain", "xsd:string", "The residual time of the certificate"
+   "Version", "plain", "xsd:string", "The algo version for this certificate"
+   "Serial Number", "plain", "xsd:string", "The serial number of the certificate"
+   "Issuer", "plain", "xsd:string", "The issuer of the certificate"
+   "Validity", "plain", "xsd:dictionary", "The validity of the certificate"
+   "Subject", "plain", "xsd:string", "The subject of the certificate"
+   "Subject Public Key Info", "plain", "xsd:dictionary", "The subject public key info"
+   "X509v3 extensions", "plain", "xsd:dictionary", "The X509v3 extensions"
+   "Signature Algorithm", "plain", "xsd:string", "The signature algorithm."
+   "Signature", "plain", "xsd:string", "The signature"
+   "File Path", "plain", "xsd:string", "The certificate file path"
+   "Namespace", "plain", "xsd:string", "The namespace of the k8s certificate's secret"
+   "Secret", "plain", "xsd:string", "The secret name of the k8s certificate"
+   "Secret Type", "plain", "xsd:string", "The type of secret"
+
+::
+
+   {
+      "system-local-ca":{
+         "Residual Time":"3643d",
+         "Version":"v3",
+         "Serial Number":"0x5f94e3238ee0dfe096e63346cd3c3bc97aa9d950",
+         "Issuer":"CN=starlingx",
+         "Validity":{
+            "Not Before":"August 28 14:56:48 2024",
+            "Not After":"August 26 14:56:48 2034"
+         },
+         "Subject":"CN=starlingx",
+         "Subject Public Key Info":{
+            "key_size":"(4096 bit)"
+         },
+         "X509v3 extensions":{
+            "X509v3 Subject Alternative Name":{
+               "DNS":[
+                  "starlingx"
+               ]
+            },
+            "X509v3 Key Usage":{
+               "values":"Digital Signature, Key Encipherment"
+            },
+            "X509v3 Basic Constraints":{
+               "CA":true,
+               "critical":true
+            }
+         },
+         "Signature Algorithm":"sha256WithRSAEncryption",
+         "Signature":"6c1b2b8a676f48a893b0bc1c9128a2e9ab187977d84c0baefbf1941ab03e6610e11f7",
+         "Namespace":"cert-manager",
+         "Secret":"system-local-ca",
+         "Renewal":"Manual",
+         "Secret Type":"kubernetes.io/tls"
+      },
+      "system-openldap-local-certificate":{
+         "Residual Time":"83d",
+         "Version":"v3",
+         "Serial Number":"0x1cc16feb95a4aa296d3818dccb5fbe7e",
+         "Issuer":"CN=starlingx",
+         "Validity":{
+            "Not Before":"August 28 15:04:52 2024",
+            "Not After":"November 26 15:04:52 2024"
+         },
+         "Subject":"CN=system-openldap,O=starlingx,L=593173ae568a4c97878b404e8589b034",
+         "Subject Public Key Info":{
+            "key_size":"(2048 bit)"
+         },
+         "X509v3 extensions":{
+            "X509v3 Key Usage":{
+               "values":"Digital Signature, Key Encipherment",
+               "critical":true
+            },
+            "X509v3 Basic Constraints":{
+               "CA":false,
+               "critical":true
+            },
+            "X509v3 Authority Key Identifier":{
+               "keyid":"0fc82f4901c7fcae3d188bc9f363d5b9602b1024"
+            },
+            "X509v3 Subject Alternative Name":{
+               "DNS":[
+                  "593173ae568a4c97878b404e8589b034.starlingx.local",
+                  "controller",
+                  "controller-0",
+                  "controller-1"
+               ],
+               "IP Address":[
+                  "192.168.0.2",
+                  "192.168.0.3",
+                  "192.168.0.4"
+               ]
+            }
+         },
+         "Signature Algorithm":"sha256WithRSAEncryption",
+         "Signature":"0a17ef4e8eff610a7ddfbff1088561a8f6e7dcf8813076cdca50890c1b13138441e",
+         "Namespace":"deployment",
+         "Secret":"system-openldap-local-certificate",
+         "Renewal":"Automatic",
+         "Secret Type":"kubernetes.io/tls"
+      }
+   }
+
+This operation does not accept a request body.
+
 ---------------
 Docker Registry
 ---------------
@@ -12277,7 +12540,7 @@ itemNotFound (404)
 **Response parameters**
 
 .. csv-table::
-      :header: "Parameter", "Style", "Type", "Description"
+   :header: "Parameter", "Style", "Type", "Description"
    :widths: 20, 20, 20, 60
 
    "registry_images (Optional)", "plain", "xsd:list", "The list of images in the local Docker registry."
@@ -12320,7 +12583,7 @@ itemNotFound (404)
 **Request parameters**
 
 .. csv-table::
-      :header: "Parameter", "Style", "Type", "Description"
+   :header: "Parameter", "Style", "Type", "Description"
    :widths: 20, 20, 20, 60
 
    "image_name", "plain", "csapi:string", "The name of the image, including full repo"
@@ -12328,7 +12591,7 @@ itemNotFound (404)
 **Response parameters**
 
 .. csv-table::
-      :header: "Parameter", "Style", "Type", "Description"
+   :header: "Parameter", "Style", "Type", "Description"
    :widths: 20, 20, 20, 60
 
    "registry_images (Optional)", "plain", "xsd:list", "The list of images in the local Docker registry."
@@ -12359,7 +12622,7 @@ Deletes an image in the local Docker registry
 **Request parameters**
 
 .. csv-table::
-      :header: "Parameter", "Style", "Type", "Description"
+   :header: "Parameter", "Style", "Type", "Description"
    :widths: 20, 20, 20, 60
 
    "image_name_and_tag", "plain", "csapi:string", "The image name and tag of the form name:tag"
@@ -12379,7 +12642,7 @@ Run the Docker registry garbage collector
 **Request parameters**
 
 .. csv-table::
-      :header: "Parameter", "Style", "Type", "Description"
+   :header: "Parameter", "Style", "Type", "Description"
    :widths: 20, 20, 20, 60
 
    "garbage_collect", "plain", "csapi:bool", "run the garbage collect?"
