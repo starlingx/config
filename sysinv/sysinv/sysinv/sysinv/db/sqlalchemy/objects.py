@@ -55,3 +55,15 @@ def objectify(klass):
         return wrapper
 
     return the_decorator
+
+
+def objectify_lite(kclass):
+    def the_decorator(fn):
+        @functools.wraps(fn)
+        def wrapper(*args, **kwargs):
+            first_result = fn(*args, **kwargs)
+
+            return first_result
+        return wrapper
+
+    return the_decorator

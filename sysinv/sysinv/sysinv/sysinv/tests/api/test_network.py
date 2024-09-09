@@ -588,6 +588,8 @@ class TestPostMixin(object):
                                         'prefix': str(mgmt_subnet.prefixlen),
                                         'ranges': [[str(mgmt_subnet[1]), str(mgmt_subnet[-1])]]})
 
+        oam_addr_pool = self.dbapi.address_pool_get(oam_pool.uuid)
+        self.assertEqual(oam_addr_pool.ranges, [[str(oam_subnet[1]), str(oam_subnet[-1])]])
         controller0 = self._create_test_host(constants.CONTROLLER)
 
         c0_if0 = dbutils.create_test_interface(

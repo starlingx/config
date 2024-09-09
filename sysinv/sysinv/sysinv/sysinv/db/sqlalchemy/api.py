@@ -32,6 +32,7 @@ from sqlalchemy import func
 from sqlalchemy import insert
 from sqlalchemy import inspect
 from sqlalchemy import or_
+from sqlalchemy.sql import text
 
 from sqlalchemy.orm import contains_eager
 from sqlalchemy.orm import joinedload
@@ -119,13 +120,23 @@ def model_query(model, *args, **kwargs):
 
     :param session: if present, the session to use
     """
-
     session = kwargs.get('session')
     if session:
         query = session.query(model, *args)
     else:
         with _session_for_read() as session:
             query = session.query(model, *args)
+
+    return query
+
+
+def sql_query(model, sql, *args, **kwargs):
+    session = kwargs.get('session')
+    if session:
+        query = session.query(model, *args).from_statement(text(sql))
+    else:
+        with _session_for_read() as session:
+            query = session.query(model, *args).from_statement(text(sql))
 
     return query
 
@@ -5898,8 +5909,17 @@ class Connection(api.Connection):
         query.delete()
 
     def _address_pool_get(self, address_pool_uuid, session=None):
-        query = model_query(models.AddressPools, session=session)
-        query = add_identity_filter(query, address_pool_uuid, use_name=True)
+        if utils.is_int_like(address_pool_uuid):
+            where = "where address_pools.id = '%s'" % address_pool_uuid
+        elif uuidutils.is_uuid_like(address_pool_uuid):
+            where = "where address_pools.uuid = '%s'" % address_pool_uuid
+        else:
+            where = "where address_pools.name = '%s'" % address_pool_uuid
+
+        sql = models.AddressPools.get_query() + where
+
+        query = sql_query(models.AddressPools, sql, session=session)
+
         try:
             result = query.one()
         except NoResultFound:
@@ -5970,6 +5990,16 @@ class Connection(api.Connection):
     def address_pool_query(self, values):
         return self._address_pool_query(values)
 
+    @db_objects.objectify_lite(objects.address_pool)
+    def address_pools_get_all_lite(self):
+        """
+        This function return light version of address_pool, which does not
+        include network range, optimized for performance
+        """
+        sql = models.AddressPools.get_query()
+        query = sql_query(models.AddressPools, sql)
+        return query.all()
+
     @db_objects.objectify(objects.address_pool)
     def address_pools_get_all(self, limit=None, marker=None,
                               sort_key=None, sort_dir=None):
@@ -6039,6 +6069,7 @@ class Connection(api.Connection):
         query = (query.join(models.NetworkAddressPools,
                             models.NetworkAddressPools.address_pool_id == models.AddressPools.id))
         query = query.filter(models.NetworkAddressPools.network_id == network_id)
+
         return _paginate_query(models.AddressPools, limit, marker,
                                sort_key, sort_dir, query)
 

@@ -49,6 +49,15 @@ class PlatformFirewallPuppet(base.BasePuppet):
     def get_system_config(self):
         return firewall.SYSTEM_CONFIG
 
+    def _address_pools_get_by_network(self, network_id):
+        # NOTE(BQian) might need to optimize network_addrpool_get_all if needed
+        network_addrpools = self.dbapi.network_addrpool_get_all()
+        pool_ids = [o.address_pool_id for o in network_addrpools if o.network_id == network_id]
+
+        address_pools = self.dbapi.address_pools_get_all_lite()
+        addr_pools = [o for o in address_pools if o.id in pool_ids]
+        return addr_pools
+
     def get_host_config(self, host):
         """ Plugin public method
 
@@ -264,7 +273,7 @@ class PlatformFirewallPuppet(base.BasePuppet):
             firewall_gnp["spec"].update({"egress": list()})
             firewall_gnp["spec"].update({"ingress": list()})
 
-            addr_pools = self.dbapi.address_pools_get_by_network(network.id)
+            addr_pools = self._address_pools_get_by_network(network.id)
             for addr_pool in addr_pools:
                 ip_version = addr_pool.family
                 ICMP = "ICMP"
@@ -324,7 +333,7 @@ class PlatformFirewallPuppet(base.BasePuppet):
             elif rule["protocol"] == "UDP":
                 rule.update({"destination": {"ports": udp_ports}})
 
-        addr_pools = self.dbapi.address_pools_get_by_network(network.id)
+        addr_pools = self._address_pools_get_by_network(network.id)
         for addr_pool in addr_pools:
             ip_version = addr_pool.family
             self._add_destination_net_filter(gnp_config["spec"]["ingress"],
@@ -346,7 +355,7 @@ class PlatformFirewallPuppet(base.BasePuppet):
         :param gnp_config: the dict containing the hiera data to be filled
         :param network: the sysinv.object.network object for this network
         """
-        addr_pools = self.dbapi.address_pools_get_by_network(network.id)
+        addr_pools = self._address_pools_get_by_network(network.id)
         for addr_pool in addr_pools:
             ip_version = addr_pool.family
             self._add_source_net_filter(gnp_config["spec"]["ingress"],
@@ -383,7 +392,7 @@ class PlatformFirewallPuppet(base.BasePuppet):
         :param gnp_config: the dict containing the hiera data to be filled
         :param network: the sysinv.object.network object for this network
         """
-        addr_pools = self.dbapi.address_pools_get_by_network(network.id)
+        addr_pools = self._address_pools_get_by_network(network.id)
         for addr_pool in addr_pools:
             ip_version = addr_pool.family
             self._add_source_net_filter(gnp_config["spec"]["ingress"],
@@ -417,13 +426,13 @@ class PlatformFirewallPuppet(base.BasePuppet):
         cpod_pool_index = {}
         cpod_net = self.dbapi.network_get_by_type(constants.NETWORK_TYPE_CLUSTER_POD)
         if cpod_net:
-            cpod_pools = self.dbapi.address_pools_get_by_network(cpod_net.id)
+            cpod_pools = self._address_pools_get_by_network(cpod_net.id)
             for cpod_pool in cpod_pools:
                 cpod_pool_index[cpod_pool.family] = cpod_pool
         else:
             LOG.info("Cannot find cluster-pod network to add to cluster-host firewall")
 
-        addr_pools = self.dbapi.address_pools_get_by_network(network.id)
+        addr_pools = self._address_pools_get_by_network(network.id)
         for addr_pool in addr_pools:
             ip_version = addr_pool.family
             self._add_source_net_filter(gnp_config["spec"]["ingress"],
@@ -480,7 +489,7 @@ class PlatformFirewallPuppet(base.BasePuppet):
         :param network: the sysinv.object.network object for this network
         """
 
-        addr_pools = self.dbapi.address_pools_get_by_network(network.id)
+        addr_pools = self._address_pools_get_by_network(network.id)
         for addr_pool in addr_pools:
             ip_version = addr_pool.family
             self._add_source_net_filter(gnp_config["spec"]["ingress"],
@@ -499,7 +508,7 @@ class PlatformFirewallPuppet(base.BasePuppet):
         :param network: the sysinv.object.network object for this network
         """
 
-        addr_pools = self.dbapi.address_pools_get_by_network(network.id)
+        addr_pools = self._address_pools_get_by_network(network.id)
         for addr_pool in addr_pools:
             ip_version = addr_pool.family
             self._add_source_net_filter(gnp_config["spec"]["ingress"],
@@ -555,7 +564,7 @@ class PlatformFirewallPuppet(base.BasePuppet):
 
         routes_networks = self._get_routes_networks(network.type)
 
-        addr_pools = self.dbapi.address_pools_get_by_network(network.id)
+        addr_pools = self._address_pools_get_by_network(network.id)
         for addr_pool in addr_pools:
             ip_version = addr_pool.family
             ICMP = "ICMP"
@@ -596,7 +605,7 @@ class PlatformFirewallPuppet(base.BasePuppet):
 
         routes_networks = self._get_routes_networks(network.type)
 
-        addr_pools = self.dbapi.address_pools_get_by_network(network.id)
+        addr_pools = self._address_pools_get_by_network(network.id)
         for addr_pool in addr_pools:
             ip_version = addr_pool.family
             ICMP = "ICMP"
@@ -647,7 +656,7 @@ class PlatformFirewallPuppet(base.BasePuppet):
         routes_networks = self._get_routes_networks(network.type)
 
         rules = []
-        addr_pools = self.dbapi.address_pools_get_by_network(network.id)
+        addr_pools = self._address_pools_get_by_network(network.id)
         for addr_pool in addr_pools:
             ip_version = addr_pool.family
             ICMP = "ICMP"

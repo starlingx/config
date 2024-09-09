@@ -84,6 +84,10 @@ class SysinvBase(models.TimestampMixin,
             d[c.name] = self[c.name]
         return d
 
+    @classmethod
+    def get_query(cls):
+        return None
+
 
 Base = declarative_base(cls=SysinvBase)
 
@@ -1256,6 +1260,20 @@ class AddressPools(Base):
     gateway_address = relationship(
         "Addresses", lazy="joined", join_depth=1,
         foreign_keys=[gateway_address_id])
+
+    @classmethod
+    def get_query(cls):
+        sql = """
+              select address_pools.id, address_pools.uuid, address_pools.name, address_pools.network,
+              address_pools.prefix, address_pools.family, 'address_pools.order',
+              controller0_address_id, addresses0.address as controller0_address, controller1_address_id,
+              floating_address_id, gateway_address_id
+              from address_pools
+              left outer join addresses as addresses0 on addresses0.id = controller0_address_id
+              left outer join addresses as addresses1 on addresses1.id = controller1_address_id
+              left outer join addresses as addressesf on addressesf.id = floating_address_id
+              """
+        return sql
 
 
 class AddressPoolRanges(Base):
