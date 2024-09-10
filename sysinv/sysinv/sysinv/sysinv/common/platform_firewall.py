@@ -128,6 +128,7 @@ SUBCLOUD = \
             5498: "usm-api",  # noqa: E501 docu: platform,mgmt or admin,Bidirectional,Allowed (service public endpoint) on controllers and subclouds.,Unified Software Management API endpoint,Yes,y,y,n,n
             6386: "sysinv-api",  # noqa: E501 docu: platform,mgmt or admin,Bidirectional,Allowed (service admin endpoint) on system controller and subclouds.,,Yes,y,y,n,n
             8220: "dcdbsync-api",  # noqa: E501 docu: platform,mgmt or admin,Bidirectional,Allowed (service admin endpoint) on system controller and subclouds.,,Yes,y,y,n,n
+            8326: "dcagent-api",  # noqa: E501 docu: platform,mgmt or admin,Bidirectional,Allowed (service admin endpoint) on system controller and subclouds.,,Yes,y,y,n,n
             constants.PLATFORM_DOCKER_PARAMS_REGISTRY_PORT: "Docker registry",  # noqa: E501 docu: platform,mgmt or admin,Bidirectional,Allowed (serving port) on system controller and subclouds.,,Yes,y,y,n,n
             constants.PLATFORM_DOCKER_PARAMS_TOKEN_PORT: "Registry token server",  # noqa: E501 docu: platform,mgmt or admin,Bidirectional,Allowed (serving port) on system controller and subclouds.,,Yes,y,y,n,n
             9312: "barbican-api",  # noqa: E501 docu: platform,mgmt or admin,Bidirectional,Allowed (service admin endpoint) on system controller and subclouds.,,Yes,y,y,y,n
