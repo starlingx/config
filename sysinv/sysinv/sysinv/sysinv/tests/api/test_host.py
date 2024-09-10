@@ -20,6 +20,7 @@ from oslo_utils import uuidutils
 from sysinv.common import constants
 from sysinv.common import device
 from sysinv.common import kubernetes
+from sysinv.common.usm_service import UsmUpgrade
 
 from cephclient import wrapper as ceph
 
@@ -2730,7 +2731,13 @@ class TestPatch(TestHost):
         self._test_lock_action_controller()
 
     @mock.patch('sysinv.common.usm_service.is_usm_authapi_ready', lambda: True)
-    def test_lock_action_controller_during_upgrade_starting(self):
+    @mock.patch('sysinv.common.usm_service.get_platform_upgrade')
+    def test_lock_action_controller_during_upgrade_starting(self, mock_get_platform_upgrade):
+        usm_deploy = UsmUpgrade("starting",
+                                "0.0",
+                                "0.0")
+        mock_get_platform_upgrade.return_value = usm_deploy
+
         # Create controller-0
         self._create_controller_0(
             invprovision=constants.PROVISIONED,

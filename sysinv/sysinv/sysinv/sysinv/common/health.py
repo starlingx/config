@@ -87,8 +87,7 @@ class Health(object):
         # TODO(heitormatsui): change the logic when there is a USM endpoint
         #  to return data per-host
         try:
-            deploy_in_progress = usm_service.get_platform_upgrade(self._dbapi,
-                                                                  usm_only=True)
+            deploy_in_progress = usm_service.get_platform_upgrade(self._dbapi)
         except exception.NotFound:
             # no upgrade in progress
             pass

@@ -15,6 +15,7 @@ from sysinv.common import constants
 from sysinv.common import health
 from sysinv.common import kubernetes
 from sysinv.common import exception
+from sysinv.common.usm_service import UsmUpgrade
 from sysinv.conductor.manager import ConductorManager
 
 from sysinv.tests.api import base
@@ -397,8 +398,13 @@ class TestPostKubeUpgrade(TestKubeUpgrade,
         self.assertEqual('v1.43.1', kube_host_upgrade.target_version)
 
     @mock.patch('sysinv.common.usm_service.is_usm_authapi_ready', lambda: True)
-    def test_create_platform_upgrade_exists(self):
+    @mock.patch('sysinv.common.usm_service.get_platform_upgrade')
+    def test_create_platform_upgrade_exists(self, mock_get_platform_upgrade):
         # Test creation of upgrade when platform upgrade in progress
+        usm_deploy = UsmUpgrade("in_progress",
+                                "0.0",
+                                "0.0")
+        mock_get_platform_upgrade.return_value = usm_deploy
         dbutils.create_test_load(software_version=dbutils.SW_VERSION_NEW,
                                  compatible_version=dbutils.SW_VERSION,
                                  state=constants.IMPORTED_LOAD_STATE)
@@ -424,9 +430,11 @@ class TestPostKubeUpgrade(TestKubeUpgrade,
             state=kubernetes.KUBE_UPGRADING_FIRST_MASTER,
         )
         create_dict = dbutils.post_get_test_kube_upgrade(to_version='v1.43.2')
-        result = self.post_json('/kube_upgrade', create_dict,
-                                headers={'User-Agent': 'sysinv-test'},
-                                expect_errors=True)
+        with mock.patch('sysinv.common.usm_service.get_platform_upgrade',
+                        side_effect=exception.NotFound()):
+            result = self.post_json('/kube_upgrade', create_dict,
+                                    headers={'User-Agent': 'sysinv-test'},
+                                    expect_errors=True)
 
         # Verify the failure
         self.assertEqual(result.content_type, 'application/json')
@@ -435,8 +443,10 @@ class TestPostKubeUpgrade(TestKubeUpgrade,
                       result.json['error_message'])
 
     @mock.patch('sysinv.common.usm_service.is_usm_authapi_ready', lambda: True)
-    def test_create_target_version_does_not_exist(self):
+    @mock.patch('sysinv.common.usm_service.get_platform_upgrade')
+    def test_create_target_version_does_not_exist(self, mock_get_platform_upgrade):
         # Test creation of upgrade when target version doesn't exist
+        mock_get_platform_upgrade.side_effect = exception.NotFound()
         create_dict = dbutils.post_get_test_kube_upgrade(to_version='v1.45.45')
         result = self.post_json('/kube_upgrade', create_dict,
                                 headers={'User-Agent': 'sysinv-test'},
@@ -452,9 +462,11 @@ class TestPostKubeUpgrade(TestKubeUpgrade,
     def test_create_upgrade_path_not_supported(self):
         # Test creation of upgrade when upgrade path is not supported
         create_dict = dbutils.post_get_test_kube_upgrade(to_version='v1.43.3')
-        result = self.post_json('/kube_upgrade', create_dict,
-                                headers={'User-Agent': 'sysinv-test'},
-                                expect_errors=True)
+        with mock.patch('sysinv.common.usm_service.get_platform_upgrade',
+                        side_effect=exception.NotFound()):
+            result = self.post_json('/kube_upgrade', create_dict,
+                                    headers={'User-Agent': 'sysinv-test'},
+                                    expect_errors=True)
 
         # Verify the failure
         self.assertEqual(result.content_type, 'application/json')
@@ -471,9 +483,11 @@ class TestPostKubeUpgrade(TestKubeUpgrade,
                                                'v1.43.2': 'available',
                                                'v1.43.3': 'available'}
         create_dict = dbutils.post_get_test_kube_upgrade(to_version='v1.43.2')
-        result = self.post_json('/kube_upgrade', create_dict,
-                                headers={'User-Agent': 'sysinv-test'},
-                                expect_errors=True)
+        with mock.patch('sysinv.common.usm_service.get_platform_upgrade',
+                        side_effect=exception.NotFound()):
+            result = self.post_json('/kube_upgrade', create_dict,
+                                    headers={'User-Agent': 'sysinv-test'},
+                                    expect_errors=True)
 
         # Verify the failure
         self.assertEqual(result.content_type, 'application/json')

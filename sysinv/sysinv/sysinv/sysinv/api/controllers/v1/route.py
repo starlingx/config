@@ -15,7 +15,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2015-2022 Wind River Systems, Inc.
+# Copyright (c) 2015-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -219,6 +219,28 @@ class RouteCollection(collection.Collection):
 LOCK_NAME = 'RouteController'
 
 
+DISALLOWED_UPGRADE_STATES = [
+        constants.DEPLOY_STATE_START,
+        constants.DEPLOY_STATE_START_DONE,
+        constants.DEPLOY_STATE_START_FAILED,
+        constants.DEPLOY_STATE_HOST_ROLLBACK,
+        constants.DEPLOY_STATE_HOST_ROLLBACK_DONE,
+        constants.DEPLOY_STATE_HOST_ROLLBACK_FAILED,
+        constants.DEPLOY_STATE_ACTIVATE_ROLLBACK,
+        constants.DEPLOY_STATE_ACTIVATE_ROLLBACK_DONE,
+        constants.DEPLOY_STATE_ACTIVATE_ROLLBACK_FAILED,
+        constants.DEPLOY_STATE_ACTIVATE_ROLLBACK_PENDING,
+]
+
+
+def check_upgrade_pre_upgrading_controllers(dbapi):
+    is_upgrading, upgrade = cutils.is_upgrade_in_progress(dbapi)
+    if is_upgrading:
+        if upgrade.state in DISALLOWED_UPGRADE_STATES:
+            return True, upgrade
+    return False, upgrade
+
+
 class RouteController(rest.RestController):
     """REST controller for Routes."""
 
@@ -384,7 +406,7 @@ class RouteController(rest.RestController):
     def post(self, route):
         """Create a new IP route."""
         is_upgrading, upgrade = \
-            cutils.check_upgrade_pre_upgrading_controllers(pecan.request.dbapi)
+            check_upgrade_pre_upgrading_controllers(pecan.request.dbapi)
         if is_upgrading:
             raise exception.UpgradeInProgress(state=upgrade.state)
         return self._create_route(route)
@@ -394,7 +416,7 @@ class RouteController(rest.RestController):
     def delete(self, route_uuid):
         """Delete an IP route."""
         is_upgrading, upgrade = \
-            cutils.check_upgrade_pre_upgrading_controllers(pecan.request.dbapi)
+            check_upgrade_pre_upgrading_controllers(pecan.request.dbapi)
         if is_upgrading:
             raise exception.UpgradeInProgress(state=upgrade.state)
 

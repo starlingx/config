@@ -17,6 +17,7 @@ from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import health
 from sysinv.common import kubernetes
+from sysinv.common.usm_service import UsmUpgrade
 from sysinv.conductor.manager import ConductorManager
 
 from sysinv.tests.api import base
@@ -297,8 +298,13 @@ class TestPostKubeRootCAUpdate(TestKubeRootCAUpdate,
                       result.json['error_message'])
 
     @mock.patch('sysinv.common.usm_service.is_usm_authapi_ready', lambda: True)
-    def test_create_platform_upgrade_exists(self):
+    @mock.patch('sysinv.common.usm_service.get_platform_upgrade')
+    def test_create_platform_upgrade_exists(self, mock_get_platform_upgrade):
         # Test creation of rootca update when platform upgrade in progress
+        usm_deploy = UsmUpgrade("in_progress",
+                                "0.0",
+                                "0.0")
+        mock_get_platform_upgrade.return_value = usm_deploy
         dbutils.create_test_load(software_version=dbutils.SW_VERSION_NEW,
                                  compatible_version=dbutils.SW_VERSION,
                                  state=constants.IMPORTED_LOAD_STATE)
