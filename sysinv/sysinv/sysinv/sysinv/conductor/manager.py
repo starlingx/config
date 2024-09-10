@@ -1419,6 +1419,8 @@ class ConductorManager(service.PeriodicService):
             constants.NETWORK_TYPE_MGMT
         )
 
+        is_upgrading, upgrade = cutils.is_upgrade_in_progress(self.dbapi)
+
         func = "_generate_dnsmasq_hosts_file"
         with open(temp_dnsmasq_hosts_file, 'w') as f_out, \
                 open(temp_dnsmasq_addn_hosts_file, 'w') as f_out_addn:
@@ -1485,6 +1487,26 @@ class ConductorManager(service.PeriodicService):
                                  .format(hostname, mac_address,
                                          existing_host.mgmt_mac))
                         mac_address = existing_host.mgmt_mac
+
+                if not is_upgrading or "activate" in upgrade.state:
+                    continue
+
+                # If host is being deleted, don't check ihost
+                if deleted_hostname and deleted_hostname == hostname:
+                    continue
+
+                try:
+                    ihost = self.dbapi.ihost_get_by_hostname(hostname)
+                    if ihost.personality == constants.CONTROLLER:
+                        continue
+                    mac_address = ihost.mgmt_mac
+                except exception.NodeNotFound:
+                    continue
+
+                line = self._dnsmasq_host_entry_to_string(address.address,
+                                                          hostname,
+                                                          mac_address)
+                f_out.write(line)
 
             # Add pxecontroller to dnsmasq.hosts file
             pxeboot_network = self.dbapi.network_get_by_type(
@@ -1557,6 +1579,8 @@ class ConductorManager(service.PeriodicService):
                 #    that was already added above.
 
                 # get only latest valid leases from the dnsmasq.leases file
+                pxe_addrpool = self.dbapi.address_pool_get(pxeboot_network.pool_uuid)
+                pxe_subnet = IPNetwork(pxe_addrpool.network + "/" + str(pxe_addrpool.prefix))
                 valid_leases = self._filter_stale_dnsmasq_leases(dnsmasq_leases_file)
                 for line in valid_leases:
                     lease_ts_str, mac, ip, hostname, client_id = line.split()
@@ -1573,14 +1597,16 @@ class ConductorManager(service.PeriodicService):
                             LOG.info("%s: ... deleted" % func)
                             continue
                         elif mac == host.mgmt_mac:
-                            # So then this is a valid lease.
-                            # Create the line and add it.
-                            line = self._dnsmasq_host_entry_to_string(
-                                    ip, host.hostname,
-                                    host.mgmt_mac)
-                            LOG.info("%s: adding '%s' from leases to %s" % (
-                                func, line.strip(), dnsmasq_hosts_file))
-                            f_out.write(line)
+                            addr = IPAddress(ip)
+                            if addr in pxe_subnet:
+                                # So then this is a valid lease.
+                                # Create the line and add it.
+                                line = self._dnsmasq_host_entry_to_string(
+                                        ip, 'pxeboot-' + str(host.id),
+                                        host.mgmt_mac)
+                                LOG.info("%s: adding '%s' from leases to %s" % (
+                                    func, line.strip(), dnsmasq_hosts_file))
+                                f_out.write(line)
 
         # If there is no distributed cloud addn_hosts file, create an empty one
         # so dnsmasq will not complain.
