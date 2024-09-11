@@ -11511,61 +11511,36 @@ class ConductorManager(service.PeriodicService):
         """
            Callback for Sysinv Agent
         """
+        LOG.info("Ceph monitor updating on host: %s" % host_uuid)
 
-        LOG.info("Ceph monitor update succeeded on host: %s" % host_uuid)
+        host = self.dbapi.ihost_get(host_uuid)
+        if not host:
+            LOG.error("Host %s is invalid!" % host_uuid)
+            return
 
-        # Get the monitor that is configuring
-        monitor_list = self.dbapi.ceph_mon_get_list()
-        monitor = None
-        for mon in monitor_list:
-            if mon.state == constants.SB_STATE_CONFIGURING:
-                monitor = mon
-                break
+        # Get the monitor that is configuring on this host
+        monitor = self.dbapi.ceph_mon_get_by_ihost(host_uuid)[0]
+        if not monitor:
+            LOG.error("Host %s does not have ceph monitor!" % host_uuid)
+            return
 
-        ctrls = self.dbapi.ihost_get_by_personality(constants.CONTROLLER)
-        # Note that even if nodes are degraded we still accept the answer.
-        valid_ctrls = [ctrl for ctrl in ctrls if
-                       (ctrl.administrative == constants.ADMIN_LOCKED and
-                        ctrl.availability == constants.AVAILABILITY_ONLINE) or
-                       (ctrl.administrative == constants.ADMIN_UNLOCKED and
-                        ctrl.operational == constants.OPERATIONAL_ENABLED)]
-
-        # Set state for current node
-        for host in valid_ctrls:
-            if host.uuid == host_uuid:
-                break
-        else:
-            LOG.error("Host %s is not in the required state!" % host_uuid)
-            host = self.dbapi.ihost_get(host_uuid)
-            if not host:
-                LOG.error("Host %s is invalid!" % host_uuid)
-                return
-            elif host.personality == constants.WORKER:
-                LOG.info("Ignoring report from worker hosts")
-                return
-        tasks = eval(monitor.get('task', '{}'))
-        if tasks:
-            tasks[host.hostname] = constants.SB_STATE_CONFIGURED
-        else:
-            tasks = {host.hostname: constants.SB_STATE_CONFIGURED}
-
-        # Check if all hosts configurations have applied correctly
-        # and mark config success
-        config_success = True
-        for host in valid_ctrls:
-            if tasks.get(host.hostname, '') != constants.SB_STATE_CONFIGURED:
-                config_success = False
-
+        tasks = {host.hostname: constants.SB_STATE_CONFIGURED}
         values = None
-        if monitor.state != constants.SB_STATE_CONFIG_ERR:
-            if config_success:
-                # All hosts have completed configuration
-                values = {'state': constants.SB_STATE_CONFIGURED, 'task': None}
-            else:
-                # This host_uuid has completed configuration
-                values = {'task': str(tasks)}
-        if values:
-            self.dbapi.ceph_mon_update(monitor.uuid, values)
+        # Get the hosts that have ceph_mons
+        ceph_mon_hosts = self.dbapi.ceph_mon_get_list()
+        for host in ceph_mon_hosts:
+            if(tasks.get(host.hostname, '') != constants.SB_STATE_CONFIGURED):
+                # There are other hosts to get configured.
+                # Updating with current progress.
+                values = {'state': constants.SB_STATE_CONFIGURED, 'task': str(tasks)}
+                break
+        else:
+            # All hosts have completed configuration.
+            # Update the state and cleanup the tasks field.
+            values = {'state': constants.SB_STATE_CONFIGURED, 'task': None}
+
+        self.dbapi.ceph_mon_update(monitor.uuid, values)
+        LOG.info("Ceph monitor update succeeded on host: %s" % host_uuid)
 
     def report_ceph_base_config_failure(self, host_uuid, error):
         """
