@@ -10305,14 +10305,13 @@ class ConductorManager(service.PeriodicService):
 
     def update_ceph_osd_config(self, context, host, stor_uuid, runtime_manifests=True):
         """ Update Ceph OSD configuration at runtime"""
-        personalities = [host.personality]
-        config_uuid = self._config_update_hosts(context, personalities, [host.uuid],
-                                                reboot=not runtime_manifests)
-
         if runtime_manifests:
             # Make sure that we have the correct CRUSH map before applying
             # the manifests.
             cceph.fix_crushmap(self.dbapi)
+
+            config_uuid = self._config_update_hosts(context, [host.personality], [host.uuid],
+                                                    reboot=False)
 
             config_dict = {
                 "personalities": host.personality,
