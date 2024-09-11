@@ -63,7 +63,7 @@ class AddressPoolTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
 
     def assert_fields(self, api_object):
         # check the uuid is a uuid
-        assert(uuidutils.is_uuid_like(api_object['uuid']))
+        assert (uuidutils.is_uuid_like(api_object['uuid']))
 
         # Verify that expected attributes are returned
         for field in self.expected_api_fields:
@@ -828,6 +828,20 @@ class TestPatchMixin(object):
 
         self.mock_rpcapi_update_admin_config.assert_called_once()
         self.assertEqual(False, self.mock_rpcapi_update_admin_config.call_args.kwargs['disable'])
+
+    def test_modify_systemcontroller_oam(self):
+        p = mock.patch('sysinv.conductor.rpcapi.ConductorAPI.update_dnsmasq_config')
+        self.mock_rpcapi_update_dnsmasq_config = p.start()
+        self.addCleanup(p.stop)
+
+        self._create_test_host(constants.CONTROLLER, unit=0)
+        sc_oam_network = self._find_network_by_type(constants.NETWORK_TYPE_SYSTEM_CONTROLLER_OAM)
+        sc_oam_pool = self.dbapi.address_pool_get(sc_oam_network.pool_uuid)
+        sc_oam_pool_start = sc_oam_pool.ranges[0][0]
+
+        self.patch_success(sc_oam_pool, floating_address=sc_oam_pool_start)
+
+        self.mock_rpcapi_update_dnsmasq_config.assert_called_once()
 
     def test_change_admin_gateway_in_subcloud(self):
         p = mock.patch('sysinv.conductor.rpcapi.ConductorAPI.update_admin_config')
