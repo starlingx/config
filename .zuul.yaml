@@ -123,6 +123,7 @@
     vars:
       tox_envlist: flake8
       tox_extra_args: -c controllerconfig/controllerconfig/tox.ini
+    voting: false
 
 - job:
     name: controllerconfig-tox-pylint
