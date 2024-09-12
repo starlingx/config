@@ -7,6 +7,7 @@ import logging as LOG
 import sys
 import subprocess
 from sysinv.common.kubernetes import KUBERNETES_ADMIN_CONF
+from sysinv.common.kubernetes import test_kubeapi_health
 
 KUBE_CMD = 'kubectl --kubeconfig=' + KUBERNETES_ADMIN_CONF + ' '
 
@@ -50,6 +51,7 @@ def main():
     return res
 
 
+@test_kubeapi_health
 def do_update(from_release, to_release):
     # Check if IPv4 IPIP pool exists
     cmd = (KUBE_CMD + "get ippools.crd.projectcalico.org" +
