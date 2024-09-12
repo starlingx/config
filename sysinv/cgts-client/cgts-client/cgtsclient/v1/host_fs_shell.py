@@ -11,13 +11,15 @@ from cgtsclient import exc
 from cgtsclient.v1 import host_fs as fs_utils
 from cgtsclient.v1 import ihost as ihost_utils
 
+from oslo_serialization import jsonutils
+
 
 def _print_fs_show(fs):
     fields = ['uuid', 'name', 'size', 'logical_volume', 'state',
-              'created_at', 'updated_at']
+              'capabilities', 'created_at', 'updated_at']
 
     labels = ['uuid', 'name', 'size', 'logical_volume', 'state',
-              'created_at', 'updated_at']
+              'capabilities', 'created_at', 'updated_at']
 
     data = [(f, getattr(fs, f)) for f in fields]
     utils.print_tuple_list(data, labels)
@@ -26,8 +28,9 @@ def _print_fs_show(fs):
 def _print_fs_list(cc, ihost_uuid):
     fs_list = cc.host_fs.list(ihost_uuid)
 
-    field_labels = ['UUID', 'FS Name', 'Size in GiB', 'Logical Volume', 'State']
-    fields = ['uuid', 'name', 'size', 'logical_volume', 'state']
+    field_labels = ['UUID', 'FS Name', 'Size in GiB', 'Logical Volume',
+                    'State', 'Capabilities']
+    fields = ['uuid', 'name', 'size', 'logical_volume', 'state', 'capabilities']
     utils.print_list(fs_list, fields, field_labels, sortby=1)
 
 
@@ -72,9 +75,18 @@ def do_host_fs_list(cc, args):
            nargs='+',
            action='append',
            default=[],
-           help="Modify host filesystem sizes")
+           help="Modify host filesystem")
+@utils.arg('--functions',
+           metavar='<function1,function2,...>',
+           default=None,
+           help='Host filesystem functions')
 def do_host_fs_modify(cc, args):
-    """Modify the size of a Filesystem."""
+    """Modify the size or functions of a filesystem"""
+
+    field_list = ['functions']
+    user_specified_fields = dict((k, v) for (k, v) in vars(args).items()
+                                 if k in field_list and not (v is None))
+    functions = user_specified_fields.get('functions')
 
     patch_list = []
     for attr in args.attributes[0]:
@@ -83,10 +95,27 @@ def do_host_fs_modify(cc, args):
             db_name, size = attr.split("=", 1)
             patch.append({'op': 'replace', 'path': '/name', 'value': db_name})
             patch.append({'op': 'replace', 'path': '/size', 'value': size})
-            patch_list.append(patch)
         except ValueError:
-            raise exc.CommandError('Attributes must be a list of '
-                                   'FS_NAME=SIZE not "%s"' % attr)
+            if functions is None:
+                raise exc.CommandError('Filesystem resize attributes must be '
+                                       'FS_NAME=SIZE not "%s"' % attr)
+            # Functions provided, but size was not specified.
+            # Eg.: host-fs-modify ceph --functions=monitor
+            patch.append({'op': 'replace', 'path': '/name', 'value': attr})
+
+        if functions is not None:
+            if len(args.attributes[0]) == 1:
+                capabilities = {}
+                capabilities['functions'] = [f for f in functions.split(',') if f]
+                patch.append({
+                    'op': 'replace',
+                    'path': '/capabilities',
+                    'value': jsonutils.dumps(capabilities)})
+            else:
+                raise exc.CommandError('Alter functions are only supported '
+                                       'for one filesystem at a time.')
+
+        patch_list.append(patch)
 
     ihost = ihost_utils._find_ihost(cc, args.hostnameorid)
 

@@ -602,6 +602,10 @@ class ControllerFSNameNotFound(NotFound):
     message = _("No ControllerFS with name %(name)s found.")
 
 
+class HostFSNameNotFound(NotFound):
+    message = _("No HostFS with name %(name)s found.")
+
+
 class NTPNotFound(NotFound):
     message = _("No NTP with id %(intp_id)s found.")
 

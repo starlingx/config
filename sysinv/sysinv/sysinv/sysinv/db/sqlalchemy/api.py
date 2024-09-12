@@ -4218,6 +4218,7 @@ class Connection(api.Connection):
         except NoResultFound:
             raise exception.NotFound()
 
+    @db_objects.objectify(objects.controller_fs)
     def controller_fs_get_by_name(self, controller_fs_name):
         query = model_query(models.ControllerFs)
         query = query.filter_by(name=controller_fs_name)
@@ -8773,6 +8774,19 @@ class Connection(api.Connection):
         query = add_host_fs_filter_by_ihost(query, ihost)
         return _paginate_query(models.HostFs, limit, marker,
                                sort_key, sort_dir, query)
+
+    @db_objects.objectify(objects.host_fs)
+    def host_fs_get_by_name_ihost(self, ihost, name):
+        query = model_query(models.HostFs)
+        query = query.filter(models.HostFs.name == name)
+        query = add_host_fs_filter_by_ihost(query, ihost)
+
+        try:
+            result = query.one()
+        except NoResultFound:
+            raise exception.HostFSNameNotFound(name=name)
+
+        return result
 
     @db_objects.objectify(objects.host_fs)
     def host_fs_update(self, fs_id, values):

@@ -4729,6 +4729,15 @@ class Connection(object):
         """
 
     @abc.abstractmethod
+    def host_fs_get_by_name_ihost(self, ihost, host_fs_name):
+        """Get host filesystem for a given ihost and name.
+
+        :param ihost: The id or uuid of an ihost.
+        :param host_fs_name: The host filesystem name.
+        :returns: A filesystem.
+        """
+
+    @abc.abstractmethod
     def host_fs_update(self, fs_id, values):
         """Update properties of a filesystem.
 

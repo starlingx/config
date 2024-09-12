@@ -5208,6 +5208,9 @@ class ConductorManager(service.PeriodicService):
             if 'state' not in fs.keys():
                 fs_dict['state'] = constants.HOST_FS_STATUS_IN_USE
 
+            if 'capabilities' not in fs.keys():
+                fs_dict['capabilities'] = {'functions': []}
+
             fs_dict.update(fs)
             found = False
 
@@ -12205,6 +12208,8 @@ class ConductorManager(service.PeriodicService):
             LOG.info("Disk size : %s ... disk too small" % disk_size)
             raise exception.SysinvException("Disk size requirements not met.")
 
+        capabilities = {'functions': []}
+
         # platform fs added to platform-lv
         data = {
             'name': constants.FILESYSTEM_NAME_PLATFORM,
@@ -12213,6 +12218,7 @@ class ConductorManager(service.PeriodicService):
                 constants.FILESYSTEM_NAME_PLATFORM],
             'replicated': True,
             'state': str({'status': constants.CONTROLLER_FS_AVAILABLE}),
+            'capabilities': capabilities
         }
         LOG.info("Creating FS:%s:%s %d" % (
             data['name'], data['logical_volume'], data['size']))
@@ -12226,6 +12232,7 @@ class ConductorManager(service.PeriodicService):
                 constants.FILESYSTEM_NAME_DATABASE],
             'replicated': True,
             'state': str({'status': constants.CONTROLLER_FS_AVAILABLE}),
+            'capabilities': capabilities
         }
         LOG.info("Creating FS:%s:%s %d" % (
             data['name'], data['logical_volume'], data['size']))
@@ -12239,6 +12246,7 @@ class ConductorManager(service.PeriodicService):
                 constants.FILESYSTEM_NAME_EXTENSION],
             'replicated': True,
             'state': str({'status': constants.CONTROLLER_FS_AVAILABLE}),
+            'capabilities': capabilities
         }
         LOG.info("Creating FS:%s:%s %d" % (
             data['name'], data['logical_volume'], data['size']))
@@ -12252,6 +12260,7 @@ class ConductorManager(service.PeriodicService):
                     constants.FILESYSTEM_NAME_ETCD],
                 'replicated': True,
                 'state': str({'status': constants.CONTROLLER_FS_AVAILABLE}),
+                'capabilities': capabilities
         }
         LOG.info("Creating FS:%s:%s %d" % (
             data_etcd['name'], data_etcd['logical_volume'], data_etcd['size']))
@@ -12265,6 +12274,7 @@ class ConductorManager(service.PeriodicService):
                 constants.FILESYSTEM_NAME_DOCKER_DISTRIBUTION],
             'replicated': True,
             'state': str({'status': constants.CONTROLLER_FS_AVAILABLE}),
+            'capabilities': capabilities
         }
         LOG.info("Creating FS:%s:%s %d" % (
             data['name'], data['logical_volume'], data['size']))
@@ -12279,6 +12289,7 @@ class ConductorManager(service.PeriodicService):
                     constants.FILESYSTEM_NAME_DC_VAULT],
                 'replicated': True,
                 'state': str({'status': constants.CONTROLLER_FS_AVAILABLE}),
+                'capabilities': capabilities
             }
             LOG.info("Creating FS:%s:%s %d" % (
                 data['name'], data['logical_volume'], data['size']))
