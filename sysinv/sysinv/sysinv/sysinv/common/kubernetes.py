@@ -217,6 +217,22 @@ def k8s_health_check(tries=20, try_sleep=5, timeout=5,
     return rc
 
 
+def test_kubeapi_health(function):
+    """Decorator that checks if k8s endpoints are ready before calling the function.
+
+    param: function: The function to be wrapped.
+
+    Returns: The wrapped function that checks the kubeapi health.
+    """
+    def wrapper(*args, **kwargs):
+        LOG.info("Starting k8s health check")
+        if k8s_health_check(tries=30, try_sleep=10, timeout=5):
+            return function(*args, **kwargs)
+        else:
+            raise Exception("Kubeapi is not responsive.")
+    return wrapper
+
+
 def get_kube_versions():
     """Provides a list of supported kubernetes versions in
        increasing order."""
