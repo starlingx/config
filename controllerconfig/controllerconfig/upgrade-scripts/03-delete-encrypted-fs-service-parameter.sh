@@ -28,8 +28,6 @@ if [[ "$ACTION" != "activate" ||  "$FROM_RELEASE" != "22.12" ]]; then
     exit 0
 fi
 
-source /etc/platform/openrc
-
 # Get the UUID of the encrypted-fs attribute
 ENCRYPTED_FS_UUID=$( system service-parameter-list --service platform --section config | grep " encrypted-fs " | awk -F '|' '{print $2}'| xargs );
 

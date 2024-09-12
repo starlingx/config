@@ -181,8 +181,6 @@ if [[ "${ACTION}" == "activate" ]] && [[ "${TO_RELEASE}" == "24.09" ]]; then
     # Restart kubelet on all Kubernetes nodes if RBAC has been updated
     if [[ "${rbac_updated}" == "0" ]]; then
 
-        source /etc/platform/openrc
-
         system kube-config-kubelet
 
         # Wait for Kubernetes to be ready.

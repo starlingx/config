@@ -47,8 +47,6 @@ STANDBY_PODS=""
 
 SOFTWARE_LOG_PATH='/var/log/software.log'
 
-source /etc/platform/openrc
-
 function log {
     echo "$(date -Iseconds | cut -d'+' -f1): ${NAME}[$$]: INFO: $*" >> "/var/log/software.log" 2>&1
 }

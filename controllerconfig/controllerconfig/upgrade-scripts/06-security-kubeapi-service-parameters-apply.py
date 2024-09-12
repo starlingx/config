@@ -68,7 +68,7 @@ class ServiceParametersApplier(object):
         return controllers
 
     def __service_parameter_apply(self) -> None:
-        command = "source /etc/platform/openrc && %s" % self.SP_APPLY_CMD
+        command = self.SP_APPLY_CMD
         LOG.info('Applying service parameters...')
         self.__system_cmd(command)
 

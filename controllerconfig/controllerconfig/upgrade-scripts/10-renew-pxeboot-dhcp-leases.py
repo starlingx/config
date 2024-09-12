@@ -51,17 +51,15 @@ def main():
 
 
 def execute_system_cmd(api_cmd, exc_msg):
-    cmd = f'source /etc/platform/openrc && {api_cmd}'
-
     sub = subprocess.Popen(
-        cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        api_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
     stdout, stderr = sub.communicate()
     if sub.returncode == 0:
         return stdout.decode('utf-8').rstrip('\n')
     else:
         LOG.error('Command failed:\n %s\n. %s\n%s\n'
-                  % (cmd, stdout.decode('utf-8'),
+                  % (api_cmd, stdout.decode('utf-8'),
                      stderr.decode('utf-8')))
         raise Exception(exc_msg)
 

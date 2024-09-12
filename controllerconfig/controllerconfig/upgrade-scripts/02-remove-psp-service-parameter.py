@@ -23,7 +23,7 @@ class PodSecurityPolicyRemover(object):
     """
     def __init__(self) -> None:
         self.SERVICE_PARAM_DELETE_CMD = (
-            "source /etc/platform/openrc && system service-parameter-list "
+            "system service-parameter-list "
             "--service kubernetes --section kube_apiserver | "
             "grep 'PodSecurityPolicy' | awk -F '|' '{print $2}' | xargs"
         )
@@ -46,8 +46,7 @@ class PodSecurityPolicyRemover(object):
         if psp_uuid:
             LOG.info(f"Found admission_plugin service parameter with value "
                      f"'PodSecurityPolicy': {psp_uuid}")
-            delete_cmd = (f"source /etc/platform/openrc && "
-                          f"system service-parameter-delete {psp_uuid}")
+            delete_cmd = (f"system service-parameter-delete {psp_uuid}")
 
             delete_output = self.__system_cmd(delete_cmd).strip()
 

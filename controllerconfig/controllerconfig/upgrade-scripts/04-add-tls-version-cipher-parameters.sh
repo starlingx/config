@@ -30,8 +30,6 @@ if [[ "$ACTION" != "activate" ||  "$FROM_RELEASE" != "22.12" ]]; then
     exit 0
 fi
 
-source /etc/platform/openrc
-
 log "Adding required parameters to kubernetes API."
 
 for try in $(seq 1 $RETRY_COMMAND); do

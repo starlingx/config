@@ -32,7 +32,6 @@ NODE_LIST=(controller-0 controller-1)
 RESIZE_SLEEP_TIME=90
 RESIZE_CHECK_MAX_RETRIES=5
 
-source /etc/platform/openrc
 source /etc/platform/platform.conf
 
 function log {

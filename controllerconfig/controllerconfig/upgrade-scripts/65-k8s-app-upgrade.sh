@@ -365,7 +365,6 @@ if [ "$ACTION" == "activate" ]; then
     [[ -f $UPGRADE_IN_PROGRESS_APPS_FILE ]] && rm -f $UPGRADE_IN_PROGRESS_APPS_FILE
 
     # move the costly source command in the if branch, so only execute when needed.
-    source /etc/platform/openrc
     source /etc/platform/platform.conf
 
     for tries in $(seq 1 $RECOVER_RESULT_ATTEMPTS); do
