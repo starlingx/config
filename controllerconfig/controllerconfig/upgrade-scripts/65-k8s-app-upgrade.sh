@@ -169,8 +169,7 @@ function update_in_series {
         UPDATING_APP_VERSION=$(echo ${UPDATING_APP_INFO} | sed 's/.*app_version:[[:space:]]\(\S*\).*/\1/')
         UPDATING_APP_STATUS=$(echo ${UPDATING_APP_INFO} | sed 's/.*status:[[:space:]]\(\S*\).*/\1/')
 
-        if [ "${UPDATING_APP_NAME}" == "${UPGRADE_APP_NAME}" ] && \
-        [ "${UPDATING_APP_VERSION}" == "${UPGRADE_APP_VERSION}" ] && \
+        if [ "${UPDATING_APP_VERSION}" == "${UPGRADE_APP_VERSION}" ] && \
         [ "${UPDATING_APP_STATUS}" == "applied" ]; then
             ALARMS=$(fm alarm-list --nowrap --uuid --query "alarm_id=750.005;entity_type_id=k8s_application;entity_instance_id=${UPGRADE_APP_NAME}" | head -n-1 | tail -n+4 | awk '{print $2}')
             for alarm in ${ALARMS}; do
@@ -195,12 +194,12 @@ function update_in_series {
 }
 
 function update_apps {
-    COMPATIBLES_APPS=$1
-    IS_SERIAL_INSTALATION=$2
+    PATHS_TO_TARBALLS=$1
+    IS_SERIAL_INSTALLATION=$2
 
     LAST_APP_CHECKED=""
     # Get the list of applications installed in the new release
-    for fqpn_app in $COMPATIBLES_APPS; do
+    for fqpn_app in $PATHS_TO_TARBALLS; do
         # Extract the app name and version from the tarball name: app_name-version.tgz
         re='^(.*)-([0-9]+\.[0-9]+-[0-9]+).tgz'
         [[ "$(basename $fqpn_app)" =~ $re ]]
@@ -267,7 +266,7 @@ function update_apps {
                 log "Updating ${EXISTING_APP_NAME}, from version ${EXISTING_APP_VERSION} to version ${UPGRADE_APP_VERSION} from $fqpn_app"
                 system application-update $fqpn_app
 
-                if [ "$IS_SERIAL_INSTALATION" == "true" ]; then
+                if [ "$IS_SERIAL_INSTALLATION" == "true" ]; then
                     update_in_series
                 fi
                 ;;
@@ -333,18 +332,18 @@ if [ "$ACTION" == "activate" ]; then
     K8S_VERSIONS=$(system kube-version-list)
     ACTIVE_K8S_VERSION=$(echo "$K8S_VERSIONS" | grep ' True ' | grep ' active ' | awk -F '|' '{print $2}' | tr -d ' ')
 
-    # Get compatibles apps with current k8s version
+    # Get apps compatible with current k8s version
     # TODO(dbarbosa): Remove "--log-file ${SOFTWARE_LOG_PATH}" after fixing the issue with logs of
     # the "sysinv-app query <k8s-target-version>" being logged to stdout.
-    COMPATIBLES_APPS=$(sudo sysinv-app --log-file ${SOFTWARE_LOG_PATH} query ${ACTIVE_K8S_VERSION})
-    COMPATIBLES_APPS_FORMATED=$(echo "$COMPATIBLES_APPS" | paste -sd '|')
+    COMPATIBLE_APPS=$(sudo sysinv-app --log-file ${SOFTWARE_LOG_PATH} query ${ACTIVE_K8S_VERSION})
+    COMPATIBLE_APPS_FORMATED=$(echo "$COMPATIBLE_APPS" | paste -sd '|')
 
     # Get all loads apps
     APPS_LOADED=$(system application-list | head -n-1 | tail -n+4 | awk '{print $2}')
 
     # Check and log compatible and not compatible apps
     for APP in $APPS_LOADED; do
-        if [[ "${APP}" =~ (${COMPATIBLES_APPS_FORMATED}) ]]; then
+        if [[ "${APP}" =~ (${COMPATIBLE_APPS_FORMATED}) ]]; then
             log "${APP} has an upgrade compatible tarball and will be updated."
         else
             log "${APP} does not have an upgrade compatible tarball and will remain at its current version."
@@ -361,31 +360,31 @@ if [ "$ACTION" == "activate" ]; then
     # Sort applications by version. Lower versions are attempted first.
     # TODO(dbarbosa): Remove "--log-file ${SOFTWARE_LOG_PATH}" after fixing the issue with logs of
     # the "sysinv-app query <k8s-target-version>" being logged to stdout.
-    COMPATIBLES_APPS_TARBALL_PATH=$(sudo sysinv-app --log-file ${SOFTWARE_LOG_PATH} query ${ACTIVE_K8S_VERSION} --include-path | sort -V)
+    PATHS_TO_COMPATIBLE_TARBALLS=$(sudo sysinv-app --log-file ${SOFTWARE_LOG_PATH} query ${ACTIVE_K8S_VERSION} --include-path | sort -V)
 
     CRITICAL_APPS_PATHS=""
 
-    # From the list of COMPATIBLES_APPS_TARBALL_PATH, apps that have priority for installation by the platform are separated.
+    # From the list of PATHS_TO_COMPATIBLE_TARBALLS, apps that have priority for installation by the platform are separated.
     for app in $CRITICAL_APPS; do
         # Get the first matching path for the app
-        matched_path=$(echo "$COMPATIBLES_APPS_TARBALL_PATH" | grep -m 1 "/$app-")
+        matched_path=$(echo "$PATHS_TO_COMPATIBLE_TARBALLS" | grep -m 1 "/$app-")
 
         # Add the matched path to MATCHED_PATHS if found
         if [ -n "$matched_path" ]; then
             CRITICAL_APPS_PATHS+="$matched_path "
-            # Remove the matched path from COMPATIBLES_APPS_TARBALL_PATH
-            COMPATIBLES_APPS_TARBALL_PATH=$(echo "$COMPATIBLES_APPS_TARBALL_PATH" | grep -v "$matched_path")
+            # Remove the matched path from PATHS_TO_COMPATIBLE_TARBALLS
+            PATHS_TO_COMPATIBLE_TARBALLS=$(echo "$PATHS_TO_COMPATIBLE_TARBALLS" | grep -v "$matched_path")
         fi
     done
 
     APPS_IN_SERIAL_PATH=''
     APPS_IN_PARALLEL_PATHS=''
 
-    # Find matches between ALL_SYSTEM_SERIAL_APPLICATION and COMPATIBLES_APPS_TARBALL_PATH and save
+    # Find matches between ALL_SYSTEM_SERIAL_APPLICATION and PATHS_TO_COMPATIBLE_TARBALLS and save
     # to APPS_IN_SERIAL_PATH
     for app in $ALL_SYSTEM_SERIAL_APPLICATION; do
-        # Find the corresponding path in COMPATIBLES_APPS_TARBALL_PATH
-        matched_path=$(echo "$COMPATIBLES_APPS_TARBALL_PATH" | grep -m 1 "/$app-")
+        # Find the corresponding path in PATHS_TO_COMPATIBLE_TARBALLS
+        matched_path=$(echo "$PATHS_TO_COMPATIBLE_TARBALLS" | grep -m 1 "/$app-")
 
         # If a match is found, append it to APPS_IN_SERIAL_PATH
         if [ -n "$matched_path" ]; then
@@ -393,9 +392,9 @@ if [ "$ACTION" == "activate" ]; then
         fi
     done
 
-    # Find unmatched paths between ALL_SYSTEM_SERIAL_APPLICATION and COMPATIBLES_APPS_TARBALL_PATH
+    # Find unmatched paths between ALL_SYSTEM_SERIAL_APPLICATION and PATHS_TO_COMPATIBLE_TARBALLS
     # and save to APPS_IN_PARALLEL_PATHS
-    for path in $COMPATIBLES_APPS_TARBALL_PATH; do
+    for path in $PATHS_TO_COMPATIBLE_TARBALLS; do
         if ! echo -e "$APPS_IN_SERIAL_PATH" | grep -q "$path"; then
             APPS_IN_PARALLEL_PATHS="${APPS_IN_PARALLEL_PATHS}${path} "
         fi

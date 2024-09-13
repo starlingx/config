@@ -18,7 +18,6 @@ from distutils.version import LooseVersion
 from oslo_config import cfg
 from oslo_log import log
 
-from sysinv.api.controllers.v1 import kube_app as kube_api
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import kubernetes
@@ -26,12 +25,37 @@ from sysinv.common import service
 from sysinv.common.app_metadata import verify_application
 from sysinv.common.app_metadata import verify_application_tarball
 from sysinv.common import utils as cutils
-from sysinv.conductor import kube_app
 from sysinv.db import api
 
 CONF = cfg.CONF
 
 LOG = log.getLogger(__name__)
+
+
+# TODO(dbarbosa): Remove the get_kube_api function and return imports to the top of the file
+# after the issue with fm_core import was resolved in the Fault repository
+def get_kube_api():
+    """Import kube_app from sysinv.api.controllers.v1 only when needed
+
+    It is necessary to import kube_app separately only when needed due to the fm_core package
+    (which is imported inside kube_app by fault repository) failing if imported when the
+    "sysinv tox" or "sysinv verify-metadata" command is run.
+    """
+    from sysinv.api.controllers.v1 import kube_app
+    return kube_app
+
+
+# TODO(dbarbosa): Remove the get_kube_app function and return imports to the top of the file
+# after the issue with fm_core import was resolved in the Fault repository
+def get_kube_app():
+    """Import kube_app from sysinv.conductor only when needed
+
+    It is necessary to import kube_app separately only when needed due to the fm_core package
+    (which is imported inside kube_app by fault repository) failing if imported when the
+    "sysinv tox" or "sysinv verify-metadata" command is run.
+    """
+    from sysinv.conductor import kube_app
+    return kube_app
 
 
 def verify_application_tox(path):
@@ -156,6 +180,8 @@ def load_metadata_of_apps(apps_metadata):
     """
 
     dbapi = api.get_instance()
+    kube_api = get_kube_api()
+    kube_app = get_kube_app()
     kube_app_helper = kube_api.KubeAppHelper(dbapi)
 
     # All installed K8S Apps.
