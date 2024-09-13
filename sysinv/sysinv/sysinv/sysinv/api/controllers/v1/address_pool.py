@@ -894,6 +894,10 @@ class AddressPoolController(rest.RestController):
                     pecan.request.rpcapi.update_admin_config(pecan.request.context, host,
                                                              disable=disable)
 
+        if constants.NETWORK_TYPE_SYSTEM_CONTROLLER_OAM in network_types:
+            if cutils.is_initial_config_complete():
+                pecan.request.rpcapi.update_dnsmasq_config(pecan.request.context)
+
     def _check_delete_primary(self, addrpool, networks):
         nets = []
         for network in networks:
