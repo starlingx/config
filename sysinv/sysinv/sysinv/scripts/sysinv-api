@@ -232,13 +232,22 @@ sysinv_api_request () {
         fi
     else
         ocf_log err "Unable to run system show, trying direct request on sysinv-api URL (sysinv-api)"
-        # Test request on "http://controller:6385/v1" if minimum variables are not available
-        # "controller" matches the mgmt ip on /etc/hosts
-        ocf_run curl http://controller:6385/v1 > /dev/null 2>&1
+        # Test request on "http://controller.internal:6385/v1" if minimum variables are not available
+        # the dnsmasq must be running to resolve the "controller.internal"
+        ocf_run curl http://controller.internal:6385/v1 > /dev/null 2>&1
         rc=$?
         if [ $rc -eq 0 ]; then
-            ocf_log info "System Inventory Service (sysinv-api) is reachable via direct request URL"
+            ocf_log info "System Inventory Service (sysinv-api) is reachable via direct request URL to FQDN"
             return $OCF_SUCCESS
+        else
+            # if controller.internal is not reachable try "controller"
+            # "controller" matches the mgmt ip on /etc/hosts
+            ocf_run curl http://controller:6385/v1 > /dev/null 2>&1
+            rc=$?
+            if [ $rc -eq 0 ]; then
+                ocf_log info "System Inventory Service (sysinv-api) is reachable via direct request URL to hostname"
+                return $OCF_SUCCESS
+            fi
         fi
         ocf_log err "Unable to communicate with the System Inventory Service (sysinv-api)"
         return $OCF_ERR_GENERIC
@@ -277,10 +286,11 @@ sysinv_api_monitor () {
     fi
 
     # Send an HTTP OPTIONS request to the sysinv-api and capture the HTTP status code
-    http_code=$(curl -s -o /dev/null -w "%{http_code}" -X OPTIONS http://controller:6385/)
+    http_code=$(curl -s -o /dev/null -w "%{http_code}" -X OPTIONS http://controller.internal:6385/)
+
     rc=$?
     if [ $rc -ne 0 ]; then
-        ocf_log err "Failed to execute curl command for sysinv-api monitor"
+        ocf_log err "Failed to execute curl command for (sysinv-api) monitor"
         return $OCF_ERR_GENERIC
     fi
 
