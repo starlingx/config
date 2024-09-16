@@ -10786,6 +10786,8 @@ class ConductorManager(service.PeriodicService):
             self._clear_runtime_class_apply_in_progress(classes_list=iconfig.get('classes'),
                                                         host_uuids=iconfig.get('host_uuids'))
 
+            self._update_deferred_configs_timestamp(iconfig.get('classes', []))
+
         elif reported_cfg == puppet_common.REPORT_CEPH_RADOSGW_CONFIG:
             if status == puppet_common.REPORT_SUCCESS:
                 # Configuration was successful
@@ -13788,6 +13790,22 @@ class ConductorManager(service.PeriodicService):
             return False
 
         return True
+
+    def _update_deferred_configs_timestamp(self, classes=None):
+
+        def _cs_update_deferred_configs_timestamp(self, classes):
+            LOG.info(f"Updating timestamp for deferred configs with classes {classes}")
+            for drc in self._host_deferred_runtime_config:
+                config_dict = drc.get('config_dict', {})
+                # Check if _host_deferred_runtime_config list has config to be applied
+                # with classes that have been applied.
+                if all(item in config_dict.get('classes', []) for item in classes):
+                    # Update timestamp for deferred configs to avoid timeout error.
+                    LOG.info(f"Updating timestamp for deferred config with config: {drc}")
+                    drc['timestamp'] = datetime.utcnow()
+
+        with self.rlock_runtime_config:
+            _cs_update_deferred_configs_timestamp(self, classes)
 
     def _clear_runtime_class_apply_in_progress(self, classes_list=None, host_uuids=None):
 
