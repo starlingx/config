@@ -11,7 +11,7 @@ import logging as LOG
 import subprocess
 import sys
 
-from sysinv.common.kubernetes import test_kubeapi_health
+from sysinv.common.kubernetes import test_k8s_health
 
 
 def main():
@@ -45,7 +45,7 @@ def main():
         enable_fluxcd_controllers(from_release)
 
 
-@test_kubeapi_health
+@test_k8s_health
 def enable_fluxcd_controllers(from_release):
     """Run fluxcd_controllers ansible playbook to enable fluxcd controllers
 

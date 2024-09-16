@@ -7584,28 +7584,18 @@ class ConductorManager(service.PeriodicService):
 
         LOG.debug("Starting kubernetes cluster audit")
         try:
-            is_k8s_cluster_healthy = True
-            for endpoint in constants.healthz_endpoints:
-                is_k8s_cluster_healthy &= kubernetes.k8s_health_check(
-                    tries=1, healthz_endpoint=endpoint)
-                LOG.debug("k8s_health_check for endpoint: %s=%s" % (endpoint,
-                                                                    is_k8s_cluster_healthy))
-                if not is_k8s_cluster_healthy:
-                    LOG.error("k8s_health_check for endpoint: %s=%s" % (endpoint,
-                                                                        is_k8s_cluster_healthy))
-                    break
+            if kubernetes.k8s_wait_for_endpoints_health(tries=1):
+                if self._is_tracked_alarm(fm_constants.FM_ALARM_ID_K8S_CLUSTER_DOWN):
+                    self._update_k8s_cluster_alarm(fm_constants.FM_ALARM_STATE_CLEAR)
+                    self._clear_tracked_alarm(fm_constants.FM_ALARM_ID_K8S_CLUSTER_DOWN)
+            else:
+                LOG.debug("Kubernetes health check failed")
+                reason_text = "Kubernetes health check failed"
+                if not self._is_tracked_alarm(fm_constants.FM_ALARM_ID_K8S_CLUSTER_DOWN):
+                    self._update_k8s_cluster_alarm(fm_constants.FM_ALARM_STATE_SET, reason_text)
+                    self._set_tracked_alarm(fm_constants.FM_ALARM_ID_K8S_CLUSTER_DOWN)
         except Exception:
             LOG.warn("Unable to fetch Kubernetes nodes status - _audit_kubernetes_nodes")
-        if is_k8s_cluster_healthy:
-            if self._is_tracked_alarm(fm_constants.FM_ALARM_ID_K8S_CLUSTER_DOWN):
-                self._update_k8s_cluster_alarm(fm_constants.FM_ALARM_STATE_CLEAR)
-                self._clear_tracked_alarm(fm_constants.FM_ALARM_ID_K8S_CLUSTER_DOWN)
-        else:
-            LOG.debug("Kubernetes health check failed")
-            reason_text = "Kubernetes health check failed"
-            if not self._is_tracked_alarm(fm_constants.FM_ALARM_ID_K8S_CLUSTER_DOWN):
-                self._update_k8s_cluster_alarm(fm_constants.FM_ALARM_STATE_SET, reason_text)
-                self._set_tracked_alarm(fm_constants.FM_ALARM_ID_K8S_CLUSTER_DOWN)
 
     @periodic_task.periodic_task(spacing=CONF.conductor_periodic_task_intervals.kubernetes_labels)
     def _audit_kubernetes_labels(self, context):

@@ -268,19 +268,19 @@ def k8s_wait_for_endpoints_health(tries=20, try_sleep=5, timeout=5):
     return result
 
 
-def test_kubeapi_health(function):
+def test_k8s_health(function):
     """Decorator that checks if k8s endpoints are ready before calling the function.
 
     param: function: The function to be wrapped.
 
-    Returns: The wrapped function that checks the kubeapi health.
+    Returns: The wrapped function that checks Kubernetes health.
     """
     def wrapper(*args, **kwargs):
-        LOG.info("Starting k8s health check")
+        LOG.info("Checking Kubernetes health...")
         if k8s_wait_for_endpoints_health():
             return function(*args, **kwargs)
         else:
-            raise Exception("Kubeapi is not responsive.")
+            raise Exception("Kubernetes is not responsive.")
     return wrapper
 
 
