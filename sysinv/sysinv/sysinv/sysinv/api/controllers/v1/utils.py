@@ -359,26 +359,33 @@ def lookup_static_ip_address(name, networktype):
         return None
 
 
-def update_address_mode(interface, family, mode, pool):
-    interface_id = interface['id']
-    pool_id = pecan.request.dbapi.address_pool_get(pool)['id'] if pool else None
+def update_address_mode(interface_id, family, mode, pool_uuid):
+
     try:
         # retrieve the existing value and compare
-        existing = pecan.request.dbapi.address_mode_query(
-            interface_id, family)
+        existing = pecan.request.dbapi.address_mode_query(interface_id, family)
+
         if existing.mode == mode:
-            if (mode != 'pool' or existing.pool_uuid == pool):
+            if (mode != 'pool' or existing.pool_uuid == pool_uuid):
                 return
+
         if existing.mode == 'pool' or (not mode or mode == 'disabled'):
-            pecan.request.dbapi.routes_destroy_by_interface(
-                interface_id, family)
-            pecan.request.dbapi.addresses_destroy_by_interface(
-                interface_id, family)
+            pecan.request.dbapi.routes_destroy_by_interface(interface_id, family)
+            pecan.request.dbapi.addresses_destroy_by_interface(interface_id, family)
+
     except exception.AddressModeNotFoundByFamily:
         # continue and update DB with new record
         pass
-    updates = {'family': family, 'mode': mode, 'address_pool_id': pool_id}
-    pecan.request.dbapi.address_mode_update(interface_id, updates)
+
+    values = {}
+    if family:
+        values.update({'family': family})
+    if mode:
+        values.update({'mode': mode})
+    if pool_uuid:
+        pool_id = pecan.request.dbapi.address_pool_get(pool_uuid)['id']
+        values.update({'address_pool_id': pool_id})
+    pecan.request.dbapi.address_mode_update(interface_id, values)
 
 
 def config_is_reboot_required(config_uuid):

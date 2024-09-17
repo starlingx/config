@@ -249,7 +249,7 @@ class InterfaceNetworkTestCase(base.FunctionalTest):
         addrpool = dbutils.create_test_address_pool(
             network=str(subnet.ip),
             family=subnet.version,
-            name=f"{networktype}-ipv{subnet.prefixlen}",
+            name=f"{networktype}-ipv{subnet.version}",
             ranges=[[str(subnet[1]), str(subnet[-1])]],
             prefix=subnet.prefixlen)
         dbutils.create_test_network_addrpool(
@@ -282,7 +282,7 @@ class InterfaceNetworkCreateTestCase(InterfaceNetworkTestCase):
     def setUp(self):
         super(InterfaceNetworkCreateTestCase, self).setUp()
 
-    def test_create_mgmt_interface_network(self):
+    def test_create_mgmt_interface_network_standalone(self):
         controller_interface = dbutils.create_test_interface(
             ifname='enp0s8',
             forihostid=self.controller.id)
@@ -317,6 +317,48 @@ class InterfaceNetworkCreateTestCase(InterfaceNetworkTestCase):
         self.assertEqual(2, len(worker_addresses))
         for worker_address in worker_addresses:
             self.assertEqual(pools[worker_address.family].uuid, worker_address.pool_uuid)
+
+    def test_create_mgmt_dualstack_cluster_host_singlestack_interface_network_standalone(self):
+        """ Test a scenario where management is dual-stack (prim:IPv4, sec:IPv6) and cluster-host
+            is single-stack (prin:IPv4). Both are using the same interface (enp0s8).
+
+            Observe that the controller-0-[net_type] addresses are correctly created
+            in the database
+        """
+        controller_interface = dbutils.create_test_interface(
+            ifname='enp0s8',
+            forihostid=self.controller.id)
+
+        mgmt_pool_ipv4 = self.address_pool_mgmt
+        mgmt_pool_ipv6 = self._create_secondary_addrpool(constants.NETWORK_TYPE_MGMT)
+        mgmt_pools = {mgmt_pool_ipv4.family: mgmt_pool_ipv4, mgmt_pool_ipv6.family: mgmt_pool_ipv6}
+
+        controller_mgmt_addresses = {}
+        for family, pool in mgmt_pools.items():
+            controller_mgmt_addresses[family] = self._create_controller_address(pool,
+                                                        constants.NETWORK_TYPE_MGMT)
+
+        chost_pool_ipv4 = self.address_pool_cluster_host
+        chost_pools = {chost_pool_ipv4.family: chost_pool_ipv4}
+
+        controller_chost_addresses = {}
+        for family, pool in chost_pools.items():
+            controller_chost_addresses[family] = self._create_controller_address(pool,
+                                                        constants.NETWORK_TYPE_CLUSTER_HOST)
+
+        controller_interface_network_mgmt = dbutils.post_get_test_interface_network(
+            interface_uuid=controller_interface.uuid,
+            network_uuid=self.mgmt_network.uuid)
+        self._post_and_check(controller_interface_network_mgmt, expect_errors=False)
+
+        controller_interface_network_chost = dbutils.post_get_test_interface_network(
+            interface_uuid=controller_interface.uuid,
+            network_uuid=self.cluster_host_network.uuid)
+        self._post_and_check(controller_interface_network_chost, expect_errors=False)
+
+        for family, address in controller_mgmt_addresses.items():
+            updated_address = self.dbapi.address_get(address.id)
+            self.assertEqual(controller_interface.id, updated_address.interface_id)
 
     def test_create_mgmt_interface_network_system_controller(self):
         self.set_dc_role(constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER)

@@ -164,21 +164,9 @@ class InterfaceNetworkController(rest.RestController):
 
         result = pecan.request.dbapi.interface_network_create(interface_network_dict)
 
-        # Update address mode based on network type
         addrpools = pecan.request.dbapi.address_pools_get_by_network(network.id)
-        if network.type in [constants.NETWORK_TYPE_MGMT,
-                            constants.NETWORK_TYPE_OAM,
-                            constants.NETWORK_TYPE_CLUSTER_HOST,
-                            constants.NETWORK_TYPE_ADMIN]:
-            modes = {constants.IPV4_FAMILY: constants.IPV4_DISABLED,
-                     constants.IPV6_FAMILY: constants.IPV6_DISABLED}
-            for addrpool in addrpools:
-                if addrpool.family == constants.IPV4_FAMILY:
-                    modes[addrpool.family] = constants.IPV4_STATIC
-                else:
-                    modes[addrpool.family] = constants.IPV6_STATIC
-            for family, mode in modes.items():
-                utils.update_address_mode(interface_obj, family, mode, None)
+
+        self._update_interface_address_mode(interface_obj, network, addrpools)
 
         caddress_pool.assign_network_addresses_to_interface(host, interface_obj.id, network,
                                                             addrpools, pecan.request.dbapi)
@@ -201,6 +189,23 @@ class InterfaceNetworkController(rest.RestController):
         self._operation_complete(constants.API_POST, result, addrpools, host)
 
         return InterfaceNetwork.convert_with_links(result)
+
+    def _update_interface_address_mode(self, interface_obj, network, addrpools):
+        """ Update address mode to static based on network type, if an address
+            pool is associated with.
+        """
+
+        if network.type in [constants.NETWORK_TYPE_MGMT,
+                            constants.NETWORK_TYPE_OAM,
+                            constants.NETWORK_TYPE_CLUSTER_HOST,
+                            constants.NETWORK_TYPE_ADMIN]:
+
+            for addrpool in addrpools:
+                addr_alloc_mode = constants.IPV4_STATIC
+                if addrpool.family == constants.IPV6_FAMILY:
+                    addr_alloc_mode = constants.IPV6_STATIC
+                utils.update_address_mode(interface_obj.id, addrpool.family,
+                                          addr_alloc_mode, None)
 
     def _get_interface_network_collection(
             self, parent_uuid=None, marker=None, limit=None, sort_key=None,

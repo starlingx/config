@@ -808,6 +808,12 @@ def get_address_table():
     return address_list
 
 
+def get_interface_address_mode(interface_id):
+    dbapi = db_api.get_instance()
+    intf_addr_mode_list = dbapi.address_modes_get_by_interface_id(interface_id)
+    return intf_addr_mode_list
+
+
 def get_test_route(**kw):
     inv = {
         'id': kw.get('id'),
