@@ -49,6 +49,7 @@ COMMAND_RETRY_ATTEMPTS=10  # ~5 min to wait on a retried command.
 SOFTWARE_LOG_PATH='/var/log/software.log'
 SYSINV_LOG_PATH='/var/log/sysinv.log'
 CRITICAL_APPS='nginx-ingress-controller cert-manager'
+APPS_NOT_TO_UPDATE='deployment-manager'
 
 function log {
     echo "$(date -Iseconds | cut -d'+' -f1): ${NAME}[$$]: INFO: $*" >> "$SOFTWARE_LOG_PATH" 2>&1
@@ -211,6 +212,12 @@ function update_apps {
         EXISTING_APP_NAME=$(system application-show $UPGRADE_APP_NAME --column name --format value)
         if [ -z "${EXISTING_APP_NAME}" ]; then
             log "${UPGRADE_APP_NAME} is currently not uploaded in the system. skipping..."
+            continue
+        fi
+
+        # Check if the app name is in the list of apps that should not be updated.
+        if [[ " $APPS_NOT_TO_UPDATE " == *" $UPGRADE_APP_NAME "* ]]; then
+            log "${UPGRADE_APP_NAME} is listed as an app that should not be updated. skipping..."
             continue
         fi
 
