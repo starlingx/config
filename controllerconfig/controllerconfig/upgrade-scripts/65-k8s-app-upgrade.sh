@@ -126,6 +126,18 @@ function retry_command {
     return 0
 }
 
+# Check kubernetes health status.
+# Exit with status 1 if sysinv-k8s-health command fails
+function check_k8s_health {
+    local k8s_health
+    sysinv-k8s-health --log-file "${SOFTWARE_LOG_PATH}" check
+    k8s_health=$?
+
+    if [ $k8s_health -eq 1 ]; then
+        exit 1
+    fi
+}
+
 function check_pod_readiness {
     # Check the status of nginx-ingress-controller and cert-manager pods
 
@@ -136,11 +148,13 @@ function check_pod_readiness {
     sleep $SLEEP_RECONCILIATION
 
     # Wait for the Nginx Ingress Controller pods to be ready in the background
+    check_k8s_health
     log "Waiting for Nginx Ingress Controller Pod Status ..."
     kubectl --kubeconfig=/etc/kubernetes/admin.conf wait --for=condition=ready pod --all=true -n $KUBE_SYSTEM_NAMESPACE -lapp.kubernetes.io/name=ingress-nginx --timeout=${TIMEOUT}s
     RESULT1=$?
 
     # Wait for the Cert Manager pods to be ready in the background
+    check_k8s_health
     log "Waiting for Cert-manager Pod Status ..."
     kubectl --kubeconfig=/etc/kubernetes/admin.conf wait --for=condition=ready pod --all=true -n $CERT_MANAGER_NAMESPACE -lapp=cert-manager --timeout=${TIMEOUT}s
     RESULT2=$?
@@ -240,6 +254,7 @@ function update_apps {
 
             # States that are upgradable
             uploaded)
+                check_k8s_health
                 log "Deleting ${EXISTING_APP_NAME}, version ${EXISTING_APP_VERSION}"
                 system application-delete ${EXISTING_APP_NAME}
 
@@ -258,11 +273,13 @@ function update_apps {
                     exit 1
                 fi
 
+                check_k8s_health
                 log "Uploading ${UPGRADE_APP_NAME}, version ${UPGRADE_APP_VERSION} from $fqpn_app"
                 system application-upload $fqpn_app
                 ;;
 
             applied)
+                check_k8s_health
                 log "Updating ${EXISTING_APP_NAME}, from version ${EXISTING_APP_VERSION} to version ${UPGRADE_APP_VERSION} from $fqpn_app"
                 system application-update $fqpn_app
 
@@ -272,16 +289,19 @@ function update_apps {
                 ;;
 
             upload-failed)
+                check_k8s_health
                 log "${EXISTING_APP_NAME}, version ${EXISTING_APP_VERSION}, upload failed: ${EXISTING_APP_STATUS}. Retrying command..."
                 retry_command "application-upload" "${EXISTING_APP_NAME}"
                 ;;
 
             apply-failed)
+                check_k8s_health
                 log "${EXISTING_APP_NAME}, version ${EXISTING_APP_VERSION}, apply failed: ${EXISTING_APP_STATUS}. Retrying command..."
                 retry_command "application-apply" "${EXISTING_APP_NAME}"
                 ;;
 
             remove-failed)
+                check_k8s_health
                 log "${EXISTING_APP_NAME}, version ${EXISTING_APP_VERSION}, remove failed: ${EXISTING_APP_STATUS}. Retrying command..."
                 retry_command "application-remove" "${EXISTING_APP_NAME}"
                 ;;
@@ -329,6 +349,7 @@ if [ "$ACTION" == "activate" ]; then
     done
 
     # Get the current k8s version
+    check_k8s_health
     K8S_VERSIONS=$(system kube-version-list)
     ACTIVE_K8S_VERSION=$(echo "$K8S_VERSIONS" | grep ' True ' | grep ' active ' | awk -F '|' '{print $2}' | tr -d ' ')
 

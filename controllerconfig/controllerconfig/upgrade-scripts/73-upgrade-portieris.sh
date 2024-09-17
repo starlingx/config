@@ -29,8 +29,22 @@ FROM_RELEASE=$1
 TO_RELEASE=$2
 ACTION=$3
 
+SOFTWARE_LOG_PATH='/var/log/software.log'
+
 function log {
     echo "$(date -Iseconds | cut -d'+' -f1): ${NAME}[$$]: INFO: $*" >> "/var/log/software.log" 2>&1
+}
+
+# Check kubernetes health status.
+# Exit with status 1 if sysinv-k8s-health command fails
+function check_k8s_health {
+    local k8s_health
+    sysinv-k8s-health --log-file "${SOFTWARE_LOG_PATH}" check
+    k8s_health=$?
+
+    if [ $k8s_health -eq 1 ]; then
+        exit 1
+    fi
 }
 
 # only run this script during upgrade-activate and upgrade-start
@@ -88,6 +102,7 @@ log "portieris, version $EXISTING_APP_VERSION, is currently in the state: $EXIST
 # which prevents ALL pods from coming back up, including base kubernetes pods
 if [[ "$ACTION" == "start" ]]; then
     if [[ $EXISTING_APP_STATUS == "applied" ]]; then
+        check_k8s_health
         EXISTING_WEBHOOK=$(kubectl --kubeconfig=/etc/kubernetes/admin.conf \
                                                 get MutatingWebhookConfiguration image-admission-config \
                                                 2>&1 > /dev/null)
@@ -133,13 +148,14 @@ if [ "x${UPGRADE_APP_VERSION}" != "x${EXISTING_APP_VERSION}" ]; then
             echo $OVERRIDES > $CONFIG_PERMDIR/portieris-certs-overrides.yaml
         fi
 
-
         # dump existing image policies and cluster image policies.
         # only dump once, to prevent overwriting existing dumps
         # if the script is run more than once due to other failures.
         # do not dump default (cluster) image policies, as that would restore
         # them onto the new portieris application, which comes with its own defaults.
         if [ ! -f "$CONFIG_PERMDIR/.portieris_upgrade_dump" ]; then
+            check_k8s_health
+
             log "creating portieris resources backup"
             EXISTING_PORTIERIS_RESOURCES=$(kubectl --kubeconfig=/etc/kubernetes/admin.conf \
                                     get imagepolicy,clusterimagepolicy \
@@ -213,6 +229,7 @@ if [ "x${UPGRADE_APP_VERSION}" != "x${EXISTING_APP_VERSION}" ]; then
         fi
 
         # remove old portieris
+        check_k8s_health
         log "Removing ${EXISTING_APP_NAME}, version ${EXISTING_APP_VERSION}"
         system application-remove -f ${EXISTING_APP_NAME}
 
@@ -277,7 +294,7 @@ if [ "x${UPGRADE_APP_VERSION}" != "x${EXISTING_APP_VERSION}" ]; then
             exit 1
         fi
 
-
+        check_k8s_health
         # apply overrides
         if [ -f "$CONFIG_PERMDIR/portieris-certs-overrides.yaml" ]; then
             log "restoring portieris-certs overrides."
@@ -333,6 +350,7 @@ if [ "x${UPGRADE_APP_VERSION}" != "x${EXISTING_APP_VERSION}" ]; then
         fi
 
         # apply new portieris
+        check_k8s_health
         log "Applying ${UPGRADE_APP_NAME}, version ${UPGRADE_APP_VERSION}"
         system application-apply ${UPGRADE_APP_NAME}
 
@@ -355,6 +373,7 @@ if [ "x${UPGRADE_APP_VERSION}" != "x${EXISTING_APP_VERSION}" ]; then
         # -f check is required because the portieris backup could be empty
         # if the system had no portieris resources before the upgrade
         if [ ! -f "$CONFIG_PERMDIR/.portieris_upgrade_no_existing_resources" ]; then
+            check_k8s_health
             log "Restoring portieris resource backup"
             kubectl --kubeconfig=/etc/kubernetes/admin.conf apply -f $CONFIG_PERMDIR/portieris-converted.yaml
 
@@ -371,6 +390,7 @@ if [ "x${UPGRADE_APP_VERSION}" != "x${EXISTING_APP_VERSION}" ]; then
     if [[ $EXISTING_APP_STATUS == "uploaded" ]]; then
 
         # delete old portieris
+        check_k8s_health
         log "Deleting ${EXISTING_APP_NAME}, version ${EXISTING_APP_VERSION}"
         system application-delete -f ${EXISTING_APP_NAME}
 

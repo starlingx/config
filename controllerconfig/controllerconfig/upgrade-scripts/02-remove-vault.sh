@@ -39,6 +39,9 @@ APP_WAIT_INTERVAL=15
 REMOVE_TRIES=3
 REMOVE_INTERVAL=60
 
+SOFTWARE_LOG_PATH='/var/log/software.log'
+
+
 # Standard logging method copied from 65 script
 function log {
     echo "$(date -Iseconds | cut -d'+' -f1): ${NAME}[$$]: INFO: $*" \
@@ -149,6 +152,17 @@ function do_abort_and_remove {
     return $result
 }
 
+# Check kubernetes health status.
+# Exit with status 1 if sysinv-k8s-health command fails
+function check_k8s_health {
+    local k8s_health
+    sysinv-k8s-health --log-file "${SOFTWARE_LOG_PATH}" check
+    k8s_health=$?
+
+    if [ $k8s_health -eq 1 ]; then
+        exit 1
+    fi
+}
 
 # Assert that the vault server pods are not updated
 # Return 0 if the server pods a running the original server version
@@ -160,6 +174,8 @@ function assert_pod_versions {
     local pod
     local version
     local podcount=0
+
+    check_k8s_health
 
     replicas="$( kubectl get statefulsets -n "$APP_NS" "$PODS_PREFIX" \
         -o jsonpath='{.spec.replicas}' )"

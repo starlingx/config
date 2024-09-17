@@ -13,8 +13,22 @@ FROM_RELEASE=$1
 TO_RELEASE=$2
 ACTION=$3
 
+SOFTWARE_LOG_PATH='/var/log/software.log'
+
 function log {
     echo "$(date -Iseconds | cut -d'+' -f1): ${NAME}[$$]: INFO: $*" >> "/var/log/software.log" 2>&1
+}
+
+# Check kubernetes health status.
+# Exit with status 1 if sysinv-k8s-health command fails
+function check_k8s_health {
+    local k8s_health
+    sysinv-k8s-health --log-file "${SOFTWARE_LOG_PATH}" check
+    k8s_health=$?
+
+    if [ $k8s_health -eq 1 ]; then
+        exit 1
+    fi
 }
 
 DEPLOY_PLAYBOOK=$(ls /usr/local/share/applications/playbooks/*deployment-manager.yaml 2> /dev/null)
@@ -23,6 +37,7 @@ DEPLOY_OVERRIDES=$(ls /usr/local/share/applications/overrides/*deployment-manage
 REFRESH_DM_IMAGES="false"
 
 if [[ "${ACTION}" == "activate" ]]; then
+    check_k8s_health
     if kubectl --kubeconfig=/etc/kubernetes/admin.conf get namespace| grep -q deployment-manager
     then
         if [[ -z "${DEPLOY_OVERRIDES}" ]] || [[ -z "${DEPLOY_PLAYBOOK}" ]] || [[ -z "${DEPLOY_CHART}" ]]; then
