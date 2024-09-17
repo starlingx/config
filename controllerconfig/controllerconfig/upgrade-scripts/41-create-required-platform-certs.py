@@ -29,7 +29,7 @@ import yaml
 
 from cryptography.hazmat.primitives import serialization
 from sysinv.common import utils as sysinv_utils
-from sysinv.common.kubernetes import k8s_health_check
+from sysinv.common.kubernetes import test_kubeapi_health
 from sysinv.common.rest_api import get_token
 from sysinv.common.rest_api import rest_api_request
 
@@ -123,16 +123,6 @@ def get_primary_oam_ip():
         LOG.error('Command failed:\n%s\n%s.\n%s.'
                   % (cmd, stdout.decode('utf-8'), stderr.decode('utf-8')))
         raise Exception('Cannot retrieve OAM IP.')
-
-
-# Verify readyz endpoint first in methods that call kubeapi
-def test_kubeapi_health(function):
-    def wrapper(*args, **kwargs):
-        if k8s_health_check(tries=30, try_sleep=10, timeout=10):
-            return function(*args, **kwargs)
-        else:
-            raise Exception("Kubeapi is not responsive.")
-    return wrapper
 
 
 @test_kubeapi_health
