@@ -13,12 +13,7 @@ PLATAFORM_CONF_FILE = '/etc/platform/platform.conf'
 
 SIOCGIFHWADDR = 0x8927
 
-API_VERSION_CERT_MANAGER = 'cert-manager.io/v1'
-CERTIFICATE_REQUEST_DURATION = '2160h'
-CERTIFICATE_REQUEST_RESOURCE = 'certificaterequests.cert-manager.io'
-GROUP_CERT_MANAGER = 'cert-manager.io'
-NAMESPACE_CERT_MANAGER = 'cert-manager'
-NAMESPACE_DEPLOYMENT = 'deployment'
+IPSEC_CERT_REQUEST_DURATION = '2160h'
 
 CLUSTER_ISSUER_SYSTEM_LOCAL_CA = 'system-local-ca'
 SECRET_SYSTEM_LOCAL_CA = 'system-local-ca'

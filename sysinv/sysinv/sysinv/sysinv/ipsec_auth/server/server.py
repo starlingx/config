@@ -13,6 +13,7 @@ from oslo_log import log as logging
 
 from sysinv.common import kubernetes
 from sysinv.common import rest_api
+from sysinv.common import constants as sys_constants
 from sysinv.ipsec_auth.common import constants
 from sysinv.ipsec_auth.common import utils
 from sysinv.ipsec_auth.common.objects import State
@@ -383,7 +384,7 @@ class IPsecConnection(object):
     def _get_system_local_ca_secret_info(self, attr):
         '''Retrieve system-local-ca's private key.'''
         secret = self.kubeapi.kube_get_secret(constants.SECRET_SYSTEM_LOCAL_CA,
-                                              constants.NAMESPACE_CERT_MANAGER)
+                                              sys_constants.CERT_NAMESPACE_PLATFORM_CA_CERTS)
         if not secret:
             LOG.error("TLS secret is unreachable.")
             return
@@ -409,21 +410,21 @@ class IPsecConnection(object):
         csr_name = constants.CERT_NAME_PREFIX + self.hostname[constants.UNIT_HOSTNAME]
         csr_request = base64.b64encode(request).decode("utf-8")
         csr_body = {
-            "apiVersion": constants.API_VERSION_CERT_MANAGER,
+            "apiVersion": sys_constants.API_VERSION_CERT_MANAGER,
             "kind": "CertificateRequest",
             "metadata": {
                 "name": csr_name,
-                "namespace": constants.NAMESPACE_DEPLOYMENT,
+                "namespace": sys_constants.CERT_NAMESPACE_PLATFORM_CERTS,
             },
             "spec": {
                 "request": csr_request,
                 "isCA": False,
                 "usages": ["signing", "digital signature", "server auth"],
-                "duration": constants.CERTIFICATE_REQUEST_DURATION,
+                "duration": constants.IPSEC_CERT_REQUEST_DURATION,
                 "issuerRef": {
                     "name": constants.CLUSTER_ISSUER_SYSTEM_LOCAL_CA,
                     "kind": "ClusterIssuer",
-                    "group": constants.GROUP_CERT_MANAGER,
+                    "group": sys_constants.CERT_GROUP_CERT_MANAGER,
                 },
             },
         }
