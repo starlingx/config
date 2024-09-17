@@ -320,6 +320,9 @@ class KubeUpgradeController(rest.RestController):
 
         # Check whether target version is available or not
         try:
+            to_version = to_version.lower()
+            if not to_version.startswith('v'):
+                to_version = "v{}".format(to_version)
             target_version_obj = objects.kube_version.get_by_version(
                 to_version)
         except exception.KubeVersionNotFound:
