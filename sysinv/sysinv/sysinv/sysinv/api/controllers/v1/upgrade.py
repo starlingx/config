@@ -8,25 +8,20 @@
 # coding=utf-8
 #
 
-import os
 import pecan
 from pecan import rest
 from pecan import expose
 import six
-import socket
 import wsme
 from wsme import types as wtypes
 import wsmeext.pecan as wsme_pecan
-import tsconfig.tsconfig as tsc
 
 from oslo_log import log
-from sysinv._i18n import _
 from sysinv.api.controllers.v1 import base
 from sysinv.api.controllers.v1 import collection
 from sysinv.api.controllers.v1 import link
 from sysinv.api.controllers.v1 import types
 from sysinv.api.controllers.v1 import utils
-from sysinv.api.controllers.v1 import vim_api
 from sysinv.common import exception
 from sysinv.common import utils as cutils
 from sysinv.common import constants
@@ -171,332 +166,48 @@ class UpgradeController(rest.RestController):
 
     @expose('json')
     def check_reinstall(self):
-        reinstall_necessary = False
-        try:
-            upgrade = pecan.request.dbapi.software_upgrade_get_one()
-        except exception.NotFound:
-            pass
-        else:
-            controller_0 = pecan.request.dbapi.ihost_get_by_hostname(
-                constants.CONTROLLER_0_HOSTNAME)
-            host_upgrade = pecan.request.dbapi.host_upgrade_get_by_host(
-                controller_0.id)
-
-            if host_upgrade.target_load == upgrade.to_load or \
-                    host_upgrade.software_load == upgrade.to_load:
-                reinstall_necessary = True
-
-        return {'reinstall_necessary': reinstall_necessary}
+        raise NotImplementedError("This API is deprecated.")
 
     @expose('json')
     def get_upgrade_msg(self):
-        output = ''
-        try:
-            with open(ERROR_FILE, 'r') as error_file:
-                output = error_file.read()
-        except Exception:
-            LOG.warning("Error opening file %s" % ERROR_FILE)
-
-        return output
+        raise NotImplementedError("This API is deprecated.")
 
     @wsme_pecan.wsexpose(UpgradeCollection, types.uuid, int, wtypes.text,
                          wtypes.text)
     def get_all(self, marker=None, limit=None, sort_key='id', sort_dir='asc'):
         """Retrieve a list of upgrades."""
-        return self._get_upgrade_collection(marker, limit, sort_key, sort_dir)
+        raise NotImplementedError("This API is deprecated.")
 
     @wsme_pecan.wsexpose(Upgrade, types.uuid)
     def get_one(self, uuid):
         """Retrieve information about the given upgrade."""
-        rpc_upgrade = objects.software_upgrade.get_by_uuid(
-            pecan.request.context, uuid)
-        return Upgrade.convert_with_links(rpc_upgrade)
+        raise NotImplementedError("This API is deprecated.")
 
     @cutils.synchronized(LOCK_NAME)
     @wsme_pecan.wsexpose(Upgrade, body=six.text_type)
     def post(self, body):
         """Create a new Software Upgrade instance and start upgrade."""
 
-        # Only start the upgrade from controller-0
-        if socket.gethostname() != constants.CONTROLLER_0_HOSTNAME:
-            raise wsme.exc.ClientSideError(_(
-                "upgrade-start rejected: An upgrade can only be started "
-                "when %s is active." % constants.CONTROLLER_0_HOSTNAME))
-
-        # There must not be a kubernetes upgrade in progress
-        try:
-            pecan.request.dbapi.kube_upgrade_get_one()
-        except exception.NotFound:
-            pass
-        else:
-            raise wsme.exc.ClientSideError(_(
-                "upgrade-start rejected: A platform upgrade cannot be done "
-                "while a kubernetes upgrade is in progress."))
-
-        # There must not already be an upgrade in progress
-        try:
-            pecan.request.dbapi.software_upgrade_get_one()
-        except exception.NotFound:
-            pass
-        else:
-            raise wsme.exc.ClientSideError(_(
-                "upgrade-start rejected: An upgrade is already in progress."))
-
-        # Determine the from_load and to_load
-        loads = pecan.request.dbapi.load_get_list()
-        from_load = cutils.get_active_load(loads)
-        from_version = from_load.software_version
-        to_load = cutils.get_imported_load(loads)
-        to_version = to_load.software_version
-
-        controller_0 = pecan.request.dbapi.ihost_get_by_hostname(
-            constants.CONTROLLER_0_HOSTNAME)
-
-        force = body.get('force', False) is True
-
-        try:
-            # Set the upgrade flag in VIM
-            # This prevents VM changes during the upgrade and health checks
-            if utils.get_system_mode() != constants.SYSTEM_MODE_SIMPLEX:
-                vim_api.set_vim_upgrade_state(controller_0, True)
-        except Exception as e:
-            LOG.exception(e)
-            raise wsme.exc.ClientSideError(_(
-                "upgrade-start rejected: Unable to set VIM upgrade state"))
-
-        success, output = pecan.request.rpcapi.get_system_health(
-                pecan.request.context, force=force, upgrade=True)
-
-        if not success:
-            LOG.info("Health audit failure during upgrade start. Health "
-                     "query results: %s" % output)
-            if os.path.exists(constants.SYSINV_RUNNING_IN_LAB) and force:
-                LOG.info("Running in lab, ignoring health errors.")
-            else:
-                vim_api.set_vim_upgrade_state(controller_0, False)
-                raise wsme.exc.ClientSideError(_(
-                    "upgrade-start rejected: System is not in a valid state "
-                    "for upgrades. Run system health-query-upgrade for more "
-                    "details."))
-
-        # Create upgrade record. Must do this before the prepare_upgrade so
-        # the upgrade record exists when the database is dumped.
-        create_values = {'from_load': from_load.id,
-                         'to_load': to_load.id,
-                         'state': constants.UPGRADE_STARTING}
-        new_upgrade = None
-        try:
-            new_upgrade = pecan.request.dbapi.software_upgrade_create(
-                create_values)
-        except Exception as ex:
-            vim_api.set_vim_upgrade_state(controller_0, False)
-            LOG.exception(ex)
-            raise
-
-        # Prepare for upgrade
-        LOG.info("Starting upgrade from release: %s to release: %s" %
-                 (from_version, to_version))
-
-        try:
-            pecan.request.rpcapi.start_upgrade(pecan.request.context,
-                                               new_upgrade)
-        except Exception as ex:
-            vim_api.set_vim_upgrade_state(controller_0, False)
-            pecan.request.dbapi.software_upgrade_destroy(new_upgrade.uuid)
-            LOG.exception(ex)
-            raise
-
-        return Upgrade.convert_with_links(new_upgrade)
+        raise NotImplementedError("This API is deprecated.")
 
     @cutils.synchronized(LOCK_NAME)
     @wsme.validate([UpgradePatchType])
     @wsme_pecan.wsexpose(Upgrade, body=[UpgradePatchType])
     def patch(self, patch):
         """Updates attributes of Software Upgrade."""
-        updates = self._get_updates(patch)
-
-        # Get the current upgrade
-        try:
-            upgrade = pecan.request.dbapi.software_upgrade_get_one()
-        except exception.NotFound:
-            raise wsme.exc.ClientSideError(_(
-                "operation rejected: An upgrade is not in progress."))
-
-        to_load = pecan.request.dbapi.load_get(upgrade.to_load)
-        to_version = to_load.software_version
-
-        if updates['state'] == constants.UPGRADE_ABORTING:
-            # Make sure upgrade wasn't already aborted
-            if upgrade.state in [constants.UPGRADE_ABORTING,
-                                 constants.UPGRADE_ABORTING_ROLLBACK]:
-                raise wsme.exc.ClientSideError(_(
-                    "upgrade-abort rejected: Upgrade already aborted "))
-
-            # Abort the upgrade
-            rpc_upgrade = pecan.request.rpcapi.abort_upgrade(
-                pecan.request.context, upgrade)
-
-            return Upgrade.convert_with_links(rpc_upgrade)
-
-        # if an activation is requested, make sure we are not already in
-        # activating state or have already activated
-        elif updates['state'] == constants.UPGRADE_ACTIVATION_REQUESTED:
-
-            # if a restore is in progress, we need to restart the
-            # upgrade process for non simplex systems
-            if tsc.system_mode != constants.SYSTEM_MODE_SIMPLEX:
-                if self.check_restore_in_progress():
-                    raise wsme.exc.ClientSideError(_(
-                        "upgrade-activate rejected: A restore was in progress before"
-                        " upgrade was started. Complete the restore of the"
-                        " previous release before reattempting upgrade."))
-
-            if upgrade.state in [constants.UPGRADE_ACTIVATING,
-                                 constants.UPGRADE_ACTIVATING_HOSTS,
-                                 constants.UPGRADE_ACTIVATION_COMPLETE]:
-                raise wsme.exc.ClientSideError(_(
-                    "upgrade-activate rejected: "
-                    "Upgrade already activating or activated."))
-
-            # All hosts must be unlocked and enabled,
-            # and running the new release
-            hosts = cutils.get_upgradable_hosts(pecan.request.dbapi)
-            for host in hosts:
-                if host['administrative'] != constants.ADMIN_UNLOCKED or \
-                        host['operational'] != constants.OPERATIONAL_ENABLED:
-                    raise wsme.exc.ClientSideError(_(
-                        "upgrade-activate rejected: All hosts must be unlocked"
-                        " and enabled before the upgrade can be activated."))
-            for host in hosts:
-                host_upgrade = objects.host_upgrade.get_by_host_id(
-                    pecan.request.context, host.id)
-                if (host_upgrade.target_load != to_load.id or
-                        host_upgrade.software_load != to_load.id):
-                    raise wsme.exc.ClientSideError(_(
-                        "upgrade-activate rejected: All hosts must be "
-                        "upgraded before the upgrade can be activated."))
-
-            # we need to make sure the state is updated before calling the rpc
-            rpc_upgrade = pecan.request.dbapi.software_upgrade_update(
-                upgrade.uuid, updates)
-            pecan.request.rpcapi.activate_upgrade(pecan.request.context,
-                                                  upgrade)
-
-            # make sure the to/from loads are in the correct state
-            pecan.request.dbapi.set_upgrade_loads_state(
-                upgrade,
-                constants.ACTIVE_LOAD_STATE,
-                constants.IMPORTED_LOAD_STATE)
-
-            LOG.info("Setting SW_VERSION to release: %s" % to_version)
-            system = pecan.request.dbapi.isystem_get_one()
-            pecan.request.dbapi.isystem_update(
-                system.uuid, {'software_version': to_version})
-
-            return Upgrade.convert_with_links(rpc_upgrade)
+        raise NotImplementedError("This API is deprecated.")
 
     @cutils.synchronized(LOCK_NAME)
     @wsme_pecan.wsexpose(Upgrade)
     def delete(self):
         """Complete upgrade and delete Software Upgrade instance."""
 
-        # There must be an upgrade in progress
-        try:
-            upgrade = pecan.request.dbapi.software_upgrade_get_one()
-        except exception.NotFound:
-            raise wsme.exc.ClientSideError(_(
-                "upgrade-complete rejected: An upgrade is not in progress."))
-
-        # Only complete the upgrade from controller-0. This is to ensure that
-        # we can clean up all the upgrades related files, some of which are
-        # local to controller-0.
-        if socket.gethostname() != constants.CONTROLLER_0_HOSTNAME:
-            raise wsme.exc.ClientSideError(_(
-                "upgrade-complete rejected: An upgrade can only be completed "
-                "when %s is active." % constants.CONTROLLER_0_HOSTNAME))
-
-        from_load = pecan.request.dbapi.load_get(upgrade.from_load)
-
-        if upgrade.state == constants.UPGRADE_ACTIVATION_COMPLETE:
-            # Complete the upgrade
-            current_abort_state = upgrade.state
-            upgrade = pecan.request.dbapi.software_upgrade_update(
-                upgrade.uuid, {'state': constants.UPGRADE_COMPLETING})
-            try:
-                pecan.request.rpcapi.complete_upgrade(
-                    pecan.request.context, upgrade, current_abort_state)
-            except Exception as ex:
-                LOG.exception(ex)
-                pecan.request.dbapi.software_upgrade_update(
-                    upgrade.uuid,
-                    {'state': constants.UPGRADE_ACTIVATION_COMPLETE})
-                raise
-
-        elif upgrade.state in [constants.UPGRADE_ABORTING,
-                               constants.UPGRADE_ABORTING_ROLLBACK]:
-            # All upgradable hosts must be running the old release
-            hosts = cutils.get_upgradable_hosts(pecan.request.dbapi)
-            for host in hosts:
-                host_upgrade = objects.host_upgrade.get_by_host_id(
-                    pecan.request.context, host.id)
-                if (host_upgrade.target_load != from_load.id or
-                        host_upgrade.software_load != from_load.id):
-                    raise wsme.exc.ClientSideError(_(
-                        "upgrade-abort rejected: All hosts must be downgraded "
-                        "before the upgrade can be aborted."))
-
-            current_abort_state = upgrade.state
-
-            upgrade = pecan.request.dbapi.software_upgrade_update(
-                upgrade.uuid, {'state': constants.UPGRADE_ABORT_COMPLETING})
-
-            try:
-                pecan.request.rpcapi.complete_upgrade(
-                    pecan.request.context, upgrade, current_abort_state)
-            except Exception as ex:
-                LOG.exception(ex)
-                pecan.request.dbapi.software_upgrade_update(
-                    upgrade.uuid, {'state': current_abort_state})
-                raise
-
-        else:
-            raise wsme.exc.ClientSideError(_(
-                "upgrade-complete rejected: An upgrade can only be completed "
-                "when in the %s or %s state." %
-                (constants.UPGRADE_ACTIVATION_COMPLETE,
-                    constants.UPGRADE_ABORTING)))
-
-        return Upgrade.convert_with_links(upgrade)
+        raise NotImplementedError("This API is deprecated.")
 
     @wsme_pecan.wsexpose(wtypes.text, six.text_type)
     def in_upgrade(self, uuid):
-        # uuid is added here for potential future use
-        try:
-            upgrade = pecan.request.dbapi.software_upgrade_get_one()
-
-            # We will wipe all the disks in the case of a host reinstall
-            # during a downgrade.
-            if upgrade.state in [constants.UPGRADE_ABORTING_ROLLBACK]:
-                LOG.info("in_upgrade status. Aborting upgrade, host reinstall")
-                return False
-
-        except exception.NotFound:
-            return False
-        return True
+        raise NotImplementedError("This API is deprecated.")
 
     @wsme_pecan.wsexpose(wtypes.text, six.text_type)
     def upgrade_in_progress(self, uuid):
-        # uuid is added here for potential future use
-        try:
-            upgrade = pecan.request.dbapi.software_upgrade_get_one()
-
-            # upgrade in progress only when upgrade starts and not abort
-            if upgrade.state and upgrade.state not in [
-                    constants.UPGRADE_ABORTING_ROLLBACK,
-                    constants.UPGRADE_ABORTING,
-                    constants.UPGRADE_ABORT_COMPLETING]:
-                return True
-
-        except exception.NotFound:
-            return False
-        return False
+        raise NotImplementedError("This API is deprecated.")

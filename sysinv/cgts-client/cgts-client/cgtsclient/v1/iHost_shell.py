@@ -13,12 +13,10 @@ from collections import OrderedDict
 import os
 
 from cgtsclient._i18n import _
-from cgtsclient.common import constants
 from cgtsclient.common import utils
 from cgtsclient import exc
 from cgtsclient.v1 import ihost as ihost_utils
 from cgtsclient.v1 import istor as istor_utils
-from six.moves import input
 
 
 def _print_ihost_show(ihost, columns=None, output_format=None):
@@ -33,7 +31,7 @@ def _print_ihost_show(ihost, columns=None, output_format=None):
                   'config_target', 'config_status', 'location', 'uptime',
                   'reserved', 'created_at', 'updated_at', 'boot_device',
                   'rootfs_device', 'hw_settle', 'install_output', 'console',
-                  'tboot', 'vim_progress_status', 'software_load',
+                  'tboot', 'vim_progress_status',
                   'install_state', 'install_state_info', 'inv_state',
                   'clock_synchronization', 'device_image_update',
                   'reboot_needed', 'max_cpu_mhz_configured',
@@ -115,16 +113,6 @@ def do_host_list(cc, args):
 
     utils.print_list(ihosts, fields, fields, sortby=0,
                      output_format=args.format)
-
-
-def do_host_upgrade_list(cc, args):
-    """List software upgrade info for hosts."""
-    ihosts = cc.ihost.list()
-    field_labels = ['id', 'hostname', 'personality',
-                    'running_release', 'target_release']
-    fields = ['id', 'hostname', 'personality',
-              'software_load', 'target_load']
-    utils.print_list(ihosts, fields, field_labels, sortby=0)
 
 
 def do_kube_host_upgrade_list(cc, args):
@@ -564,66 +552,6 @@ def do_host_bulk_export(cc, args):
         print(_('Cannot write to file: %s') % config_filename)
 
     return
-
-
-@utils.arg('hostid',
-           metavar='<hostname or id>',
-           help="Name or ID of host")
-@utils.arg('-f', '--force',
-           action='store_true',
-           default=False,
-           help="Force the downgrade operation ")
-def do_host_downgrade(cc, args):
-    """Perform software downgrade for the specified host."""
-    ihost_utils._find_ihost(cc, args.hostid)
-    system_type, system_mode = utils._get_system_info(cc)
-    simplex = system_mode == constants.SYSTEM_MODE_SIMPLEX
-
-    if simplex:
-        warning_message = (
-            '\n'
-            'WARNING: THIS OPERATION WILL COMPLETELY ERASE ALL DATA FROM THE '
-            'SYSTEM.\n'
-            'Only proceed once the system data has been copied to another '
-            'system.\n'
-            'Are you absolutely sure you want to continue?  [yes/N]: ')
-        confirm = input(warning_message)
-        if confirm != 'yes':
-            print("Operation cancelled.")
-            return
-
-    ihost = cc.ihost.downgrade(args.hostid, args.force)
-    _print_ihost_show(ihost)
-
-
-@utils.arg('hostid',
-           metavar='<hostname or id>',
-           help="Name or ID of host")
-@utils.arg('-f', '--force',
-           action='store_true',
-           default=False,
-           help="Force the upgrade operation ")
-def do_host_upgrade(cc, args):
-    """Perform software upgrade for a host."""
-    ihost_utils._find_ihost(cc, args.hostid)
-    system_type, system_mode = utils._get_system_info(cc)
-    simplex = system_mode == constants.SYSTEM_MODE_SIMPLEX
-
-    if simplex:
-        warning_message = (
-            '\n'
-            'WARNING: THIS OPERATION WILL COMPLETELY ERASE ALL DATA FROM THE '
-            'SYSTEM.\n'
-            'Only proceed once the system data has been copied to another '
-            'system.\n'
-            'Are you absolutely sure you want to continue?  [yes/N]: ')
-        confirm = input(warning_message)
-        if confirm != 'yes':
-            print("Operation cancelled.")
-            return
-
-    ihost = cc.ihost.upgrade(args.hostid, args.force)
-    _print_ihost_show(ihost)
 
 
 @utils.arg('hostid',

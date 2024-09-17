@@ -20,7 +20,6 @@
 
 import json
 
-import jsonpatch
 import os
 import pecan
 from pecan import rest
@@ -28,7 +27,6 @@ import psutil
 import six
 import shutil
 import socket
-import sys
 import wsme
 from wsme import types as wtypes
 import wsmeext.pecan as wsme_pecan
@@ -43,14 +41,12 @@ from sysinv.api.controllers.v1 import collection
 from sysinv.api.controllers.v1 import link
 from sysinv.api.controllers.v1 import types
 from sysinv.api.controllers.v1 import utils
-from sysinv.cert_mon import utils as cert_utils
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils as cutils
 from sysinv import objects
 from sysinv.openstack.common import rpc
 from sysinv.openstack.common.rpc import common
-import tsconfig.tsconfig as tsc
 
 LOG = log.getLogger(__name__)
 
@@ -185,31 +181,20 @@ class LoadController(rest.RestController):
                          wtypes.text)
     def get_all(self, marker=None, limit=None, sort_key='id', sort_dir='asc'):
         """Retrieve a list of loads."""
-
-        return self._get_loads_collection(marker, limit, sort_key, sort_dir)
+        raise NotImplementedError("This API is deprecated.")
 
     @wsme_pecan.wsexpose(LoadCollection, types.uuid, int, wtypes.text,
                          wtypes.text)
     def detail(self, marker=None, limit=None, sort_key='id', sort_dir='asc'):
         """Retrieve a list of loads with detail."""
 
-        parent = pecan.request.path.split('/')[:-1][-1]
-        if parent != "loads":
-            raise exception.HTTPNotFound
-
-        expand = True
-        resource_url = '/'.join(['loads', 'detail'])
-        return self._get_loads_collection(marker, limit, sort_key, sort_dir,
-                                          expand, resource_url)
+        raise NotImplementedError("This API is deprecated.")
 
     @wsme_pecan.wsexpose(Load, six.text_type)
     def get_one(self, load_uuid):
         """Retrieve information about the given Load."""
 
-        rpc_load = objects.load.get_by_uuid(
-            pecan.request.context, load_uuid)
-
-        return Load.convert_with_links(rpc_load)
+        raise NotImplementedError("This API is deprecated.")
 
     @staticmethod
     def _new_load_semantic_checks(load):
@@ -227,6 +212,7 @@ class LoadController(rest.RestController):
         # This method is only used to populate the inital load for the system
         # This is invoked during config_controller
         # Loads after the first are added via import
+        # TODO(ShawnLi): This will be removed when we remove the Load table
         loads = pecan.request.dbapi.load_get_list()
 
         if loads:
@@ -315,14 +301,7 @@ class LoadController(rest.RestController):
     @cutils.synchronized(LOCK_NAME)
     def import_load(self):
         """Import a load from iso/sig files"""
-        try:
-            return self._import_load()
-        except Exception as e:
-            # Duplicate the exception handling behavior of the wsmeext.pecan wsexpose decorator
-            # This can be moved to a decorator if we need to reuse this in other modules
-            exception_code = getattr(e, 'code', None)
-            pecan.response.status = exception_code if wsme.utils.is_valid_code(exception_code) else 500
-            return wsme.api.format_exception(sys.exc_info())
+        raise NotImplementedError("This API is deprecated.")
 
     def _import_load(self):
         """Create a new load from iso/sig files"""
@@ -446,36 +425,7 @@ class LoadController(rest.RestController):
     def import_load_metadata(self, load):
         """Import a new load using only the metadata. Only available to SX subcoulds."""
 
-        LOG.info("Load import metadata request received.")
-        err_msg = None
-
-        # Enforce system type restrictions
-        err_msg = _("Metadata load import is only available to simplex subclouds.")
-        if utils.get_system_mode() != constants.SYSTEM_MODE_SIMPLEX:
-            raise wsme.exc.ClientSideError(err_msg)
-        if utils.get_distributed_cloud_role() != constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
-            raise wsme.exc.ClientSideError(err_msg)
-
-        self._check_existing_loads()
-
-        if load.software_version == load.compatible_version:
-            raise wsme.exc.ClientSideError(_("Invalid load software_version."))
-        if load.compatible_version != tsc.SW_VERSION:
-            raise wsme.exc.ClientSideError(_("Load compatible_version does not match SW_VERSION."))
-
-        patch = load.as_dict()
-        self._new_load_semantic_checks(patch)
-        patch['state'] = constants.IMPORTED_METADATA_LOAD_STATE
-        patch['uuid'] = None
-
-        LOG.info("Load import metadata validated, creating new load: %s" % patch)
-        try:
-            new_load = pecan.request.dbapi.load_create(patch)
-        except exception.SysinvException:
-            LOG.exception("Failure to create load")
-            raise wsme.exc.ClientSideError(_("Failure to create load"))
-
-        return load.convert_with_links(new_load)
+        raise NotImplementedError("This API is deprecated.")
 
     def _check_existing_loads(self, import_type=None):
         # Only are allowed at one time:
@@ -529,86 +479,11 @@ class LoadController(rest.RestController):
     def patch(self, load_id, patch):
         """Update an existing load."""
 
-        # TODO (dsulliva)
-        # This is a stub. We will need to place reasonable limits on what can
-        # be patched as we add to the upgrade system. This portion of the API
-        # likely will not be publicly accessible.
-        rpc_load = objects.load.get_by_uuid(pecan.request.context, load_id)
-
-        utils.validate_patch(patch)
-        patch_obj = jsonpatch.JsonPatch(patch)
-
-        try:
-            load = Load(**jsonpatch.apply_patch(rpc_load.as_dict(), patch_obj))
-
-        except utils.JSONPATCH_EXCEPTIONS as e:
-            raise exception.PatchError(patch=patch, reason=e)
-
-        fields = objects.load.fields
-
-        for field in fields:
-            if rpc_load[field] != getattr(load, field):
-                rpc_load[field] = getattr(load, field)
-
-        rpc_load.save()
-
-        return Load.convert_with_links(rpc_load)
+        raise NotImplementedError("This API is deprecated.")
 
     @cutils.synchronized(LOCK_NAME)
     @wsme_pecan.wsexpose(Load, six.text_type, status_code=200)
     def delete(self, load_id):
         """Delete a load."""
 
-        load = pecan.request.dbapi.load_get(load_id)
-
-        # make sure the load isn't in use by an upgrade
-        try:
-            # NOTE(bqian) load relates only to the legacy upgrade
-            upgrade = pecan.request.dbapi.software_upgrade_get_one()
-        except exception.NotFound:
-            pass
-        else:
-            if load.id == upgrade.to_load or load.id == upgrade.from_load:
-                raise wsme.exc.ClientSideError(
-                    _("Unable to delete load, load in use by upgrade"))
-
-        # make sure the load isn't used by any hosts
-        hosts = pecan.request.dbapi.host_upgrade_get_list()
-        for host in hosts:
-            if host.target_load == load.id or host.software_load == load.id:
-                    raise wsme.exc.ClientSideError(_(
-                        "Unable to delete load, load in use by host (id: %s)")
-                        % host.forihostid)
-
-        # make sure there are no subclouds with current load different from central
-        # cloud current load
-        system = pecan.request.dbapi.isystem_get_one()
-        if load.state == constants.IMPORTED_LOAD_STATE and \
-                system.distributed_cloud_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
-            subclouds = []
-
-            try:
-                # TODO move the cert_utils to a more common place
-                cert_utils.init_keystone_auth_opts()
-                token_cache = cert_utils.TokenCache(constants.OS_INTERFACE_INTERNAL)
-                all_subclouds = cert_utils.get_subclouds_from_dcmanager(token_cache.get_token())
-                for sc in all_subclouds:
-                    subcloud = cert_utils.get_subcloud(token_cache.get_token(), sc['name'])
-                    if subcloud['management-state'] == cert_utils.MANAGEMENT_MANAGED \
-                            and subcloud['software-version'] == load.software_version:
-                        subclouds.append(sc['name'])
-
-            except Exception as err:
-                LOG.error("Unexpected error to get subclouds software version: %s", err)
-                raise wsme.exc.ClientSideError(_("Failed to detect if the load can be safely deleted."))
-
-            if subclouds:
-                raise wsme.exc.ClientSideError(_(
-                    "Unable to delete load, %i subclouds are not upgraded yet. "
-                    "Some of these include %s") % (len(subclouds), subclouds[:10]))
-
-        cutils.validate_load_for_delete(load)
-
-        pecan.request.rpcapi.delete_load(pecan.request.context, load_id)
-
-        return Load.convert_with_links(load)
+        raise NotImplementedError("This API is deprecated.")

@@ -73,20 +73,6 @@ class ihostManager(base.Manager):
                 raise exc.InvalidAttribute()
         return self._create(self._path(), new)
 
-    def upgrade(self, hostid, force):
-        new = {}
-        new['force'] = force
-        resp, body = self.api.json_request(
-            'POST', self._path(hostid) + "/upgrade", body=new)
-        return self.resource_class(self, body)
-
-    def downgrade(self, hostid, force):
-        new = {}
-        new['force'] = force
-        resp, body = self.api.json_request(
-            'POST', self._path(hostid) + "/downgrade", body=new)
-        return self.resource_class(self, body)
-
     def create_many(self, body):
         return self._upload(self._path() + "/bulk_add", body)
 

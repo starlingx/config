@@ -50,7 +50,6 @@ from cgtsclient.v1 import label_shell
 from cgtsclient.v1 import license_shell
 from cgtsclient.v1 import lldp_agent_shell
 from cgtsclient.v1 import lldp_neighbour_shell
-from cgtsclient.v1 import load_shell
 from cgtsclient.v1 import network_addrpool_shell
 from cgtsclient.v1 import network_shell
 from cgtsclient.v1 import partition_shell
@@ -72,7 +71,6 @@ from cgtsclient.v1 import sm_service_shell
 from cgtsclient.v1 import sm_servicegroup_shell
 from cgtsclient.v1 import storage_backend_shell
 from cgtsclient.v1 import storage_tier_shell
-from cgtsclient.v1 import upgrade_shell
 
 
 COMMAND_MODULES = [
@@ -108,9 +106,7 @@ COMMAND_MODULES = [
     route_shell,
     isensor_shell,
     isensorgroup_shell,
-    load_shell,
     pci_device_shell,
-    upgrade_shell,
     network_shell,
     network_addrpool_shell,
     interface_network_shell,
