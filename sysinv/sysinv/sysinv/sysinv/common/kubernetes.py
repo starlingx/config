@@ -22,7 +22,9 @@ from ruamel.yaml.compat import StringIO
 import shutil
 import time
 import tsconfig.tsconfig as tsc
+import urllib3
 
+from eventlet import greenpool
 from kubernetes import __version__ as K8S_MODULE_VERSION
 from kubernetes import config
 from kubernetes import client
@@ -192,6 +194,7 @@ def k8s_health_check(tries=20, try_sleep=5, timeout=5,
     rc = False
     _tries = tries
     kwargs = {"verify": False, "timeout": timeout}
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
     while _tries:
         try:
@@ -217,6 +220,54 @@ def k8s_health_check(tries=20, try_sleep=5, timeout=5,
     return rc
 
 
+def k8s_wait_for_endpoints_health(tries=20, try_sleep=5, timeout=5):
+    """ This checks each k8s control-plane endpoint health in parallel
+    and waits for each endpoint to be up and running.
+
+    Each endpoint is tested up to 'tries' times using a API connection
+    timeout, and a sleep interval between tries.
+
+    :param tries: maximum number of tries
+    :param try_sleep: sleep interval between tries (seconds)
+    :param timeout: timeout waiting for response (seconds)
+
+    :return: True if all endpoints are healthy
+             False if at least one of the enpoints is unhealthy
+    """
+
+    healthz_endpoints = [constants.APISERVER_READYZ_ENDPOINT,
+                         constants.CONTROLLER_MANAGER_HEALTHZ_ENDPOINT,
+                         constants.SCHEDULER_HEALTHZ_ENDPOINT,
+                         constants.KUBELET_HEALTHZ_ENDPOINT]
+
+    threads = {}
+    threadpool = greenpool.GreenPool(len(healthz_endpoints))
+    result = True
+
+    # Check endpoints in parallel
+    for endpoint in healthz_endpoints:
+        threads[endpoint] = threadpool.spawn(k8s_health_check,
+                                             tries,
+                                             try_sleep,
+                                             timeout,
+                                             endpoint)
+
+    # Wait for all checks to finish
+    threadpool.waitall()
+
+    # Check results
+    unhealthy = []
+    for endpoint, thread in threads.items():
+        if thread.wait() is False:
+            unhealthy.append(endpoint)
+
+    if unhealthy:
+        result = False
+        LOG.debug(f'k8s control-plane unhealthy endpoints: {unhealthy}')
+
+    return result
+
+
 def test_kubeapi_health(function):
     """Decorator that checks if k8s endpoints are ready before calling the function.
 
@@ -226,7 +277,7 @@ def test_kubeapi_health(function):
     """
     def wrapper(*args, **kwargs):
         LOG.info("Starting k8s health check")
-        if k8s_health_check(tries=30, try_sleep=10, timeout=5):
+        if k8s_wait_for_endpoints_health():
             return function(*args, **kwargs)
         else:
             raise Exception("Kubeapi is not responsive.")
