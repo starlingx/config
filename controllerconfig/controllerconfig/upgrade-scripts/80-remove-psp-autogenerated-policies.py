@@ -13,6 +13,8 @@ import logging as LOG
 import subprocess
 import sys
 
+from sysinv.common.kubernetes import test_kubeapi_health
+
 
 def main():
     action = None
@@ -57,6 +59,7 @@ def delete_resources(resources):
             LOG.exception("Error: %s" % e)
 
 
+@test_kubeapi_health
 def delete_psp_resources():
     # Define the resources to delete
     cluster_role_bindings = [

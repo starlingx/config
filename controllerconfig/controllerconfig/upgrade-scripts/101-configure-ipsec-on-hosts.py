@@ -17,6 +17,7 @@ from sysinv.common import constants as consts
 from sysinv.common import service_parameter as sp_consts
 
 from sysinv.common.kubernetes import KUBERNETES_ADMIN_CONF
+from sysinv.common.kubernetes import test_kubeapi_health
 from sysinv.ipsec_auth.common import constants as ips_consts
 
 LOG = log.get_logger(__name__)
@@ -161,6 +162,7 @@ def remove_mgmt_ipsec(postgres_port):
         raise Exception(stderr)
 
 
+@test_kubeapi_health
 def delete_ipsec_certificate_requests():
     """Delete IPsec Certificate Requests from kubernetes resource."""
     namespace = ips_consts.NAMESPACE_DEPLOYMENT

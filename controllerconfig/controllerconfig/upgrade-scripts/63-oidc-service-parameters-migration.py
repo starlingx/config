@@ -23,6 +23,8 @@ import subprocess
 import sys
 import time
 
+from sysinv.common.kubernetes import test_kubeapi_health
+
 SUCCESS = 0
 ERROR = 1
 RELEASE_22_12 = "22.12"
@@ -93,6 +95,7 @@ class ServiceParametersApplier(object):
             return ''
         return stdout.decode('utf-8')
 
+    @test_kubeapi_health
     def __get_available_controllers(self):
         controllers = ['controller-0', 'controller-1']
         command = self.KUBE_CMD + 'get node'
@@ -107,6 +110,7 @@ class ServiceParametersApplier(object):
         LOG.info('Applying service parameters...')
         self.__system_cmd(command)
 
+    @test_kubeapi_health
     def __get_last_transition_time(self, controller):
         command = self.KUBE_CMD + self.LAST_TRANSITION_TIME_CMD.replace(
             "{{controller}}", controller)

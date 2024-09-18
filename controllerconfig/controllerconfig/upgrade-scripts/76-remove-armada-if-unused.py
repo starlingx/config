@@ -24,6 +24,7 @@ from sysinv.common import exception
 from sysinv.common import utils as common_utils
 from sysinv.helm import utils as helm_utils
 from sysinv.common.kubernetes import KUBERNETES_ADMIN_CONF
+from sysinv.common.kubernetes import test_kubeapi_health
 from tsconfig.tsconfig import PLATFORM_PATH
 
 log_format = ('%(asctime)s: ' + '[%(process)s]: '
@@ -124,6 +125,7 @@ def kill_process_and_descendants(proc):
     proc.kill()
 
 
+@test_kubeapi_health
 def retrieve_helm_v2_releases():
     env = os.environ.copy()
     env['PATH'] = '/usr/local/sbin:' + env['PATH']
@@ -175,6 +177,7 @@ def has_helmv2_cli():
     return False
 
 
+@test_kubeapi_health
 def has_armada_pod():
     """
     Determine running armada pods, including list of status conditions
@@ -226,6 +229,7 @@ def is_armada_required():
     return False
 
 
+@test_kubeapi_health
 def remove_armada_resources():
     """
     Remove Armada helm release and namespace.
