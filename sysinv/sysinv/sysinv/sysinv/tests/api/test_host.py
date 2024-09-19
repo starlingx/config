@@ -2555,6 +2555,9 @@ class TestPatch(TestHost):
             availability=constants.AVAILABILITY_ONLINE)
         self._create_test_host_platform_interface(c0_host)
 
+        is_host_mock = mock.patch('sysinv.common.usm_service.is_host_next_to_be_deployed')
+        is_host = is_host_mock.start()
+        is_host.return_value = False
         p = mock.patch('sysinv.common.usm_service.get_host_deploy')
         get_host_deploy = p.start()
         get_host_deploy.return_value = None
@@ -2630,6 +2633,9 @@ class TestPatch(TestHost):
             availability=constants.AVAILABILITY_ONLINE)
         self._create_test_host_platform_interface(c0_host)
 
+        is_host_mock = mock.patch('sysinv.common.usm_service.is_host_next_to_be_deployed')
+        is_host = is_host_mock.start()
+        is_host.return_value = True
         p = mock.patch('sysinv.common.usm_service.get_host_deploy')
         get_host_deploy = p.start()
         get_host_deploy.return_value = {"host_state": "deploying"}
@@ -2982,6 +2988,9 @@ class TestPatch(TestHost):
         self._create_test_host_cpus(w0_host, platform=1, vswitch=2, application=12)
         self._create_test_host_addresses(w0_host.hostname)
 
+        is_host_mock = mock.patch('sysinv.common.usm_service.is_host_next_to_be_deployed')
+        is_host = is_host_mock.start()
+        is_host.return_value = False
         p = mock.patch('sysinv.common.usm_service.get_host_deploy')
         get_host_deploy = p.start()
         get_host_deploy.return_value = None
@@ -3196,6 +3205,9 @@ class TestPatch(TestHost):
 
         w0_hostname = w0_host['hostname']
 
+        is_host_mock = mock.patch('sysinv.common.usm_service.is_host_next_to_be_deployed')
+        is_host = is_host_mock.start()
+        is_host.return_value = False
         p = mock.patch('sysinv.common.usm_service.get_host_deploy')
         get_host_deploy = p.start()
         get_host_deploy.return_value = None

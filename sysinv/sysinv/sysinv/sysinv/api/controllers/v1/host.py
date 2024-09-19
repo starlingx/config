@@ -5540,9 +5540,11 @@ class HostController(rest.RestController):
 
         hostname = hostupdate.ihost_patch.get('hostname')
         host_deploy = usm_service.get_host_deploy(pecan.request.dbapi, hostname)
-        if host_deploy is not None:
-            if host_deploy['host_state'] in [constants.DEPLOY_HOST_DEPLOYED,
-                                             constants.DEPLOY_HOST_ROLLBACK_DEPLOYED]:
+        if host_deploy:
+            if host_deploy['host_state'] in [constants.DEPLOY_HOST_DEPLOYED, constants.DEPLOY_HOST_ROLLBACK_DEPLOYED]:
+                return
+            is_next_host = usm_service.is_host_next_to_be_deployed(pecan.request.dbapi, hostname)
+            if not is_next_host:
                 return
             else:
                 raise wsme.exc.ClientSideError(
