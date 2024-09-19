@@ -9787,6 +9787,8 @@ class ConductorManager(service.PeriodicService):
                             'platform::sm::update_oam_config::runtime',
                             'platform::nfv::webserver::runtime',
                             'platform::haproxy::runtime',
+                            'platform::dns',
+                            'platform::ntp::server',
                             'openstack::keystone::endpoint::runtime::post',
                             'platform::dockerdistribution::config',
                             'platform::dockerdistribution::runtime']
