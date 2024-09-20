@@ -4248,3 +4248,100 @@ def filter_helm_releases(resources):
     """
 
     return [resource for resource in resources if resource.get('kind') == 'HelmRelease']
+
+
+def is_certificate_request_created(name):
+    """
+    Verify if there is a CertificateRequest already created with this name
+
+    param: name: The name of the resource to check
+
+    Returns: True or False
+    """
+
+    try:
+        cmd = ['kubectl', '--kubeconfig', kubernetes.KUBERNETES_ADMIN_CONF,
+               '-n', constants.CERT_NAMESPACE_PLATFORM_CERTS, 'get',
+               constants.CERT_REQUEST_RESOURCE, name]
+
+        process = subprocess.Popen(cmd,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        universal_newlines=True)
+
+        stdout, stderr = process.communicate()
+
+        if process.returncode != 0:
+            return False
+
+        if name in str(stdout):
+            return True
+
+    except Exception as e:
+        LOG.error(f"Error trying to retrieve CertificateRequest resource info, reason: {e}")
+
+    return False
+
+
+def get_certificate_request(name):
+    """
+    Get a CertificateRequest resource
+
+    Param: name: The name of the resource to get the content
+
+    Return: The content of the CertificateRequest resource
+    """
+
+    try:
+        cmd = ['kubectl', '--kubeconfig', kubernetes.KUBERNETES_ADMIN_CONF,
+               '-n', constants.CERT_NAMESPACE_PLATFORM_CERTS, 'get',
+               constants.CERT_REQUEST_RESOURCE, name, '-o',
+               "jsonpath='{.status.certificate}'"]
+
+        process = subprocess.Popen(cmd,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        universal_newlines=True)
+
+        stdout, stderr = process.communicate()
+
+        if process.returncode != 0:
+            LOG.error(f"Failed to get CertificateRequest resource. {stderr}")
+            return None
+
+        return stdout.strip("'")
+
+    except Exception as e:
+        LOG.error(f"Error trying to get CertificateRequest resource, reason: {e}")
+
+    return None
+
+
+def delete_certificate_request(name):
+    """
+    Delete a CertificateRequest resource
+
+    Param: The name of the resource to delete
+
+    Return: True or False
+    """
+
+    try:
+        cmd = ['kubectl', '--kubeconfig', kubernetes.KUBERNETES_ADMIN_CONF,
+               '-n', constants.CERT_NAMESPACE_PLATFORM_CERTS, 'delete',
+               constants.CERT_REQUEST_RESOURCE, name]
+
+        process = subprocess.Popen(cmd,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        universal_newlines=True)
+
+        stdout, stderr = process.communicate()
+
+        if process.returncode != 0:
+            LOG.error(f"Failed to delete CertificateRequest resource. {stderr}")
+            return False
+
+        return True
+
+    except Exception as e:
+        LOG.error(f"Error trying to delete CertificateRequest resource, reason: {e}")
+
+    return False

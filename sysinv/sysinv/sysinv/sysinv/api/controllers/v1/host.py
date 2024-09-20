@@ -97,6 +97,7 @@ from sysinv.common import usm_service as usm_service
 from sysinv.common import utils as cutils
 from sysinv.common.storage_backend_conf import StorageBackendConfig
 from sysinv.common import health
+from sysinv.ipsec_auth.common import constants as ipsec_constants
 
 from sysinv.openstack.common.rpc import common as rpc_common
 
@@ -2771,6 +2772,11 @@ class HostController(rest.RestController):
             trigger={'type': constants.APP_EVALUATE_REAPPLY_TYPE_HOST_DELETE,
                      'openstack_worker': True if openstack_worker else False,
                      'personality': personality})
+
+        # Delete the certificate request related to the host
+        cert_name = ipsec_constants.CERT_NAME_PREFIX + str(ihost['hostname'])
+        if cutils.is_certificate_request_created(cert_name):
+            cutils.delete_certificate_request(cert_name)
 
     def _notify_mtce_host_delete(self, ihost):
 

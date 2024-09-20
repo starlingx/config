@@ -274,54 +274,30 @@ def verify_encrypted_hash(key, ehash, token, eak1, ecsr):
 def kube_apply_certificate_request(body):
     name = body["metadata"]["name"]
 
-    # Verify if a CertificateRequest is already created for this specific host
-    cmd_get = ['kubectl', '--kubeconfig', KUBERNETES_ADMIN_CONF,
-               '-n', constants.NAMESPACE_DEPLOYMENT, 'get',
-               constants.CERTIFICATE_REQUEST_RESOURCE, name]
-    get_cr = subprocess.run(cmd_get, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                            check=False)
+    # Verify if a CertificateRequest is already created
+    # for this specific host and delete if it is true
+    if sys_utils.is_certificate_request_created(name):
+        LOG.debug(f"Deleting previously created {name} CertificateRequest.")
+        sys_utils.delete_certificate_request(name)
 
-    # Delete the CertificateRequest if it is already created or check for possible errors
-    if name in str(get_cr.stdout):
-        LOG.debug('Deleting previously created %s CertificateRequest.' % name)
-        cmd_delete = ['kubectl', '--kubeconfig', KUBERNETES_ADMIN_CONF,
-                      '-n', constants.NAMESPACE_DEPLOYMENT, 'delete',
-                      constants.CERTIFICATE_REQUEST_RESOURCE, name]
-        subprocess.run(cmd_delete, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                       check=False)
-    elif get_cr.stderr and 'NotFound' not in str(get_cr.stderr):
-        err = "Error: %s" % (get_cr.stderr.decode("utf-8"))
-        LOG.exception("Failed to retrieve CertificateRequest resource info. %s" % (err))
+    try:
+        cr_body = yaml.safe_dump(body, default_flow_style=False)
+        cmd = ['kubectl', '--kubeconfig', KUBERNETES_ADMIN_CONF,
+               'apply', '-f', '-']
+
+        create_cr = subprocess.run(cmd, input=cr_body.encode(),
+                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                   check=False)
+
+        if create_cr.returncode != 0:
+            LOG.error(f"Failed to create CertificateRequest resource. {create_cr.stderr}")
+            return None
+
+    except Exception as e:
+        LOG.error(f"Error trying to create CertificateRequest resource, reason: {e}")
         return None
 
-    # Create CertificateRequest resource in kubernetes
-    cr_body = yaml.safe_dump(body, default_flow_style=False)
-    cmd_apply = ['kubectl', '--kubeconfig', KUBERNETES_ADMIN_CONF,
-                'apply', '-f', '-']
-    create_cr = subprocess.run(cmd_apply, input=cr_body.encode(),
-                               stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                               check=False)
-
-    if create_cr.returncode != 0:
-        err = "Error: %s" % (create_cr.stderr.decode("utf-8"))
-        LOG.exception("Failed to create CertificateRequest %s/%s. %s"
-            % (constants.NAMESPACE_DEPLOYMENT, name, err))
-        return None
-
-    # Get Certificate from recently created resource in kubernetes
-    cmd_get_certificate = ['-o', "jsonpath='{.status.certificate}'"]
-    cmd_get_signed_cert = cmd_get + cmd_get_certificate
-    signed_cert = subprocess.run(cmd_get_signed_cert,
-                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                 check=False)
-
-    if signed_cert.returncode != 0:
-        err = "Error: %s" % (signed_cert.stderr.decode("utf-8"))
-        LOG.exception("Failed to retrieve %s/%s's Certificate. %s"
-            % (constants.NAMESPACE_DEPLOYMENT, name, err))
-        return None
-
-    return signed_cert.stdout.decode("utf-8").strip("'")
+    return sys_utils.get_certificate_request(name)
 
 
 def remove_ca_certificates(prefix):
