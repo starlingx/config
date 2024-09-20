@@ -29,7 +29,7 @@ import yaml
 
 from cryptography.hazmat.primitives import serialization
 from sysinv.common import utils as sysinv_utils
-from sysinv.common.kubernetes import test_kubeapi_health
+from sysinv.common.kubernetes import test_k8s_health
 from sysinv.common.rest_api import get_token
 from sysinv.common.rest_api import rest_api_request
 
@@ -125,7 +125,7 @@ def get_primary_oam_ip():
         raise Exception('Cannot retrieve OAM IP.')
 
 
-@test_kubeapi_health
+@test_k8s_health
 def create_platform_certificates(to_release):
     """Run ansible playbook to create platform certificates
     """
@@ -145,7 +145,7 @@ def create_platform_certificates(to_release):
              % stdout.decode('utf-8'))
 
 
-@test_kubeapi_health
+@test_k8s_health
 def certificate_exists(certificate, namespace='deployment'):
     """Check if certificate exists
     """
@@ -164,7 +164,7 @@ def certificate_exists(certificate, namespace='deployment'):
                         'from namespace: %s.' % namespace)
 
 
-@test_kubeapi_health
+@test_k8s_health
 def retrieve_certificate(certificate, namespace='deployment'):
     """Retrieve certificate (as YAML text)
     """
@@ -183,7 +183,7 @@ def retrieve_certificate(certificate, namespace='deployment'):
                         % (certificate, namespace))
 
 
-@test_kubeapi_health
+@test_k8s_health
 def delete_certificate(certificate, namespace='deployment'):
     """Delete certificate from k8s
     """
@@ -202,7 +202,7 @@ def delete_certificate(certificate, namespace='deployment'):
                         % (certificate, namespace))
 
 
-@test_kubeapi_health
+@test_k8s_health
 def delete_secret(secret, namespace='deployment'):
     """Delete certificate from k8s
     """
@@ -270,7 +270,7 @@ def create_tls_secret_body(name, namespace, tls_crt, tls_key, ca_crt=''):
     return secret_body
 
 
-@test_kubeapi_health
+@test_k8s_health
 def apply_k8s_yml(resources_yml):
     with open(K8S_RESOURCES_TMP_FILENAME, 'w') as yaml_file:
         yaml.safe_dump(resources_yml, yaml_file, default_flow_style=False)
@@ -328,7 +328,7 @@ def wait_system_reconfiguration(from_release='22.12'):
               % str(WAIT_RECONFIG_ATTEMPTS * WAIT_RECONFIG_SLEEP))
 
 
-@test_kubeapi_health
+@test_k8s_health
 def update_system_local_ca_secret():
     """Update system-local-ca secret
     """
