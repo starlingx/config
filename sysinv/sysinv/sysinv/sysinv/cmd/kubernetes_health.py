@@ -40,7 +40,6 @@ CONF.register_cli_opt(
 def main():
     service.prepare_service(sys.argv)
     if CONF.action.name in SUPPORTED_ACTIONS:
-        LOG.info("Checking Kubernetes health...")
         if CONF.action.func(CONF.action.tries, CONF.action.try_sleep, CONF.action.timeout):
             exit(0)
     else:
