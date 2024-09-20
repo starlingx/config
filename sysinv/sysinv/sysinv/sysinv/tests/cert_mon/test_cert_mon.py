@@ -277,7 +277,8 @@ class CertMonTestCase(base.DbTestCase):
 
             mocked_os.remove.assert_called_once_with(pem_file_path)
 
-        mocked_rest_api_upload.assert_called_once_with(token, pem_file_path, mock.ANY, mock.ANY)
+        mocked_rest_api_upload.assert_called_once_with(
+            token, pem_file_path, mock.ANY, mock.ANY, timeout=mock.ANY)
         actual_data = mocked_rest_api_upload.call_args[0][3]
 
         self.assertEqual(actual_data['force'], str(force).lower())
@@ -379,7 +380,8 @@ class CertMonTestCase(base.DbTestCase):
 
         # If expected to install, cert upload is called once
         if expected_to_install:
-            mocked_rest_api_upload.assert_called_once_with(token, mock.ANY, mock.ANY, mock.ANY)
+            mocked_rest_api_upload.assert_called_once_with(
+                token, mock.ANY, mock.ANY, mock.ANY, timeout=mock.ANY)
         else:
             mocked_rest_api_upload.assert_not_called()
 
@@ -447,7 +449,8 @@ class CertMonTestCase(base.DbTestCase):
 
         if expected_to_install:
             registry_cert_renew.update_platform_certificate(FakeEventData(), cert_type)
-            mocked_rest_api_upload.assert_called_once_with(token, mock.ANY, mock.ANY, mock.ANY)
+            mocked_rest_api_upload.assert_called_once_with(
+                token, mock.ANY, mock.ANY, mock.ANY, timeout=mock.ANY)
         else:
             registry_cert_renew.update_platform_certificate(FakeEventData(), cert_type)
             mocked_rest_api_upload.assert_not_called()

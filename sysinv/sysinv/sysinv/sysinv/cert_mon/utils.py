@@ -731,7 +731,7 @@ def update_platform_cert(token, cert_type, pem_file_path, force=False):
     data = {'mode': cert_type,
             'force': str(force).lower()}
 
-    response = rest_api_upload(token, pem_file_path, api_cmd, data)
+    response = rest_api_upload(token, pem_file_path, api_cmd, data, timeout=60)
     error = response.get('error')
     if error:
         LOG.info('Failed. Certificate not installed. Error=%s' % error)
