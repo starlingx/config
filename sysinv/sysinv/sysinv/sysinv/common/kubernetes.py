@@ -172,7 +172,8 @@ KUBE_CONTROL_PLANE_ETCD_BACKUP_PATH = os.path.join(
 
 
 def k8s_health_check(tries=20, try_sleep=5, timeout=5,
-                     healthz_endpoint=constants.APISERVER_READYZ_ENDPOINT):
+                     healthz_endpoint=constants.APISERVER_READYZ_ENDPOINT,
+                     log=True):
     """This checks k8s control-plane component health for a specified
     endpoint, and waits for that endpoint to be up and running.
     This checks the endpoint 'tries' times using a API connection
@@ -211,12 +212,14 @@ def k8s_health_check(tries=20, try_sleep=5, timeout=5,
         if _tries:
             time.sleep(try_sleep)
     if not rc:
-        LOG.error('k8s control-plane endpoint %s unhealthy' %
-                  healthz_endpoint)
+        if log:
+            LOG.error('k8s control-plane endpoint %s unhealthy' %
+                      healthz_endpoint)
         return rc
 
-    LOG.info('k8s control-plane endpoint %s healthy' %
-             healthz_endpoint)
+    if log:
+        LOG.info('k8s control-plane endpoint %s healthy' %
+                 healthz_endpoint)
     return rc
 
 
@@ -245,12 +248,14 @@ def k8s_wait_for_endpoints_health(tries=20, try_sleep=5, timeout=5):
     result = True
 
     # Check endpoints in parallel
+    LOG.info("Checking Kubernetes health...")
     for endpoint in healthz_endpoints:
         threads[endpoint] = threadpool.spawn(k8s_health_check,
                                              tries,
                                              try_sleep,
                                              timeout,
-                                             endpoint)
+                                             endpoint,
+                                             False)
 
     # Wait for all checks to finish
     threadpool.waitall()
@@ -263,8 +268,9 @@ def k8s_wait_for_endpoints_health(tries=20, try_sleep=5, timeout=5):
 
     if unhealthy:
         result = False
-        LOG.debug(f'k8s control-plane unhealthy endpoints: {unhealthy}')
+        LOG.error(f"The following Kubernetes endpoints are unhealthy: {unhealthy}")
 
+    LOG.info("All Kubernetes endpoints are healthy.")
     return result
 
 
@@ -276,7 +282,6 @@ def test_k8s_health(function):
     Returns: The wrapped function that checks Kubernetes health.
     """
     def wrapper(*args, **kwargs):
-        LOG.info("Checking Kubernetes health...")
         if k8s_wait_for_endpoints_health():
             return function(*args, **kwargs)
         else:
