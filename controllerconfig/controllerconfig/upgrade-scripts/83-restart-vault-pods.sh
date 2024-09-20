@@ -45,10 +45,24 @@ TRIES_POD_VERSION=1
 ACTIVE_PODS=""
 STANDBY_PODS=""
 
+SOFTWARE_LOG_PATH='/var/log/software.log'
+
 source /etc/platform/openrc
 
 function log {
     echo "$(date -Iseconds | cut -d'+' -f1): ${NAME}[$$]: INFO: $*" >> "/var/log/software.log" 2>&1
+}
+
+# Check kubernetes health status.
+# Exit with status 1 if sysinv-k8s-health command fails
+function check_k8s_health {
+    local k8s_health
+    sysinv-k8s-health --log-file "${SOFTWARE_LOG_PATH}" check
+    k8s_health=$?
+
+    if [ $k8s_health -eq 1 ]; then
+        exit 1
+    fi
 }
 
 # A wrapper function for checking vault status for upgrade. It will check using the provided
@@ -65,6 +79,7 @@ function check_cond {
     local success_cond=false
 
     for i in $(seq "$tries_cond"); do
+        check_k8s_health
         res_cond="$( $cmd_cond )"
         if [ "$res_cond" = "0" ]; then
             success_cond=true
@@ -241,9 +256,11 @@ check_cond "$SLEEP_INJECTOR_RUNNING" "$TRIES_INJECTOR_RUNNING" "check_mi_status 
 }
 
 # Find the active and standby pods
+check_k8s_health
 update_active_standby
 
 # Delete the standby pods if they are not on the new version
+check_k8s_health
 for standby_pod in $STANDBY_PODS; do
     current_version="$( $KUBECOMMAND get pods -n $VAULT_NS "$standby_pod" -o jsonpath='{.metadata.labels.vault-version}' )"
     if [ "$current_version" != "$VAULT_NEW_VERSION" ]; then
@@ -272,6 +289,7 @@ for standby_pod in $STANDBY_PODS; do
 done
 
 # Delete the active pod if it is not on the new version
+check_k8s_health
 for active_pod in $ACTIVE_PODS; do
     current_version="$( $KUBECOMMAND get pods -n $VAULT_NS "$active_pod" -o jsonpath='{.metadata.labels.vault-version}' )"
     if [ "$current_version" != "$VAULT_NEW_VERSION" ]; then
