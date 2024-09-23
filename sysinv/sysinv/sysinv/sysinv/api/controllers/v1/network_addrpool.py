@@ -257,6 +257,23 @@ class NetworkAddresspoolController(rest.RestController):
             )
         return network_pools
 
+    def _update_interface_address_mode(self, network, pool):
+        """ After a pool is assigned to a platform network, update the affected
+            interface's address mode to static, in a similar way done by the
+            interface-network API
+        """
+        if network.type in [constants.NETWORK_TYPE_MGMT,
+                            constants.NETWORK_TYPE_OAM,
+                            constants.NETWORK_TYPE_CLUSTER_HOST,
+                            constants.NETWORK_TYPE_ADMIN]:
+            addr_alloc_mode = constants.IPV4_STATIC
+            if pool.family == constants.IPV6_FAMILY:
+                addr_alloc_mode = constants.IPV6_STATIC
+            if_net_list = pecan.request.dbapi.interface_network_get_by_network_id(network.id)
+            for if_net_obj in if_net_list:
+                utils.update_address_mode(if_net_obj.interface_id, pool.family,
+                                          addr_alloc_mode, None)
+
     def _create_network_addrpool(self, network_addrpool):
         # Perform syntactic validation
         network_addrpool.validate_syntax()
@@ -332,6 +349,7 @@ class NetworkAddresspoolController(rest.RestController):
 
         caddress_pool.populate_network_pool_addresses(pool, network.type, pecan.request.dbapi)
         caddress_pool.assign_pool_addresses_to_interfaces(pool, network, pecan.request.dbapi)
+        self._update_interface_address_mode(network, pool)
 
         hosts = None
         if network.type == constants.NETWORK_TYPE_ADMIN:

@@ -1583,7 +1583,7 @@ def _allocate_pool_address(interface_id, pool_uuid, address_name=None):
 def _update_ipv6_address_mode(interface, mode=None, pool=None):
     mode = interface['ipv6_mode'] if not mode else mode
     pool = interface['ipv6_pool'] if not pool else pool
-    utils.update_address_mode(interface, constants.IPV6_FAMILY, mode, pool)
+    utils.update_address_mode(interface['id'], constants.IPV6_FAMILY, mode, pool)
     if mode == constants.IPV6_POOL:
         _allocate_pool_address(interface['id'], pool)
 
@@ -1591,7 +1591,7 @@ def _update_ipv6_address_mode(interface, mode=None, pool=None):
 def _update_ipv4_address_mode(interface, mode=None, pool=None):
     mode = interface['ipv4_mode'] if not mode else mode
     pool = interface['ipv4_pool'] if not pool else pool
-    utils.update_address_mode(interface, constants.IPV4_FAMILY, mode, pool)
+    utils.update_address_mode(interface['id'], constants.IPV4_FAMILY, mode, pool)
     if mode == constants.IPV4_POOL:
         _allocate_pool_address(interface['id'], pool)
 

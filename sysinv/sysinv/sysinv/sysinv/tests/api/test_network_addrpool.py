@@ -312,6 +312,9 @@ class TestPostMixin(NetworkAddrpoolTestCase):
         self.mock_rpcapi_update_mgmt_secondary_pool_config = p.start()
         self.addCleanup(p.stop)
 
+        intf_addr_mode_list = dbutils.get_interface_address_mode(self.c0_mgmt_if.id)
+        self.assertEqual(0, len(intf_addr_mode_list))
+
         # add primary
         net_type = constants.NETWORK_TYPE_MGMT
         ndict = self.get_post_object(self.networks[net_type].uuid,
@@ -349,6 +352,15 @@ class TestPostMixin(NetworkAddrpoolTestCase):
         self.assertEqual(response['network_name'], self.networks[net_type].name)
         self.assertEqual(response['network_id'], self.networks[net_type].id)
         self.assertEqual(response['network_uuid'], self.networks[net_type].uuid)
+
+        # When pools are added to networks like OAM, admin, mgmt, or cluster-host, the interface
+        # address mode is indeed set to static in the related address family.
+        intf_addr_mode_list = dbutils.get_interface_address_mode(self.c0_mgmt_if.id)
+        self.assertEqual(2, len(intf_addr_mode_list))  # one for each family
+        for intf_addr_mode in intf_addr_mode_list:
+            self.assertIn(intf_addr_mode.family, [constants.IPV4_FAMILY, constants.IPV6_FAMILY])
+            self.assertEqual(intf_addr_mode.interface_uuid, self.c0_mgmt_if.uuid)
+            self.assertEqual(intf_addr_mode.mode, 'static')
 
         addr_list = dbutils.get_address_table()
         self.assertEqual(8, len(addr_list))

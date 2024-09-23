@@ -5848,6 +5848,14 @@ class Connection(api.Connection):
                                sort_key, sort_dir, query)
 
     @db_objects.objectify(objects.address_mode)
+    def address_modes_get_by_interface_id(self, interface_id, limit=None,
+                                          marker=None, sort_key=None, sort_dir=None):
+        query = model_query(models.AddressModes)
+        query = query.filter(models.AddressModes.interface_id == interface_id)
+        return _paginate_query(models.AddressModes, limit, marker,
+                               sort_key, sort_dir, query)
+
+    @db_objects.objectify(objects.address_mode)
     def address_mode_update(self, interface_id, values, context=None):
         try:
             # Update it if it exists.
