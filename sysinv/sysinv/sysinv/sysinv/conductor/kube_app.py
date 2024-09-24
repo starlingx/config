@@ -4155,14 +4155,37 @@ class FluxCDHelper(object):
     def _rollback(self, manifest_dir):
         pass
 
+    def get_pod_ready_conditions(self, pod):
+        """ Get conditions of a given ready pod
+
+        :param pod: Pod object as returned by self._kube.kube_get_pods_by_selector
+        :return: A list containing the pod ready conditions.
+                 If conditions are not available or the pod is not ready then returns
+                 an empty list.
+         """
+        conditions = pod.status.conditions if pod.status.conditions is not None else []
+
+        if conditions:
+            ready_conditions = [x for x in conditions if x.type == 'Ready']
+            if not ready_conditions:
+                LOG.debug(f"Pod {pod.metadata.name} is not ready")
+            return ready_conditions
+        else:
+            LOG.warning(f"No conditions are available for pod {pod.metadata.name} at the moment")
+
+        return conditions
+
     def check_pod_running_and_ready_probe(self, pod):
         """Pod is of the form returned by self._kube.kube_get_pods_by_selector.
         Returns: true if last probe shows the container is in 'Ready' state.
         """
-        conditions = list([x for x in pod.status.conditions if x.type == 'Ready'])
-        if not conditions:
+
+        ready_conditions = self.get_pod_ready_conditions(pod)
+
+        if ready_conditions:
+            return ready_conditions[0].status == 'True'
+        else:
             return False
-        return conditions[0].status == 'True'
 
     def check_pod_completed(self, pod):
         """Pod is of the form returned by self._kube.kube_get_pods_by_selector.
@@ -4170,16 +4193,11 @@ class FluxCDHelper(object):
         Returns: true if last probe shows the container 'Ready' status is False
                  and the reason is PodCompleted
         """
-        conditions = pod.status.conditions if pod.status.conditions is not None else []
+        ready_conditions = self.get_pod_ready_conditions(pod)
 
-        if conditions:
-            ready_conditions = list([x for x in conditions if x.type == 'Ready'])
-            if not ready_conditions:
-                LOG.debug(f"Pod {pod.metadata.name} is not ready")
-                return False
+        if ready_conditions:
             return (ready_conditions[0].status == 'False' and ready_conditions[0].reason == 'PodCompleted')
         else:
-            LOG.warning(f"No conditions are available for pod {pod.metadata.name} at the moment")
             return False
 
     def verify_pods_status_for_release(self, chart_obj):
@@ -4296,11 +4314,15 @@ class FluxCDHelper(object):
             return False
 
         for pod in pods:
+            if pod.status is None:
+                LOG.warning("Error while retrieving status for FluxCD pod {}"
+                            .format(pod.metadata.name))
+                return False
             if not self.check_pod_running_and_ready_probe(pod):
                 LOG.warning("FluxCD pod {} is not ready. Phase: {}. Message: {}"
-                    .format(pod.metadata.name,
-                            pod.status.phase,
-                            pod.status.message))
+                            .format(pod.metadata.name,
+                                    pod.status.phase,
+                                    pod.status.message))
                 return False
 
         return True
