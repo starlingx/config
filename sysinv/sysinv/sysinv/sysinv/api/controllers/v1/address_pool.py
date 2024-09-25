@@ -895,7 +895,7 @@ class AddressPoolController(rest.RestController):
                                                              disable=disable)
 
         if constants.NETWORK_TYPE_SYSTEM_CONTROLLER_OAM in network_types:
-            if cutils.is_initial_config_complete():
+            if cutils.is_initial_config_complete() and operation == constants.API_PATCH:
                 pecan.request.rpcapi.update_dnsmasq_config(pecan.request.context)
 
     def _check_delete_primary(self, addrpool, networks):
