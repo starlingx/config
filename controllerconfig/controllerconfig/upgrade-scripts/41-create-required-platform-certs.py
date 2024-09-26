@@ -537,7 +537,7 @@ def adapt_legacy_certificate_config(to_release):
                     "remain after upgrade.")
 
 
-def disable_https():
+def patch_https_enabled(https_enabled):
     token = get_token(get_region_name())
     sysinv_url = token.get_service_internal_url(
         sysinv_utils.constants.SERVICE_TYPE_PLATFORM,
@@ -558,24 +558,28 @@ def disable_https():
 
     api_cmd = api_cmd + '/' + system_uuid
 
+    https_status = str(https_enabled).lower()
     patch = []
     patch.append(
-        {'op': 'replace', 'path': '/https_enabled', 'value': 'false'})
+        {'op': 'replace', 'path': '/https_enabled', 'value': https_status})
     res = rest_api_request(token,
                            "PATCH",
                            api_cmd,
                            api_cmd_headers,
                            json.dumps(patch),
                            timeout=60)
-    if (res is not None and res['capabilities']['https_enabled'] is False):
-        LOG.info('Disable https patch request succeeded')
+    if (res is not None and
+            res['capabilities']['https_enabled'] is https_enabled):
+        LOG.info('https_enabled is successfully patched to %s' % https_status)
     else:
-        raise Exception('Disable https failed! resp=%s' % res)
+        raise Exception('https_enabled patch to %s failed! resp=%s'
+                        % (https_status, res))
 
-    try:
-        os.remove(CERT_FILES[HTTPS_CERT_NAME])
-    except OSError:
-        pass
+    if https_enabled is False:
+        try:
+            os.remove(CERT_FILES[HTTPS_CERT_NAME])
+        except OSError:
+            pass
 
 
 def restore_legacy_certificate_config(from_release):
@@ -584,7 +588,7 @@ def restore_legacy_certificate_config(from_release):
         if check_cert_auto_creation_file_flag(cert, from_release):
             delete_certificate(cert)
             if cert == HTTPS_CERT_NAME:
-                disable_https()
+                patch_https_enabled(False)
                 wait_system_reconfiguration(from_release)
             remove_cert_auto_creation_file_flag(cert, from_release)
         else:
@@ -633,6 +637,7 @@ def main():
                 update_system_local_ca_secret()
                 reconfigure_certificates_subject()
                 create_platform_certificates(to_release)
+                patch_https_enabled(True)
                 wait_system_reconfiguration()
                 create_platform_certificates_updated_file_flag()
                 LOG.info("Successfully created/updated required platform "
