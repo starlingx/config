@@ -620,6 +620,12 @@ def _validate_oot(name, value):
     # constants.SERVICE_PARAM_PLAT_KERNEL_OOT_VALUES
     driver_list = list(map(str.strip, value.split(',')))
 
+    # first check none should not be co exists with other values
+    # it should be none or any other combination
+    if len(driver_list) > 1 and 'none' in value:
+        msg = "'none' should be the only value, it cannot coexist with others"
+        raise wsme.exc.ClientSideError(_(msg))
+
     # Ensure that the driver list is a subset of
     # constants.SERVICE_PARAM_PLAT_KERNEL_OOT_VALUES, and raise
     # an error if it does not match the predefined OOT values.

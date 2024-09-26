@@ -1010,6 +1010,11 @@ class ConductorManager(service.PeriodicService):
          'name': constants.SERVICE_PARAM_NAME_PLATFORM_KEEP_FREE,
          'value': constants.SERVICE_PARAM_PLATFORM_KEEP_FREE_DEFAULT
          },
+        {'service': constants.SERVICE_TYPE_PLATFORM,
+         'section': constants.SERVICE_PARAM_SECTION_PLATFORM_KERNEL,
+         'name': constants.SERVICE_PARAM_NAME_PLATFORM_OOT,
+         'value': ",".join(constants.SERVICE_PARAM_PLAT_KERNEL_OOT_VALUES),
+         },
     ]
 
     def _create_default_service_parameter(self):

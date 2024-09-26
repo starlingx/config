@@ -1229,6 +1229,7 @@ SERVICE_PARAM_NAME_PLAT_CONFIG_VIRTUAL = 'virtual_system'
 # Intel NIC out of tree drivers parameter
 SERVICE_PARAM_NAME_PLATFORM_OOT = 'out_of_tree_drivers'
 SERVICE_PARAM_PLAT_KERNEL_OOT_VALUES = (
+    "none",
     "ice",
     "i40e",
     "iavf")
