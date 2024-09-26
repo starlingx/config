@@ -8638,17 +8638,22 @@ class ConductorManager(service.PeriodicService):
                      "activity")
             return
 
-        # Ensure that FluxCD pods are ready.
-        if not self._app.check_fluxcd_pod_status():
-            LOG.warning("FluxCD pods are not ready. Defer audit.")
-            return
-
         # Defer platform managed application activity while an upgrade is active
         try:
             self.verify_upgrade_not_in_progress()
         except Exception:
             LOG.info("Upgrade in progress - defer platform managed application "
                      "activity")
+            return
+
+        # Defer application audit if Kubernetes is not healthy
+        if not kubernetes.k8s_wait_for_endpoints_health(tries=1):
+            LOG.info("Kubernetes is unhealthy. Defer application audit.")
+            return
+
+        # Ensure that FluxCD pods are ready.
+        if not self._app.check_fluxcd_pod_status():
+            LOG.warning("FluxCD pods are not ready. Defer application audit.")
             return
 
         # Load metadata of apps from predefined directory to allow platform

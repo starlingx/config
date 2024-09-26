@@ -269,8 +269,9 @@ def k8s_wait_for_endpoints_health(tries=20, try_sleep=5, timeout=5):
     if unhealthy:
         result = False
         LOG.error(f"The following Kubernetes endpoints are unhealthy: {unhealthy}")
+    else:
+        LOG.info("All Kubernetes endpoints are healthy.")
 
-    LOG.info("All Kubernetes endpoints are healthy.")
     return result
 
 

@@ -125,6 +125,12 @@ class KubeAppController(rest.RestController):
         url_hash.update(bytes(str(url).encode('utf-8')))
         return "{}-{}".format(prefix, url_hash.hexdigest()[:16])
 
+    def _check_k8s_health(self, operation):
+        """ Check if Kubernetes is healthy. """
+        if not kubernetes.k8s_wait_for_endpoints_health(tries=3, try_sleep=1, timeout=1):
+            raise wsme.exc.ClientSideError(
+                "Kubernetes endpoints are not accessible for application operations")
+
     def _check_tarfile(self, app_tarfile, app_name, app_version, operation):
         def _handle_upload_failure(reason):
             raise wsme.exc.ClientSideError(_(
@@ -239,6 +245,8 @@ class KubeAppController(rest.RestController):
         except exception.KubeAppNotFound:
             pass
 
+        self._check_k8s_health(constants.APP_UPLOAD_OP)
+
         # Create a database entry and make an rpc async request to upload
         # the application
         app_data = {'name': name,
@@ -318,6 +326,8 @@ class KubeAppController(rest.RestController):
                     "Application-apply rejected: operation is not allowed "
                     "while the current status is {}.".format(db_app.status)))
 
+            self._check_k8s_health(constants.APP_APPLY_OP)
+
             try:
                 lifecycle_hook_info = LifecycleHookInfo()
                 lifecycle_hook_info.init(constants.APP_LIFECYCLE_MODE_MANUAL,
@@ -351,6 +361,8 @@ class KubeAppController(rest.RestController):
                 raise wsme.exc.ClientSideError(_(
                     "Application-remove rejected: operation is not allowed while "
                     "the current status is {}.".format(db_app.status)))
+
+            self._check_k8s_health(constants.APP_REMOVE_OP)
 
             try:
                 lifecycle_hook_info = LifecycleHookInfo()
@@ -457,6 +469,8 @@ class KubeAppController(rest.RestController):
                       name)
             raise wsme.exc.ClientSideError(_(
                 "Application-update rejected: application not found."))
+
+        self._check_k8s_health(constants.APP_UPDATE_OP)
 
         try:
             lifecycle_hook_info = LifecycleHookInfo()
