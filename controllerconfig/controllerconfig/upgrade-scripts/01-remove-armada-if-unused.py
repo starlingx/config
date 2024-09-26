@@ -111,12 +111,13 @@ def wait_cmd_output(cmd, expected_output, timeout=TIMEOUT, step=TIME_STEP,
     while time_elapsed < timeout:
         output, _ = run_cmd(cmd, interrupt_on_error=interrupt_on_error)
         if output == expected_output:
-            return time_elapsed
+            return True
         sleep(step)
         time_elapsed += step
-    msg = 'Timeout waiting for output of cmd "%s" to match "%s"' \
-          % (cmd, expected_output)
-    raise Exception(msg)
+    LOG.warning('Timeout waiting for output of cmd "%s" to match "%s"'
+                % (cmd, expected_output))
+
+    return False
 
 
 def kill_process_and_descendants(proc):
@@ -231,6 +232,59 @@ def is_armada_required():
 
 
 @test_k8s_health
+def delete_armada_pods():
+    """
+    Best effort approach to delete lingering Armada pods
+
+    This function is only used if deleting helmrelease is not enough
+    to delete the armada pods.
+    """
+
+    get_pods_cmd = "kubectl get po -n %s -o name --kubeconfig %s" \
+        % (ARMADA_NS, KUBERNETES_ADMIN_CONF)
+
+    try:
+        # Capture the output of the kubectl command
+        output, _ = run_cmd(get_pods_cmd)
+        # Extract pod names from the result
+        pods = output.splitlines()  # Get each line as a pod name
+        if not pods:
+            LOG.info("No pods found in the namespace %s." % ARMADA_NS)
+            return
+
+        # Delete each pod
+        for pod in pods:
+            pod_name = pod.split('/')[1]  # Extract the pod name
+            delete_pod_cmd = "kubectl delete pod %s -n %s --kubeconfig %s" \
+                % (pod_name, ARMADA_NS, KUBERNETES_ADMIN_CONF)
+
+            LOG.info("Deleting pod: %s" % pod_name)
+            run_cmd(delete_pod_cmd)
+
+        LOG.info("All armada pods have been deleted.")
+    except Exception as e:
+        LOG.error("An error occurred: %s" % e)
+
+
+@test_k8s_health
+def has_armada_deployment():
+    """
+    Check if there is an active deployment in the armada namespace
+    """
+
+    cmd = "kubectl get deployment -n %s --kubeconfig %s" \
+        % (ARMADA_NS, KUBERNETES_ADMIN_CONF)
+    try:
+        output, _ = run_cmd(cmd)
+        if output:
+            return True
+        else:
+            return False
+    except Exception as e:
+        LOG.error("An error occurred: %s" % e)
+
+
+@test_k8s_health
 def remove_armada_resources():
     """
     Remove Armada helm release and namespace.
@@ -255,8 +309,18 @@ def remove_armada_resources():
     LOG.debug("Waiting for resources to terminate...")
     cmd = "kubectl get all -n %s -o name --kubeconfig %s" \
           % (ARMADA_NS, KUBERNETES_ADMIN_CONF)
-    time_elapsed = wait_cmd_output(cmd=cmd, expected_output="")
-    LOG.debug("Took about {} seconds".format(time_elapsed))
+    success = wait_cmd_output(cmd=cmd, expected_output="")
+
+    if not success:
+        # In some cases, when deleting the armada helmrelease, the pod
+        # continues to run. For this cases, a targeted deletion of the
+        # pods is performed.
+        delete_armada_pods()
+
+        # Check if there is an active deployment in the armada namespace
+        if (has_armada_deployment()):
+            LOG.error("Deletion of Armada deployment failed")
+            return False
 
     # Remove armada namespace
     cmd = "kubectl delete namespace %s --kubeconfig %s --ignore-not-found" \
