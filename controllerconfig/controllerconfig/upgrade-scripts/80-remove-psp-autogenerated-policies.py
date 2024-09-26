@@ -53,10 +53,14 @@ def main():
 def delete_resources(resources):
     for resource in resources:
         try:
+            # Extract resource type and name from the command
+            resource_type = resource[3]
+            resource_name = resource[4]
             subprocess.run(resource, check=True)
-            LOG.info("Successfully deleted: {resource}")
+            LOG.info(f"Successfully deleted {resource_type} '{resource_name}'")
         except subprocess.CalledProcessError as e:
-            LOG.error("Error occurred while deleting: {resource}")
+            LOG.error(f"Error occurred while deleting {resource_type} \
+                      '{resource_name}'")
             LOG.exception("Error: %s" % e)
 
 
