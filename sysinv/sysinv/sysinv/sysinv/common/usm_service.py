@@ -238,6 +238,10 @@ def get_platform_upgrade(dbapi, timeout=10):
         LOG.warn(f"Use cached USM platform upgrade state of {secs_from_latest_retrieved} seconds old")
         upgrade = usm_upgrade["upgrade"]
 
+        if upgrade is None:
+            # no upgrade in progress
+            raise exception.NotFound()
+
     # USM upgrade completed is considered as no upgrade in progress
     if upgrade and upgrade.state == constants.DEPLOY_STATE_COMPLETED:
         raise exception.NotFound()
