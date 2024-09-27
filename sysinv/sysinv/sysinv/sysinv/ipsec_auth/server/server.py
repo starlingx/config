@@ -121,24 +121,28 @@ class IPsecConnection(object):
             client_address = sock.getpeername()
             LOG.debug("Read({})".format(client_address))
             data = utils.socket_recv_all_json(sock, 8192)
-            if data and self.state != State.END_STAGE:
+            if data:
                 # A readable client socket has data and it is not on END_STAGE
                 LOG.debug("Received {!r}".format(data))
-                self.state = State.get_next_state(self.state, self.op_code)
+                if self.state != State.END_STAGE:
+                    self.state = State.get_next_state(self.state, self.op_code)
 
-                LOG.debug("Preparing payload")
-                msg = self._handle_write(data)
-                sock.sendall(msg)
+                    LOG.debug("Preparing payload")
+                    msg = self._handle_write(data)
+                    sock.sendall(msg)
 
-                if self.state == State.STAGE_2:
-                    self.ots_token.activate()
-                self.state = State.get_next_state(self.state, self.op_code)
+                    if self.state == State.STAGE_2:
+                        self.ots_token.activate()
+                    self.state = State.get_next_state(self.state, self.op_code)
+                else:
+                    self._handle_end_stage(data, client_address)
+                    self.keep_connection = False
             else:
-                # Interpret empty result or END_STAGE as closed connection
-                if not data and self.state != State.END_STAGE:
-                    LOG.warn('No data received from client or empty buffer provided.')
-                self.keep_connection = False
+                # Interpret empty result as closed connection
+                LOG.warn('No data received from client or empty buffer provided.')
                 LOG.info("Closing connection with {}".format(client_address))
+                self.status_code = StatusCode.IPSEC_OP_FAILURE_GENERAL
+                self.keep_connection = False
         except Exception as e:
             # Exceptions should be handled below
             # TODO (mbenedit): Log, handle and send failure status code to IPsec
@@ -152,7 +156,6 @@ class IPsecConnection(object):
                 self._cleanup_connection_data()
                 sock.close()
                 sel.unregister(sock)
-                LOG.info("Connection closed.")
             LOG.debug("state: {}, status_code: {}".format(self.state, self.status_code))
 
     def _handle_write(self, recv_message: bytes):
@@ -276,6 +279,17 @@ class IPsecConnection(object):
             raise Exception('An unknown exception occurred. Error: %s' % e)
 
         return bytes(payload, "utf-8")
+
+    def _handle_end_stage(self, data, client):
+        LOG.info("Received IPsec Closing message.")
+
+        payload = json.loads(data.decode('utf-8'))
+        self.status_code = StatusCode(payload['status_code'])
+        if self.status_code == StatusCode.IPSEC_OP_SUCCESS:
+            LOG.info(f"Operation {self.op_code} completed for {client}.")
+        else:
+            LOG.error(f"Operation {self.op_code} failed to conclude on {client} "
+                      f"with status code: {self.status_code}.")
 
     def _validate_client_connection(self, message):
         hashed_item = message.pop('hash')
