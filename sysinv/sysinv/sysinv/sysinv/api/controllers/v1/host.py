@@ -3617,26 +3617,6 @@ class HostController(rest.RestController):
                       "was found" % ihost['hostname'])
             return
 
-    def _semantic_check_unlock_upgrade(self, ihost, force_unlock=False):
-        """
-        Perform semantic checks related to upgrades prior to unlocking host.
-        """
-
-        try:
-            # Check if there's an upgrade in progress
-            upgrade = usm_service.get_platform_upgrade(pecan.request.dbapi)
-            if upgrade.state in constants.DEPLOY_STATE_HOST_STATES:
-                # USM upgrade, host-unlock is allowed only when it is deployed
-                host_upgrade = usm_service.UsmHostUpgrade.get_by_hostname(
-                    pecan.request.dbapi, ihost['hostname'])
-                if (host_upgrade is not None and
-                        host_upgrade.state not in constants.DEPLOY_HOST_DEPLOYED_STATES):
-                    raise wsme.exc.ClientSideError(
-                        _("Upgrade is in progress. At this time %s cannot be unlocked"
-                          % ihost['hostname']))
-        except exception.NotFound:
-            pass
-
     @staticmethod
     def _semantic_check_duplex_oam_config(ihost):
         system = pecan.request.dbapi.isystem_get_one()
@@ -5419,15 +5399,6 @@ class HostController(rest.RestController):
                   "Wait for 'online' availability status and then 'unlock'" %
                   hostupdate.displayid))
 
-        # Semantic Check: Don't unlock when running incorrect software load
-        host_upgrade = usm_service.UsmHostUpgrade.get_by_hostname(
-            pecan.request.dbapi, hostupdate.ihost_orig['hostname'])
-        if (host_upgrade is not None and
-                hostupdate.ihost_orig['sw_version'] != host_upgrade.to_sw_version):
-            raise wsme.exc.ClientSideError(
-                _("Can not Unlock a host running the incorrect "
-                  "software load. Reinstall the host to correct."))
-
         # To unlock, we need the following additional fields
         if not (hostupdate.ihost_patch['mgmt_mac'] and
                 hostupdate.ihost_patch['hostname'] and
@@ -5545,9 +5516,9 @@ class HostController(rest.RestController):
             return
 
         hostname = hostupdate.ihost_patch.get('hostname')
-        host_deploy = usm_service.get_host_deploy(pecan.request.dbapi, hostname)
-        if host_deploy:
-            if host_deploy['host_state'] in [constants.DEPLOY_HOST_DEPLOYED, constants.DEPLOY_HOST_ROLLBACK_DEPLOYED]:
+        host_upgrade = usm_service.UsmHostUpgrade.get_by_hostname(pecan.request.dbapi, hostname)
+        if host_upgrade is not None:
+            if host_upgrade.state in constants.DEPLOY_HOST_DEPLOYED_STATES:
                 return
             is_next_host = usm_service.is_host_next_to_be_deployed(pecan.request.dbapi, hostname)
             if not is_next_host:
@@ -5805,7 +5776,6 @@ class HostController(rest.RestController):
     def check_unlock_controller(self, hostupdate, force_unlock=False):
         """Pre unlock semantic checks for controller"""
         LOG.info("%s ihost check_unlock_controller" % hostupdate.displayid)
-        self._semantic_check_unlock_upgrade(hostupdate.ihost_orig, force_unlock)
         self._semantic_check_unlock_kube_upgrade(hostupdate.ihost_orig, force_unlock)
         self._semantic_check_oam_interface(hostupdate.ihost_orig)
         self._semantic_check_cinder_volumes(hostupdate.ihost_orig)

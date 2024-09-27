@@ -2633,12 +2633,15 @@ class TestPatch(TestHost):
             availability=constants.AVAILABILITY_ONLINE)
         self._create_test_host_platform_interface(c0_host)
 
+        # Mock the is_host_next_to_be_deployed method
         is_host_mock = mock.patch('sysinv.common.usm_service.is_host_next_to_be_deployed')
         is_host = is_host_mock.start()
         is_host.return_value = True
-        p = mock.patch('sysinv.common.usm_service.get_host_deploy')
-        get_host_deploy = p.start()
-        get_host_deploy.return_value = {"host_state": "deploying"}
+
+        # Mock the UsmHostUpgrade.get_by_hostname method to simulate upgrade logic
+        p = mock.patch('sysinv.common.usm_service.UsmHostUpgrade.get_by_hostname')
+        get_by_hostname = p.start()
+        get_by_hostname.return_value = mock.Mock(state="deploying")
         self.addCleanup(p.stop)
 
         # Unlock host
