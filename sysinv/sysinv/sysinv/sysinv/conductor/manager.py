@@ -8943,9 +8943,10 @@ class ConductorManager(service.PeriodicService):
                     return False
                 if host.task:
                     return False
-                if (host.personality == constants.CONTROLLER and
+                if (host.personality == constants.CONTROLLER and (
+                        not host.vim_progress_status or
                         not host.vim_progress_status.startswith(
-                            constants.VIM_SERVICES_ENABLED)):
+                            constants.VIM_SERVICES_ENABLED))):
                     return False
         except Exception as e:
             LOG.warn("Failed check_nodes_stable. (%s)" % str(e))

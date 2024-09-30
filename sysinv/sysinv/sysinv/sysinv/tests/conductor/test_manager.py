@@ -6465,3 +6465,47 @@ class ManagerTestCaseInternal(base.BaseHostTestCase):
         self.assertIsNone(updated_other_pool.controller0_address_id)
 
         self.mock_manager_generate_dnsmasq_hosts_file.assert_called()
+
+    def test_check_nodes_stable(self):
+        host = self._create_test_host(constants.CONTROLLER,
+                                      availability=constants.AVAILABILITY_INTEST,
+                                      task="task",
+                                      vim_progress_status=None)
+
+        p = mock.patch.object(manager, 'LOG')
+        mock_log = p.start()
+        mock_log.warn.return_value = None
+        self.addCleanup(p.stop)
+
+        result = self.service.check_nodes_stable()
+        self.assertEqual(False, result)
+
+        self.dbapi.ihost_update(host.id, {'availability': constants.AVAILABILITY_AVAILABLE})
+
+        result = self.service.check_nodes_stable()
+        self.assertEqual(False, result)
+
+        self.dbapi.ihost_update(host.id, {'task': ''})
+
+        result = self.service.check_nodes_stable()
+        self.assertEqual(False, result)
+        mock_log.warn.assert_not_called()
+
+        self.dbapi.ihost_update(host.id, {'vim_progress_status': ''})
+
+        result = self.service.check_nodes_stable()
+        self.assertEqual(False, result)
+
+        self.dbapi.ihost_update(host.id, {'vim_progress_status': constants.VIM_SERVICES_ENABLED})
+
+        result = self.service.check_nodes_stable()
+        self.assertEqual(True, result)
+
+        q = mock.patch.object(self.service.dbapi, 'ihost_get_list')
+        mock_ihost_get_list = q.start()
+        mock_ihost_get_list.side_effect = exception.SysinvException()
+        self.addCleanup(q.stop)
+
+        result = self.service.check_nodes_stable()
+        self.assertEqual(False, result)
+        mock_log.warn.assert_called_once()
