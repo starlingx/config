@@ -395,21 +395,23 @@ class CephMonController(rest.RestController):
 
         # if this is an AIO-DX, must update host-fs ceph to the same size to support
         # the three ceph monitors solution
-        rpc_hostfs = {}
+        rpc_hostfs_list = []
         if is_aio_dx:
             LOG.info("This is an AIO-DX. Update ceph host-fs with the new ceph-mon size.")
             host_fs_list = pecan.request.dbapi.host_fs_get_by_ihost(ihost=cephmon.forihostid)
             for fs in host_fs_list:
                 if fs['name'] == constants.FILESYSTEM_NAME_CEPH:
                     hostfs_uuid = fs['uuid']
-                    rpc_hostfs = objects.host_fs.get_by_uuid(pecan.request.context, hostfs_uuid)
-                    rpc_hostfs['size'] = rpc_cephmon.ceph_mon_gib
+                    hostfs = objects.host_fs.get_by_uuid(pecan.request.context, hostfs_uuid)
+                    hostfs['size'] = rpc_cephmon.ceph_mon_gib
+                    rpc_hostfs_list.append(hostfs)
 
         try:
             rpc_cephmon.save()
             # Apply host-fs ceph changes too if this is an AIO-DX
             if is_aio_dx:
-                rpc_hostfs.save()
+                for rpc_hostfs in rpc_hostfs_list:
+                    rpc_hostfs.save()
         except exception.HTTPNotFound:
             msg = _("Ceph Mon update failed: uuid %s : "
                     " patch %s"
@@ -498,12 +500,14 @@ def _create(ceph_mon):
     # Adding a ceph monitor to a worker selects Ceph's deployment model
     if chost['personality'] == constants.WORKER:
         # Only if replication model is CONTROLLER or not yet defined
+        is_aio = cutils.is_aio_system(pecan.request.dbapi)
         stor_model = ceph.get_ceph_storage_model()
         worker_stor_models = [constants.CEPH_CONTROLLER_MODEL, constants.CEPH_UNDEFINED_MODEL]
-        if stor_model not in worker_stor_models:
+        if stor_model not in worker_stor_models or is_aio:
             raise wsme.exc.ClientSideError(
                 _("Can not add a storage monitor to a worker if "
-                  "ceph's deployments model is already set to %s." % stor_model))
+                  "ceph's deployments model is already set to %s or system is All-in-one."
+                  % stor_model))
 
         replication, min_replication = \
             StorageBackendConfig.get_ceph_max_replication(pecan.request.dbapi)
