@@ -1097,7 +1097,9 @@ class InterfaceNetworkDeleteTestCase(InterfaceNetworkTestCase):
         self.set_dc_role(constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD)
 
         controller0 = self.controller
-        c0_admin0 = dbutils.create_test_interface(ifname='c0_admin0', forihostid=controller0.id)
+        c0_admin0 = dbutils.create_test_interface(ifname='c0_admin0',
+                                                  forihostid=controller0.id,
+                                                  vlan_id=10, iftype='vlan')
 
         cc_subnet = netaddr.IPNetwork('192.168.104.0/24')
         cc_addrpool = dbutils.create_test_address_pool(
@@ -1140,3 +1142,16 @@ class InterfaceNetworkDeleteTestCase(InterfaceNetworkTestCase):
 
         self.mock_rpcapi_update_admin_config.assert_called_once()
         self.assertEqual(True, self.mock_rpcapi_update_admin_config.call_args.args[2])
+
+        ifnw = dbutils.create_test_interface_network_assign(c0_admin0.id,
+                                                            self.admin_network.
+                                                            id)
+
+        self.dbapi.address_update(gateway_addr.uuid, {'interface_id': c0_admin0.id})
+        gateway_addr_db = self.dbapi.address_get(gateway_addr.uuid)
+        self.assertEqual(1, gateway_addr_db.interface_id)
+
+        self._delete_interface_and_check(c0_admin0.uuid, expect_errors=False)
+
+        gateway_addr_db = self.dbapi.address_get(gateway_addr.uuid)
+        self.assertEqual(None, gateway_addr_db.interface_id)
