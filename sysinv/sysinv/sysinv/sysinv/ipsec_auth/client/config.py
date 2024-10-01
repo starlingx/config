@@ -248,7 +248,7 @@ class StrongswanPuppet(object):
                                   'dynamic[tcp/7793],'
                                   'dynamic[tcp/7797],'
                                   'dynamic[tcp/7798-7799],'
-                                  'dynamic[tcp/7789],'
+                                  'dynamic[tcp/7788-7789],'
                                   'dynamic[tcp/7790],'
                                   'dynamic[tcp/7794]'),
                 },
@@ -277,7 +277,7 @@ class StrongswanPuppet(object):
                                  'dynamic[tcp/7793],'
                                  'dynamic[tcp/7797],'
                                  'dynamic[tcp/7798-7799],'
-                                 'dynamic[tcp/7789],'
+                                 'dynamic[tcp/7788-7789],'
                                  'dynamic[tcp/7790],'
                                  'dynamic[tcp/7794]'),
                     'remote_ts': '0.0.0.0/0, ::/0',
