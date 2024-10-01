@@ -322,7 +322,7 @@ start()
         then
             warning_error "WARNING: Failed to config and enable IPsec for the node"
         fi
-    elif [ ! -e ${FIRST_BOOT} ]
+    elif [ ! -e ${FIRST_BOOT} ] && [ "$system_mode" != "simplex" ]
     then
         logger -t $0 -p info "Checking if IPsec Certificates is updated......"
 
