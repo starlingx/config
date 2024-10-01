@@ -76,7 +76,7 @@ class KubernetesPuppet(base.BasePuppet):
 
         return config
 
-    def get_host_config(self, host, generate_optimized_hieradata=False):
+    def get_host_config(self, host):
         config = {}
 
         # Update node configuration for host
@@ -92,7 +92,7 @@ class KubernetesPuppet(base.BasePuppet):
         config.update(self._get_host_pcidp_config(host))
 
         # Generate the token and join command for this host.
-        if not generate_optimized_hieradata:
+        if not self.generate_optimized_hieradata:
             config.update(self._get_host_join_command(host))
 
         # Get the kubernetes version for this host
