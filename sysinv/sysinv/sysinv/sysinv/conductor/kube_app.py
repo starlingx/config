@@ -1593,6 +1593,7 @@ class AppOperator(object):
 
     @retry(retry_on_exception=lambda x: isinstance(x, exception.ApplicationApplyFailure),
            stop_max_attempt_number=5, wait_fixed=30 * 1000)
+    @kubernetes.test_k8s_health
     def _make_fluxcd_operation_with_monitor(self, app, request):
         def _recover_from_helm_operation_in_progress_on_app_apply(metadata_name, namespace,
                                                                   flux_error_message):
