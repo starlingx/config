@@ -6605,6 +6605,16 @@ class ConductorManager(service.PeriodicService):
                 values = {'state': constants.SB_STATE_CONFIGURED}
                 self.dbapi.istor_update(stor.uuid, values)
 
+    def _clear_ceph_mon_state(self, ihost_uuid):
+        mons = self.dbapi.ceph_mon_get_by_ihost(ihost_uuid)
+        for mon in mons:
+            if mon.state != constants.SB_STATE_CONFIGURED:
+                LOG.info("State of ceph_mon: '%s' is '%s', resetting to '%s'." %
+                         (mon.uuid, mon.state,
+                          constants.SB_STATE_CONFIGURED))
+                values = {'state': constants.SB_STATE_CONFIGURED, 'task': constants.SB_TASK_NONE}
+                self.dbapi.ceph_mon_update(mon.uuid, values)
+
     def iplatform_update_by_ihost(self, context,
                                   ihost_uuid, imsg_dict):
         """Update node data when sysinv-agent is started after a boot.
@@ -6703,6 +6713,7 @@ class ConductorManager(service.PeriodicService):
                         constants.SB_TYPE_CEPH):
                     # This should be run once after a node boot
                     self._clear_ceph_stor_state(ihost_uuid)
+                    self._clear_ceph_mon_state(ihost_uuid)
 
                 # On first_report which occurs on restart, check if the
                 # reboot flag matches the applied config; as it is possible
@@ -11556,20 +11567,7 @@ class ConductorManager(service.PeriodicService):
             LOG.error("Host %s does not have ceph monitor!" % host_uuid)
             return
 
-        tasks = {host.hostname: constants.SB_STATE_CONFIGURED}
-        values = None
-        # Get the hosts that have ceph_mons
-        ceph_mon_hosts = self.dbapi.ceph_mon_get_list()
-        for host in ceph_mon_hosts:
-            if (tasks.get(host.hostname, '') != constants.SB_STATE_CONFIGURED):
-                # There are other hosts to get configured.
-                # Updating with current progress.
-                values = {'state': constants.SB_STATE_CONFIGURED, 'task': str(tasks)}
-                break
-        else:
-            # All hosts have completed configuration.
-            # Update the state and cleanup the tasks field.
-            values = {'state': constants.SB_STATE_CONFIGURED, 'task': None}
+        values = {'state': constants.SB_STATE_CONFIGURED, 'task': constants.SB_TASK_NONE}
 
         self.dbapi.ceph_mon_update(monitor.uuid, values)
         LOG.info("Ceph monitor update succeeded on host: %s" % host_uuid)

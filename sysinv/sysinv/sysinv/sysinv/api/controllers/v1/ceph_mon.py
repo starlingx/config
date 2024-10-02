@@ -482,6 +482,7 @@ def _create(ceph_mon):
             _("Host not found uuid: %s ." % ceph_mon['ihost_uuid']))
 
     ceph_mon['forihostid'] = chost['id']
+    ceph_mon['hostname'] = chost['hostname']
     ceph_mon['device_path'] = chost['rootfs_device']
 
     # check if ceph monitor is already configured
@@ -539,21 +540,15 @@ def _create(ceph_mon):
     # In case we add the monitor on a worker node, the state
     # and task must be set properly.
     if chost.personality == constants.WORKER:
-        ceph_mon['state'] = constants.SB_STATE_CONFIGURING
-        ctrls = pecan.request.dbapi.ihost_get_by_personality(
-             constants.CONTROLLER)
-        valid_ctrls = [
-                ctrl for ctrl in ctrls if
-                (ctrl.administrative == constants.ADMIN_LOCKED and
-                 ctrl.availability == constants.AVAILABILITY_ONLINE) or
-                (ctrl.administrative == constants.ADMIN_UNLOCKED and
-                 ctrl.operational == constants.OPERATIONAL_ENABLED)]
+        if (chost.administrative == constants.ADMIN_UNLOCKED and
+                chost.operational == constants.OPERATIONAL_ENABLED):
+            ceph_mon['state'] = constants.SB_STATE_CONFIGURING
+        elif (chost.administrative == constants.ADMIN_LOCKED and
+                chost.availability == constants.AVAILABILITY_ONLINE):
+            ceph_mon['state'] = constants.SB_STATE_CONFIGURING_ON_UNLOCK
 
-        tasks = {}
-        for ctrl in valid_ctrls:
-            tasks[ctrl.hostname] = constants.SB_STATE_CONFIGURING
-
-        ceph_mon['task'] = str(tasks)
+        task = {ceph_mon['hostname']: ceph_mon['state']}
+        ceph_mon['task'] = str(task)
 
     LOG.info("Creating ceph-mon DB entry for host uuid %s: %s" %
              (ceph_mon['ihost_uuid'], str(ceph_mon)))
@@ -562,11 +557,12 @@ def _create(ceph_mon):
     # We update the base config when adding a dynamic monitor.
     # At this moment the only possibility to add a dynamic monitor
     # is on a worker node, so we check for that.
-    if chost.personality == constants.WORKER:
+    if (chost.personality == constants.WORKER and
+            new_ceph_mon['state'] == constants.SB_STATE_CONFIGURING):
         try:
             # Storage nodes are not supported on a controller based
             # storage model.
-            personalities = [constants.CONTROLLER, constants.WORKER]
+            personalities = [constants.WORKER]
             pecan.request.rpcapi.update_ceph_base_config(
                 pecan.request.context,
                 personalities)
