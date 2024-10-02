@@ -113,10 +113,6 @@ SB_SUPPORTED_NETWORKS = {
     SB_TYPE_CEPH: [NETWORK_TYPE_MGMT, NETWORK_TYPE_CLUSTER_HOST]
 }
 
-UPGRADE_NOTIFICATION = 'System platform upgrade is in progress.\n' \
-                       'The command may display the target configuration ' \
-                       'that has not yet been applied to the host.'
-
 EXPIRED = "--expired"
 SOON_TO_EXPIRY = "--soon_to_expiry"
 VALIDITY = "Validity"
