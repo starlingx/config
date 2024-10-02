@@ -1047,6 +1047,23 @@ def _create(stor):
     else:
         create_attrs['osdid'] = None
 
+    if StorageBackendConfig.has_backend(pecan.request.dbapi,
+                                        constants.SB_TYPE_CEPH):
+        health_detail = None
+        try:
+            ceph_helper = ceph.CephApiOperator()
+            response, body = ceph_helper._ceph_api.health(detail='detail',
+                                                          body='json',
+                                                          timeout=10)
+            if response.status_code == 200:
+                health_detail = body['output']
+        except Exception as e:
+            LOG.warn("ceph health exception: %s " % e)
+
+        if health_detail is None and ihost['operational'] == constants.OPERATIONAL_ENABLED:
+            raise wsme.exc.ClientSideError(_(
+                "Can not add storage as restful services must be available!"))
+
     new_stor = pecan.request.dbapi.istor_create(forihostid,
                                                 create_attrs)
 
