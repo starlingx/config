@@ -141,6 +141,18 @@ class Client(object):
 
         return json.dumps(message)
 
+    def _generate_message_5(self):
+        message = {}
+        message["status_code"] = self.status_code.value
+
+        return json.dumps(message)
+
+    def _finish_operation(self, sock):
+        msg = self._generate_message_5()
+        LOG.info("Sending IPsec Closing message.")
+        LOG.debug('Sending {!r}'.format(msg))
+        sock.sendall(bytes(msg, 'utf-8'))
+
     def _handle_rcvd_data(self, data):
 
         LOG.debug("Received {!r})".format(data))
@@ -317,6 +329,7 @@ class Client(object):
                     if not self.data:
                         LOG.error("No data received from server")
                         exit_code = 1
+                        self.status_code = StatusCode.IPSEC_OP_FAILURE_GENERAL
                         self.state = State.END_STAGE
                     elif not self._handle_rcvd_data(self.data):
                         if self.op_code == constants.OP_CODE_CERT_VALIDATION:
@@ -326,6 +339,7 @@ class Client(object):
                             LOG.error("Error handling data from server")
                             exit_code = 1
 
+                        self.status_code = StatusCode.IPSEC_OP_FAILURE_GENERAL
                         self.state = State.END_STAGE
 
                     if self.status_code == StatusCode.IPSEC_OP_ENABLED:
@@ -342,6 +356,7 @@ class Client(object):
                     self.state = State.get_next_state(self.state, self.op_code)
 
                 if self.state == State.END_STAGE:
+                    self._finish_operation(sock)
                     keep_running = False
 
         LOG.info("Shutting down")
