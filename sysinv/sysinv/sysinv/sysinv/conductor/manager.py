@@ -11561,7 +11561,7 @@ class ConductorManager(service.PeriodicService):
         # Get the hosts that have ceph_mons
         ceph_mon_hosts = self.dbapi.ceph_mon_get_list()
         for host in ceph_mon_hosts:
-            if(tasks.get(host.hostname, '') != constants.SB_STATE_CONFIGURED):
+            if (tasks.get(host.hostname, '') != constants.SB_STATE_CONFIGURED):
                 # There are other hosts to get configured.
                 # Updating with current progress.
                 values = {'state': constants.SB_STATE_CONFIGURED, 'task': str(tasks)}
@@ -17874,7 +17874,7 @@ class ConductorManager(service.PeriodicService):
                 LOG.error("Problem sanitizing feature gates service parameter.")
                 rc = 1
 
-            if self.sanitize_feature_gates_kubeadm_configmap(target_version) == 1:
+            if self.sanitize_kubeadm_configmap(target_version) == 1:
                 LOG.error("Problem sanitizing kubeadm configmap feature gates.")
                 rc = 1
 
@@ -19692,9 +19692,9 @@ class ConductorManager(service.PeriodicService):
         LOG.info('Successfully updated feature gates in kubelet cm.')
         return 0
 
-    def sanitize_feature_gates_kubeadm_configmap(self, target_version):
+    def sanitize_kubeadm_configmap(self, target_version):
         """
-        Edit the kubeadm configmap and remove stale feature gates that
+        Edit the kubeadm configmap and remove stale options/feature gates that
         are no longer applicable for the version of K8s that we are upgrading to.
         """
         configmap_name = 'kubeadm-config'
@@ -19702,12 +19702,20 @@ class ConductorManager(service.PeriodicService):
         try:
             configmap = self._kube.kube_read_config_map(configmap_name, 'kube-system')
 
-            # Parse the configmap to get the feature gates
             stream = StringIO(configmap.data['ClusterConfiguration'])
             kubeadm_config = yaml.safe_load(stream)
             for component in ['apiServer', 'controllerManager', 'scheduler']:
                 k8s_component = kubeadm_config.get(component, {})
                 extra_args = k8s_component.get('extraArgs', {})
+
+                # Remove the deprecated pod-eviction-timeout args from the
+                # controller-manager for the K8s v1.27.5
+                if component == 'controllerManager':
+                    pod_eviction_timeout = extra_args.get('pod-eviction-timeout', None)
+                    if pod_eviction_timeout and target_version == 'v1.27.5':
+                        extra_args.pop('pod-eviction-timeout')
+
+                # Parse the configmap to get the feature gates
                 feature_gates = extra_args.get('feature-gates', None)
                 if not feature_gates:
                     continue
