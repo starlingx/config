@@ -84,6 +84,8 @@ class DCManagerPuppet(openstack.OpenstackBasePuppet):
             'openstack::dcmanager::params::region_name': self.get_region_name(),
             'platform::dcmanager::params::service_create':
                 self._to_create_services(),
+            'platform::dcmanager::params::rabbit_host':
+                self._format_url_address(self._get_management_address()),
         }
 
     def get_secure_system_config(self):

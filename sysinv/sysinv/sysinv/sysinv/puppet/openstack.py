@@ -239,7 +239,7 @@ class OpenstackBasePuppet(base.BasePuppet):
     def _format_database_connection(self, service,
                                     address=None, database=None):
         if not address:
-            if cutils.is_fqdn_ready_to_use():
+            if cutils.is_fqdn_ready_to_use() and service not in ['dcmanager', 'dcorch']:
                 address = constants.CONTROLLER_FQDN
             else:
                 address = self._get_management_address()
