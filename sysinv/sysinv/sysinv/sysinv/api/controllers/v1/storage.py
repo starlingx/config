@@ -1036,14 +1036,16 @@ def _create(stor):
                     constants.FILESYSTEM_NAME_CEPH
                 if str(e) != msg:
                     raise e
-        # Get the next free OSD ID in the system
-        stors = pecan.request.dbapi.istor_get_list(sort_key='osdid', sort_dir='asc')
-        stors_ids = [s['osdid'] for s in stors if s['osdid'] is not None]
-        if stors_ids:
-            candidate_ids = [i for i in range(0, stors_ids[-1] + 2) if i not in stors_ids]
-            create_attrs['osdid'] = candidate_ids[0]
+            create_attrs['osdid'] = None
         else:
-            create_attrs['osdid'] = 0
+            # Get the next free OSD ID in the system
+            stors = pecan.request.dbapi.istor_get_list(sort_key='osdid', sort_dir='asc')
+            stors_ids = [s['osdid'] for s in stors if s['osdid'] is not None]
+            if stors_ids:
+                candidate_ids = [i for i in range(0, stors_ids[-1] + 2) if i not in stors_ids]
+                create_attrs['osdid'] = candidate_ids[0]
+            else:
+                create_attrs['osdid'] = 0
     else:
         create_attrs['osdid'] = None
 
