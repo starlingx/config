@@ -18,7 +18,6 @@ from sysinv.common import service_parameter as sp_consts
 
 from sysinv.common.kubernetes import KUBERNETES_ADMIN_CONF
 from sysinv.common.kubernetes import test_k8s_health
-from sysinv.ipsec_auth.common import constants as ips_consts
 
 LOG = log.get_logger(__name__)
 
@@ -165,10 +164,10 @@ def remove_mgmt_ipsec(postgres_port):
 @test_k8s_health
 def delete_ipsec_certificate_requests():
     """Delete IPsec Certificate Requests from kubernetes resource."""
-    namespace = ips_consts.NAMESPACE_DEPLOYMENT
+    namespace = consts.CERT_NAMESPACE_PLATFORM_CERTS
     get_cmd = ['kubectl', '--kubeconfig', KUBERNETES_ADMIN_CONF,
                '-n', namespace,
-               'get', ips_consts.CERTIFICATE_REQUEST_RESOURCE,
+               'get', consts.CERT_REQUEST_RESOURCE,
                '--no-headers', '-o', 'custom-columns=NAME:metadata.name']
 
     sub_get = subprocess.Popen(
@@ -193,7 +192,7 @@ def delete_ipsec_certificate_requests():
         delete_cmd = [
             'kubectl', '--kubeconfig', KUBERNETES_ADMIN_CONF,
             '-n', namespace, 'delete',
-            ips_consts.CERTIFICATE_REQUEST_RESOURCE] + ipsec_certs
+            consts.CERT_REQUEST_RESOURCE] + ipsec_certs
 
         sub_del = subprocess.Popen(
             delete_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
