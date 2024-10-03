@@ -416,6 +416,7 @@ class ConductorManager(service.PeriodicService):
             self._start()
         except sqlalchemy.exc.OperationalError as ex:
             self._check_dnsmasq_not_ready(ex)
+            LOG.warn("sysinv-conductor exit due to sqlalchemy.exc.OperationalError.")
             raise
 
         # accept API calls and run periodic tasks after
@@ -1650,6 +1651,7 @@ class ConductorManager(service.PeriodicService):
                                 dnsmasq_addn_hosts_file)):
             os.rename(temp_dnsmasq_addn_hosts_file, dnsmasq_addn_hosts_file)
 
+        LOG.info("{}: Restarting dnsmasq".format(func))
         os.system("pkill -HUP dnsmasq")
 
     def _generate_dnsmasq_conf_file(self):
@@ -1675,6 +1677,8 @@ class ConductorManager(service.PeriodicService):
                 not filecmp.cmp(temp_dnsmasq_addn_conf_file,
                                 dnsmasq_addn_conf_file)):
             os.rename(temp_dnsmasq_addn_conf_file, dnsmasq_addn_conf_file)
+
+        LOG.info("_generate_dnsmasq_conf_file: sm-restart-safe dnsmasq")
 
         os.system("sm-restart-safe service dnsmasq")
 
