@@ -638,7 +638,6 @@ def main():
                 reconfigure_certificates_subject()
                 create_platform_certificates(to_release)
                 patch_https_enabled(True)
-                wait_system_reconfiguration()
                 create_platform_certificates_updated_file_flag()
                 LOG.info("Successfully created/updated required platform "
                          "certificates.")
