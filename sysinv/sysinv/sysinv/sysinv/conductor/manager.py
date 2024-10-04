@@ -14042,12 +14042,23 @@ class ConductorManager(service.PeriodicService):
 
         host_uuids = config_dict.get('host_uuids')
 
-        try:
-            usm_service.get_platform_upgrade(self.dbapi)
-        except exception.NotFound:
-            # No upgrade in progress
-            pass
-        else:
+        generate_optimized_hieradata = config_dict.get('generate_optimized_hieradata', False)
+
+        # Skip the usm_service call when generate_optimized_hieradata is True
+        upgrade_in_progress = False
+
+        if not generate_optimized_hieradata:
+            try:
+                usm_service.get_platform_upgrade(self.dbapi)
+            except exception.NotFound:
+                # No upgrade in progress
+                pass
+            else:
+                upgrade_in_progress = True
+
+        # If upgrade is in progress (or if generate_optimized_hieradata is True),
+        # execute the logic in the else block
+        if upgrade_in_progress or generate_optimized_hieradata:
             # Limit host_uuids to those matching the active software version
             if not host_uuids:
                 hosts = self.dbapi.ihost_get_list()

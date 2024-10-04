@@ -40,12 +40,16 @@ def puppet_context(func):
 class PuppetOperator(object):
     """Class to encapsulate puppet operations for System Inventory"""
 
-    def __init__(self, dbapi=None, path=None):
+    def __init__(
+        self, dbapi=None, path=None, generate_optimized_hieradata=False
+    ):
         if path is None:
             path = common.PUPPET_HIERADATA_PATH
 
         self.dbapi = dbapi
         self.path = path
+        # Set generate_optimized_hieradata to False by default
+        self._generate_optimized_hieradata = generate_optimized_hieradata
 
         puppet_plugins = extension.ExtensionManager(
             namespace='systemconfig.puppet_plugins',
@@ -65,6 +69,14 @@ class PuppetOperator(object):
     @property
     def config(self):
         return self.context.get('config', {})
+
+    @property
+    def generate_optimized_hieradata(self):
+        return self._generate_optimized_hieradata
+
+    @generate_optimized_hieradata.setter
+    def generate_optimized_hieradata(self, value):
+        self._generate_optimized_hieradata = value
 
     @puppet_context
     def create_static_config(self):
@@ -210,18 +222,12 @@ class PuppetOperator(object):
         """Update the host hiera configuration files for the supplied host"""
 
         self.config_uuid = config_uuid
+        self.generate_optimized_hieradata = generate_optimized_hieradata
         self.context['config'] = config = {}
         LOG.info("Updating hiera for host: %s "
                  "with config_uuid: %s" % (host.hostname, config_uuid))
         for puppet_plugin in self.puppet_plugins:
-            if puppet_plugin.obj.__class__.__name__ == 'KubernetesPuppet':
-                config.update(
-                    puppet_plugin.obj.get_host_config(
-                        host, generate_optimized_hieradata
-                    )
-                )
-            else:
-                config.update(puppet_plugin.obj.get_host_config(host))
+            config.update(puppet_plugin.obj.get_host_config(host))
 
         self._write_host_config(host, config)
 

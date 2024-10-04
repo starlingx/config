@@ -50,6 +50,10 @@ class BasePuppet(object):
     def config(self):
         return self._operator.config
 
+    @property
+    def generate_optimized_hieradata(self):
+        return self._operator.generate_optimized_hieradata
+
     def get_static_config(self):
         return {}
 
@@ -348,6 +352,8 @@ class BasePuppet(object):
     def is_upgrade_in_progress_cached(self):
         """Checks whether a platform upgrade is in progress.
         Uses caching to avoid multiple calls."""
+        if self.generate_optimized_hieradata:
+            self.context['_is_upgrade_in_progress_cache'] = (False, None)
         if '_is_upgrade_in_progress_cache' not in self.context:
             try:
                 self.context['_is_upgrade_in_progress_cache'] = (
