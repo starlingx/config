@@ -1301,7 +1301,7 @@ class Addresses(Base):
     name = Column(String(255))
 
     interface_id = Column(Integer,
-                          ForeignKey('interfaces.id', ondelete='CASCADE'),
+                          ForeignKey('interfaces.id', ondelete='SET NULL'),
                           nullable=True)
 
     address_pool_id = Column(Integer,
