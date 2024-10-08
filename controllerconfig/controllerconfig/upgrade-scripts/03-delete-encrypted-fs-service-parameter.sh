@@ -4,11 +4,13 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 #
-#
 # This migration script is used for deleting the encrypted-fs attribute
 # of 'platform config' service parameter during the activate stage of
 # platform upgrade if it is present.
-
+#
+# This script rely on 'security-kubeapi-service-parameters-apply.py'
+# to apply the parameters to kubeapi, needing to be executed before it.
+#
 
 # The migration scripts are passed these parameters:
 NAME=$(basename $0)

@@ -5,7 +5,11 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # This script includes in upgraded systems the requirements for
-# the min TLS version and cipher suites to be used by k8s API
+# the min TLS version and cipher suites to be used by k8s API.
+#
+# This script rely on 'security-kubeapi-service-parameters-apply.py'
+# to apply the parameters to kubeapi, needing to be executed before it.
+#
 
 # The scripts are passed these parameters:
 NAME=$(basename $0)
@@ -18,7 +22,6 @@ function log {
 }
 
 RETRY_COMMAND=3
-RETRY_ALARM=40
 TRY_SLEEP=15
 
 # Only run this script during upgrade-activate and from release 22.12
@@ -29,50 +32,26 @@ fi
 
 source /etc/platform/openrc
 
-log "Applying required parameters to kubernetes API."
+log "Adding required parameters to kubernetes API."
 
-applied=false
 for try in $(seq 1 $RETRY_COMMAND); do
-    system service-parameter-add kubernetes kube_apiserver tls-cipher-suites=TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,TLS_AES_128_GCM_SHA256,TLS_AES_256_GCM_SHA384
-    system service-parameter-add kubernetes kube_apiserver tls-min-version=VersionTLS12
-    system service-parameter-apply kubernetes
+    ret=$( (system service-parameter-add kubernetes kube_apiserver tls-cipher-suites=TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,TLS_AES_128_GCM_SHA256,TLS_AES_256_GCM_SHA384 && \
+    system service-parameter-add kubernetes kube_apiserver tls-min-version=VersionTLS12) 2>&1 >/dev/null )
 
     if [[ $? -eq 0 ]]; then
-        log "Apply requested. Will wait for the API to be reconfigurated."
-        applied=true
-        break
+        log "TLS parameters added."
+        exit 0
     else
-        log "Error while adding commands, retrying. Attemp $try of $RETRY_COMMAND."
-        sleep $TRY_SLEEP
-    fi
-done
-
-if [[ $try = "$RETRY_COMMAND" ]] && [[ $applied = "false" ]]; then
-    log "Command service-parameter-apply failed. Exiting for manual intervention or retry of the activation."
-    exit 1
-fi
-
-# Wait for the config out-of-date
-cleared=false
-for try in $(seq 1 $RETRY_ALARM); do
-    CONFIG_ALARMS=$(fm alarm-list --query alarm_id=250.001)
-    if [[ -z "${CONFIG_ALARMS}" ]]; then
-        if [[ $cleared = "true" ]]; then
-            break
+        if [[ $ret == *"Parameter already exists"* ]]; then
+            log "TLS parameters already exist."
+            exit 0
         fi
-        cleared=true
-    else
-        cleared=false
+        if [[ $try = "$RETRY_COMMAND" ]]; then
+            log "Command service-parameter-add failed. Exiting for manual intervention or retry of the activation."
+            exit 1
+        else
+            log "Error adding TLS parameters for kube-apiserver, retrying. Attemp $try of $RETRY_COMMAND."
+            sleep $TRY_SLEEP
+        fi
     fi
-    log "Wait for configuration out-of-date alarms to clear. Attemp $try of $RETRY_ALARM."
-    sleep $TRY_SLEEP
 done
-
-if [[ $try = "$RETRY_ALARM" ]] && [[ $cleared = "false" ]]; then
-    log "Kubernetes API wasn't reconfigured in the allocated time. Exiting for manual intervention or retry of the activation."
-    exit 1
-else
-    log "Required parameters applied to kubernetes API."
-fi
-
-exit 0
