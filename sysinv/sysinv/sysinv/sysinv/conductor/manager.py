@@ -1014,7 +1014,7 @@ class ConductorManager(service.PeriodicService):
         {'service': constants.SERVICE_TYPE_PLATFORM,
          'section': constants.SERVICE_PARAM_SECTION_PLATFORM_KERNEL,
          'name': constants.SERVICE_PARAM_NAME_PLATFORM_OOT,
-         'value': ",".join(constants.SERVICE_PARAM_PLAT_KERNEL_OOT_VALUES[1:]),
+         'value': ",".join(constants.SERVICE_PARAM_PLAT_KERNEL_OOT_VALUES),
          },
     ]
 
