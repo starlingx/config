@@ -8,6 +8,7 @@
 
 from datetime import datetime
 import os
+import time
 from oslo_log import log
 from six.moves.urllib.error import HTTPError
 from six.moves.urllib.error import URLError
@@ -223,6 +224,7 @@ def get_platform_upgrade(dbapi, timeout=10):
                 break
             else:
                 LOG.warn("Failed to query USM platform upgrade state. Reattempt...")
+                time.sleep(2)  # sleep 2 seconds before reattempting
 
     if upgrade is None:
         # return the cache if it is recently updated, raise CannotQueryPlatformUpgrade
