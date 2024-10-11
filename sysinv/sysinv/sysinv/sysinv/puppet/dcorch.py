@@ -174,6 +174,8 @@ class DCOrchPuppet(openstack.OpenstackBasePuppet):
             'openstack::dcorch::params::region_name': self.get_region_name(),
             'platform::dcorch::params::service_create':
                 self._to_create_services(),
+            'platform::dcorch::params::rabbit_host':
+                self._format_url_address(self._get_management_address()),
         }
 
         if utils.is_openstack_applied(self.dbapi):
