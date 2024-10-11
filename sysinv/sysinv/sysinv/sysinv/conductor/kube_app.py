@@ -296,6 +296,12 @@ class AppOperator(object):
         if new_status is None:
             new_status = app.status
 
+        # New progress info can contain large messages from exceptions raised.
+        # It may need to be truncated to fit the corresponding database field.
+        if new_progress is not None:
+            new_progress = (new_progress[:252] + '...') if len(new_progress) > 255 \
+                else new_progress
+
         with self._lock:
             app.update_status(new_status, new_progress)
 
@@ -2766,7 +2772,7 @@ class AppOperator(object):
                 self._abort_operation(app, constants.APP_APPLY_OP,
                                       user_initiated=True)
             else:
-                self._abort_operation(app, constants.APP_APPLY_OP, e)
+                self._abort_operation(app, constants.APP_APPLY_OP, str(e))
 
             if not caller:
                 # If apply is not called from update method, deregister the app's
