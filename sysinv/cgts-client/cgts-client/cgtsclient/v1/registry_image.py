@@ -24,8 +24,11 @@ class RegistryImageManager(base.Manager):
 
     def list(self, filter_out_untagged):
         """Retrieve the list of images from the registry."""
-        path = options.build_url(self._path(), None,
-                                 ['filter_out_untagged=%s' % filter_out_untagged])
+        if filter_out_untagged:
+            path = options.build_url(self._path(), None,
+                                     ['filter_out_untagged=%s' % filter_out_untagged])
+        else:
+            path = self._path()
         return self._list(path, 'registry_images')
 
     def tags(self, image_name):
