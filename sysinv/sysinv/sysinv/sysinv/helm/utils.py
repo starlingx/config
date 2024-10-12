@@ -27,6 +27,8 @@ from sysinv.agent import rpcapiproxy as agent_rpcapi
 from sysinv.common import exception
 from sysinv.common import kubernetes
 from sysinv.common.retrying import retry
+from sysinv.helm import common
+
 
 LOG = logging.getLogger(__name__)
 
@@ -351,3 +353,33 @@ def index_repo(repo_path):
         raise exception.HelmFailure(reason=err_msg)
     finally:
         timer.cancel()
+
+
+def extract_repository_info(helmrepo_path):
+    """ Extract the Helm repository name, url and local path from
+    a HelmRepository file.
+
+    :param helmrepo_path: The path to file that contains the HelmRepository definition.
+    :return: A dictionary containing the HelmRepository name, url and local path.
+    """
+
+    with io.open(helmrepo_path, 'r', encoding='utf-8') as f:
+        helm_repo_yaml = next(yaml.safe_load_all(f))
+
+    helm_repo_url = helm_repo_yaml["spec"]["url"]
+    helm_repo_name = helm_repo_yaml["metadata"]["name"]
+    target_folder = helm_repo_url.rsplit('/', 1)[-1]
+
+    # Check if repository is supported
+    if target_folder in common.HELM_SUPPORTED_REPOS:
+        helm_repo_local_path = os.path.join(common.HELM_REPO_BASE_PATH, target_folder)
+    else:
+        raise exception.SysinvException(f"Repository {helm_repo_url} from {helmrepo_path} "
+                                        "is not supported")
+
+    repository_dict = {"name": helm_repo_name,
+                       "url": helm_repo_url,
+                       "path": helm_repo_local_path
+                       }
+
+    return repository_dict

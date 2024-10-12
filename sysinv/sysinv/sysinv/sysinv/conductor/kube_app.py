@@ -582,15 +582,14 @@ class AppOperator(object):
                               .format(chart.name))
                 elif chart.filesystem_location not in chart_files_in_use:
                     os.remove(chart.filesystem_location)
-                    repo_set.add(chart.helm_repo_name)
+                    repo_set.add(os.path.dirname(chart.filesystem_location))
             except OSError:
                 LOG.error("Error while removing chart {} from repository".
                           format(chart.filesystem_location))
 
         # Re-index repositories
-        for repo_name in repo_set:
-            helm_utils.index_repo(os.path.join(common.HELM_REPO_BASE_PATH,
-                                               repo_name))
+        for repo_path in repo_set:
+            helm_utils.index_repo(repo_path)
 
     def _get_image_tags_by_charts_fluxcd(self, app_images_file, manifest, overrides_dir):
         app_imgs = []
@@ -1251,11 +1250,10 @@ class AppOperator(object):
             root_kustomization_yaml = next(yaml.safe_load_all(f))
             charts_groups = root_kustomization_yaml["resources"]
 
-        # get the helm repo base url
-        with io.open(helmrepo_path, 'r', encoding='utf-8') as f:
-            helm_repo_yaml = next(yaml.safe_load_all(f))
-            helm_repo_url = helm_repo_yaml["spec"]["url"]
-            helm_repo_name = helm_repo_yaml["metadata"]["name"]
+        helm_repo_dict = helm_utils.extract_repository_info(helmrepo_path)
+        helm_repo_url = helm_repo_dict["url"]
+        helm_repo_name = helm_repo_dict["name"]
+        helm_repo_local_path = helm_repo_dict["path"]
 
         charts = []
 
@@ -1310,7 +1308,7 @@ class AppOperator(object):
                                                chart_spec["spec"]["version"],
                                                ".tgz")
                     filesystem_location = helm_utils.get_chart_tarball_path(
-                        os.path.join(common.HELM_REPO_BASE_PATH, helm_repo_name),
+                        helm_repo_local_path,
                         chart_name,
                         chart_version)
                     release = helmrelease_yaml["spec"]["releaseName"]
