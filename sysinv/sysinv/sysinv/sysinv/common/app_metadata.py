@@ -23,10 +23,8 @@ from oslo_config import cfg
 from oslo_log import log as logging
 
 from sysinv._i18n import _
-from sysinv.api.controllers.v1 import kube_app as kube_api
 from sysinv.common import constants
 from sysinv.common import exception
-from sysinv.conductor import kube_app
 from sysinv.common import kubernetes
 from sysinv.common import utils
 from sysinv.db import api
@@ -34,6 +32,32 @@ from sysinv.db import api
 CONF = cfg.CONF
 
 LOG = logging.getLogger(__name__)
+
+
+# TODO(dbarbosa): Remove the get_kube_api function and return imports to the top of the file
+# after the issue with fm_core import was resolved in the Fault repository
+def get_kube_api():
+    """Import kube_app from sysinv.api.controllers.v1 only when needed
+
+    It is necessary to import kube_app separately only when needed due to the fm_core package
+    (which is imported inside kube_app by fault repository) failing if imported when the
+    "sysinv tox" or "sysinv verify-metadata" command is run.
+    """
+    from sysinv.api.controllers.v1 import kube_app as kube_api
+    return kube_api
+
+
+# TODO(dbarbosa): Remove the get_kube_app function and return imports to the top of the file
+# after the issue with fm_core import was resolved in the Fault repository
+def get_kube_app():
+    """Import kube_app from sysinv.conductor only when needed
+
+    It is necessary to import kube_app separately only when needed due to the fm_core package
+    (which is imported inside kube_app by fault repository) failing if imported when the
+    "sysinv tox" or "sysinv verify-metadata" command is run.
+    """
+    from sysinv.conductor import kube_app
+    return kube_app
 
 
 def _locate_metadata_file(directory):
@@ -704,6 +728,8 @@ def load_metadata_of_apps(apps_metadata):
     """
 
     dbapi = api.get_instance()
+    kube_api = get_kube_api()
+    kube_app = get_kube_app()
     kube_app_helper = kube_api.KubeAppHelper(dbapi)
 
     # All installed K8S Apps.
