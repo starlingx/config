@@ -71,8 +71,10 @@ from sysinv.api.controllers.v1 import ptp_instance
 from sysinv.api.controllers.v1 import ptp_interface
 from sysinv.api.controllers.v1 import ptp_parameter
 from sysinv.api.controllers.v1 import pv
+from sysinv.api.controllers.v1 import query_compatible_apps
 from sysinv.api.controllers.v1 import registry_image
 from sysinv.api.controllers.v1 import remotelogging
+from sysinv.api.controllers.v1 import reorder_apps
 from sysinv.api.controllers.v1 import restore
 from sysinv.api.controllers.v1 import route
 from sysinv.api.controllers.v1 import sdn_controller
@@ -263,6 +265,12 @@ class V1(base.APIBase):
     "Links to the fernet repo resource"
 
     apps = [link.Link]
+    "Links to the application resource "
+
+    query_compatible_apps = [link.Link]
+    "Links to the application resource "
+
+    reorder_apps = [link.Link]
     "Links to the application resource "
 
     host_fs = [link.Link]
@@ -821,6 +829,20 @@ class V1(base.APIBase):
                                        'apps', '',
                                        bookmark=True)]
 
+        v1.query_compatible_apps = [link.Link.make_link('self', pecan.request.host_url,
+                                        'query_compatible_apps', ''),
+                    link.Link.make_link('bookmark',
+                                        pecan.request.host_url,
+                                        'query_compatible_apps', '',
+                                        bookmark=True)]
+
+        v1.reorder_apps = [link.Link.make_link('self', pecan.request.host_url,
+                                        'reorder_apps', ''),
+                    link.Link.make_link('bookmark',
+                                        pecan.request.host_url,
+                                        'reorder_apps', '',
+                                        bookmark=True)]
+
         v1.datanetworks = [link.Link.make_link('self', pecan.request.host_url,
                                                'datanetworks', ''),
                            link.Link.make_link('bookmark',
@@ -989,6 +1011,9 @@ class Controller(rest.RestController):
     labels = label.LabelController()
     fernet_repo = fernet_repo.FernetKeyController()
     apps = kube_app.KubeAppController()
+    query_compatible_apps = \
+        query_compatible_apps.QueryCompatibleAppsController()
+    reorder_apps = reorder_apps.ReorderAppsController()
     datanetworks = datanetwork.DataNetworkController()
     interface_datanetworks = interface_datanetwork.InterfaceDataNetworkController()
     host_fs = host_fs.HostFsController()

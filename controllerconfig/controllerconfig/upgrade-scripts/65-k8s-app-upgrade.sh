@@ -35,7 +35,6 @@ TIMEOUT=600
 KUBE_SYSTEM_NAMESPACE="kube-system"
 CERT_MANAGER_NAMESPACE="cert-manager"
 
-SLEEP_RECONCILIATION=60
 RECOVER_RESULT_SLEEP=30
 RECOVER_RESULT_ATTEMPTS=30 # ~15 min to recover app
 DELETE_RESULT_SLEEP=10
@@ -47,12 +46,42 @@ UPDATE_RESULT_ATTEMPTS=30  # ~15 min to update app
 COMMAND_RETRY_SLEEP=30
 COMMAND_RETRY_ATTEMPTS=10  # ~5 min to wait on a retried command.
 SOFTWARE_LOG_PATH='/var/log/software.log'
-SYSINV_LOG_PATH='/var/log/sysinv.log'
 CRITICAL_APPS='nginx-ingress-controller cert-manager'
 APPS_NOT_TO_UPDATE='deployment-manager'
 
 function log {
     echo "$(date -Iseconds | cut -d'+' -f1): ${NAME}[$$]: INFO: $*" >> "$SOFTWARE_LOG_PATH" 2>&1
+}
+
+function get_api_token {
+    curl -v -X POST "${1}/auth/tokens" \
+    --header 'Content-Type: application/json' \
+    --data '{
+        "auth": {
+            "identity": {
+                "methods": [
+                    "password"
+                ],
+                "password": {
+                    "user": {
+                        "domain": {
+                            "name": "Default"
+                        },
+                        "name": "'${2}'",
+                        "password": "'${3}'"
+                    }
+                }
+            },
+            "scope": {
+                "project": {
+                    "domain": {
+                        "name": "Default"
+                    },
+                    "name": "admin"
+                }
+            }
+        }
+    }' 2>&1 | sed -n 's/.*[t|T]oken: \(.*\)/\1/p'
 }
 
 function verify_apps_are_not_recovering {
@@ -141,12 +170,6 @@ function check_k8s_health {
 
 function check_pod_readiness {
     # Check the status of nginx-ingress-controller and cert-manager pods
-
-    # Helmrelease reconciliation is not called immediately after the app update request is made.
-    # To ensure that the pod status is due to the new version and not the previous installation,
-    # a 1 minute delay is being added.
-    log "Waiting 1 minute to make sure the reconciliation was called"
-    sleep $SLEEP_RECONCILIATION
 
     # Wait for the Nginx Ingress Controller pods to be ready in the background
     check_k8s_health
@@ -360,35 +383,40 @@ if [ "$ACTION" == "activate" ]; then
     K8S_VERSIONS=$(system kube-version-list)
     ACTIVE_K8S_VERSION=$(echo "$K8S_VERSIONS" | grep ' True ' | grep ' active ' | awk -F '|' '{print $2}' | tr -d ' ')
 
-    # Get apps compatible with current k8s version
-    # TODO(dbarbosa): Remove "--log-file ${SOFTWARE_LOG_PATH}" after fixing the issue with logs of
-    # the "sysinv-app query <k8s-target-version>" being logged to stdout.
-    COMPATIBLE_APPS=$(sudo sysinv-app --log-file ${SOFTWARE_LOG_PATH} query ${ACTIVE_K8S_VERSION})
-    COMPATIBLE_APPS_FORMATED=$(echo "$COMPATIBLE_APPS" | paste -sd '|')
-
-    # Get all loads apps
-    APPS_LOADED=$(system application-list | head -n-1 | tail -n+4 | awk '{print $2}')
-
-    # Check and log compatible and not compatible apps
-    for APP in $APPS_LOADED; do
-        if [[ "${APP}" =~ (${COMPATIBLE_APPS_FORMATED}) ]]; then
-            log "${APP} has an upgrade compatible tarball and will be updated."
-        else
-            log "${APP} does not have an upgrade compatible tarball and will remain at its current version."
-            continue
-        fi
-    done
+    # Get token
+    TOKEN=$(get_api_token "${OS_AUTH_URL}" "${OS_USERNAME}" "${OS_PASSWORD}")
 
     # Get list of apps that need to be installed serially due to application dependencies.
-    # TODO(dbarbosa): Remove "--log-file ${SOFTWARE_LOG_PATH}" after fixing the issue with logs of
-    # the "sysinv-app query <k8s-target-version>" being logged to stdout.
-    ALL_SYSTEM_SERIAL_APPLICATION=$(sudo sysinv-app --log-file ${SYSINV_LOG_PATH} get_reorder_apps)
+    REORDER_APPS_ENDPOINT="http://controller:6385/v1/reorder_apps/"
+    RESPONSE=$(curl --silent --retry $COMMAND_RETRY_ATTEMPTS --retry-delay $COMMAND_RETRY_SLEEP --write-out "HTTPSTATUS:%{http_code}" -X GET "$REORDER_APPS_ENDPOINT" -H "X-Auth-Token: ${TOKEN}")
+
+    # Capture the HTTP status code
+    HTTP_STATUS=$(echo "$RESPONSE" | tr -d '\n' | sed -e 's/.*HTTPSTATUS://')
+
+    if [[ "$HTTP_STATUS" -ne 200 ]]; then
+        log "Unable to get order of apps. Received HTTP status code $HTTP_STATUS."
+        exit 1
+    fi
+
+    ALL_SYSTEM_SERIAL_APPLICATION=$(echo "$RESPONSE" | sed -e 's/HTTPSTATUS:.*//')
 
     # Get compatibles tarballs path with current k8s version
-    # Sort applications by version. Lower versions are attempted first.
-    # TODO(dbarbosa): Remove "--log-file ${SOFTWARE_LOG_PATH}" after fixing the issue with logs of
-    # the "sysinv-app query <k8s-target-version>" being logged to stdout.
-    PATHS_TO_COMPATIBLE_TARBALLS=$(sudo sysinv-app --log-file ${SOFTWARE_LOG_PATH} query ${ACTIVE_K8S_VERSION} --include-path | sort -V)
+    QUERY_COMPATIBLE_APPS_ENDPOINT="http://controller:6385/v1/query_compatible_apps/?k8s_ver=${ACTIVE_K8S_VERSION}&include_path=true"
+    RESPONSE=$(curl --silent --retry $COMMAND_RETRY_ATTEMPTS --retry-delay $COMMAND_RETRY_SLEEP --write-out "HTTPSTATUS:%{http_code}" -X GET "$QUERY_COMPATIBLE_APPS_ENDPOINT" -H "X-Auth-Token: ${TOKEN}")
+
+    # Capture the HTTP status code
+    HTTP_STATUS=$(echo "$RESPONSE" | tr -d '\n' | sed -e 's/.*HTTPSTATUS://')
+
+    if [[ "$HTTP_STATUS" -ne 200 ]]; then
+        log "Unable to obtain compatible app list. Received HTTP status code $HTTP_STATUS."
+        exit 1
+    fi
+
+    PATHS_TO_COMPATIBLE_TARBALLS=$(echo "$RESPONSE" | sed -e 's/HTTPSTATUS:.*//')
+
+    # Format values
+    ALL_SYSTEM_SERIAL_APPLICATION=$(echo $ALL_SYSTEM_SERIAL_APPLICATION | sed 's/\[//;s/\]//;s/", "/\n/g;s/"//g')
+    PATHS_TO_COMPATIBLE_TARBALLS=$(echo $PATHS_TO_COMPATIBLE_TARBALLS | sed 's/\[//;s/\]//;s/", "/\n/g;s/"//g')
 
     CRITICAL_APPS_PATHS=""
 
