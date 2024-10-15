@@ -365,6 +365,7 @@ class StorageController(rest.RestController):
                                              " uuid: %s" % stor_uuid))
         # replace ihost_uuid and istor_uuid with corresponding
         patch_obj = jsonpatch.JsonPatch(patch)
+        osdid = None
         for p in patch_obj:
             if p['path'] == '/ihost_uuid':
                 p['path'] = '/forihostid'
@@ -376,6 +377,12 @@ class StorageController(rest.RestController):
                 tier = objects.storage_tier.get_by_uuid(pecan.request.context,
                                                         p['value'])
                 p['value'] = tier.id
+            elif p['path'] == '/osdid':
+                try:
+                    osdid = int(p['value'])
+                except ValueError:
+                    raise wsme.exc.ClientSideError("The osdid must be an integer!")
+                p['value'] = osdid
 
         try:
             stor = Storage(**jsonpatch.apply_patch(
@@ -408,10 +415,12 @@ class StorageController(rest.RestController):
                 # journal partition moves to external journal disk
                 journal_stor_uuid = getattr(stor, 'journal_location')
         else:
-            if (hasattr(stor, 'journal_size_mib') and
-                    rpc_stor['uuid'] == rpc_stor['journal_location']):
-                raise wsme.exc.ClientSideError(_(
-                    "Invalid update: Size of collocated journal is fixed."))
+            if StorageBackendConfig.has_backend(pecan.request.dbapi,
+                                                constants.SB_TYPE_CEPH):
+                if (hasattr(stor, 'journal_size_mib') and
+                        rpc_stor['uuid'] == rpc_stor['journal_location']):
+                    raise wsme.exc.ClientSideError(_(
+                        "Invalid update: Size of collocated journal is fixed."))
 
         # Update only the fields that have changed
         updated = False
@@ -425,13 +434,16 @@ class StorageController(rest.RestController):
             return Storage.convert_with_links(rpc_stor)
 
         # Set status for newly created OSD.
+        ihost_id = rpc_stor['forihostid']
+        ihost = pecan.request.dbapi.ihost_get(ihost_id)
         if rpc_stor['function'] == constants.STOR_FUNCTION_OSD:
             if StorageBackendConfig.has_backend(pecan.request.dbapi,
                                                 constants.SB_TYPE_CEPH_ROOK):
-                rpc_stor['state'] = constants.SB_STATE_CONFIGURING_WITH_APP
+                if osdid is not None:
+                    rpc_stor['state'] = constants.SB_STATE_CONFIGURED
+                else:
+                    rpc_stor['state'] = constants.SB_STATE_CONFIGURING_WITH_APP
             else:
-                ihost_id = rpc_stor['forihostid']
-                ihost = pecan.request.dbapi.ihost_get(ihost_id)
                 if ihost['operational'] == constants.OPERATIONAL_ENABLED:
                     # We are running live manifests
                     rpc_stor['state'] = constants.SB_STATE_CONFIGURING
