@@ -10,6 +10,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 
 from controllerconfig.common import log
 from six.moves import configparser
@@ -49,14 +50,21 @@ def main():
     log.configure()
 
     if get_system_mode() != "simplex":
+        alarm_act = sp_consts.SERVICE_PARAM_PLAT_MTCE_HBS_FAILURE_ACTION_ALARM
+        default_act = consts.SERVICE_PARAM_PLAT_MTCE_HBS_FAILURE_ACTION_DEFAULT
         if to_release == "24.09" and action == "activate":
             try:
                 LOG.info(f"Enable IPsec on system from release "
                          f"{from_release} to {to_release}")
                 LOG.info("Update mtce_heartbeat_failure_action to alarm, "
                          "before IPsec is enabled.")
-                update_heartbeat_failure(
-                    sp_consts.SERVICE_PARAM_PLAT_MTCE_HBS_FAILURE_ACTION_ALARM)
+                update_heartbeat_failure(alarm_act)
+
+                if not verify_heartbeat_failure_action(alarm_act):
+                    LOG.error("Failure updating heartbeat_failure_action "
+                              "to alarm.")
+                    return 1
+
                 LOG.info("Remove mgmt_ipsec in capabilities of "
                          "sysinv i_host table")
                 remove_mgmt_ipsec(port)
@@ -66,8 +74,7 @@ def main():
                 configure_ipsec_on_nodes(action)
                 LOG.info("Update heartbeat_failure_action to default value "
                          "(fail).")
-                update_heartbeat_failure(
-                    consts.SERVICE_PARAM_PLAT_MTCE_HBS_FAILURE_ACTION_DEFAULT)
+                update_heartbeat_failure(default_act)
                 LOG.info("IPsec is enabled.")
             except Exception as ex:
                 LOG.exception(ex)
@@ -80,16 +87,20 @@ def main():
                          f"{from_release} to {to_release}")
                 LOG.info("Update mtce_heartbeat_failure_action to alarm, "
                          "before IPsec is disabled.")
-                update_heartbeat_failure(
-                    sp_consts.SERVICE_PARAM_PLAT_MTCE_HBS_FAILURE_ACTION_ALARM)
+                update_heartbeat_failure(alarm_act)
+
+                if not verify_heartbeat_failure_action(alarm_act):
+                    LOG.error("Failure updating heartbeat_failure_action "
+                              "to alarm.")
+                    return 1
+
                 LOG.info("Disable IPsec on all hosts.")
                 configure_ipsec_on_nodes(action)
                 LOG.info("Delete IPsec CertificateRequests from k8s.")
                 delete_ipsec_certificate_requests()
                 LOG.info("Update heartbeat_failure_action to default value "
                          "(fail).")
-                update_heartbeat_failure(
-                    consts.SERVICE_PARAM_PLAT_MTCE_HBS_FAILURE_ACTION_DEFAULT)
+                update_heartbeat_failure(default_act)
                 LOG.info("IPsec is disabled.")
             except Exception as ex:
                 LOG.exception(ex)
@@ -234,6 +245,43 @@ def update_heartbeat_failure(action):
 
     exc_msg = f'Cannot modify heartbeat_failure_action to {action}.'
     return execute_system_cmd(cmd, exc_msg)
+
+
+def get_heartbeat_failure_action():
+    value = None
+
+    with open("/etc/mtc.ini") as fp:
+        lines = fp.readlines()
+
+        for line in lines:
+            # Ignoring commentaries
+            if line.startswith(';'):
+                continue
+
+            if line.find("heartbeat_failure_action") != -1:
+                line = line.replace(' ', '')
+                line = line.replace('\n', '')
+                value = line.split('=')[1]
+                break
+
+    return value
+
+
+def verify_heartbeat_failure_action(action):
+    """
+    After service-parameter apply is called, the command takes some time to
+    change heartbeat failure action value and complete system configuration.
+    This function verifies the heartbeat_failure_action value in /etc/mtc.ini
+    every 03 seconds (maximum wait time: 21 seconds) in order to validate
+    that the parameter was updated.
+    """
+    for i in range(7):
+        time.sleep(3)
+        value = get_heartbeat_failure_action()
+        if value == action:
+            return True
+
+    return False
 
 
 def get_admin_credentials():
