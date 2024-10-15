@@ -698,12 +698,13 @@ class PlatformPuppet(base.BasePuppet):
                 cpu_ranges.update({'nohz_full': 'disabled'})
                 ignore_recovery = True
 
-            # prevent kernel managed IRQs from landing on isolated cores
-            isolcpus_prefix = ['nohz', 'domain', 'managed_irq']
-            isolcpus_prefix.append(isolcpus_ranges)
+            if isolcpus_ranges:
+                # prevent kernel managed IRQs from landing on isolated cores
+                isolcpus_prefix = ['nohz', 'domain', 'managed_irq']
+                isolcpus_prefix.append(isolcpus_ranges)
+                cpu_ranges.update({"isolcpus": ','.join(isolcpus_prefix)})
 
             cpu_ranges.update({
-                "isolcpus": ','.join(isolcpus_prefix),
                 "rcu_nocbs": rcu_nocbs_ranges,
                 "kthread_cpus": platform_ranges
             })
