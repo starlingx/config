@@ -29,6 +29,8 @@ import netaddr
 import subprocess
 import tempfile
 import uuid
+import threading
+from time import sleep
 
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
@@ -6509,3 +6511,46 @@ class ManagerTestCaseInternal(base.BaseHostTestCase):
         result = self.service.check_nodes_stable()
         self.assertEqual(False, result)
         mock_log.warn.assert_called_once()
+
+    @mock.patch('os.system')
+    def test_generate_dnsmasq_hosts_file_concurrency(self, mock_os_system):
+        lock = threading.Lock()
+        running = 0
+        collisions = 0
+
+        def os_system_side_effect(command):
+            nonlocal lock
+            nonlocal running
+            nonlocal collisions
+
+            with lock:
+                prev = running
+                running += 1
+
+            if prev > 0:
+                collisions += 1
+
+            sleep(0.5)
+
+            with lock:
+                running -= 1
+
+        def function_caller():
+            try:
+                self.service._generate_dnsmasq_hosts_file()
+            except Exception:
+                pass
+
+        mock_os_system.side_effect = os_system_side_effect
+
+        threads = [threading.Thread(target=function_caller) for i in range(3)]
+
+        for thr in threads:
+            thr.start()
+
+        function_caller()
+
+        for thr in threads:
+            thr.join()
+
+        self.assertEqual(0, collisions)

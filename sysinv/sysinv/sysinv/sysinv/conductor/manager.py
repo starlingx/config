@@ -1392,27 +1392,20 @@ class ConductorManager(service.PeriodicService):
 
         return valid_leases
 
-    def _generate_dnsmasq_hosts_file(self, existing_host=None,
-                                     deleted_host=None):
+    @cutils.synchronized('_generate_dnsmasq_hosts_file', external=False)
+    def _generate_dnsmasq_hosts_file(self, existing_host=None, deleted_host=None):
         """Regenerates the dnsmasq host and addn_hosts files from database.
 
         :param existing_host: Include this host in list of hosts.
         :param deleted_host: Skip over writing MAC address for this host.
         """
-        if (self.topic == 'test-topic'):
-            dnsmasq_hosts_file = '/tmp/dnsmasq.hosts'
-        else:
-            dnsmasq_hosts_file = tsc.CONFIG_PATH + 'dnsmasq.hosts'
 
-        if (self.topic == 'test-topic'):
-            dnsmasq_addn_hosts_file = '/tmp/dnsmasq.addn_hosts'
-        else:
-            dnsmasq_addn_hosts_file = tsc.CONFIG_PATH + 'dnsmasq.addn_hosts'
+        config_dir = '/tmp/' if self.topic == 'test-topic' else tsc.CONFIG_PATH
 
-        if (self.topic == 'test-topic'):
-            dnsmasq_leases_file = '/tmp/dnsmasq.leases'
-        else:
-            dnsmasq_leases_file = tsc.CONFIG_PATH + 'dnsmasq.leases'
+        dnsmasq_hosts_file = config_dir + 'dnsmasq.hosts'
+        dnsmasq_addn_hosts_file = config_dir + 'dnsmasq.addn_hosts'
+        dnsmasq_leases_file = config_dir + 'dnsmasq.leases'
+        dnsmasq_addn_hosts_dc_file = config_dir + 'dnsmasq.addn_hosts_dc'
 
         if deleted_host:
             deleted_hostname = deleted_host.hostname
@@ -1421,6 +1414,7 @@ class ConductorManager(service.PeriodicService):
 
         temp_dnsmasq_hosts_file = dnsmasq_hosts_file + '.temp'
         temp_dnsmasq_addn_hosts_file = dnsmasq_addn_hosts_file + '.temp'
+        temp_dnsmasq_addn_hosts_dc_file = dnsmasq_addn_hosts_dc_file + '.temp'
         mgmt_network = self.dbapi.network_get_by_type(
             constants.NETWORK_TYPE_MGMT
         )
@@ -1539,7 +1533,8 @@ class ConductorManager(service.PeriodicService):
             # static controller pxeboot addresses.
             for address in self.dbapi._addresses_get_by_pool_uuid(
                     pxeboot_network.pool_uuid):
-                pxeboot_hostname = re.sub("-%s$" % constants.NETWORK_TYPE_PXEBOOT, '', str(address.name))
+                pxeboot_hostname = re.sub("-%s$" % constants.NETWORK_TYPE_PXEBOOT, '',
+                                          str(address.name))
                 LOG.info("%s: hostname: %s from %s:%s" % (func,
                          pxeboot_hostname, address.name, address.address))
                 id = 0
@@ -1616,9 +1611,6 @@ class ConductorManager(service.PeriodicService):
 
         # If there is no distributed cloud addn_hosts file, create an empty one
         # so dnsmasq will not complain.
-        dnsmasq_addn_hosts_dc_file = os.path.join(tsc.CONFIG_PATH, 'dnsmasq.addn_hosts_dc')
-        temp_dnsmasq_addn_hosts_dc_file = os.path.join(tsc.CONFIG_PATH, 'dnsmasq.addn_hosts_dc.temp')
-
         if not os.path.isfile(dnsmasq_addn_hosts_dc_file):
             with open(temp_dnsmasq_addn_hosts_dc_file, 'w') as f_out_addn_dc:
                 f_out_addn_dc.write(' ')
@@ -1644,7 +1636,8 @@ class ConductorManager(service.PeriodicService):
         # but the new mgmt IP range was not configured in the system yet.
         # The new Management Network IP range will be applied after the host-unlock
         if os.path.isfile(tsc.MGMT_NETWORK_RECONFIGURATION_ONGOING):
-            LOG.info("Ignoring DNSMASQ changes in runtime due to Management Network reconfiguration.")
+            LOG.info("Ignoring DNSMASQ changes in runtime due to Management Network "
+                     "reconfiguration.")
             return
 
         # Update host files atomically and reload dnsmasq
