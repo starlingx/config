@@ -527,12 +527,13 @@ class AgentManager(service.PeriodicService):
         try:
             # Turn on interfaces, so that lldpd can show all neighbors
             for interface in self._ipci_operator.pci_get_net_names():
-                flag = self._ipci_operator.pci_get_net_flags(interface)
-                # If administrative state is down, bring it up momentarily
-                if not (flag & pci.IFF_UP):
-                    subprocess.call(['ip', 'link', 'set', interface, 'up'])  # pylint: disable=not-callable
-                    links_down.append(interface)
-                    LOG.info('interface %s enabled to receive LLDP PDUs' % interface)
+                if not interface.startswith('cali'):
+                    flag = self._ipci_operator.pci_get_net_flags(interface)
+                    # If administrative state is down, bring it up momentarily
+                    if not (flag & pci.IFF_UP):
+                        subprocess.call(['ip', 'link', 'set', interface, 'up'])  # pylint: disable=not-callable
+                        links_down.append(interface)
+                        LOG.info('interface %s enabled to receive LLDP PDUs' % interface)
             self._lldp_operator.lldp_update()
 
             # delay maximum 30 seconds for lldpd to receive LLDP PDU
