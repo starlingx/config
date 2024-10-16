@@ -210,23 +210,6 @@ def is_valid_address_within_subnet(ip_address, subnet):
     return True
 
 
-def is_valid_address_within_range(ip_address, ip_range):
-    """Determine whether an IP address is valid and within
-       the specified range.  Raise on Client-Side Error on failure.
-    """
-    for start, end in ip_range:
-        start_address = netaddr.IPAddress(start)
-        end_address = netaddr.IPAddress(end)
-
-        if not start_address <= ip_address <= end_address:
-            raise wsme.exc.ClientSideError(_(
-                "IP Address %s is not in range: %s-%s. "
-                "Please configure valid %s address.") %
-                (ip_address, start, end, ip_version_to_string(ip_address.version)))
-
-    return True
-
-
 def is_valid_hostname(hostname):
     """Determine whether an address is valid as per RFC 1123.
     """
