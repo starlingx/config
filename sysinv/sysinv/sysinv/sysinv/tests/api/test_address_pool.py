@@ -293,6 +293,24 @@ class TestPatchMixin(object):
                           f"IPv{self.oam_subnet.version} address.",
                           response.json['error_message'])
 
+    def test_fail_address_not_in_range_except_default_gateway(self):
+        addrpool = self.find_addrpool_by_networktype(constants.NETWORK_TYPE_OAM)
+        address = str(self.oam_subnet[20])
+        for addr_field in ADDRESS_TO_ID_FIELD_INDEX.keys():
+            if addr_field == 'gateway_address':
+                self.patch_oam_success(addrpool, **{addr_field: address,
+                                        'ranges': [[str(self.oam_subnet[2]),
+                                        str(self.oam_subnet[10])]]})
+            else:
+                response = self.patch_oam_fail(addrpool, http_client.BAD_REQUEST,
+                                                **{addr_field: address,
+                                                'ranges': [[str(self.oam_subnet[1]),
+                                                str(self.oam_subnet[10])]]})
+                self.assertIn(f"IP Address {address} is not in range: {self.oam_subnet[1]}-"
+                            f"{self.oam_subnet[10]}. Please configure valid "
+                            f"IPv{self.oam_subnet.version} address.",
+                            response.json['error_message'])
+
     def test_fail_address_with_invalid_family(self):
         addrpool = self.find_addrpool_by_networktype(constants.NETWORK_TYPE_OAM)
         if addrpool.family == constants.IPV4_FAMILY:
@@ -1170,6 +1188,34 @@ class TestPostMixin(object):
         self.assertIn("Cannot use broadcast address: %s." % address,
             response.json['error_message'])
 
+    def _test_create_address_pool_ip_out_of_range(self, addr_type):
+
+        address = str(self.mgmt_subnet[-2])
+        network = str(self.mgmt_subnet.network)
+        prefix = self.mgmt_subnet.prefixlen
+
+        ndict = self.get_post_object('test', network, prefix)
+        ndict['%s_address' % addr_type] = str(address)
+
+        start = str(self.mgmt_subnet[1])
+        end = str(self.mgmt_subnet[10])
+        ndict['ranges'] = [[start, end]]
+
+        response = self.post_json(self.API_PREFIX,
+                                  ndict,
+                                  headers=self.API_HEADERS,
+                                  expect_errors=True)
+
+        if addr_type == 'gateway':
+            self.assertEqual('application/json', response.content_type)
+            self.assertEqual(response.status_code, http_client.OK)
+        else:
+            self.assertEqual('application/json', response.content_type)
+            self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+            self.assertIn(f"IP Address {address} is not in range: {start}-{end}."
+                      f" Please configure valid IPv{self.mgmt_subnet.version} address.",
+                      response.json['error_message'])
+
     def test_address_pool_create_success(self):
         self._test_create_address_pool_success(
             'test', str(self.mgmt_subnet.network), self.mgmt_subnet.prefixlen)
@@ -1284,6 +1330,9 @@ class TestPostMixin(object):
     def test_address_pool_create_floating_ip_is_broadcast(self):
         self._test_create_address_pool_invalid_address_broadcast('floating')
 
+    def test_address_pool_create_floating_ip_out_of_range(self):
+        self._test_create_address_pool_ip_out_of_range('floating')
+
     def test_address_pool_create_controller0_ip_not_in_subnet(self):
         self._test_create_address_pool_address_not_in_subnet('controller0')
 
@@ -1295,6 +1344,9 @@ class TestPostMixin(object):
 
     def test_address_pool_create_controller0_ip_is_broadcast(self):
         self._test_create_address_pool_invalid_address_broadcast('controller0')
+
+    def test_address_pool_create_controller0_ip_out_of_range(self):
+        self._test_create_address_pool_ip_out_of_range('controller0')
 
     def test_address_pool_create_controller1_ip_not_in_subnet(self):
         self._test_create_address_pool_address_not_in_subnet('controller1')
@@ -1308,6 +1360,9 @@ class TestPostMixin(object):
     def test_address_pool_create_controller1_ip_is_broadcast(self):
         self._test_create_address_pool_invalid_address_broadcast('controller1')
 
+    def test_address_pool_create_controller1_ip_out_of_range(self):
+        self._test_create_address_pool_ip_out_of_range('controller1')
+
     def test_address_pool_create_gateway_ip_not_in_subnet(self):
         self._test_create_address_pool_address_not_in_subnet('gateway')
 
@@ -1319,6 +1374,9 @@ class TestPostMixin(object):
 
     def test_address_pool_create_gateway_ip_is_broadcast(self):
         self._test_create_address_pool_invalid_address_broadcast('gateway')
+
+    def test_address_pool_create_gateway_ip_out_of_range(self):
+        self._test_create_address_pool_ip_out_of_range('gateway')
 
     def test_fail_create_with_duplicate_address(self):
         subnet = self.mgmt_subnet

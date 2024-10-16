@@ -371,7 +371,7 @@ class BaseSystemTestCase(BaseIPv4Mixin, DbTestCase):
     def _create_test_address_pool(self, name, subnet, ranges=None, append=True,
                                   link_addresses=False):
         if not ranges:
-            ranges = [(str(subnet[2]), str(subnet[-2]))]
+            ranges = [(str(subnet[1]), str(subnet[-2]))]
         base_address = netaddr.IPAddress(subnet[1])
         gateway_address = None
         floating_address = None

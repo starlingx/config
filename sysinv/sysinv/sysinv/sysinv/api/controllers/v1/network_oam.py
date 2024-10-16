@@ -277,7 +277,7 @@ def _check_extoam_data(extoam_orig, extoam, region_config=False):
     start_address = IPAddress(extoam.get('oam_start_ip'))
     end_address = IPAddress(extoam.get('oam_end_ip'))
     # check whether start and end addresses are within the oam_subnet range
-    if start_address not in subnet:
+    if start_address != subnet[1]:
         if region_config:
             raise wsme.exc.ClientSideError(_(
                 "Invalid oam_start_ip=%s. Please configure a valid IP address")
@@ -286,7 +286,7 @@ def _check_extoam_data(extoam_orig, extoam, region_config=False):
         extoam['oam_start_ip'] = subnet[1]
         start_address = IPAddress(extoam.get('oam_start_ip'))
 
-    if end_address not in subnet:
+    if end_address != subnet[-2]:
         if region_config:
             raise wsme.exc.ClientSideError(_(
                 "Invalid oam_end_ip=%s. Please configure a valid IP address") %
