@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2018-2023 Wind River Systems, Inc.
+# Copyright (c) 2018-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -1070,9 +1070,9 @@ class HelmOperatorData(HelmOperator):
             'region_name':
                 cinder_operator.get_region_name(),
             'service_name':
-                cinder_operator.get_service_name_v2(),
+                cinder_operator.get_service_name(),
             'service_type':
-                cinder_operator.get_service_type_v2(),
+                cinder_operator.get_service_type(),
         }
         return endpoint_data
 
