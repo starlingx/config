@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2024 Wind River Systems, Inc.
+# Copyright (c) 2024-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -111,7 +111,7 @@ class ServiceParameterTest(test_shell.ShellTest):
         'cgtsclient.v1.service_parameter.ServiceParameterManager.delete'
     )
     def test_service_parameter_delete(self, mock_delete):
-        self.shell(f"service-parameter-delete"
+        self.shell(f"service-parameter-delete --yes"
                    f" {FAKE_SERVICE_PARAMETER_1['uuid']}")
         mock_delete.assert_called_once()
 

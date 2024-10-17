@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2019-2024 Wind River Systems, Inc.
+# Copyright (c) 2019-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -178,7 +178,7 @@ class HostTest(test_shell.ShellTest):
         self.ihost_manager_kube_upgrade_control_plane_result = \
             ihost(None, FAKE_IHOST_2, True)
 
-        results = self.shell("kube-host-upgrade controller-1 control-plane")
+        results = self.shell("kube-host-upgrade controller-1 control-plane --yes")
 
         self.assertIn(str(FAKE_IHOST_2['id']), results)
         self.assertIn(str(FAKE_IHOST_2['hostname']), results)
@@ -219,7 +219,7 @@ class HostTest(test_shell.ShellTest):
         self.ihost_manager_kube_upgrade_kubelet_result = \
             ihost(None, FAKE_IHOST_2, True)
 
-        results = self.shell("kube-host-upgrade controller-1 kubelet")
+        results = self.shell("kube-host-upgrade controller-1 kubelet --yes")
 
         self.assertIn(str(FAKE_IHOST_2['id']), results)
         self.assertIn(str(FAKE_IHOST_2['hostname']), results)
