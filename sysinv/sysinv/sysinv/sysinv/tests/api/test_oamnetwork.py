@@ -121,14 +121,14 @@ class TestListMixin(OAMNetworkTestCase):
 
         # Verify the expected API response
         self.assertEqual(response['oam_start_ip'],
-                         str(self.oam_subnet[2]))
+                         str(self.oam_subnet[1]))
 
     def test_list(self):
         response = self.get_json(self.get_single_url(""),
                                  headers=self.API_HEADERS)
         # Verify the expected API response
         self.assertEqual(response['iextoams'][0]['oam_start_ip'],
-                         str(self.oam_subnet[2]))
+                         str(self.oam_subnet[1]))
 
 
 class TestPatchMixin(OAMNetworkTestCase):
@@ -204,6 +204,63 @@ class TestPatchMixin(OAMNetworkTestCase):
         }
         self._test_patch_success(patch_obj)
 
+    def test_patch_oam_floating_ip_out_of_range(self):
+        oam_start_ip = self.oam_subnet[1]
+        oam_end_ip = self.oam_subnet[32]
+        oam_floating_ip = self.oam_subnet[2] + 100
+        oam_c0_ip = self.oam_subnet[3]
+        oam_c1_ip = self.oam_subnet[4]
+        patch_obj = {
+            'oam_start_ip': str(oam_start_ip),
+            'oam_end_ip': str(oam_end_ip),
+            'oam_floating_ip': str(oam_floating_ip),
+            'oam_c0_ip': str(oam_c0_ip),
+            'oam_c1_ip': str(oam_c1_ip),
+        }
+        self._test_patch_success(patch_obj)
+
+    def test_patch_oam_c0_ip_out_of_range(self):
+        oam_start_ip = self.oam_subnet[1]
+        oam_end_ip = self.oam_subnet[32]
+        oam_floating_ip = self.oam_subnet[2]
+        oam_c0_ip = self.oam_subnet[3] + 100
+        oam_c1_ip = self.oam_subnet[4]
+        patch_obj = {
+            'oam_start_ip': str(oam_start_ip),
+            'oam_end_ip': str(oam_end_ip),
+            'oam_floating_ip': str(oam_floating_ip),
+            'oam_c0_ip': str(oam_c0_ip),
+            'oam_c1_ip': str(oam_c1_ip),
+
+        }
+        self._test_patch_success(patch_obj)
+
+    def test_patch_oam_c1_ip_out_of_range(self):
+        oam_start_ip = self.oam_subnet[1]
+        oam_end_ip = self.oam_subnet[32]
+        oam_floating_ip = self.oam_subnet[2]
+        oam_c0_ip = self.oam_subnet[3]
+        oam_c1_ip = self.oam_subnet[4] + 100
+        patch_obj = {
+            'oam_start_ip': str(oam_start_ip),
+            'oam_end_ip': str(oam_end_ip),
+            'oam_floating_ip': str(oam_floating_ip),
+            'oam_c0_ip': str(oam_c0_ip),
+            'oam_c1_ip': str(oam_c1_ip),
+
+        }
+        self._test_patch_success(patch_obj)
+
+    def test_patch_oam_floating_new_subnet(self):
+        oam_subnet = self.oam_subnet[0]
+        oam_floating_ip = self.oam_subnet[2] + 256
+        patch_obj = {
+            'oam_subnet': str(oam_subnet) + "/23",
+            'oam_floating_ip': str(oam_floating_ip),
+        }
+        print(patch_obj)
+        self._test_patch_success(patch_obj)
+
     def test_patch_incomplete(self):
         fields = {'floating_address_id': None, 'controller0_address_id': None,
                   'controller1_address_id': None, 'gateway_address_id': None}
@@ -245,6 +302,18 @@ class TestPatchMixin(OAMNetworkTestCase):
         self._test_patch_fail(patch_obj, http_client.BAD_REQUEST,
                               "must be unique")
 
+    def test_patch_oam_floating_invalid_subnet(self):
+        oam_subnet = self.oam_subnet[0] + 256
+        oam_floating_ip = self.oam_subnet[2]
+        patch_obj = {
+            'oam_subnet': str(oam_subnet) + "/23",
+            'oam_floating_ip': str(oam_floating_ip),
+        }
+        error_message = "Invalid subnet oam_subnet %s/23.Please check " \
+                        "and configure a valid OAM Subnet." % str(oam_subnet)
+        self._test_patch_fail(patch_obj, http_client.BAD_REQUEST,
+                              error_message)
+
     def test_patch_oam_floating_ip_out_of_subnet(self):
         oam_floating_ip = self.oam_subnet[2] - 100
         oam_c0_ip = self.oam_subnet[3]
@@ -281,62 +350,6 @@ class TestPatchMixin(OAMNetworkTestCase):
             'oam_c1_ip': str(oam_c1_ip),
         }
         error_message = "IP Address %s is not in subnet" % str(oam_c1_ip)
-        self._test_patch_fail(patch_obj, http_client.BAD_REQUEST,
-                              error_message)
-
-    def test_patch_oam_floating_ip_out_of_range(self):
-        oam_start_ip = self.oam_subnet[1]
-        oam_end_ip = self.oam_subnet[32]
-        oam_floating_ip = self.oam_subnet[2] + 100
-        oam_c0_ip = self.oam_subnet[3]
-        oam_c1_ip = self.oam_subnet[4]
-        patch_obj = {
-            'oam_start_ip': str(oam_start_ip),
-            'oam_end_ip': str(oam_end_ip),
-            'oam_floating_ip': str(oam_floating_ip),
-            'oam_c0_ip': str(oam_c0_ip),
-            'oam_c1_ip': str(oam_c1_ip),
-        }
-        error_message = ("Invalid oam_floating_ip=%s. Please configure a valid"
-                         " IP address in range") % str(oam_floating_ip)
-        self._test_patch_fail(patch_obj, http_client.BAD_REQUEST,
-                              error_message)
-
-    def test_patch_oam_c0_ip_out_of_range(self):
-        oam_start_ip = self.oam_subnet[1]
-        oam_end_ip = self.oam_subnet[32]
-        oam_floating_ip = self.oam_subnet[2]
-        oam_c0_ip = self.oam_subnet[3] + 100
-        oam_c1_ip = self.oam_subnet[4]
-        patch_obj = {
-            'oam_start_ip': str(oam_start_ip),
-            'oam_end_ip': str(oam_end_ip),
-            'oam_floating_ip': str(oam_floating_ip),
-            'oam_c0_ip': str(oam_c0_ip),
-            'oam_c1_ip': str(oam_c1_ip),
-
-        }
-        error_message = ("Invalid oam_c0_ip=%s. Please configure a valid"
-                         " IP address in range") % str(oam_c0_ip)
-        self._test_patch_fail(patch_obj, http_client.BAD_REQUEST,
-                              error_message)
-
-    def test_patch_oam_c1_ip_out_of_range(self):
-        oam_start_ip = self.oam_subnet[1]
-        oam_end_ip = self.oam_subnet[32]
-        oam_floating_ip = self.oam_subnet[2]
-        oam_c0_ip = self.oam_subnet[3]
-        oam_c1_ip = self.oam_subnet[4] + 100
-        patch_obj = {
-            'oam_start_ip': str(oam_start_ip),
-            'oam_end_ip': str(oam_end_ip),
-            'oam_floating_ip': str(oam_floating_ip),
-            'oam_c0_ip': str(oam_c0_ip),
-            'oam_c1_ip': str(oam_c1_ip),
-
-        }
-        error_message = ("Invalid oam_c1_ip=%s. Please configure a valid"
-                         " IP address in range") % str(oam_c1_ip)
         self._test_patch_fail(patch_obj, http_client.BAD_REQUEST,
                               error_message)
 

@@ -351,9 +351,11 @@ class AddressPoolController(rest.RestController):
             self._check_valid_range(subnet, start, end, ipset)
             ipset.update(netaddr.IPRange(start, end))
 
-    def _check_valid_address(self, subnet, address):
+    def _check_valid_address(self, subnet, addr_field, address, ip_range=None):
         addr = netaddr.IPAddress(address)
         utils.is_valid_address_within_subnet(addr, subnet)
+        if ip_range and addr_field != 'gateway_address':
+            utils.is_valid_address_within_range(addr, ip_range)
 
     def _validate_name(self, addrpool):
         AddressPool._validate_name(addrpool['name'])
@@ -458,7 +460,8 @@ class AddressPoolController(rest.RestController):
         for addr_field in ADDRESS_TO_ID_FIELD_INDEX.keys():
             address = addrpool[addr_field]
             if address:
-                self._check_valid_address(subnet, address)
+                ip_range = addrpool.get('ranges')
+                self._check_valid_address(subnet, addr_field, address, ip_range)
 
     def _check_existing_addresses(self, addrpool, updates):
         updated_fields = self.context['updated_fields']
@@ -617,9 +620,10 @@ class AddressPoolController(rest.RestController):
         address_index = {}
         for field in ADDRESS_TO_ID_FIELD_INDEX.keys():
             address = getattr(addrpool, field, None)
+            ip_range = getattr(addrpool, 'ranges', '')
             if not address:
                 continue
-            self._check_valid_address(subnet, address)
+            self._check_valid_address(subnet, field, address, ip_range)
             try:
                 address_obj = pecan.request.dbapi.address_get_by_address(address)
             except exception.AddressNotFoundByAddress:
