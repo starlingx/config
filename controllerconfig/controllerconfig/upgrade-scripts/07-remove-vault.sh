@@ -327,7 +327,6 @@ if [ "$TO_RELEASE" != "$SUPPORTED_TO_RELEASE" ]; then
 fi
 
 # The action is activate-rollback - remove the application
-source /etc/platform/openrc
 
 read_app_info
 

@@ -84,18 +84,12 @@ def get_distributed_cloud_role():
 def get_region_name():
     """Get region name
     """
-    for line in open('/etc/platform/openrc'):
-        if 'export ' in line:
-            values = line.rstrip('\n').lstrip('export ').split('=')
-            if values[0] == 'OS_REGION_NAME':
-                return values[1]
-    return None
+    return os.environ.get("OS_REGION_NAME")
 
 
 def _get_primary_pool(network_type):
-    cmd = f'source /etc/platform/openrc && ' \
-        f'(system network-list --nowrap | awk  \'$8 == "{network_type}" ' \
-        f'{{ print $12 }}\')'
+    cmd = f'(system network-list --nowrap | awk  \'$8 == "{network_type}" ' \
+          f'{{ print $12 }}\')'
 
     sub = subprocess.Popen(
         cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -110,9 +104,8 @@ def _get_primary_pool(network_type):
 
 def get_primary_oam_ip():
     primary_oam_pool = _get_primary_pool('oam')
-    cmd = f'source /etc/platform/openrc && ' \
-        f'(system addrpool-list --nowrap | awk ' \
-        f'\'$2 == "{primary_oam_pool}" {{ print $14 }}\')'
+    cmd = f'(system addrpool-list --nowrap | awk ' \
+          f'\'$2 == "{primary_oam_pool}" {{ print $14 }}\')'
 
     sub = subprocess.Popen(
         cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -291,8 +284,7 @@ def apply_k8s_yml(resources_yml):
 
 
 def wait_system_reconfiguration(from_release='22.12'):
-    cmd = "source /etc/platform/openrc && \
-        fm alarm-list --query alarm_id=250.001"
+    cmd = "fm alarm-list --query alarm_id=250.001"
 
     # Stop after two sequential attempts without 250.001 alarms. This avoids
     # missing the transition between two alarms.

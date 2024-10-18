@@ -151,8 +151,7 @@ def migrate_nmea_serial_port_name(conn):
 def apply_ptp_instance_configuration():
     """ apply PTP configuration and restart the services """
     try:
-        cmd = 'source /etc/platform/openrc && ' \
-            'system ptp-instance-apply'
+        cmd = 'system ptp-instance-apply'
         sub = subprocess.Popen(
             cmd, shell=True, stdout=subprocess.PIPE,
             stderr=subprocess.PIPE)

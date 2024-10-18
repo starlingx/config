@@ -71,7 +71,6 @@ APPLY_RESULT_ATTEMPTS=30  # ~15 min to update app
 REMOVE_RESULT_SLEEP=10
 REMOVE_RESULT_ATTEMPTS=48 # ~8 min to remove app
 
-source /etc/platform/openrc
 source /etc/platform/platform.conf
 
 EXISTING_APP_NAME='portieris'

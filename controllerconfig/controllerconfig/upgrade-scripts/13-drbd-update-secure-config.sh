@@ -73,8 +73,6 @@ function get_api_token {
 log "${NAME}: Starting drbdconfig secure toggle from release ${FROM_RELEASE} to ${TO_RELEASE} with action ${ACTION}"
 
 if [[ "${ACTION}" == "activate" ]] && [[ "${TO_RELEASE}" == "24.09" ]]; then
-    source /etc/platform/openrc
-
     while [ ${RETRY_CNT} -ge 0 ];
     do
         TOKEN=$(get_api_token "${OS_AUTH_URL}" "${OS_USERNAME}" "${OS_PASSWORD}")

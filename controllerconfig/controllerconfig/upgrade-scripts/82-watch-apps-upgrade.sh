@@ -32,7 +32,6 @@ log "Starting application upgrade watcher script from release $FROM_RELEASE to $
 if [ "$ACTION" == "activate" ]; then
 
     # move the costly source command in the if branch, so only execute when needed.
-    source /etc/platform/openrc
     source /etc/platform/platform.conf
 
     if [ ! -f $UPGRADE_IN_PROGRESS_APPS_FILE ]; then

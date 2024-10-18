@@ -40,8 +40,6 @@ log "Starting to recreate vim's keystone endpoints in SystemController from rele
 
 if [[ "${ACTION}" == "activate" ]] && [[ "${FROM_RELEASE}" == "22.12" ]] && [[ ${IS_DEBIAN} != 0 ]] && [[ $distributed_cloud_role == "systemcontroller" ]]; then
 
-    source /etc/platform/openrc
-
     #Remove all endpoints for vim in SystemController region
     log "Removing old vim keystone endpoints for SystemController"
     openstack endpoint list --region SystemController --service nfv -f value -c ID | \

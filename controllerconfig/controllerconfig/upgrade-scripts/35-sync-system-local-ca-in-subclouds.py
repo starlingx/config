@@ -38,7 +38,7 @@ def get_distributed_cloud_role():
 def execute_system_cmd(api_cmd, exc_msg):
     """Execute command after sourcing admin credentials
     """
-    cmd = 'source /etc/platform/openrc && ' + api_cmd
+    cmd = api_cmd
 
     sub = subprocess.Popen(
         cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
