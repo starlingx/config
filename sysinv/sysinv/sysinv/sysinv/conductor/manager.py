@@ -201,6 +201,9 @@ app_framework_opts = [
         default=False,
         help='Auto update an application if not specified in the '
              'application metadata'),
+    cfg.BoolOpt('skip_k8s_application_audit',
+        default=False,
+        help='Skip application audit operation if specified as True'),
 ]
 
 CONF = cfg.CONF
@@ -8617,6 +8620,13 @@ class ConductorManager(service.PeriodicService):
         """Make sure that the required k8s applications are running"""
 
         LOG.debug("Periodic Task: _k8s_application_audit: Starting")
+
+        skip_k8s_application_audit = CONF.app_framework.skip_k8s_application_audit
+        if skip_k8s_application_audit:
+            LOG.info("Skipping k8s_application_audit since "
+                "skip_k8s_application_audit config option is set to true.")
+            return
+
         # Make sure that the active controller is unlocked/enabled. Only
         # install an application if the controller has been provisioned.
         active_ctrl = utils.HostHelper.get_active_controller(self.dbapi)
