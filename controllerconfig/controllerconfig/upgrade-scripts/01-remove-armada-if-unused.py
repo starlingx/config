@@ -39,6 +39,8 @@ HELMV2_PATH = '/usr/local/sbin/helmv2-cli'
 ERROR_CODE_TIMEOUT_HELMV2_CLI = -9
 TIMEOUT = 180  # timeout in seconds for armada pods to terminate
 TIME_STEP = 15  # wait X seconds between checks
+ATTEMPTS_TO_DELETE_ARMADA_POD = 3
+TIMEOUT_KUBECTL = "2m"
 
 
 class CgtsClient(object):
@@ -210,6 +212,8 @@ def delete_armada_pods():
     get_pods_cmd = "kubectl get po -n %s -o name --kubeconfig %s" \
         % (ARMADA_NS, KUBERNETES_ADMIN_CONF)
 
+    result = False
+
     try:
         # Capture the output of the kubectl command
         output, _ = run_cmd(get_pods_cmd)
@@ -217,20 +221,43 @@ def delete_armada_pods():
         pods = output.splitlines()  # Get each line as a pod name
         if not pods:
             LOG.info("No pods found in the namespace %s." % ARMADA_NS)
-            return
+            result = True
+            return result
 
         # Delete each pod
         for pod in pods:
             pod_name = pod.split('/')[1]  # Extract the pod name
-            delete_pod_cmd = "kubectl delete pod %s -n %s --kubeconfig %s" \
-                % (pod_name, ARMADA_NS, KUBERNETES_ADMIN_CONF)
+            delete_pod_cmd = "kubectl delete pod %s \
+                --now --request-timeout=%s -n %s --kubeconfig %s" \
+                % (pod_name,
+                   TIMEOUT_KUBECTL,
+                   ARMADA_NS,
+                   KUBERNETES_ADMIN_CONF)
 
             LOG.info("Deleting pod: %s" % pod_name)
-            run_cmd(delete_pod_cmd)
 
-        LOG.info("All armada pods have been deleted.")
+            # Retry logic for deleting the pod
+            retries = ATTEMPTS_TO_DELETE_ARMADA_POD
+            for attempt in range(1, retries + 1):
+                try:
+                    run_cmd(delete_pod_cmd, interrupt_on_error=True)
+                    LOG.info("Pod %s deleted successfully." % pod_name)
+                    result = True
+                    break
+                except Exception as e:
+                    LOG.warning("Attempt %d to delete pod %s failed: %s"
+                                % (attempt, pod_name, e))
+                    if attempt == retries:
+                        LOG.error("Failed to delete pod %s after %d attempts."
+                                  % (pod_name, retries))
+                        result = False
+                    else:
+                        LOG.info("Retrying...")
+
     except Exception as e:
         LOG.error("An error occurred: %s" % e)
+
+    return result
 
 
 @test_k8s_health
@@ -282,10 +309,12 @@ def remove_armada_resources():
         # In some cases, when deleting the armada helmrelease, the pod
         # continues to run. For this cases, a targeted deletion of the
         # pods is performed.
-        delete_armada_pods()
+        if not delete_armada_pods():
+            LOG.error("Deletion of Armada pods failed")
+            return False
 
         # Check if there is an active deployment in the armada namespace
-        if (has_armada_deployment()):
+        if has_armada_deployment():
             LOG.error("Deletion of Armada deployment failed")
             return False
 
