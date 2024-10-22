@@ -50,6 +50,7 @@ import tempfile
 import time
 import traceback
 import uuid
+import copy
 import xml.etree.ElementTree as ElementTree
 from contextlib import contextmanager
 from datetime import datetime
@@ -7510,9 +7511,6 @@ class ConductorManager(service.PeriodicService):
         def _cs_audit_deferred_runtime_config(self, context):
             """Apply deferred config runtime manifests when ready"""
 
-            LOG.debug("_audit_deferred_runtime_config %s" %
-                    self._host_deferred_runtime_config)
-
             if not self._host_deferred_runtime_config or \
                     not self._ready_to_apply_runtime_config():
                 return
@@ -7520,8 +7518,9 @@ class ConductorManager(service.PeriodicService):
             # apply the deferred runtime manifests
             for config in list(self._host_deferred_runtime_config):
                 config_type = config.get('config_type')
-                LOG.info("found _audit_deferred_runtime_config request apply %s" %
-                            config)
+                self._log_runtime_config_censored(
+                    title="found _audit_deferred_runtime_config request apply",
+                    runtime_config=config)
                 if config_type == CONFIG_APPLY_RUNTIME_MANIFEST:
                     # config runtime manifest system allows for filtering on scoped runtime classes
                     # to allow for more efficient handling while another scoped class apply may
@@ -7543,8 +7542,8 @@ class ConductorManager(service.PeriodicService):
                     config_dict = config.get('config_dict') or {}
                     file_names = list(config_dict.get('file_names') or [])
                     filter_files = [x for x in self.PUPPET_RUNTIME_FILTER_FILES if x in file_names]
-                    LOG.info("config type %s found filter_files=%s cd= %s" %
-                            (config_type, filter_files, config_dict))
+                    LOG.info("config type %s found filter_files=%s" %
+                            (config_type, filter_files))
                     self._config_update_file(
                         context,
                         config['config_uuid'],
@@ -13738,6 +13737,32 @@ class ConductorManager(service.PeriodicService):
 
         return True
 
+    def _log_runtime_config_censored(self,
+                                     title,
+                                     runtime_config):
+        """Log the runtime_config to sysinv.log hiding sensitive
+        data as .pem and .crt file content. The original runtime_config keeps
+        untouched.
+
+        :param title: Log title
+        :param runtime_config: runtime_config to be logged into sysinv.log
+        """
+        def _hide_sensitive_content(config):
+            if 'config_dict' in config and \
+                    'file_content' in config['config_dict']:
+                config['config_dict']['file_content'] = '***HIDDEN***'
+
+        runtime_config_copy = copy.deepcopy(runtime_config)
+
+        # hide sensitive data from runtime_config_copy if applicable
+        if isinstance(runtime_config_copy, list):
+            for config_item in runtime_config_copy:
+                _hide_sensitive_content(config_item)
+        elif isinstance(runtime_config_copy, object):
+            _hide_sensitive_content(runtime_config_copy)
+
+        LOG.info(f"{title} {runtime_config_copy}")
+
     def _config_update_file(self,
                             context,
                             config_uuid,
@@ -13778,8 +13803,9 @@ class ConductorManager(service.PeriodicService):
                      'config_uuid': config_uuid,
                      'config_dict': config_dict,
                      })
-            LOG.info("defer update file to _host_deferred_runtime_config %s" %
-                     self._host_deferred_runtime_config)
+            self._log_runtime_config_censored(
+                title="defer update file to _host_deferred_runtime_config",
+                runtime_config=self._host_deferred_runtime_config)
             return False
 
         if not self._try_config_update_puppet(
@@ -13808,7 +13834,9 @@ class ConductorManager(service.PeriodicService):
                 # with classes that have been applied.
                 if all(item in config_dict.get('classes', []) for item in classes):
                     # Update timestamp for deferred configs to avoid timeout error.
-                    LOG.info(f"Updating timestamp for deferred config with config: {drc}")
+                    self._log_runtime_config_censored(
+                        title="Updating timestamp for deferred config",
+                        runtime_config=drc)
                     drc['timestamp'] = datetime.utcnow()
 
         with self.rlock_runtime_config:
@@ -13892,8 +13920,9 @@ class ConductorManager(service.PeriodicService):
                 if (drc['config_type'] == config_type and
                         duplicate_config and
                         drc.get('force') == force):
-                    LOG.info("config runtime replacing entry duplicate config %s with config_uuid=%s" %
-                            (drc, config_uuid))
+                    self._log_runtime_config_censored(
+                        title="replacing entry duplicate config",
+                        runtime_config=drc)
                     drc['config_uuid'] = config_uuid
                     break
             else:
@@ -13945,8 +13974,9 @@ class ConductorManager(service.PeriodicService):
             LOG.exception("_config_update_puppet %s" % e)
             if deferred_config:
                 self._host_deferred_runtime_config.append(deferred_config)
-                LOG.warn("deferred update runtime config %s exception. Retry." %
-                         deferred_config)
+                self._log_runtime_config_censored(
+                        title="deferred update runtime config exception Retry",
+                        runtime_config=deferred_config)
                 return False
             else:
                 raise
@@ -14110,8 +14140,9 @@ class ConductorManager(service.PeriodicService):
                     config_uuid,
                     config_dict,
                     force)
-            LOG.info("defer apply runtime manifest %s" %
-                     self._host_deferred_runtime_config)
+            self._log_runtime_config_censored(
+                title="defer apply runtime manifest",
+                runtime_config=self._host_deferred_runtime_config)
             return
 
         # If this is a new config but there are deferred configs waiting,
@@ -14124,8 +14155,9 @@ class ConductorManager(service.PeriodicService):
                 config_uuid,
                 config_dict,
                 force)
-            LOG.info("defer apply runtime manifest due to ordering %s" %
-                     self._host_deferred_runtime_config)
+            self._log_runtime_config_censored(
+                title="defer apply runtime manifest due to ordering",
+                runtime_config=self._host_deferred_runtime_config)
             return
 
         if not self._try_config_update_puppet(
