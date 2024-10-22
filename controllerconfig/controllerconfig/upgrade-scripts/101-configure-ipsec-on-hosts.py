@@ -272,11 +272,11 @@ def verify_heartbeat_failure_action(action):
     After service-parameter apply is called, the command takes some time to
     change heartbeat failure action value and complete system configuration.
     This function verifies the heartbeat_failure_action value in /etc/mtc.ini
-    every 03 seconds (maximum wait time: 21 seconds) in order to validate
+    every 04 seconds (maximum wait time: 60 seconds) in order to validate
     that the parameter was updated.
     """
-    for i in range(7):
-        time.sleep(3)
+    for i in range(15):
+        time.sleep(4)
         value = get_heartbeat_failure_action()
         if value == action:
             return True
