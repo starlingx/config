@@ -1668,6 +1668,10 @@ class LifecycleSemanticCheckException(SysinvException):
     message = _("Semantic check hook for app failed.")
 
 
+class LifecycleStatusCheckNotReady(SysinvException):
+    message = _("Custom application status check failed")
+
+
 class LifecycleSemanticCheckOpererationBlocked(SysinvException):
     message = _("%(op)s is disabled for this version of %(app)s")
 

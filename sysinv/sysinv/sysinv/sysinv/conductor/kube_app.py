@@ -1863,6 +1863,16 @@ class AppOperator(object):
 
                 # wait a bit to check again if the charts are ready
                 time.sleep(1)
+
+                # lifecycle to handle custom k8s services from apps
+                # that need to be checked after helmrelease is installed
+                try:
+                    lifecycle_hook_info.relative_timing = constants.APP_LIFECYCLE_TIMING_STATUS
+                    lifecycle_hook_info.lifecycle_type = constants.APP_LIFECYCLE_TYPE_FLUXCD_REQUEST
+                    self.app_lifecycle_actions(None, None, app._kube_app, lifecycle_hook_info)
+                except exception.LifecycleStatusCheckNotReady:
+                    return False
+
             return True
 
         # This check is for cases where an abort is issued while
