@@ -81,8 +81,8 @@ def main():
     logging.setup(CONF, 'ipsec-client')
 
     if not os.path.exists(constants.LUKS_DIR_IPSEC_KEYS):
-        os.makedirs(constants.LUKS_DIR_IPSEC_KEYS)
-        os.makedirs(constants.LUKS_DIR_IPSEC_CERTS)
+        os.makedirs(constants.LUKS_DIR_IPSEC_KEYS, mode=0o700)
+        os.makedirs(constants.LUKS_DIR_IPSEC_CERTS, mode=0o700)
 
     client = Client(host, port, opcode, force_reload)
     client.run()
