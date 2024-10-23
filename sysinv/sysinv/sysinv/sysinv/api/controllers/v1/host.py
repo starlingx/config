@@ -2590,20 +2590,22 @@ class HostController(rest.RestController):
 
             raise exception.HostLocked(action=constants.DELETE_ACTION, host=host)
 
-        hostfs_list = pecan.request.dbapi.host_fs_get_by_ihost(ihost.id)
-        istors = pecan.request.dbapi.istor_get_by_ihost(ihost.uuid)
+        if StorageBackendConfig.has_backend_configured(pecan.request.dbapi,
+                                                       constants.SB_TYPE_CEPH_ROOK):
+            hostfs_list = pecan.request.dbapi.host_fs_get_by_ihost(ihost.id)
+            istors = pecan.request.dbapi.istor_get_by_ihost(ihost.uuid)
 
-        for host_fs in hostfs_list:
-            if (host_fs.name == constants.FILESYSTEM_NAME_CEPH and
-                    host_fs.state == constants.HOST_FS_STATUS_IN_USE):
-                raise wsme.exc.ClientSideError(_("host-delete rejected: not allowed when "
-                                                 "the host has host-fs ceph with in-use state"))
+            for host_fs in hostfs_list:
+                if (host_fs.name == constants.FILESYSTEM_NAME_CEPH and
+                        host_fs.state == constants.HOST_FS_STATUS_IN_USE):
+                    raise wsme.exc.ClientSideError(_("host-delete rejected: not allowed when "
+                                                     "the host has host-fs ceph with in-use state"))
 
-        for stor in istors:
-            if (stor.function == constants.STOR_FUNCTION_OSD and
-                    (stor.state == constants.SB_STATE_CONFIGURED)):
-                raise wsme.exc.ClientSideError(_("host-delete rejected: not allowed when "
-                                                 "the host has OSD with configured state"))
+            for stor in istors:
+                if (stor.function == constants.STOR_FUNCTION_OSD and
+                        (stor.state == constants.SB_STATE_CONFIGURED)):
+                    raise wsme.exc.ClientSideError(_("host-delete rejected: not allowed when "
+                                                     "the host has OSD with configured state"))
 
         if not self._check_host_delete_during_upgrade():
             raise wsme.exc.ClientSideError(_(
