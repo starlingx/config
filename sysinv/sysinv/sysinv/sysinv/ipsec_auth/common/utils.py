@@ -14,6 +14,7 @@ import os
 import socket
 import struct
 import subprocess
+import time
 import yaml
 
 from cryptography import x509
@@ -190,9 +191,15 @@ def socket_recv_all_json(socket, buff_size):
     while delimiter not in buffer and \
           len(buffer) < buff_size and \
           iter < 10:
-        data = socket.recv(buff_size)
-        if not data:
-            return None
+        try:
+            data = socket.recv(buff_size)
+            if not data:
+                return None
+        except BlockingIOError:
+            LOG.warn("BlockingIOError: resource is unavailable "
+                     "for {!r}".format(socket.getpeername()))
+            data = b''
+            time.sleep(1)
         buffer += data
         iter = iter + 1
     if delimiter not in buffer:
