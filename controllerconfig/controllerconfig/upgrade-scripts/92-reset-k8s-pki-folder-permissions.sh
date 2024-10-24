@@ -27,7 +27,7 @@ reset-k8s-pki-folder-permissions()
 
 log "Script $0 invoked with from_release = $FROM_RELEASE to_release = $TO_RELEASE action = $ACTION"
 
-if [ "$TO_RELEASE" == "24.03" ] && [ "$ACTION" == "activate" ]; then
+if [ "$TO_RELEASE" == "24.09" ] && [ "$ACTION" == "activate" ]; then
     reset-k8s-pki-folder-permissions
 else
     log "Script $0 execution skipped"
