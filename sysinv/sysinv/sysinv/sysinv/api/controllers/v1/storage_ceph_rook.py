@@ -445,6 +445,12 @@ def _check_backend_ceph_rook(req, storage_ceph_rook, confirmed=False):
                                        (constants.SB_SVC_CEPH_ROOK_BLOCK,
                                         constants.SB_SVC_CEPH_ROOK_ECBLOCK,
                                         constants.SB_TYPE_CEPH_ROOK))
+    # if no block storage service is detected, add "block" to the service list
+    elif (constants.SB_SVC_CEPH_ROOK_BLOCK not in req_services and
+            constants.SB_SVC_CEPH_ROOK_ECBLOCK not in req_services):
+        req_services.append(constants.SB_SVC_CEPH_ROOK_BLOCK)
+        api_helper.setServicesFromList(storage_ceph_rook, req_services)
+        LOG.info("No block storage defined. Adding block service by default to the list of services.")
 
     for svc in req_services:
         if svc not in constants.SB_CEPH_ROOK_SVCS_SUPPORTED:
