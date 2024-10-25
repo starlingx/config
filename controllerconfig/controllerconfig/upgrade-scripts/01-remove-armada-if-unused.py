@@ -40,7 +40,9 @@ ERROR_CODE_TIMEOUT_HELMV2_CLI = -9
 TIMEOUT = 180  # timeout in seconds for armada pods to terminate
 TIME_STEP = 15  # wait X seconds between checks
 ATTEMPTS_TO_DELETE_ARMADA_POD = 3
+REQUEST_TIMEOUT_KUBECTL = "2m"
 TIMEOUT_KUBECTL = "2m"
+GRACE_PERIOD_TIME = "10s"
 
 
 class CgtsClient(object):
@@ -228,8 +230,9 @@ def delete_armada_pods():
         for pod in pods:
             pod_name = pod.split('/')[1]  # Extract the pod name
             delete_pod_cmd = "kubectl delete pod %s \
-                --now --request-timeout=%s -n %s --kubeconfig %s" \
+                --now --request-timeout=%s --timeout=%s -n %s --kubeconfig %s" \
                 % (pod_name,
+                   REQUEST_TIMEOUT_KUBECTL,
                    TIMEOUT_KUBECTL,
                    ARMADA_NS,
                    KUBERNETES_ADMIN_CONF)
@@ -319,8 +322,13 @@ def remove_armada_resources():
             return False
 
     # Remove armada namespace
-    cmd = "kubectl delete namespace %s --kubeconfig %s --ignore-not-found" \
-          % (ARMADA_NS, KUBERNETES_ADMIN_CONF)
+    cmd = "kubectl delete namespace %s --request-timeout=%s --timeout=%s \
+        --grece-period=%s --kubeconfig %s --ignore-not-found" \
+        % (ARMADA_NS,
+           REQUEST_TIMEOUT_KUBECTL,
+           TIMEOUT_KUBECTL,
+           GRACE_PERIOD_TIME,
+           KUBERNETES_ADMIN_CONF)
     run_cmd(cmd)
 
     return True
