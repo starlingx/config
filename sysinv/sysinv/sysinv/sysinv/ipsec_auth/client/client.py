@@ -75,7 +75,7 @@ class Client(object):
         prk2_luks_path = constants.LUKS_DIR_IPSEC_KEYS + prk2_file
         prk2_path = constants.CERT_SYSTEM_LOCAL_PRIVATE_DIR + prk2_file
 
-        utils.save_data(prk2_luks_path, prk2_bytes)
+        utils.save_data(prk2_luks_path, prk2_bytes, True)
         utils.create_symlink(prk2_luks_path, prk2_path)
 
         return prk2
@@ -85,7 +85,7 @@ class Client(object):
         ak1 = os.urandom(32)
 
         # Save AK1 in LUKS Filesystem
-        utils.save_data(constants.LUKS_AK1_FILE, ak1)
+        utils.save_data(constants.LUKS_AK1_FILE, ak1, True)
 
         return ak1
 
@@ -192,7 +192,7 @@ class Client(object):
                 LOG.exception("%s" % msg)
                 return False
 
-            utils.save_data(constants.LUKS_PUK1_FILE, key)
+            utils.save_data(constants.LUKS_PUK1_FILE, key, True)
             utils.save_data(constants.TRUSTED_ROOT_CA_CERT_1_PATH, root_ca_cert)
             utils.save_data(constants.TRUSTED_CA_CERT_1_PATH, ca_cert)
             if self.op_code == constants.OP_CODE_INITIAL_AUTH:
@@ -230,7 +230,7 @@ class Client(object):
             cert_luks_path = constants.LUKS_DIR_IPSEC_CERTS + cert_file
             cert_path = constants.CERT_SYSTEM_LOCAL_DIR + cert_file
 
-            utils.save_data(cert_luks_path, cert)
+            utils.save_data(cert_luks_path, cert, True)
             utils.create_symlink(cert_luks_path, cert_path)
 
             if self.op_code == constants.OP_CODE_INITIAL_AUTH:

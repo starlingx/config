@@ -120,9 +120,12 @@ def load_data(path):
     return data
 
 
-def save_data(path, data):
+def save_data(path, data, owner_only=False):
     with open(path, 'wb') as f:
         f.write(data)
+
+    if owner_only:
+        os.chmod(path, 0o600)
 
 
 def symmetric_encrypt_data(binary_data, key):
