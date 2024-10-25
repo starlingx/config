@@ -168,6 +168,63 @@ function check_k8s_health {
     fi
 }
 
+# As per cert-manager docs, the webhook server can take some time to come up.
+# We can ensure the sanity by issuing a certificate as test.
+function check_cert_manager {
+    log "Issue test certificate to assert cert-manager readyness."
+    RETRIES=60
+
+    check_k8s_health
+    kubectl delete certificate -n cert-manager stx-test-cm --kubeconfig=/etc/kubernetes/admin.conf --ignore-not-found
+
+    TEST_CERT_CM="
+    apiVersion: cert-manager.io/v1
+    kind: Certificate
+    metadata:
+        creationTimestamp: null
+        name: stx-test-cm
+        namespace: cert-manager
+    spec:
+        commonName: stx-test-cm
+        issuerRef:
+            kind: ClusterIssuer
+            name: system-local-ca
+        secretName: stx-test-cm
+    status: {}
+    "
+
+    apply_failed=1
+    secret_failed=1
+    for retry in $( seq 1 ${RETRIES} ); do
+        if [ ${apply_failed} -ne 0 ]; then
+            log "Apply test certificate CRD..."
+            kubectl apply -f <(echo "$TEST_CERT_CM") --kubeconfig=/etc/kubernetes/admin.conf
+            if [ $? -ne 0 ]; then
+                log "Error applying certificate CRD. Retrying."
+                sleep 5
+                continue
+            fi
+            apply_failed=0
+        fi
+        log "Waiting cert-manager to issue the certificate..."
+        sleep 3
+        kubectl get secret -n cert-manager stx-test-cm --kubeconfig=/etc/kubernetes/admin.conf
+        if [ $? -eq 0 ]; then
+            log "cert-manager is ready to issue certificates."
+            secret_failed=0
+            break
+        fi
+    done
+
+    check_k8s_health
+    kubectl delete certificate -n cert-manager stx-test-cm --kubeconfig=/etc/kubernetes/admin.conf
+
+    if [ ${secret_failed} -ne 0 ]; then
+        log "Cert-manager is not ready after the allotted time. Check the pod logs."
+        exit 1
+    fi
+}
+
 function check_pod_readiness {
     # Check the status of nginx-ingress-controller and cert-manager pods
 
@@ -186,6 +243,7 @@ function check_pod_readiness {
     # Check the results and provide specific message
     if [ $RESULT1 -eq 0 ] && [ $RESULT2 -eq 0 ]; then
         log "All required pods for Ingress Nginx Controller and Cert Manager are ready."
+        check_cert_manager
     elif [ $RESULT1 -ne 0 ] && [ $RESULT2 -eq 0 ]; then
         log "ERROR: Ingress NGINX pods did not become ready within the timeout period."
         exit 1
