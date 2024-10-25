@@ -42,7 +42,7 @@ TIME_STEP = 15  # wait X seconds between checks
 ATTEMPTS_TO_DELETE_ARMADA_POD = 3
 REQUEST_TIMEOUT_KUBECTL = "2m"
 TIMEOUT_KUBECTL = "2m"
-GRACE_PERIOD_TIME = "10s"
+GRACE_PERIOD_TIME = "0"
 
 
 class CgtsClient(object):
@@ -323,7 +323,7 @@ def remove_armada_resources():
 
     # Remove armada namespace
     cmd = "kubectl delete namespace %s --request-timeout=%s --timeout=%s \
-        --grece-period=%s --kubeconfig %s --ignore-not-found" \
+        --grace-period=%s --force --kubeconfig %s --ignore-not-found" \
         % (ARMADA_NS,
            REQUEST_TIMEOUT_KUBECTL,
            TIMEOUT_KUBECTL,
