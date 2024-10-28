@@ -13684,7 +13684,7 @@ class ConductorManager(service.PeriodicService):
 
         # ensure the system configuration is also updated if hosts require
         # a reconfiguration
-        if host_updated:
+        if host_updated and not generate_optimized_hieradata:
             self._puppet.update_system_config()
             self._puppet.update_secure_system_config()
 
