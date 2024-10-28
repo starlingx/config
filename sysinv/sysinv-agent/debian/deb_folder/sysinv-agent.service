@@ -13,9 +13,6 @@ PIDFile=/var/run/sysinv-agent.pid
 
 # cgroup engineering
 CPUShares=256
-CPUQuota=25%
-CPUQuotaPeriodSec=10ms
-AllowedCPUs=0
 
 [Install]
 WantedBy=multi-user.target
