@@ -329,18 +329,20 @@ def _discover_and_validate_backend_hiera_data(caps_dict):
                     raise wsme.exc.ClientSideError(msg)
                 if v not in v_supported:
                     raise wsme.exc.ClientSideError(msg)
-            else:
-                try:
-                    rep = int(caps_dict[constants.CEPH_BACKEND_REPLICATION_CAP])
-                    min_rep = int(caps_dict[constants.CEPH_BACKEND_MIN_REPLICATION_CAP])
-                except ValueError:
-                    raise wsme.exc.ClientSideError(_("The %s and %s must be a integer value." %
-                                                    (constants.CEPH_BACKEND_REPLICATION_CAP,
-                                                     constants.CEPH_BACKEND_MIN_REPLICATION_CAP)))
-                if min_rep > rep:
-                    raise wsme.exc.ClientSideError(_("The %s must be greater than %s" %
-                                                    (constants.CEPH_BACKEND_REPLICATION_CAP,
-                                                     constants.CEPH_BACKEND_MIN_REPLICATION_CAP)))
+            try:
+                rep = int(caps_dict[constants.CEPH_BACKEND_REPLICATION_CAP])
+                min_rep = int(caps_dict[constants.CEPH_BACKEND_MIN_REPLICATION_CAP])
+            except ValueError:
+                raise wsme.exc.ClientSideError(_("The %s and %s must be a integer value." %
+                                                (constants.CEPH_BACKEND_REPLICATION_CAP,
+                                                    constants.CEPH_BACKEND_MIN_REPLICATION_CAP)))
+            if min_rep > rep:
+                raise wsme.exc.ClientSideError(_("The %s must be greater than %s" %
+                                                (constants.CEPH_BACKEND_REPLICATION_CAP,
+                                                    constants.CEPH_BACKEND_MIN_REPLICATION_CAP)))
+            if rep < 1:
+                raise wsme.exc.ClientSideError(
+                    _("Invalid replication factor. Value should be greater than 0."))
 
         # Validate min replication factor
         # In R5 the value for min_replication is fixed and determined
@@ -569,17 +571,39 @@ def _apply_backend_changes(op, sb_obj):
 # Create
 #
 
-def _set_default_values(storage_ceph_rook):
+def _set_initial_values(storage_ceph_rook):
     deployment = storage_ceph_rook.get('deployment', '')
     if deployment not in constants.CEPH_ROOK_DEPLOYMENTS_SUPPORTED:
         deployment = constants.CEPH_ROOK_DEPLOYMENT_CONTROLLER
+    capabilities = storage_ceph_rook.get('capabilities', {})
 
-    if cutils.is_aio_simplex_system(pecan.request.dbapi):
-        def_replication = str(constants.AIO_SX_CEPH_REPLICATION_FACTOR_DEFAULT)
+    # If no replication was specified, use default values
+    if constants.CEPH_BACKEND_REPLICATION_CAP not in capabilities:
+        if cutils.is_aio_simplex_system(pecan.request.dbapi):
+            def_replication = str(constants.AIO_SX_CEPH_REPLICATION_FACTOR_DEFAULT)
+        else:
+            def_replication = str(constants.CEPH_REPLICATION_FACTOR_DEFAULT)
+
+        def_min_replication = str(constants.CEPH_REPLICATION_MAP_DEFAULT[int(def_replication)])
+
+    # If 'replication' parameter is provided with a valid value and optional
+    # 'min_replication' parameter is not provided, default its value
+    # depending on the 'replication' value.
     else:
-        def_replication = str(constants.CEPH_REPLICATION_FACTOR_DEFAULT)
+        def_replication = capabilities.get(constants.CEPH_BACKEND_REPLICATION_CAP)
+        def_min_replication = capabilities.get(constants.CEPH_BACKEND_MIN_REPLICATION_CAP)
 
-    def_min_replication = str(constants.CEPH_REPLICATION_MAP_DEFAULT[int(def_replication)])
+        if constants.CEPH_BACKEND_MIN_REPLICATION_CAP not in capabilities:
+            if int(def_replication) in constants.CEPH_REPLICATION_FACTOR_SUPPORTED:
+                def_min_replication = \
+                    str(constants.CEPH_REPLICATION_MAP_DEFAULT[int(def_replication)])
+
+            if deployment == constants.CEPH_ROOK_DEPLOYMENT_OPEN:
+                if int(def_replication) > 0:
+                    def_min_replication = max(1, int(def_replication) - 1)
+                else:
+                    raise wsme.exc.ClientSideError(
+                        _("Invalid replication factor. Value should be greater than 0."))
 
     def_services = f'{constants.SB_SVC_CEPH_ROOK_BLOCK},{constants.SB_SVC_CEPH_ROOK_FILESYSTEM}'
     def_capabilities = {
@@ -614,11 +638,11 @@ def _set_default_values(storage_ceph_rook):
 
 
 def _create(storage_ceph_rook):
-    # Set the default for the storage backend
-    storage_ceph_rook = _set_default_values(storage_ceph_rook)
+    # Set initial values for the storage backend
+    storage_ceph_rook = _set_initial_values(storage_ceph_rook)
 
     # Execute the common semantic checks for all backends, if a backend is
-    # not present this will not return
+    # not present this will not returnthe default
     api_helper.common_checks(constants.SB_API_OP_CREATE,
                              storage_ceph_rook)
 
@@ -668,12 +692,21 @@ def _pre_patch_checks(storage_ceph_rook_obj, patch_obj):
             # depending on the 'replication' value.
             if constants.CEPH_BACKEND_REPLICATION_CAP in patch_caps_dict:
                 req_replication = patch_caps_dict[constants.CEPH_BACKEND_REPLICATION_CAP]
-                if int(req_replication) in constants.CEPH_REPLICATION_FACTOR_SUPPORTED:
-                    if constants.CEPH_BACKEND_MIN_REPLICATION_CAP not in patch_caps_dict:
+                if constants.CEPH_BACKEND_MIN_REPLICATION_CAP not in patch_caps_dict:
+                    if int(req_replication) in constants.CEPH_REPLICATION_FACTOR_SUPPORTED:
                         req_min_replication = \
                             str(constants.CEPH_REPLICATION_MAP_DEFAULT[int(req_replication)])
                         patch_caps_dict[constants.CEPH_BACKEND_MIN_REPLICATION_CAP] = \
                             req_min_replication
+                    if current_caps_dict.get(constants.CEPH_ROOK_BACKEND_DEPLOYMENT_CAP) == \
+                            constants.CEPH_ROOK_DEPLOYMENT_OPEN:
+                        if int(req_replication) > 0:
+                            req_min_replication = max(1, int(req_replication) - 1)
+                            patch_caps_dict[constants.CEPH_BACKEND_MIN_REPLICATION_CAP] = \
+                                req_min_replication
+                        else:
+                            raise wsme.exc.ClientSideError(
+                                _("Invalid replication factor. Value should be greater than 0."))
 
             current_deployment = current_caps_dict.get(constants.CEPH_ROOK_BACKEND_DEPLOYMENT_CAP, '')
             if constants.CEPH_ROOK_BACKEND_DEPLOYMENT_CAP in patch_caps_dict:
@@ -757,10 +790,12 @@ def _patch(storcephrook_uuid, patch):
         raise exception.PatchError(patch=patch, reason=e)
 
     # Update current storage object.
+    delta_fields = {}
     for field in objects.storage_ceph_rook.fields:
         if (field in storcephrook_config.as_dict() and
                 rpc_storcephrook[field] != storcephrook_config.as_dict()[field]):
             rpc_storcephrook[field] = storcephrook_config.as_dict()[field]
+            delta_fields[field] = storcephrook_config.as_dict()[field]
 
     # Obtain the fields that have changed.
     delta = rpc_storcephrook.obj_what_changed()
@@ -793,6 +828,11 @@ def _patch(storcephrook_uuid, patch):
         # Enable the backend changes:
         _apply_backend_changes(constants.SB_API_OP_MODIFY,
                                rpc_storcephrook)
+
+        pecan.request.rpcapi.evaluate_apps_reapply(
+            pecan.request.context,
+            trigger={'type': constants.APP_EVALUATE_REAPPLY_TYPE_SB_MODIFY,
+                     'delta_fields': delta_fields})
 
         return StorageCephRook.convert_with_links(rpc_storcephrook)
 
