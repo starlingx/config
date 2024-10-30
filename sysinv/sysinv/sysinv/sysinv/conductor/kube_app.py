@@ -3158,8 +3158,10 @@ class AppOperator(object):
 
         # Delete helm releases which have a helm operation running.
         # eg.: pending-install, pending-upgrade, etc.
-        flux_helm_releases = [(c.metadata_name, c.namespace) for c in self._get_list_of_charts(app)]
-        for release, namespace in flux_helm_releases:
+        for chart in app.charts:
+            release = chart.metadata_name
+            namespace = chart.namespace
+
             helm_release_dict = self._kube.get_custom_resource(
                     constants.FLUXCD_CRD_HELM_REL_GROUP,
                     constants.FLUXCD_CRD_HELM_REL_VERSION,

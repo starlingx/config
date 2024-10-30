@@ -17039,7 +17039,6 @@ class ConductorManager(service.PeriodicService):
             # Regenerate overrides and compute new hash
             try:
                 new_hash = {}
-                app.charts = self._app._get_list_of_charts(app)
                 self._helm.generate_helm_application_overrides(
                     app.sync_overrides_dir, app.name, app.mode, cnamespace=None,
                     chart_info=app.charts, combined=True)
