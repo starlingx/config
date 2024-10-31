@@ -147,7 +147,7 @@ update_ipsec_config() {
         return ${OCF_ERR_CONFIGURED}
     fi
 
-    /usr/sbin/swanctl --terminate --ike system-nodes
+    /usr/sbin/swanctl --terminate --ike system-nodes --force
     if [ $? -ne 0 ] ; then
         ocf_log warn "Failed to terminate existing IPsec connections"
 
