@@ -78,6 +78,7 @@ class PlatformPuppet(base.BasePuppet):
         config.update(self._get_nvidia_vgpu_drivers_config(host))
         config.update(self._get_host_lldp_config(host))
         config.update(self._get_ttys_dcd_config(host))
+        config.update(self._get_host_tuned_devices(host))
         return config
 
     def get_host_config_upgrade(self, host):
@@ -533,6 +534,21 @@ class PlatformPuppet(base.BasePuppet):
             config.update({
                 'platform::sysctl::params::low_latency': True
             })
+
+        return config
+
+    def _get_host_tuned_devices(self, host):
+        disks = self.dbapi.idisk_get_by_ihost(host.id)
+
+        tuned_devices = ''
+        for d in disks:
+            device_name = os.path.basename(d.device_path)
+            if device_name:
+                tuned_devices += '(ID_PATH=%s)|' % device_name
+
+        config = {
+            'platform::sysctl::params::tuned_devices': tuned_devices[:-1]
+        }
 
         return config
 
