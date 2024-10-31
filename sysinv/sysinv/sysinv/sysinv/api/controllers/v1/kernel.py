@@ -170,6 +170,9 @@ class KernelController(rest.RestController):
         if constants.WORKER not in ihost.subfunctions:
             raise wsme.exc.ClientSideError(_('Can only modify worker nodes.'))
 
+        if ihost.inv_state != constants.INV_STATE_INITIAL_INVENTORIED:
+            raise wsme.exc.ClientSideError(_('Host must have completed initial inventory.'))
+
     @staticmethod
     def _check_patch(patch):
         KERNEL_PATH = '/kernel_provisioned'
