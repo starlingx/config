@@ -5754,6 +5754,23 @@ class Connection(api.Connection):
         return _paginate_query(models.Routes, limit, marker,
                                sort_key, sort_dir, query)
 
+    def routes_get_by_host_for_duplicate_subnet_check(
+        self, host_id, limit=None, marker=None, sort_key=None, sort_dir=None
+    ):
+        columns = [models.Routes.prefix, models.Routes.metric, models.Routes.network]
+        columns_keys = [column.key for column in columns]
+        query = (
+            model_query(*columns)
+            .join(models.Interfaces, models.Routes.interface_id == models.Interfaces.id)
+            .join(models.ihost, models.Interfaces.forihostid == models.ihost.id)
+            .filter(models.ihost.id == host_id)
+        )
+        results = _paginate_query(models.Routes, limit, marker, sort_key, sort_dir, query)
+        # Convert results to a list of dicts with keys being the columns keys
+        # We cannot use the objectify decorator here because sqlalchemy returns
+        # a list of tuples and not a list of objects
+        return [dict(zip(columns_keys, r)) for r in results]
+
     @db_objects.objectify(objects.route)
     def routes_get_by_network_type_and_host_personality(self, network_type,
                                                         personality):
