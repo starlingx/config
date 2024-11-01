@@ -37,6 +37,7 @@ INVALID_SUBCLOUD_AUDIT_DEPLOY_STATES = [
     # Secondary subclouds should not be audited as they are expected
     # to be managed by a peer system controller (geo-redundancy feat.)
     'create-complete',
+    'create-failed',
     'pre-rehome',
     'rehome-failed',
     'rehome-pending',
@@ -69,15 +70,15 @@ cert_mon_opts = [
                help='Interval to reattempt accessing external system '
                     'if network failure occurred'),
     cfg.IntOpt('audit_batch_size',
-               default=10,
+               default=40,
                help='Batch size of subcloud audits per audit_interval'),
     cfg.IntOpt('audit_greenpool_size',
-               default=4,
+               default=20,
                help='Size of subcloud audit greenpool.'
                     'Set to 0 to disable use of greenpool '
                     '(force serial audit).'),
     cfg.IntOpt('certificate_timeout_secs',
-               default=10,
+               default=5,
                help='Connection timeout for certificate check (in seconds)'),
 ]
 
@@ -465,14 +466,18 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
         if not self.sc_audit_queue.contains(sc_audit_item.name):
             self.sc_audit_queue.enqueue(sc_audit_item, delay_secs)
 
-    def audit_subcloud(self, subcloud_name, allow_requeue=False):
+    def audit_subcloud(self, subcloud_name, allow_requeue=False, priority=None):
         """Enqueue a subcloud audit
 
         allow_requeue: This can come from a watch after a DC certificate renew.
                        i.e., outside of the periodic subcloud audit tasks.
                        We allow a re-enqueue here with a new delay.
+        priority: When set, this value will be used instead of timestamp for
+                  the position in the queue
         """
-        if self.sc_audit_queue.contains(subcloud_name):
+        # Since there's no way to remove a subcloud from the queue, we always
+        # enqueue again if it came from a notification (priority == 0)
+        if self.sc_audit_queue.contains(subcloud_name) and priority != 0:
             if (allow_requeue
                     and self.sc_audit_queue.enqueued_subcloud_names.count(
                         subcloud_name) < 2):
@@ -483,7 +488,9 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
                 return
         self.sc_audit_queue.enqueue(
             subcloud_audit_queue.SubcloudAuditData(subcloud_name),
-            allow_requeue=allow_requeue)
+            allow_requeue=allow_requeue,
+            priority=priority,
+        )
 
     def subcloud_sysinv_endpoint_update(self, subcloud_name, sysinv_url):
         utils.SubcloudSysinvEndpointCache.update_endpoints(

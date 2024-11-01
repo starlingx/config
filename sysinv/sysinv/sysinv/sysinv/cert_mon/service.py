@@ -115,7 +115,9 @@ class CertificateMonitorService(service.Service):
         """
         LOG.info("%s is online. An online audit is queued"
                  % subcloud_name)
-        self.manager.audit_subcloud(subcloud_name)
+        # Set priority to 0 for the audit to be processed immediately
+        # Multiple audits with priority 0 will be processed in FIFO order
+        self.manager.audit_subcloud(subcloud_name, priority=0)
 
     def subcloud_managed(self, context, subcloud_name=None):
         """

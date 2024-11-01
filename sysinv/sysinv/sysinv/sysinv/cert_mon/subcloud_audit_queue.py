@@ -68,20 +68,31 @@ class SubcloudAuditPriorityQueue(PriorityQueue):
         """Check if subcloud is under audit"""
         return subcloud_name in self.enqueued_subcloud_names
 
-    def enqueue(self, sc_audit_item, delay_secs=0,
-                timestamp=None, allow_requeue=False):
+    def enqueue(
+        self,
+        sc_audit_item,
+        delay_secs=0,
+        timestamp=None,
+        allow_requeue=False,
+        priority=None,
+    ):
         """Custom top-level method to enqueue a subcloud in the audit
            - convert delay to timestamp
            - increment audit_count
         """
         if (sc_audit_item.name in self.enqueued_subcloud_names
-                and not allow_requeue):
+                and not allow_requeue and priority != 0):
             raise SubcloudAuditException("Subcloud already enqueued: %s"
                                          % sc_audit_item.name)
         if timestamp is None:
             timestamp = self.__get_next_audit_timestamp(delay_secs)
         else:
             timestamp += delay_secs
+
+        # If priority is set, use it as the timestamp so we can move
+        # the subcloud to the front of the queue
+        if priority is not None:
+            timestamp = priority
 
         # this PriorityQueue is ordered by the next timestamp:
         sc_audit_item.audit_count += 1
