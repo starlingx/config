@@ -14,12 +14,6 @@ import yaml
 
 def get_list_of_keys(from_release, to_release):
     keys = {"static": [], "secure_static": []}
-    if from_release == "22.12":
-        keys["secure_static"] = ["usm::keystone::auth::password",
-                                 "usm::keystone::authtoken::password",
-                                 "usm::api::keystone_password"]
-        keys["static"] = ["usm::api::keystone_user"]
-
     return keys
 
 
