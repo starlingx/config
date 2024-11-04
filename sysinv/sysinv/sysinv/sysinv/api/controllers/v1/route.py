@@ -316,7 +316,7 @@ class RouteController(rest.RestController):
         return False
 
     def _check_duplicate_subnet(self, host_id, route):
-        result = pecan.request.dbapi.routes_get_by_host(host_id)
+        result = pecan.request.dbapi.routes_get_by_host_for_duplicate_subnet_check(host_id)
         count = 0
         for entry in result:
             if self._is_same_subnet(entry, route):
