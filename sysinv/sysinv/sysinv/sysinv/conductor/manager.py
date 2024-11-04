@@ -18715,6 +18715,12 @@ class ConductorManager(service.PeriodicService):
             LOG.info(message)
             return message
 
+        if cutils.is_app_applied(self.dbapi, constants.HELM_APP_ROOK_CEPH) and \
+                self._rook_ceph_recovery_is_running():
+            message = "The rook-ceph recovery is not yet complete. Try restore-complete later."
+            LOG.info(message)
+            return message
+
         try:
             restore = self.dbapi.restore_get_one(
                 filters={'state': constants.RESTORE_STATE_IN_PROGRESS})
@@ -18755,6 +18761,15 @@ class ConductorManager(service.PeriodicService):
 
         LOG.info(output)
         return output
+
+    def _rook_ceph_recovery_is_running(self):
+        # Do not allow restore to complete if the rook recovery process is not completed
+        cmd = ['kubectl', '--kubeconfig=%s' % kubernetes.KUBERNETES_ADMIN_CONF,
+               '-n', 'rook-ceph', 'get', 'job', 'rook-ceph-recovery-monitor',
+               '--request-timeout=30s']
+        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        # Return code being "0" means the job exists and the recovery is still running
+        return proc.returncode == 0
 
     def _create_kube_rootca_resources(self, certificate, key):
         """ A method to create new resources to store new kubernetes

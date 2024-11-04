@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2023 Wind River Systems, Inc.
+# Copyright (c) 2023-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identilfier: Apache-2.0
 #
@@ -8,6 +8,7 @@
 Tests for the restore logic
 """
 
+import mock
 from oslo_context import context
 
 from fm_api import fm_api
@@ -54,6 +55,8 @@ class RestoreTestCase(base.BaseHostTestCase):
             administrative=constants.ADMIN_UNLOCKED,
             operational=constants.OPERATIONAL_ENABLED,
             availability=constants.AVAILABILITY_AVAILABLE)
+
+        self.service._rook_ceph_recovery_is_running = mock.Mock()
 
         self.assertEqual(self.service.get_restore_state(self.context),
                          constants.RESTORE_PROGRESS_NOT_IN_PROGRESS)
