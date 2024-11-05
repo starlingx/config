@@ -1,19 +1,23 @@
 #
-# Copyright (c) 2021-2022 Wind River Systems, Inc.
+# Copyright (c) 2021-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
 from datetime import datetime
 from datetime import timedelta
+from distutils.version import LooseVersion
 from fm_api import constants as fm_constants
 from oslo_log import log
 import re
+from sysinv.cert_alarm.cdi_watch import CDIWatch
 from sysinv.cert_alarm import fm as fm_mgr
 from sysinv.cert_alarm import utils
 from sysinv.common import constants
 from sysinv.common import kubernetes as sys_kube
 
 LOG = log.getLogger(__name__)
+
+cdi_watch = CDIWatch()
 
 
 class CertAlarmAudit(object):
@@ -204,6 +208,20 @@ class CertAlarmAudit(object):
             threshold = renew_before if renew_before < alarm_before else alarm_before
         else:
             threshold = alarm_before
+
+        # TODO(boovan): Remove workaround to suppress 500.200 alarm for
+        # cdi-uploadserver-client-cert certificate once we upgrade CDI version to 1.60.1.
+        # Setting the threshold value to 12 hours, since the default
+        # renewBefore value for cdi-uploadserver-client-cert is 12 hours.
+        if cert_name == 'cdi-uploadserver-client-cert':
+            if not cdi_watch.is_monitor_thread_started():
+                # Start monitoring the cdi event in separate thread
+                cdi_watch.start_watching()
+
+            cdi_version = cdi_watch.get_version()
+            if cdi_version is not None:
+                if LooseVersion(cdi_version) < LooseVersion('v1.60.1'):
+                    threshold = self.parse_time('12h')
 
         is_alarm_enabled = self.alarm_override_check_passed(cert_name)
 
