@@ -288,6 +288,9 @@ class KubeAppController(rest.RestController):
             raise wsme.exc.ClientSideError(_(
                 "Application-{} rejected: application not found.".format(directive)))
 
+        is_reapply_process = db_app.status in \
+            {constants.APP_APPLY_SUCCESS, constants.APP_APPLY_FAILURE}
+
         plugin_name = cutils.find_app_plugin_name(name)
 
         if directive == 'apply':
@@ -352,8 +355,12 @@ class KubeAppController(rest.RestController):
             lifecycle_hook_info = LifecycleHookInfo()
             lifecycle_hook_info.mode = constants.APP_LIFECYCLE_MODE_MANUAL
 
-            pecan.request.rpcapi.perform_app_apply(pecan.request.context, db_app,
-                                                   mode=mode, lifecycle_hook_info=lifecycle_hook_info)
+            pecan.request.rpcapi.perform_app_apply(
+                pecan.request.context,
+                db_app,
+                mode=mode,
+                lifecycle_hook_info=lifecycle_hook_info,
+                is_reapply_process=is_reapply_process)
         elif directive == 'remove':
             if db_app.status not in [constants.APP_APPLY_SUCCESS,
                                      constants.APP_APPLY_FAILURE,

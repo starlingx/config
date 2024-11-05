@@ -89,3 +89,7 @@ COMPONENT_LABEL_VALUE_PLATFORM = 'platform'
 # Application plugins
 APP_PLUGIN_PATH = '/var/stx_app/plugins'
 APP_PTH_PREFIX = 'stx_app-'
+
+# State helmrelease from k8s API
+HELM_RELEASE_TYPE_RECONCILING = "Reconciling"
+HELM_RELEASE_TYPE_READY = "Ready"
