@@ -1277,12 +1277,9 @@ class AppOperator(object):
                 temp_manifest_dir = os.path.join(temp_dirname, os.path.basename(manifest))
                 shutil.copytree(manifest, temp_manifest_dir)
 
-                # Delete kustomization.yaml
+                # Rename kustomization-orig.yaml to kustomization.yaml
                 temp_kustomization_path = \
                     os.path.join(temp_manifest_dir, constants.APP_ROOT_KUSTOMIZE_FILE)
-                os.remove(temp_kustomization_path)
-
-                # Rename kustomization-orig.yaml to kustomization.yaml
                 kustomization_orig_path = \
                     os.path.join(temp_manifest_dir, constants.APP_ROOT_KUSTOMIZE_ORIG_FILE)
                 os.rename(kustomization_orig_path, temp_kustomization_path)

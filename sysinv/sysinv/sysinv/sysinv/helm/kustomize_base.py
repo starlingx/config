@@ -57,6 +57,38 @@ class FluxCDKustomizeOperator(object):
             'helmrelease_cleanup': self.helmrelease_cleanup,
         }, indent=2)
 
+    @staticmethod
+    def get_kustomization_content(kustomization_fqpn):
+        """ Get the Kustomization manifest from a given file.
+
+        Expect the top level kustomization.yaml to have one yaml doc.
+
+        :param kustomization_content: Kustomization file full path.
+        :return: Yaml manifest from file. None if file is invalid.
+        """
+
+        if os.path.isfile(kustomization_fqpn):
+            with io.open(kustomization_fqpn, 'r', encoding='utf-8') as fk:
+                kustomization_content = list(yaml.load_all(fk,
+                                                           Loader=yaml.RoundTripLoader,
+                                                           preserve_quotes=True))
+
+            # Important having distinct error messages since they can help
+            # identifying different potential bugs.
+            if len(kustomization_content) == 0:
+                LOG.error(f"Malformed Kustomization file {kustomization_fqpn} does not contain "
+                          "a yaml doc.")
+                return None
+            if len(kustomization_content) > 1:
+                LOG.error(f"Malformed Kustomization file {kustomization_fqpn} contains more than "
+                          "one yaml doc.")
+                return None
+        else:
+            LOG.error(f"Kustomization file {kustomization_fqpn} not found")
+            return None
+
+        return kustomization_content
+
     def load(self, manifests_dir_fqpn):
         """ Load the application kustomization manifests for processing
 
@@ -98,17 +130,9 @@ class FluxCDKustomizeOperator(object):
         # changed
         self.helmrelease_cleanup = []
 
-        # Read the original kustomization.yaml content
-        with io.open(self.original_kustomization_fqpn, 'r', encoding='utf-8') as f:
-            # The RoundTripLoader removes the superfluous quotes by default,
-            # Set preserve_quotes=True to preserve all the quotes.
-            self.kustomization_content = list(yaml.load_all(
-                f, Loader=yaml.RoundTripLoader, preserve_quotes=True))
-
-        # Expect the top level kustomization.yaml to only have one doc
-        if len(self.kustomization_content) > 1:
-            LOG.error("Malformed Kustomize manifest %s contains more than one yaml "
-                      "doc." % self.kustomization_fqpn)
+        self.kustomization_content = \
+            self.get_kustomization_content(self.original_kustomization_fqpn)
+        if not self.kustomization_content:
             return
 
         # Grab the app resource
@@ -156,18 +180,13 @@ class FluxCDKustomizeOperator(object):
                               "metadata name from %s" % resource_helmrelease_fqpn)
                     continue
 
-                if os.path.isfile(resource_kustomization_fqpn):
+                resource_kustomization_contents = \
+                    self.get_kustomization_content(resource_kustomization_fqpn)
+                if not resource_kustomization_contents:
+                    continue
 
-                    with io.open(resource_kustomization_fqpn, 'r', encoding='utf-8') as fk:
-                        resource_kustomization_contents = list(yaml.load_all(fk,
-                            Loader=yaml.RoundTripLoader, preserve_quotes=True))
-
-                    if len(resource_kustomization_contents) > 1:
-                        LOG.error("Malformed release Kustomize manifest %s contains more than one yaml "
-                                  "doc." % resource_kustomization_fqpn)
-                        continue
-
-                    resource_kustomization_namespace = resource_kustomization_contents[0].get("namespace")
+                resource_kustomization_namespace = \
+                    resource_kustomization_contents[0].get("namespace")
 
                 if resource_kustomization_namespace:
                     LOG.debug("Using namespace defined on the release's kustomization.yaml")
@@ -278,24 +297,34 @@ class FluxCDKustomizeOperator(object):
 
         if self.kustomization_fqpn and os.path.exists(self.kustomization_fqpn):
 
-            # remove existing kustomization file
-            self._delete_kustomization_file()
-
             # Save the updated view of the resource to enable
             self.kustomization_content[0]['resources'] = self.kustomization_resources
 
-            with open(self.kustomization_fqpn, 'w') as f:
+            # Write temp kustomization.yaml
+            with tempfile.TemporaryDirectory(dir=constants.APP_FLUXCD_BASE_PATH) as temp_dirname:
+                temp_kustomization_path = \
+                    os.path.join(temp_dirname, constants.APP_ROOT_KUSTOMIZE_FILE)
+
+                with open(temp_kustomization_path, 'w') as f:
+                    try:
+                        yaml.dump_all(self.kustomization_content, f, Dumper=yaml.RoundTripDumper,
+                                      explicit_start=True,
+                                      default_flow_style=False)
+                        LOG.debug(f"Temporary kustomization file {temp_kustomization_path} "
+                                  "generated")
+                    except Exception as e:
+                        LOG.error("Failed to generate temporary kustomization file "
+                                  f"{temp_kustomization_path}: {e}")
+
+                # Atomic operation to update the kustomization file
                 try:
-                    yaml.dump_all(self.kustomization_content, f, Dumper=yaml.RoundTripDumper,
-                                  explicit_start=True,
-                                  default_flow_style=False)
-                    LOG.debug("Updated kustomization file %s generated" %
-                             self.kustomization_fqpn)
-                except Exception as e:
-                    LOG.error("Failed to generate updated kustomization file %s: "
-                              "%s" % (self.kustomization_fqpn, e))
+                    os.rename(temp_kustomization_path, self.kustomization_fqpn)
+                    LOG.debug("Updated kustomization file {self.kustomization_fqpn} generated")
+                except OSError as e:
+                    LOG.error("Failed to generate updated kustomization file "
+                              f"{self.kustomization_fqpn}: {e}")
         else:
-            LOG.error("Kustomization file %s does not exist" % self.kustomization_fqpn)
+            LOG.error(f"Kustomization file {self.kustomization_fqpn} does not exist")
 
     def save_release_cleanup_data(self):
         """ Save yaml to cleanup HelmReleases that are no longer managed."""
