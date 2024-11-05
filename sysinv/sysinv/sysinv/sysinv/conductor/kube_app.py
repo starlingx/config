@@ -1592,13 +1592,13 @@ class AppOperator(object):
                          "Chart %s from version %s" % (to_app.name, to_app.version,
                                                        chart.name, from_app.version))
 
-    def _make_app_request(self, app, request):
-        return self._make_fluxcd_operation_with_monitor(app, request)
+    def _make_app_request(self, app, request, is_reapply_process=False):
+        return self._make_fluxcd_operation_with_monitor(app, request, is_reapply_process)
 
     @retry(retry_on_exception=lambda x: isinstance(x, exception.ApplicationApplyFailure),
            stop_max_attempt_number=5, wait_fixed=30 * 1000)
     @kubernetes.test_k8s_health
-    def _make_fluxcd_operation_with_monitor(self, app, request):
+    def _make_fluxcd_operation_with_monitor(self, app, request, is_reapply_process=False):
         def _recover_from_helm_operation_in_progress_on_app_apply(metadata_name, namespace,
                                                                   flux_error_message):
             """ Recovery logic for FluxCD on apply
@@ -1683,7 +1683,7 @@ class AppOperator(object):
             """
 
             if "another operation (install/upgrade/rollback) is in progress" in released_err_msg:
-                latest_status, latest_msg = self._fluxcd.get_helm_release_status(helm_rel, "Ready")
+                latest_status, latest_msg = self._fluxcd.get_helm_release_status(helm_rel)
                 if latest_status == "False" and latest_msg == "upgrade retries exhausted":
                     return True
 
@@ -1725,38 +1725,6 @@ class AppOperator(object):
 
                     raise exception.ApplicationApplyFailure(name=app.name)
 
-        def _apply_delay_to_check_progress(kubectl_apply_time):
-            """ Apply delay before checking the charts installation progress.
-                The purpose of this is to ensure that reconciliation has been
-                initiated before checking the helmrelease status of each chart.
-
-                The variable fluxcd_hr_reconcile_check_delay has been set in
-                sysinv.conf to the default amount of time. This value will be
-                override if this variable is present in the application's
-                metadata.
-
-                :param kubectl_apply_time: date when "kubectl apply -k" was called
-            """
-            fluxcd_hr_reconcile_check_delay = CONF.app_framework.fluxcd_hr_reconcile_check_delay
-
-            # Override default time delay if app metadata have
-            # fluxcd_hr_reconcile_check_delay variable
-            if "fluxcd_hr_reconcile_check_delay" in app.app_metadata:
-                fluxcd_hr_reconcile_check_delay = app.app_metadata[
-                    "fluxcd_hr_reconcile_check_delay"]
-
-            # If fluxcd_hr_reconcile_check_delay is 0, no delay will need to be added
-            # and the _check_progress function must be called normally.
-            if fluxcd_hr_reconcile_check_delay > 0:
-                now = time.time()
-                elapsed_time = now - kubectl_apply_time
-                delay_time = fluxcd_hr_reconcile_check_delay - elapsed_time
-
-                if fluxcd_hr_reconcile_check_delay > elapsed_time:
-                    LOG.info("Waiting {} seconds to make sure "
-                             "the reconciliation was called".format(int(delay_time)))
-                    time.sleep(delay_time)
-
         def _check_progress():
             tadjust = 0
             last_successful_chart = None
@@ -1785,6 +1753,18 @@ class AppOperator(object):
                               format(constants.APP_METADATA_APPLY_PROGRESS_ADJUST,
                                      adjust))
                     tadjust = 0
+
+            # fluxcd is forced to reconcile within the reapply/update process. This happens to
+            # prevent the previous status of the helmrelease from being used.
+            if is_reapply_process:
+                for release_name, chart_obj in list(charts.items()):
+                    LOG.info(f"Forcing reconciliation for release: {release_name}")
+                    try:
+                        helm_utils.call_fluxcd_reconciliation(release_name,
+                                                              chart_obj["namespace"])
+                    except Exception as e:
+                        LOG.error(f"Error while forcing FluxCD reconciliation for release \
+                                  {release_name}: {e}")
 
             while charts:
                 if AppOperator.is_app_aborted(app.name):
@@ -1890,17 +1870,12 @@ class AppOperator(object):
             with Timeout(constants.APP_INSTALLATION_TIMEOUT,
                          exception.KubeAppProgressMonitorTimeout()):
 
-                rc, kubectl_apply_time = self._fluxcd.make_fluxcd_operation(
+                rc = self._fluxcd.make_fluxcd_operation(
                     request,
                     app.sync_fluxcd_manifest)
 
                 # check progress only for apply for now
                 if rc and request == constants.APP_APPLY_OP:
-                    # Because reconciliation is not called immediately after running the
-                    # "kubectl apply -k" command, a delay is applied before _check_progress
-                    # function so that it does not return old values.
-                    _apply_delay_to_check_progress(kubectl_apply_time)
-
                     rc = _check_progress()
         except (exception.ApplicationApplyFailure):
             raise
@@ -2144,7 +2119,7 @@ class AppOperator(object):
                     manifest_sync_dir_path, constants.APP_METADATA_FILE)
                 shutil.copy(inst_metadata_file, sync_metadata_file)
 
-            validation_result, _ = validate_function(constants.APP_VALIDATE_OP,
+            validation_result = validate_function(constants.APP_VALIDATE_OP,
                                                      validate_manifest)
             if not validation_result:
                 raise exception.KubeAppUploadFailure(
@@ -2668,7 +2643,8 @@ class AppOperator(object):
         if app_name in self._apps_metadata[constants.APP_METADATA_ORDERED_APPS]:
             self._apps_metadata[constants.APP_METADATA_ORDERED_APPS].remove(app_name)
 
-    def perform_app_apply(self, rpc_app, mode, lifecycle_hook_info_app_apply, caller=None):
+    def perform_app_apply(self, rpc_app, mode, lifecycle_hook_info_app_apply, caller=None,
+                          is_reapply_process=False):
         """Process application install request
 
         This method processes node labels per configuration and invokes
@@ -2811,7 +2787,7 @@ class AppOperator(object):
                 if caller == constants.RECOVER_VIA_REMOVAL:
                     return True
 
-                if self._make_app_request(app, constants.APP_APPLY_OP):
+                if self._make_app_request(app, constants.APP_APPLY_OP, is_reapply_process):
                     self._update_app_releases_version(app.name)
                     self._update_app_status(app,
                                             constants.APP_APPLY_SUCCESS,
@@ -4123,8 +4099,7 @@ class FluxCDHelper(object):
                       (operation, manifest_dir, e))
             rc = False
 
-        kubectl_apply_time = time.time()
-        return rc, kubectl_apply_time
+        return rc
 
     def run_kubectl_kustomize(self, operation_type, manifest_dir):
         if operation_type == constants.KUBECTL_KUSTOMIZE_VALIDATE:
@@ -4263,18 +4238,200 @@ class FluxCDHelper(object):
     # Some methods in this class receive helm_chart_dict as a parameter.
     # Can move the call to _kube.get_custom_resource() into these functions
     # or create a helper function inside the class for it.
-    def get_helm_release_status(self, helm_release_dict, condition_type="Released"):
+    def get_helm_release_status(self, helm_release_dict):
         """helm_release_dict is of the form returned by _kube.get_custom_resource().
+
+        The helm_release_dict is a list of dictionaries where position 0 reflects
+        the most current release status and it should be the source of truth whether
+        the release was successfully installed or not.
+
+        To determine that helmrelease was successfully installed, the key "status" must
+        be "True" and the type must be "Ready".
+
+        Below is an example of a successful installation of the
+        ic-nginx-ingress release:
+
+        Intermediate state:
+        [{
+            "lastTransitionTime": "2024-11-04T20:34:12Z",
+            "message": "Running 'install' action with timeout of 30m0s",
+            "observedGeneration": 1,
+            "reason": "Progressing",
+            "status": "True",
+            "type": "Reconciling",
+        },
+        {
+            "lastTransitionTime": "2024-11-04T20:34:12Z",
+            "message": "Running 'install' action with timeout of 30m0s",
+            "observedGeneration": 1,
+            "reason": "Progressing",
+            "status": "Unknown",
+            "type": "Ready",
+        }]
+
+        Installed successfully:
+        [{
+            "lastTransitionTime": "2024-11-04T20:34:26Z",
+            "message": "Helm install succeeded for release kube-system/ic-nginx-ingress.v1
+                        with chart ingress-nginx@4.11.1+STX.3",
+            "observedGeneration": 1,
+            "reason": "InstallSucceeded",
+            "status": "True",
+            "type": "Ready",
+        },
+        {
+            "lastTransitionTime": "2024-11-04T20:34:26Z",
+            "message": "Helm install succeeded for release kube-system/ic-nginx-ingress.v1
+                        with chart ingress-nginx@4.11.1+STX.3",
+            "observedGeneration": 1,
+            "reason": "InstallSucceeded",
+            "status": "True",
+            "type": "Released",
+        }]
+
+
+        Below is an example of a failed ic-nginx-ingress version upgrade due to bad
+        user-overrides values:
+
+        Intermediate state:
+        [{
+            "lastTransitionTime": "2024-11-04T20:38:02Z",
+            "message": "Fulfilling prerequisites",
+            "observedGeneration": 2,
+            "reason": "Progressing",
+            "status": "True",
+            "type": "Reconciling",
+        },
+        {
+            "lastTransitionTime": "2024-11-04T20:34:26Z",
+            "message": "Helm install succeeded for release kube-system/ic-nginx-ingress.v1
+                        with chart ingress-nginx@4.11.1+STX.3",
+            "observedGeneration": 1,
+            "reason": "InstallSucceeded",
+            "status": "True",
+            "type": "Ready",
+        },
+        {
+            "lastTransitionTime": "2024-11-04T20:34:26Z",
+            "message": "Helm install succeeded for release kube-system/ic-nginx-ingress.v1
+                        with chart ingress-nginx@4.11.1+STX.3",
+            "observedGeneration": 1,
+            "reason": "InstallSucceeded",
+            "status": "True",
+            "type": "Released",
+        }]
+
+        Upgrade failed:
+        [{
+            "lastTransitionTime": "2024-11-04T20:38:11Z",
+            "message": "Failed to upgrade after 1 attempt(s)",
+            "observedGeneration": 2,
+            "reason": "RetriesExceeded",
+            "status": "True",
+            "type": "Stalled",
+        },
+        {
+            "lastTransitionTime": "2024-11-04T20:38:10Z",
+            "message": 'Helm upgrade failed for release kube-system/ic-nginx-ingress with
+                        chart ingress-nginx@4.11.1+STX.3: cannot patch
+                        "ic-nginx-ingress-ingress-nginx-controller" with kind DaemonSet:
+                        DaemonSet.apps "ic-nginx-ingress-ingress-nginx-controller" is
+                        invalid: spec.template.spec.containers[0].resources.requests:
+                        Invalid value: "255": must be less than or equal to cpu limit of 10',
+            "observedGeneration": 2,
+            "reason": "UpgradeFailed",
+            "status": "False",
+            "type": "Ready",
+        },
+        {
+            "lastTransitionTime": "2024-11-04T20:38:10Z",
+            "message": 'Helm upgrade failed for release kube-system/ic-nginx-ingress with
+                        chart ingress-nginx@4.11.1+STX.3: cannot patch
+                        "ic-nginx-ingress-ingress-nginx-controller" with kind DaemonSet:
+                        DaemonSet.apps "ic-nginx-ingress-ingress-nginx-controller" is invalid:
+                        spec.template.spec.containers[0].resources.requests: Invalid value:
+                        "255": must be less than or equal to cpu limit of 10',
+            "observedGeneration": 2,
+            "reason": "UpgradeFailed",
+            "status": "False",
+            "type": "Released",
+        }]
+
+        Below is an example of a successful upgrade after fixing the user-overrides:
+
+        Intermediate state:
+        [{
+            "lastTransitionTime": "2024-11-04T20:52:16Z",
+            "message": "Fulfilling prerequisites",
+            "observedGeneration": 3,
+            "reason": "Progressing",
+            "status": "True",
+            "type": "Reconciling",
+        },
+        {
+            "lastTransitionTime": "2024-11-04T20:38:10Z",
+            "message": 'Helm upgrade failed for release kube-system/ic-nginx-ingress
+                        with chart ingress-nginx@4.11.1+STX.3: cannot patch
+                        "ic-nginx-ingress-ingress-nginx-controller" with kind DaemonSet:
+                        DaemonSet.apps "ic-nginx-ingress-ingress-nginx-controller" is
+                        invalid: spec.template.spec.containers[0].resources.requests:
+                        Invalid value: "255": must be less than or equal to cpu limit
+                        of 10',
+            "observedGeneration": 2,
+            "reason": "UpgradeFailed",
+            "status": "False",
+            "type": "Ready",
+        },
+        {
+            "lastTransitionTime": "2024-11-04T20:38:10Z",
+            "message": 'Helm upgrade failed for release kube-system/ic-nginx-ingress with
+                        chart ingress-nginx@4.11.1+STX.3: cannot patch
+                        "ic-nginx-ingress-ingress-nginx-controller" with kind DaemonSet:
+                        DaemonSet.apps "ic-nginx-ingress-ingress-nginx-controller" is
+                        invalid: spec.template.spec.containers[0].resources.requests:
+                        Invalid value: "255": must be less than or equal to cpu limit
+                        of 10',
+            "observedGeneration": 2,
+            "reason": "UpgradeFailed",
+            "status": "False",
+            "type": "Released",
+        }]
+
+        Upgrade success:
+        [{
+            "lastTransitionTime": "2024-11-04T20:52:30Z",
+            "message": "Helm upgrade succeeded for release kube-system/ic-nginx-ingress.v3
+                        with chart ingress-nginx@4.11.1+STX.3",
+            "observedGeneration": 3,
+            "reason": "UpgradeSucceeded",
+            "status": "True",
+            "type": "Ready",
+        },
+        {
+            "lastTransitionTime": "2024-11-04T20:52:30Z",
+            "message": "Helm upgrade succeeded for release kube-system/ic-nginx-ingress.v3
+                        with chart ingress-nginx@4.11.1+STX.3",
+            "observedGeneration": 3,
+            "reason": "UpgradeSucceeded",
+            "status": "True",
+            "type": "Released",
+        }]
+
         Returns: 'status' of the release (Unlnown,True,False) and 'message'
                   associated with the status
         """
         if "status" in helm_release_dict and "conditions" in helm_release_dict["status"]:
-            conditions = list([x
-                               for x in helm_release_dict['status']['conditions']
-                               if x['type'] == condition_type])
-            if not conditions:
+            conditions_list = helm_release_dict['status']['conditions']
+
+            status = strtobool(conditions_list[0]['status'])
+            type = conditions_list[0]['type']
+
+            if status and type == common.HELM_RELEASE_TYPE_READY:
+                return conditions_list[0]['status'], conditions_list[0]['message']
+            elif type == common.HELM_RELEASE_TYPE_RECONCILING:
                 return self.HELM_RELEASE_STATUS_UNKNOWN, None
-            return conditions[0]['status'], conditions[0].get('message')
+            else:
+                return "False", conditions_list[0]['message']
         else:
             return self.HELM_RELEASE_STATUS_UNKNOWN, None
 

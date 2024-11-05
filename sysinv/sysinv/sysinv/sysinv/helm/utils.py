@@ -10,7 +10,9 @@
 """Helm utilities and helper functions."""
 
 import base64
+import json
 import os
+import time
 import psutil
 import ruamel.yaml as yaml
 import io
@@ -383,3 +385,52 @@ def extract_repository_info(helmrepo_path):
                        }
 
     return repository_dict
+
+
+@retry(retry_on_exception=lambda x: isinstance(x, exception.SysinvException),
+       stop_max_attempt_number=3)
+def call_fluxcd_reconciliation(helmrelease, namespace):
+    """ Force fluxcd reconciliation
+
+    The purpose of this function is to force a fluxcd reconciliation to be
+    called. Changing any value in the helmrelease spec is capable of triggering
+    reconciliation. Updating spec.value.reconcile_trigger has no side effects.
+
+    Param: helmrelease (string): helmrelease name
+    param: namespace (string): namespace where the target helmrelease is installed
+    """
+
+    timestamp = int(time.time())
+
+    # Create the patch data as a dictionary
+    patch_data = {
+        "spec": {
+            "values": {
+                "reconcile_trigger": timestamp
+            }
+        }
+    }
+    patch_json = json.dumps(patch_data)
+
+    # TODO (dbarbosa):
+    # When the fluxcd CLI is available, the "kubectl patch" command used here to
+    # force helm-controler reconciliation should be replaced with "flux reconcile".
+    cmd = [
+        "kubectl", "patch", "helmrelease", helmrelease, "-n", namespace,
+        "--type=merge", "-p", patch_json, "--request-timeout=5s"
+    ]
+
+    env = os.environ.copy()
+    env['KUBECONFIG'] = kubernetes.KUBERNETES_ADMIN_CONF
+
+    try:
+        process = subprocess.Popen(cmd, env=env, stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE, universal_newlines=True)
+        _, stderr = process.communicate()
+
+        if process.returncode != 0:
+            raise exception.SysinvException(f"Error executing kubectl patch: {stderr}")
+
+    except Exception as e:
+        raise exception.SysinvException(f"Error trying to force reconciliation via \
+                                        {cmd}, reason: {e}")

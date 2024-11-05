@@ -195,9 +195,6 @@ audit_intervals_opts = [
                   ]
 
 app_framework_opts = [
-    cfg.IntOpt('fluxcd_hr_reconcile_check_delay',
-        default=60,
-        help='Delay time to check progress of helmrelease'),
     cfg.BoolOpt('missing_auto_update',
         default=False,
         help='Auto update an application if not specified in the '
@@ -17308,13 +17305,16 @@ class ConductorManager(service.PeriodicService):
             LOG.error("Error performing app_lifecycle_actions %s" % str(e))
             return False
 
-    def perform_app_apply(self, context, rpc_app, mode, lifecycle_hook_info_app_apply):
+    def perform_app_apply(self, context, rpc_app, mode, lifecycle_hook_info_app_apply,
+                          is_reapply_process=False):
         """Handling of application install request (via AppOperator)
 
         :param context: request context.
         :param rpc_app: data object provided in the rpc request
         :param mode: mode to control how to apply application manifest
         :param lifecycle_hook_info_app_apply: LifecycleHookInfo object
+        :param is_reapply_process (boolean): Reports whether the previous
+        operation was an apply
 
         """
         lifecycle_hook_info_app_apply.operation = constants.APP_APPLY_OP
@@ -17329,7 +17329,9 @@ class ConductorManager(service.PeriodicService):
             LOG.error("Error performing app_lifecycle_actions %s" % str(e))
 
         # TODO pass context and move hooks inside?
-        app_applied = self._app.perform_app_apply(rpc_app, mode, lifecycle_hook_info_app_apply)
+        app_applied = self._app.perform_app_apply(rpc_app, mode,
+                                                  lifecycle_hook_info_app_apply,
+                                                  is_reapply_process=is_reapply_process)
         lifecycle_hook_info_app_apply[LifecycleConstants.EXTRA][LifecycleConstants.APP_APPLIED] = app_applied
 
         # Perform post apply operation actions

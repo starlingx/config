@@ -1834,13 +1834,16 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                        lifecycle_hook_info_app_upload=lifecycle_hook_info,
                                        images=images))
 
-    def perform_app_apply(self, context, rpc_app, mode, lifecycle_hook_info):
+    def perform_app_apply(self, context, rpc_app, mode, lifecycle_hook_info,
+                          is_reapply_process=False):
         """Handle application apply request
 
         :param context: request context.
         :param rpc_app: data object provided in the rpc request
         :param mode: mode to control how to apply application manifest
         :param lifecycle_hook_info: LifecycleHookInfo object
+        :param is_reapply_process (boolean): Reports whether the previous
+        operation was an apply
 
         """
         return self.cast(context,
@@ -1848,7 +1851,8 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                              'perform_app_apply',
                              rpc_app=rpc_app,
                              mode=mode,
-                             lifecycle_hook_info_app_apply=lifecycle_hook_info))
+                             lifecycle_hook_info_app_apply=lifecycle_hook_info,
+                             is_reapply_process=is_reapply_process))
 
     def perform_app_update(self, context, from_rpc_app, to_rpc_app, tarfile,
                            lifecycle_hook_info, reuse_user_overrides=None,
