@@ -26,6 +26,7 @@ class CDIWatch(object):
         self.watch_event = eventlet.event.Event()
         self.watch_cdi = watch.Watch()
         self.monitor_thread = False
+        self.event_check = False
         self.ccObj = None
 
     def set_version(self, version):
@@ -53,10 +54,12 @@ class CDIWatch(object):
     def __stop_watching(self, stop_event):
         # Set the stop event to signal the thread to stop
         if self.watch_thread:
-            if not stop_event.ready():
+            if not self.event_check:
                 stop_event.send()
             self.current_version = None
             self.monitor_thread = False
+            self.event_check = False
+            self.watch_cdi.stop()
             self.watch_thread.kill()
             self.watch_thread.wait()
 
@@ -79,8 +82,9 @@ class CDIWatch(object):
                     resource = event['object']
                     current_version = resource.get('status', {}).get('operatorVersion')
                     self.set_version(current_version)
-                    if not watch_event.ready():
+                    if not self.event_check:
                         watch_event.send()
+                        self.event_check = True
         except Exception as e:
             msg = "monitor action failed: %s" % str(e)
             LOG.error(msg)
