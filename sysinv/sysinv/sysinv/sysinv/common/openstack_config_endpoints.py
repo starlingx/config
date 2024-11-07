@@ -363,7 +363,7 @@ def create_endpoints(keystone, endpoints_to_create):
 
 
 @retry(stop_max_attempt_number=3, wait_fixed=1000)
-def delete_regionone_endpoints(keystone):
+def delete_unused_endpoints(keystone, current_region_name):
     existing_endpoints = keystone.endpoints.list()
     existing_services = keystone.services.list()
     services_dict = {service.name: service.id for service in existing_services}
@@ -371,7 +371,7 @@ def delete_regionone_endpoints(keystone):
     keystone_endpoints = []
 
     for endpoint in existing_endpoints:
-        if endpoint.region == constants.REGION_ONE_NAME:
+        if endpoint.region != current_region_name:
             if endpoint.service_id == keystone_service_id:
                 # Register keystone endpoints to delete them at the end
                 # so previous authentication still works
@@ -536,7 +536,7 @@ def run_endpoint_config(puppet_operator: puppet.PuppetOperator,
         # were deleted
         update_region_name_on_rc_file(region_name)
         try:
-            delete_regionone_endpoints(keystone)
+            delete_unused_endpoints(keystone, region_name)
         except Exception:
             LOG.warning("Endpoint deletion failed. Generating new "
                         "keystone client and trying again")
@@ -552,7 +552,7 @@ def run_endpoint_config(puppet_operator: puppet.PuppetOperator,
             db_instance = dbapi.get_instance()
             openstack_operator = openstack.OpenStackOperator(db_instance)
             keystone = get_keystone_client(openstack_operator)
-            delete_regionone_endpoints(keystone)
+            delete_unused_endpoints(keystone, region_name)
 
     # Set new endpoint reconfiguration flag
     with open(ENDPONTS_RECONFIGURED_FLAG_PATH, 'a'):
