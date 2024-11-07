@@ -1592,13 +1592,14 @@ class AppOperator(object):
                          "Chart %s from version %s" % (to_app.name, to_app.version,
                                                        chart.name, from_app.version))
 
-    def _make_app_request(self, app, request, is_reapply_process=False):
-        return self._make_fluxcd_operation_with_monitor(app, request, is_reapply_process)
+    def _make_app_request(self, app, request, is_reapply_process=False, caller=None):
+        return self._make_fluxcd_operation_with_monitor(app, request, is_reapply_process, caller)
 
     @retry(retry_on_exception=lambda x: isinstance(x, exception.ApplicationApplyFailure),
            stop_max_attempt_number=5, wait_fixed=30 * 1000)
     @kubernetes.test_k8s_health
-    def _make_fluxcd_operation_with_monitor(self, app, request, is_reapply_process=False):
+    def _make_fluxcd_operation_with_monitor(self, app, request, is_reapply_process=False,
+                                            caller=None):
         def _recover_from_helm_operation_in_progress_on_app_apply(metadata_name, namespace,
                                                                   flux_error_message):
             """ Recovery logic for FluxCD on apply
@@ -1756,7 +1757,7 @@ class AppOperator(object):
 
             # fluxcd is forced to reconcile within the reapply/update process. This happens to
             # prevent the previous status of the helmrelease from being used.
-            if is_reapply_process:
+            if is_reapply_process or caller == constants.APP_UPDATE_OP:
                 for release_name, chart_obj in list(charts.items()):
                     LOG.info(f"Forcing reconciliation for release: {release_name}")
                     try:
@@ -2787,7 +2788,7 @@ class AppOperator(object):
                 if caller == constants.RECOVER_VIA_REMOVAL:
                     return True
 
-                if self._make_app_request(app, constants.APP_APPLY_OP, is_reapply_process):
+                if self._make_app_request(app, constants.APP_APPLY_OP, is_reapply_process, caller):
                     self._update_app_releases_version(app.name)
                     self._update_app_status(app,
                                             constants.APP_APPLY_SUCCESS,
@@ -2973,7 +2974,7 @@ class AppOperator(object):
                 result = self.perform_app_apply(
                     to_rpc_app, mode=None,
                     lifecycle_hook_info_app_apply=lifecycle_hook_info_app_update,
-                    caller='update')
+                    caller=constants.APP_UPDATE_OP)
                 lifecycle_hook_info_app_update.operation = constants.APP_UPDATE_OP
 
                 operation_successful = result
