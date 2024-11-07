@@ -49,6 +49,33 @@ SOFTWARE_LOG_PATH='/var/log/software.log'
 CRITICAL_APPS='nginx-ingress-controller cert-manager'
 APPS_NOT_TO_UPDATE='deployment-manager'
 
+TEST_CERT_CM="
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+    creationTimestamp: null
+    name: system-local-ca
+spec:
+    ca:
+        secretName: system-local-ca
+status: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+    creationTimestamp: null
+    name: stx-test-cm
+    namespace: cert-manager
+spec:
+    commonName: stx-test-cm
+    issuerRef:
+        kind: ClusterIssuer
+        name: system-local-ca
+    secretName: stx-test-cm
+status: {}
+"
+
 function log {
     echo "$(date -Iseconds | cut -d'+' -f1): ${NAME}[$$]: INFO: $*" >> "$SOFTWARE_LOG_PATH" 2>&1
 }
@@ -176,22 +203,6 @@ function check_cert_manager {
 
     check_k8s_health
     kubectl delete certificate -n cert-manager stx-test-cm --kubeconfig=/etc/kubernetes/admin.conf --ignore-not-found
-
-    TEST_CERT_CM="
-    apiVersion: cert-manager.io/v1
-    kind: Certificate
-    metadata:
-        creationTimestamp: null
-        name: stx-test-cm
-        namespace: cert-manager
-    spec:
-        commonName: stx-test-cm
-        issuerRef:
-            kind: ClusterIssuer
-            name: system-local-ca
-        secretName: stx-test-cm
-    status: {}
-    "
 
     apply_failed=1
     secret_failed=1
