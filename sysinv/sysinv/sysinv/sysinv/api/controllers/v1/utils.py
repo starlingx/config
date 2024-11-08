@@ -161,13 +161,17 @@ def is_valid_subnet(subnet, ip_version=None):
        Raise Client-Side Error on failure.
     """
 
+    MIN_HOSTS = 4
+    IPV4_MIN_PREFIX = 32 - MIN_HOSTS.bit_length() + 1
+    IPV6_MIN_PREFIX = 128 - MIN_HOSTS.bit_length() + 1
+
     if ip_version is not None and subnet.version != ip_version:
         raise wsme.exc.ClientSideError(_(
             "Invalid IP version %s %s. "
             "Please configure valid %s subnet") %
             (subnet.version, subnet, ip_version_to_string(ip_version)))
-    elif subnet.size < 8:
-        max_prefix = 29 if subnet.version == constants.IPV4_FAMILY else 125
+    elif subnet.size < MIN_HOSTS:
+        max_prefix = IPV4_MIN_PREFIX if subnet.version == constants.IPV4_FAMILY else IPV6_MIN_PREFIX
         raise wsme.exc.ClientSideError(_(
             "Invalid subnet size %s with %s. "
             "Please configure at least size /%d subnet") %

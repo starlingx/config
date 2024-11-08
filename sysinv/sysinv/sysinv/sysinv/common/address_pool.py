@@ -222,6 +222,10 @@ def _get_hostname_field_index(network_type, dbapi=None):
 
     for hostname, field in req_addresses.items():
         entries[hostname] = (field, True)
+        if network_type in {constants.NETWORK_TYPE_ADMIN} and \
+                _get_system_mode(dbapi) == constants.SYSTEM_MODE_SIMPLEX:
+            if hostname in [constants.CONTROLLER_0_HOSTNAME, constants.CONTROLLER_1_HOSTNAME]:
+                del entries[hostname]
 
     return entries
 
@@ -299,7 +303,7 @@ def assign_network_addresses_to_interface(host, interface_id, network, addrpools
 
 
 def _assign_addresses_to_controller_iface(host, interface_id, network, addrpools, dbapi):
-    if network.type == constants.NETWORK_TYPE_OAM and \
+    if network.type in [constants.NETWORK_TYPE_OAM, constants.NETWORK_TYPE_ADMIN] and \
             _get_system_mode(dbapi) == constants.SYSTEM_MODE_SIMPLEX:
         hostname = constants.CONTROLLER_HOSTNAME
     else:
