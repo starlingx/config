@@ -2708,3 +2708,15 @@ API_POST = 'post'
 API_PATCH = 'patch'
 API_DELETE = 'delete'
 API_LIST = 'list'
+
+# Release state
+# Referenced from update repo at
+# https://opendev.org/starlingx/update/src/branch/master/software/software/states.py
+
+ABORTING = "aborting"
+AVAILABLE = "available"
+COMMITTED = "committed"
+DEPLOYED = "deployed"
+DEPLOYING = "deploying"
+REMOVING = "removing"
+UNAVAILABLE = "unavailable"

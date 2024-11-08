@@ -105,6 +105,27 @@ def _get_token(region_name):
     return token
 
 
+def get_release_list(region_name, timeout=10):
+    """List releases"""
+    token = _get_token(region_name)
+    endpoint = get_usm_endpoint(token)
+    if not endpoint:
+        return None
+    endpoint += "/v1/release"
+    response = rest_api_request_raise(token, "GET", endpoint, timeout=timeout)
+    return response
+
+
+def is_deploy_in_progress(region_name, timeout=10):
+    release_list = get_release_list(region_name, timeout)
+    for release in release_list:
+        if release["state"] in [constants.ABORTING,
+                                constants.DEPLOYING,
+                                constants.REMOVING]:
+            return True
+    return False
+
+
 def get_software_upgrade(region_name, timeout=10):
     token = _get_token(region_name)
     endpoint = get_usm_endpoint(token)
