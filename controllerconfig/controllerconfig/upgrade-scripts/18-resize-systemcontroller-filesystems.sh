@@ -107,8 +107,7 @@ function resize_platform_controllerfs {
 }
 
 # Script start
-log "Starting filesystems resize on DC System Controller for increased parallel subcloud deployment for \
-    from release $FROM_RELEASE to $TO_RELEASE with action $ACTION"
+log "Starting filesystems resize on DC System Controller for increased parallel subcloud deployment, from release $FROM_RELEASE to $TO_RELEASE with action $ACTION"
 
 if [[ "$ACTION" == "activate" ]]; then
     if [[ $distributed_cloud_role == "systemcontroller" ]]; then
@@ -117,14 +116,12 @@ if [[ "$ACTION" == "activate" ]]; then
             log "No need to resize, platform filesystem has been resized already."
             exit 0
         fi
-        log "Platform filesystem needs resizing, current size is ${PLATFORM_SIZE}G,\
-            ideal size is ${EXPANDED_PLATFORM_SIZE}G."
+        log "Platform filesystem needs resizing, current size is ${PLATFORM_SIZE}G, ideal size is ${EXPANDED_PLATFORM_SIZE}G."
 
         log "Verifying if there is enough available space to resize..."
         for NODE in "${NODE_LIST[@]}"; do
             if ! INCREASE_DISK_SIZE=$(verify_space_to_resize $PLATFORM_SIZE $NODE); then
-                log "Not enough space in cgts-vg on $NODE to resize, parallel subcloud deployment will be \
-                    limited. Resize operations will be skipped."
+                log "Not enough space in cgts-vg on $NODE to resize, parallel subcloud deployment will be limited. Resize operations will be skipped."
                 exit 0
             fi
         done
@@ -148,8 +145,7 @@ if [[ "$ACTION" == "activate" ]]; then
     else
         log "Not a DC System Controller deployment. No filesystem resize needed."
     fi
-    log "Filesystems resizing for DC System Controller finished successfully for \
-        from release $FROM_RELEASE to $TO_RELEASE with action $ACTION"
+    log "Filesystems resizing for DC System Controller finished successfully, from release $FROM_RELEASE to $TO_RELEASE with action $ACTION"
 elif [[ "$ACTION" == "activate-rollback" ]]; then
     log "The $ACTION action is not reversible for this script."
 else
