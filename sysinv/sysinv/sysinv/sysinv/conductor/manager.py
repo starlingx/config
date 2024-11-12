@@ -17170,6 +17170,23 @@ class ConductorManager(service.PeriodicService):
         else:
             self._fernet.reset_fernet_keys()
 
+        # need to call puppet to restart or flush memcached cache
+        self._restart_memcached(context)
+
+    def _restart_memcached(self, context):
+
+        personalities = [constants.CONTROLLER]
+        config_uuid = self._config_update_hosts(context, personalities)
+        config_dict = {
+            "personalities": personalities,
+            "classes": ['platform::memcached::runtime']
+        }
+        self._config_apply_runtime_manifest(context,
+                                            config_uuid,
+                                            config_dict,
+                                            force=True)
+        LOG.info("Memcached restart requested")
+
     def get_fernet_keys(self, context, key_id=None):
         """Get the keys from the fernet repo.
 

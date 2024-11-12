@@ -157,26 +157,22 @@ class KeystonePuppet(openstack.OpenstackBasePuppet):
 
     def get_host_config(self, host):
         config = {}
-        # The use of caching on subclouds is not supported as the syncing of
-        # fernet keys to the subcloud results in stale cache entries.
-        if self._distributed_cloud_role() != \
-                constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
-            # The valid format for IPv6 addresses is: inet6:[<ip_v6>]:port
-            # Although, for IPv4, the "inet" part is not mandatory, we
-            # specify if anyway, for consistency purposes.
-            address = self._get_address_by_name(
-                host.hostname,
-                constants.NETWORK_TYPE_MGMT)
-            if address.family == constants.IPV6_FAMILY:
-                backend_endpoint = "[%s]:11211" % address.address
-            else:
-                backend_endpoint = "%s:11211" % address.address
+        # The valid format for IPv6 addresses is: inet6:[<ip_v6>]:port
+        # Although, for IPv4, the "inet" part is not mandatory, we
+        # specify if anyway, for consistency purposes.
+        address = self._get_address_by_name(
+            host.hostname,
+            constants.NETWORK_TYPE_MGMT)
+        if address.family == constants.IPV6_FAMILY:
+            backend_endpoint = "[%s]:11211" % address.address
+        else:
+            backend_endpoint = "%s:11211" % address.address
 
-            config.update({
-                'keystone::cache::enabled': True,
-                'keystone::cache::backend': 'oslo_cache.memcache_pool',
-                'keystone::cache::memcache_servers': backend_endpoint
-            })
+        config.update({
+            'keystone::cache::enabled': True,
+            'keystone::cache::backend': 'oslo_cache.memcache_pool',
+            'keystone::cache::memcache_servers': backend_endpoint
+        })
 
         return config
 
