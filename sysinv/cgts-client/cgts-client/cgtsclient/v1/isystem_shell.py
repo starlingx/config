@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2021 Wind River Systems, Inc.
+# Copyright (c) 2013-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -82,6 +82,10 @@ def do_show(cc, args):
 @utils.arg('-lo', '--longitude',
            metavar='<longitude>',
            help='The longitude GEO location coordinate of the system')
+@utils.arg('-p', '--https_enabled',
+           metavar='<https_enabled>',
+           choices=['true', 'false', 'True', 'False'],
+           help='The HTTPS enabled or disabled flag')
 @utils.arg('-v', '--vswitch_type',
            metavar='<vswitch_type>',
            help='The vswitch type for the system')
@@ -134,7 +138,7 @@ def do_modify(cc, args):
 
     field_list = ['name', 'system_mode', 'description', 'location', 'latitude',
                   'longitude', 'contact', 'timezone', 'sdn_enabled',
-                  'vswitch_type', 'security_feature']
+                  'https_enabled', 'vswitch_type', 'security_feature']
 
     # use field list as filter
     user_fields = dict((k, v) for (k, v) in vars(args).items()
@@ -142,12 +146,37 @@ def do_modify(cc, args):
     configured_fields = isystem.__dict__
     configured_fields.update(user_fields)
 
+    print_https_warning = False
+
     patch = []
     for (k, v) in user_fields.items():
         patch.append({'op': 'replace', 'path': '/' + k, 'value': v})
+
+        if k == "https_enabled" and v == "true":
+            print_https_warning = True
+
+    # If there is an existing ssl certificate in system, it will be used instead
+    # of installing the default self signed certificate.
+    if print_https_warning:
+        certificates = cc.certificate.list()
+        for certificate in certificates:
+            if certificate.certtype == 'ssl':
+                warning = \
+                    "HTTPS is enabled with existing certificate %s." % \
+                    certificate.uuid
+                break
+        else:
+            warning = \
+                "HTTPS is enabled with a system generated self-signed " \
+                "certificate.\nThis should be changed to a CA-signed " \
+                "certificate using the 'Update system-local-ca or Migrate " \
+                "Platform Certificates to use Cert Manager' procedure."
 
     try:
         isystem = cc.isystem.update(isystem.uuid, patch)
     except exc.HTTPNotFound:
         raise exc.CommandError('system not found: %s' % isystem.uuid)
     _print_isystem_show(isystem)
+
+    if print_https_warning:
+        print(warning)
