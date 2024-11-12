@@ -300,6 +300,19 @@ class StrongswanPuppet(object):
                 },
             }
             swanctl.add_connection('ndp', conn)
+        # Add bypass connection for ping for IPv4.
+        else:
+            conn = {
+                'children': {
+                    'icmpv4-bypass': {
+                        'mode': 'pass',
+                        'start_action': 'trap',
+                        'local_ts': '\"0.0.0.0/0[icmp]\"',
+                        'remote_ts': '\"0.0.0.0/0[icmp]\"',
+                    },
+                },
+            }
+            swanctl.add_connection('ping', conn)
 
         config = {
             'platform::strongswan::params::swanctl':
