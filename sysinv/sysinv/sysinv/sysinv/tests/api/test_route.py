@@ -220,7 +220,7 @@ class TestPostUpgrade(RouteTestCase):
                     prefix=24,
                     gateway=str(self.system_controller_subnet[1]),
                     status_code=http_client.CONFLICT,
-                    error_message=("An Upgrade is in progress with state %s" %
+                    error_message=("A major release deployment is in progress with state %s" %
                                    upgrade_state)
                 )
 
@@ -296,7 +296,7 @@ class TestDeleteUpgrade(RouteTestCase):
                                        headers=self.API_HEADERS,
                                        expect_errors=True)
                 # Check HTTP response is failed
-                error_message = ("An Upgrade is in progress with state %s" %
+                error_message = ("A major release deployment is in progress with state %s" %
                                  upgrade_state)
                 self.assertEqual('application/json', response.content_type)
                 self.assertEqual(response.status_code, http_client.CONFLICT)

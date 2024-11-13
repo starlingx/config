@@ -408,7 +408,7 @@ class RouteController(rest.RestController):
         is_upgrading, upgrade = \
             check_upgrade_pre_upgrading_controllers(pecan.request.dbapi)
         if is_upgrading:
-            raise exception.UpgradeInProgress(state=upgrade.state)
+            raise exception.DeployMajorReleaseInProgress(state=upgrade.state)
         return self._create_route(route)
 
     @cutils.synchronized(LOCK_NAME)
@@ -418,7 +418,7 @@ class RouteController(rest.RestController):
         is_upgrading, upgrade = \
             check_upgrade_pre_upgrading_controllers(pecan.request.dbapi)
         if is_upgrading:
-            raise exception.UpgradeInProgress(state=upgrade.state)
+            raise exception.DeployMajorReleaseInProgress(state=upgrade.state)
 
         try:
             route = objects.route.get_by_uuid(pecan.request.context, route_uuid)
