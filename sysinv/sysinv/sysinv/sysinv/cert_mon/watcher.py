@@ -872,9 +872,6 @@ class RestApiCertRenew(PlatformCertRenew):
     def update_certificate(self, event_data):
         LOG.info('RestApiCertRenew: Secret changes detected. Initiating certificate update')
         self.update_platform_certificate(event_data, constants.CERT_MODE_SSL, force=True)
-        token = self.context.get_token()
-        system_uuid = utils.get_isystems_uuid(token)
-        utils.enable_https(token, system_uuid)
 
 
 class RegistryCertRenew(PlatformCertRenew):

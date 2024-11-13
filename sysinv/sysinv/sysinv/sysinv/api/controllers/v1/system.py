@@ -41,7 +41,6 @@ from sysinv.api.controllers.v1 import utils as api_utils
 from sysinv.api.controllers.v1 import controller_fs as controllerfs
 from sysinv.common import constants
 from sysinv.common import exception
-from sysinv.common import kubernetes as sys_kube
 from sysinv.common import utils as cutils
 from sysinv import objects
 
@@ -214,7 +213,6 @@ class SystemController(rest.RestController):
 
     def __init__(self):
         self._bm_region = None
-        self._kube_op = sys_kube.KubeOperator()
 
     def bm_region_get(self):
         if not self._bm_region:
@@ -548,18 +546,6 @@ class SystemController(rest.RestController):
                     patched_system['capabilities']['sdn_enabled'] = False
 
         if 'https_enabled' in updates:
-            # Pre-check: if user is setting https_enabled to false
-            # while 'ssl' cert is managed by cert-manager, return error
-            # (Otherwise, cert-mon will turn https back on during cert-renewal process)
-            managed_by_cm = self._kube_op.kube_get_secret(
-                    constants.RESTAPI_CERT_SECRET_NAME,
-                    constants.CERT_NAMESPACE_PLATFORM_CERTS)
-            if https_enabled == 'false' and managed_by_cm is not None:
-                msg = "Certificate is currently being managed by cert-manager. " \
-                    "Remove %s Certificate and Secret before disabling https." % \
-                    constants.RESTAPI_CERT_SECRET_NAME
-                raise wsme.exc.ClientSideError(_(msg))
-
             if https_enabled != rpc_isystem['capabilities']['https_enabled']:
                 change_https = True
                 if https_enabled == 'true':
