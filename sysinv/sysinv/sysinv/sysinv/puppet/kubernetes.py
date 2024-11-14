@@ -13,7 +13,6 @@ import netaddr
 import os
 import random
 import re
-import ruamel.yaml as yaml
 import tempfile
 
 from ast import literal_eval
@@ -266,94 +265,6 @@ class KubernetesPuppet(base.BasePuppet):
 
         return config
 
-    def _retry_on_recreate_clusterinfo(ex):  # pylint: disable=no-self-argument
-        LOG.warn('Retrying in _recreate_clusterinfo_configmap')
-        return True
-
-    def _delete_recreate_clusterinfo_configmap(self, token):
-        """ This parses cluster-info configMap and determines whether the
-            jws signed token is present. If present, no further action
-            is required. If missing, we delete the configMap and recreate it.
-            This creates temporary file /var/run/kubernetes/cluster-info.yaml.
-            The file is not longer required once the configMap has been corrected.
-        """
-        try:
-            cluster_info_yaml_path = "/var/run/kubernetes/cluster-info.yaml"
-            with open(cluster_info_yaml_path, "w") as cluster_info_file:
-                get_configmap_cmd = ['kubectl', KUBECONFIG, 'get', 'configmap',
-                        '-n', 'kube-public', 'cluster-info', '-o', 'yaml']
-                proc = subprocess.Popen(get_configmap_cmd,
-                                        stdout=cluster_info_file,
-                                        stderr=subprocess.PIPE,
-                                        universal_newlines=True)
-                stdout, stderr = proc.communicate()
-                if proc.returncode != 0:
-                    LOG.error('Error in executing %s: %s'
-                            % (get_configmap_cmd, stderr))
-                    raise exception.SysinvException("Error retrieving cluster-info configmap")
-
-            with open(cluster_info_yaml_path, "r") as cluster_info_file:
-                newyaml = yaml.YAML(typ='safe')
-                config = newyaml.load(cluster_info_file)
-                if config:
-                    all_jws_tokens = list(config['data'].keys())
-                else:
-                    LOG.error("Failed to load cluster-info configmap."
-                              " Probably empty file. Returning ...")
-                    if os.path.exists(cluster_info_yaml_path):
-                        os.remove(cluster_info_yaml_path)
-                    return
-
-            # New token looks like this "9wlh53.1cbjiwhoc55loeyh".
-            # Key in the cluster-info configmap data section:
-            # "jws-kubeconfig-9wlh53:"
-            new_jws_token = "jws-kubeconfig-" + token.split('.')[0]
-
-            # If newly created token already exists in the configmap,
-            # we remove the temporary file and return or else we continue
-            # for its recreation.
-            if new_jws_token in all_jws_tokens:
-                LOG.info("cluster-info confimap is already updated with"
-                            " the new token. Nothing to do.")
-                if os.path.exists(cluster_info_yaml_path):
-                    os.remove(cluster_info_yaml_path)
-                return
-
-            self._kube_operator.kube_delete_config_map("cluster-info", "kube-public")
-            LOG.debug("cluster-info configmap retrieved and deleted.")
-
-        except Exception as ex:
-            LOG.error("Error retrieving or deleting cluster-info configmap: %s" % ex)
-            raise ex
-
-        try:
-            @retry(stop_max_attempt_number=6,
-                   wait_fixed=10 * 1000,
-                   retry_on_exception=__class__._retry_on_recreate_clusterinfo)
-            def _recreate_clusterinfo_configmap():
-                create_configmap_cmd = ['kubectl', KUBECONFIG, 'apply',
-                        '-f', cluster_info_yaml_path]
-                proc = subprocess.Popen(create_configmap_cmd,
-                                        stdout=subprocess.PIPE,
-                                        stderr=subprocess.PIPE,
-                                        universal_newlines=True)
-                stdout, stderr = proc.communicate()
-                if proc.returncode != 0:
-                    LOG.error('Error in executing %s: %s'
-                            % (create_configmap_cmd, stderr))
-                    raise exception.SysinvException("Error recreating cluster-info configmap")
-
-            _recreate_clusterinfo_configmap()
-
-            if os.path.exists(cluster_info_yaml_path):
-                os.remove(cluster_info_yaml_path)
-
-            LOG.info("cluster-info configmap deleted and recreated.")
-        except Exception as ex:
-            LOG.error("Failed to recreate cluster-info configmap: %s. \
-                       Use file %s to recreate it"
-                       % (ex, cluster_info_yaml_path))
-
     def _retry_on_token(ex):  # pylint: disable=no-self-argument
         LOG.warn('Retrying in _get_kubernetes_join_cmd')
         return True
@@ -465,26 +376,6 @@ class KubernetesPuppet(base.BasePuppet):
                 " --cri-socket /var/run/containerd/containerd.sock"
             join_cmd = join_cmd.strip() + join_cmd_additions
             LOG.info('get_kubernetes_join_cmd join_cmd=%s' % join_cmd)
-
-            # TODO: Remove this Upstream workaround
-            # https://discuss.kubernetes.io/t/cluster-info-configmap-does-not-yet-contain-a-jws-signature/14985
-            # for an intermittent bug that fails to JWS sign and update the
-            # cluster-info configmap with the above created token which is
-            # required for 'kubeadm node join'.
-            #
-            # Example join command:
-            # "kubeadm join 192.168.206.1:6443 --token 9wlh53.1cbjiwhoc55loeyh
-            # --discovery-token-ca-cert-hash sha256:e0016f1c8c4fd7b2f9da41
-            # --control-plane --certificate-key e5918adac992895983ea03ced0
-            # --apiserver-advertise-address 192.168.206.3
-            # --cri-socket /var/run/containerd/containerd.sock"
-            if join_cmd:
-                token = join_cmd.split()[4]
-                try:
-                    self._delete_recreate_clusterinfo_configmap(token)
-                except Exception as ex:
-                    LOG.exception("Error delete and recreating cluster-info configmap. %s" % ex)
-
         except Exception:
             LOG.warning("Exception generating bootstrap token")
             raise exception.SysinvException(
