@@ -2223,13 +2223,9 @@ KUBE_TOPOLOGY_MANAGER_VALUES = [
     'restricted',
     'single-numa-node'
 ]
-KUBE_CPU_MANAGER_VALUES = [
+KUBE_CPU_MEMORY_MANAGER_VALUES = [
     'none',
     'static'
-]
-KUBE_MEMORY_MANAGER_VALUES = [
-    'None',
-    'Static'
 ]
 KUBE_POWER_MANAGER_VALUE = 'enabled'
 # Default DNS service domain
