@@ -24,6 +24,7 @@ import time
 from six.moves.urllib.parse import urlparse
 import webob
 
+import numpy as np
 from oslo_config import cfg
 from oslo_serialization import jsonutils
 from oslo_log import log
@@ -44,6 +45,9 @@ NO_SPACE_MSG = "Insufficient space"
 
 audit_log_name = "{}.{}".format(__name__, "auditor")
 auditLOG = log.getLogger(audit_log_name)
+
+# Set numpy format for printing bins
+np.set_printoptions(formatter={'int': '{: 5d}'.format})
 
 
 def generate_request_id():
@@ -260,6 +264,14 @@ class AuditLogging(hooks.PecanHook):
 
     def __init__(self):
         self.log_methods = ["POST", "PUT", "PATCH", "DELETE"]
+        self.histogram_method = {}  # histogram bin counts per method
+        self.histogram_url = {}     # histogram bin counts per method/url
+        self.histogram_time = time.time()
+        self.bin_edges = np.array(
+            [0, 5, 25, 50, 100, 200, 400, 600, 800, 1000, 1250, 1500,
+             2000, 3000, 4000, 5000, 6000, 8000, 10000, 15000, 20000,
+             30000, 45000, 60000],
+            dtype=np.float64)
 
     def before(self, state):
         state.request.start_time = time.time()
@@ -267,8 +279,8 @@ class AuditLogging(hooks.PecanHook):
     def __after(self, state):
 
         method = state.request.method
-        if method not in self.log_methods:
-            return
+        url_path = urlparse(state.request.path_qs).path
+        method_url = str(method) + ' ' + str(url_path)
 
         now = time.time()
         try:
@@ -276,6 +288,91 @@ class AuditLogging(hooks.PecanHook):
         except AttributeError:
             LOG.info("Start time is not in request, setting it to 0.")
             elapsed = 0
+        elapsed_ms = 1000.0 * elapsed
+
+        # Print histograms every 5 minutes
+        if now - self.histogram_time >= 300:
+            print_histogram = True
+        else:
+            print_histogram = False
+
+        # Cumulate histogram counts all methods combined
+        key = 'overall'
+        if key not in self.histogram_method:
+            self.histogram_method[key] = np.array([], dtype=np.float64)
+        self.histogram_method[key] = np.append(
+            self.histogram_method[key], elapsed_ms)
+
+        # Cumulate histogram counts per method
+        if method not in self.histogram_method:
+            self.histogram_method[method] = np.array([], dtype=np.float64)
+        self.histogram_method[method] = np.append(
+            self.histogram_method[method], elapsed_ms)
+
+        # Cumulate histogram counts per method/url
+        if method_url not in self.histogram_url:
+            self.histogram_url[method_url] = np.array([], dtype=np.float64)
+        self.histogram_url[method_url] = np.append(
+                self.histogram_url[method_url], elapsed_ms)
+
+        if print_histogram:
+            # Calculate histograms and statistics for each key measurement
+            M = {}
+            for k, v in self.histogram_method.items():
+                M[k] = {}
+                M[k]['count'] = self.histogram_method[k].size
+                if M[k]['count'] > 0:
+                    M[k]['mean'] = np.mean(self.histogram_method[k])
+                    M[k]['p95'] = np.percentile(self.histogram_method[k], 95)
+                    M[k]['pmax'] = np.max(self.histogram_method[k])
+                    M[k]['hist'], _ = np.histogram(
+                            self.histogram_method[k], bins=self.bin_edges)
+                else:
+                    M[k]['mean'] = 0
+                    M[k]['p95'] = 0.0
+                    M[k]['pmax'] = 0.0
+                    M[k]['hist'] = []
+
+            U = {}
+            for k, v in self.histogram_url.items():
+                U[k] = {}
+                U[k]['count'] = self.histogram_url[k].size
+                if U[k]['count'] > 0:
+                    U[k]['mean'] = np.mean(self.histogram_url[k])
+                    U[k]['p95'] = np.percentile(self.histogram_url[k], 95)
+                    U[k]['pmax'] = np.max(self.histogram_url[k])
+                    U[k]['hist'], _ = np.histogram(
+                            self.histogram_url[k], bins=self.bin_edges)
+                else:
+                    U[k]['mean'] = 0
+                    U[k]['p95'] = 0.0
+                    U[k]['pmax'] = 0.0
+                    U[k]['hist'] = []
+
+            # Print out each histogram sorted by counts
+            auditLOG.info("Summary per API Method:")
+            bins = ' '.join('{:5d}'.format(int(x)) for x in self.bin_edges[1:])
+            auditLOG.info('bins=[%s]' % (bins))
+            for k, v in sorted(M.items(), key=lambda t: -float(t[1]['count'])):
+                auditLOG.info('hist=%s : cnt: %3d, mean: %5.1f ms, '
+                              'p95: %5.1f ms, max: %5.1f ms %s'
+                               % (v['hist'], v['count'], v['mean'],
+                                  v['p95'], v['pmax'], k))
+
+            auditLOG.info("Summary per API Method/URL:")
+            for k, v in sorted(U.items(), key=lambda t: -float(t[1]['count'])):
+                auditLOG.info('hist=%s : cnt: %3d, mean: %5.1f ms, '
+                              'p95: %5.1f ms, max: %5.1f ms %s'
+                              % (v['hist'], v['count'], v['mean'],
+                                 v['p95'], v['pmax'], k))
+
+            # Clear histogram for next interval
+            self.histogram_method = {}
+            self.histogram_url = {}
+            self.histogram_time = now
+
+        if method not in self.log_methods:
+            return
 
         environ = state.request.environ
         server_protocol = environ["SERVER_PROTOCOL"]
@@ -293,8 +390,6 @@ class AuditLogging(hooks.PecanHook):
             LOG.info("Request id is not in request, setting it to an "
                      "auto generated id.")
             request_id = generate_request_id()
-
-        url_path = urlparse(state.request.path_qs).path
 
         def json_post_data(rest_state):
             if 'form-data' in rest_state.request.headers.get('Content-Type'):
