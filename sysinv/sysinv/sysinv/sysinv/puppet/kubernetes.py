@@ -276,7 +276,7 @@ class KubernetesPuppet(base.BasePuppet):
         # The token expires after 24 hours and is needed for a reinstall.
         # The puppet manifest handles the case where the node already exists.
         try:
-            join_cmd_additions = ''
+            join_cmd_additions = ' --v=5'
             if host.personality == constants.CONTROLLER:
                 # Upload the certificates used during kubeadm join
 
@@ -354,7 +354,7 @@ class KubernetesPuppet(base.BasePuppet):
                     os.unlink(temp_kubeadm_config_view)
                     raise
                 os.unlink(temp_kubeadm_config_view)
-                join_cmd_additions = \
+                join_cmd_additions += \
                     " --control-plane --certificate-key %s" % key
 
                 # Configure the IP address of the API Server for the controller host.
