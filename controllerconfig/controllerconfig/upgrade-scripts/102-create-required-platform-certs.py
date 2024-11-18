@@ -39,9 +39,9 @@ RETRIES = 3
 
 # At the end of activation, wait for configuration to finish
 # before moving to the next scripts.
-# 40 attempts * 30 seconds ~= 20 min max
-WAIT_RECONFIG_ATTEMPTS = 40
-WAIT_RECONFIG_SLEEP = 30
+# 240 attempts * 5 seconds ~= 20 min max
+WAIT_RECONFIG_ATTEMPTS = 240
+WAIT_RECONFIG_SLEEP = 5
 
 KUBE_CMD = 'kubectl --kubeconfig=/etc/kubernetes/admin.conf '
 KUBE_IGNORE_NOT_FOUND = ' --ignore-not-found=true'

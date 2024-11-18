@@ -814,18 +814,24 @@ class ServiceParameterController(rest.RestController):
         if parameter.section in k8s_volumes_sections:
             delete_k8s_configmap(parameter.as_dict(), self.kube_operator)
 
+        # Pass name to update_service_config only in case the parameter is
+        # the Intel NIC driver version, intel_pstate or sysinv_api_workers
+        name = None
+        if parameter.section == constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG and \
+               parameter.name == constants.SERVICE_PARAM_NAME_PLAT_CONFIG_INTEL_PSTATE:
+            name = parameter.name
+
+        elif parameter.section == constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG and \
+                parameter.name == constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_API_WORKERS:
+            name = parameter.name
+
+        # TODO bqian: remove this if branch for stx-11
+        if parameter.section == constants.SERVICE_PARAM_SECTION_KUBERNETES_CONTROLLER_MANAGER and \
+                parameter.name == "pod-eviction-timeout":
+            LOG.info("Updating pod-eviction-timeout")
+            name = parameter.name
+
         try:
-            # Pass name to update_service_config only in case the parameter is
-            # the Intel NIC driver version, intel_pstate or sysinv_api_workers
-            name = None
-            if parameter.section == constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG and \
-                   parameter.name == constants.SERVICE_PARAM_NAME_PLAT_CONFIG_INTEL_PSTATE:
-                name = parameter.name
-
-            elif parameter.section == constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG and \
-                    parameter.name == constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_API_WORKERS:
-                name = parameter.name
-
             pecan.request.rpcapi.update_service_config(
                 pecan.request.context,
                 parameter.service,
