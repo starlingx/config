@@ -3702,7 +3702,6 @@ class ManagerTestCase(base.DbTestCase):
         self.addCleanup(p3.stop)
 
         ifaces, ports = self._create_test_interfaces(ihost, inic_dict_array, test_mgmt_mac, mgmt_vlan_id)
-
         inic_dict_array[0]['mac'] = '1a:2a:3a:4a:5a:6a'
         inic_dict_array[1]['mac'] = 'c0:ca:de:ad:be:ff'
         inic_dict_array[3]['mac'] = '20:2a:2e:2d:2e:2f'
@@ -4086,9 +4085,18 @@ class ManagerTestCase(base.DbTestCase):
 
         port_db_len = len(self.dbapi.ethernet_port_get_by_host(ihost['uuid']))
 
-        # now send a report changing one 0d58 device to another PCI address
+        # now send a report changing one 0d58 device to another PCI address and remove
+        # one N3000 port
         inic_dict_array2 = self._create_test_iports()
         inic_dict_array2[6]['pciaddr'] = '0000:b2:00.1'
+        inic_dict_array2[6]['pdevice'] = 'Ethernet Controller X710 for 10GbE SFP+ [1572]'
+        mac_to_remove = inic_dict_array2[7]['mac']
+        inic_dict_array2.pop(7)
+
+        for it_port in inic_dict_array2:
+            port = self.dbapi.ethernet_port_get_by_mac(it_port['mac'])
+            it_port['interface_uuid'] = port['interface_uuid']
+
         self.service.iport_update_by_ihost(self.context, ihost['uuid'], inic_dict_array2)
 
         port_found = False
@@ -4097,7 +4105,8 @@ class ManagerTestCase(base.DbTestCase):
             if (eth_port.pciaddr == inic_dict_array2[6]['pciaddr']):
                 self.assertEqual(eth_port.mac, inic_dict_array2[6]['mac'])
                 self.assertEqual(eth_port.pvendor, inic_dict_array2[6]['pvendor'])
-                self.assertEqual(eth_port.pdevice, inic_dict_array2[6]['pdevice'])
+                self.assertNotEqual(eth_port.pdevice, inic_dict_array2[6]['pdevice'])
+                self.assertEqual(eth_port.interface_uuid, inic_dict_array2[6]['interface_uuid'])
 
                 # check if node_id points to the correct inode entry (in our case is 2)
                 self.assertEqual(eth_port.node_id, 2)
@@ -4107,7 +4116,13 @@ class ManagerTestCase(base.DbTestCase):
                 self.assertEqual(iface.ifclass, None)
                 port_found = True
         self.assertTrue(port_found)
-        self.assertEqual(len(self.dbapi.ethernet_port_get_by_host(ihost['uuid'])), port_db_len)
+        self.assertEqual(len(self.dbapi.ethernet_port_get_by_host(ihost['uuid'])) + 1, port_db_len)
+
+        # guarantee that any unreported entry with a specific MAC address is deleted.
+        mac_found = False
+        if any(mac_to_remove == eth_port.mac for eth_port in eth_port_db_list):
+            mac_found = True
+        self.assertFalse(mac_found)
 
     def test_iport_update_by_ihost_report_with_changed_device_and_vendor_description(self):
         """Test when the OS reports a new vendor or device description, but the ID is unchanged
