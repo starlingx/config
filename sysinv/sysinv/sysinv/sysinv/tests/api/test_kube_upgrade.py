@@ -108,27 +108,6 @@ class TestKubeUpgrade(base.FunctionalTest):
         self.mock_conductor_api.return_value = self.fake_conductor_api
         self.addCleanup(p.stop)
 
-        # Mock the patching API
-        self.mock_patch_is_applied_result = True
-
-        def mock_patch_is_applied(token, timeout, region_name, patches):
-            return self.mock_patch_is_applied_result
-        self.mocked_patch_is_applied = mock.patch(
-            'sysinv.api.controllers.v1.patch_api.patch_is_applied',
-            mock_patch_is_applied)
-        self.mocked_patch_is_applied.start()
-        self.addCleanup(self.mocked_patch_is_applied.stop)
-
-        self.mock_patch_is_available_result = True
-
-        def mock_patch_is_available(token, timeout, region_name, patches):
-            return self.mock_patch_is_available_result
-        self.mocked_patch_is_available = mock.patch(
-            'sysinv.api.controllers.v1.patch_api.patch_is_available',
-            mock_patch_is_available)
-        self.mocked_patch_is_available.start()
-        self.addCleanup(self.mocked_patch_is_available.stop)
-
         # Mock the KubeVersion
         def mock_get_kube_versions():
             return FAKE_KUBE_VERSIONS
@@ -182,12 +161,6 @@ class TestKubeUpgrade(base.FunctionalTest):
         These calls can be altered by unit tests to test the behaviour
         of systems in different states of health.
         """
-
-        # patch_query_hosts
-        p = mock.patch('sysinv.api.controllers.v1.patch_api.patch_query_hosts')
-        self.mock_patch_query_hosts = p.start()
-        self.mock_patch_query_hosts.return_value = self._patch_current()
-        self.addCleanup(p.stop)
 
         # _check_alarms calls fmclient alarms.list
         self.fake_fm_client = FakeFmClient()
@@ -613,9 +586,6 @@ class TestPostKubeUpgrade(TestKubeUpgrade,
 
     @mock.patch('sysinv.common.health.Health._check_trident_compatibility', lambda x: True)
     def test_create_no_patches_required(self):
-        # Test creation of upgrade when no applied patches are required
-        self.mock_patch_is_applied_result = False
-        self.mock_patch_is_available_result = False
         self.kube_get_kubernetes_version_result = 'v1.43.2'
         self.kube_get_version_states_result = {'v1.42.1': 'available',
                                                'v1.42.2': 'available',
@@ -633,34 +603,6 @@ class TestPostKubeUpgrade(TestKubeUpgrade,
         self.assertEqual(result.json['to_version'], 'v1.43.3')
         self.assertEqual(result.json['state'],
                          kubernetes.KUBE_UPGRADE_STARTED)
-
-    def test_create_applied_patch_missing(self):
-        # Test creation of upgrade when applied patch is missing
-        self.mock_patch_is_applied_result = False
-        create_dict = dbutils.post_get_test_kube_upgrade(to_version='v1.43.2')
-        result = self.post_json('/kube_upgrade', create_dict,
-                                headers={'User-Agent': 'sysinv-test'},
-                                expect_errors=True)
-
-        # Verify the failure
-        self.assertEqual(result.content_type, 'application/json')
-        self.assertEqual(http_client.BAD_REQUEST, result.status_int)
-        self.assertIn("The following patches must be applied",
-                      result.json['error_message'])
-
-    def test_create_available_patch_missing(self):
-        # Test creation of upgrade when available patch is missing
-        self.mock_patch_is_available_result = False
-        create_dict = dbutils.post_get_test_kube_upgrade(to_version='v1.43.2')
-        result = self.post_json('/kube_upgrade', create_dict,
-                                headers={'User-Agent': 'sysinv-test'},
-                                expect_errors=True)
-
-        # Verify the failure
-        self.assertEqual(result.content_type, 'application/json')
-        self.assertEqual(http_client.BAD_REQUEST, result.status_int)
-        self.assertIn("The following patches must be available",
-                      result.json['error_message'])
 
 
 class TestPatch(TestKubeUpgrade,
