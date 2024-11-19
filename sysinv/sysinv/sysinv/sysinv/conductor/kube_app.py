@@ -1723,6 +1723,29 @@ class AppOperator(object):
 
                     raise exception.ApplicationApplyFailure(name=app.name)
 
+        @kubernetes.test_k8s_health
+        def _get_helmrelease_info(release_name, namespace):
+            """ get helmrelease data from a given chart
+
+            The _kube.get_custom_resource function gets the helmrelease data from a given chart
+            via the k8s API. For this reason, it was encapsulated in a specific function to be
+            able to use the test_k8s_health decorator and ensure that k8s is healthy.
+
+            Param: release_name (string): helmrelease name
+            param: namespace (string): namespace where the target helmrelease is installed
+
+            return: dictionary with helmrelease data
+            """
+
+            helm_rel = self._kube.get_custom_resource(
+                constants.FLUXCD_CRD_HELM_REL_GROUP,
+                constants.FLUXCD_CRD_HELM_REL_VERSION,
+                namespace,
+                constants.FLUXCD_CRD_HELM_REL_PLURAL,
+                release_name)
+
+            return helm_rel
+
         def _check_progress():
             tadjust = 0
             last_successful_chart = None
@@ -1786,12 +1809,7 @@ class AppOperator(object):
 
                 for release_name, chart_obj in list(charts.items()):
                     # Request the helm release info
-                    helm_rel = self._kube.get_custom_resource(
-                        constants.FLUXCD_CRD_HELM_REL_GROUP,
-                        constants.FLUXCD_CRD_HELM_REL_VERSION,
-                        chart_obj["namespace"],
-                        constants.FLUXCD_CRD_HELM_REL_PLURAL,
-                        release_name)
+                    helm_rel = _get_helmrelease_info(release_name, chart_obj["namespace"])
 
                     if not helm_rel:
                         LOG.info("FluxCD Helm release info for {} is not "
@@ -1840,7 +1858,7 @@ class AppOperator(object):
                                       app.name, release_name))
 
                 # wait a bit to check again if the charts are ready
-                time.sleep(1)
+                time.sleep(5)
 
                 # lifecycle to handle custom k8s services from apps
                 # that need to be checked after helmrelease is installed
@@ -2016,11 +2034,12 @@ class AppOperator(object):
             LOG.error(e)
             return
         finally:
-            # Ensure that the old app plugins are enabled after recovery
-            _activate_old_app_plugins(old_app)
             self._record_auto_update_failed_versions(old_app, new_app)
 
         if rc:
+            # Ensure that the old app plugins are enabled after recovery
+            _activate_old_app_plugins(old_app)
+
             self._update_app_status(
                 old_app, constants.APP_APPLY_SUCCESS,
                 constants.APP_PROGRESS_UPDATE_ABORTED.format(old_app.version, new_app.version) +
@@ -2031,6 +2050,7 @@ class AppOperator(object):
             LOG.info("Application %s recover to version %s completed."
                      % (old_app.name, old_app.version))
         else:
+            self._plugins.deactivate_plugins(old_app)
             self._update_app_status(
                 old_app, constants.APP_APPLY_FAILURE,
                 constants.APP_PROGRESS_UPDATE_ABORTED.format(old_app.version, new_app.version) +
