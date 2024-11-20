@@ -22,7 +22,6 @@ from sysinv._i18n import _
 from sysinv.api.controllers.v1 import base
 from sysinv.api.controllers.v1 import collection
 from sysinv.api.controllers.v1 import link
-from sysinv.api.controllers.v1 import patch_api
 from sysinv.api.controllers.v1 import types
 from sysinv.common import constants
 from sysinv.common import dc_api
@@ -121,38 +120,6 @@ class KubeUpgradeController(rest.RestController):
             attribute = p['path'] if p['path'][0] != '/' else p['path'][1:]
             updates[attribute] = p['value']
         return updates
-
-    @staticmethod
-    def _check_patch_requirements(region_name,
-                                  applied_patches=None,
-                                  available_patches=None):
-        """Checks whether specified patches are applied or available"""
-
-        api_token = None
-        if applied_patches:
-            patches_applied = patch_api.patch_is_applied(
-                token=api_token,
-                timeout=constants.PATCH_DEFAULT_TIMEOUT_IN_SECS,
-                region_name=region_name,
-                patches=applied_patches
-            )
-            if not patches_applied:
-                raise wsme.exc.ClientSideError(_(
-                    "The following patches must be applied before doing "
-                    "the kubernetes upgrade: %s" % applied_patches))
-
-        if available_patches:
-            patches_available = patch_api.patch_is_available(
-                token=api_token,
-                timeout=constants.PATCH_DEFAULT_TIMEOUT_IN_SECS,
-                region_name=region_name,
-                patches=available_patches
-            )
-            if not patches_available:
-                raise wsme.exc.ClientSideError(_(
-                    "The following patches must be available before doing "
-                    "the kubernetes upgrade: %s" %
-                    available_patches))
 
     def _check_applied_apps_compatibility(self, from_version, to_version):
         """Ensure that applied applications are compatible with
@@ -353,13 +320,6 @@ class KubeUpgradeController(rest.RestController):
                 "The installed Kubernetes version %s is not active on all "
                 "hosts" % current_kube_version))
 
-        # Verify patching requirements
-        system = pecan.request.dbapi.isystem_get_one()
-        self._check_patch_requirements(
-            system.region_name,
-            applied_patches=target_version_obj.applied_patches,
-            available_patches=target_version_obj.available_patches)
-
         # The system must be healthy
         success, output = pecan.request.rpcapi.get_system_health(
             pecan.request.context,
@@ -466,16 +426,6 @@ class KubeUpgradeController(rest.RestController):
                     "images" %
                     (kubernetes.KUBE_UPGRADE_STARTED,
                      kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES_FAILED)))
-
-            # Verify patching requirements (since the api server is not
-            # upgraded yet, patches could have been removed)
-            system = pecan.request.dbapi.isystem_get_one()
-            target_version_obj = objects.kube_version.get_by_version(
-                kube_upgrade_obj.to_version)
-            self._check_patch_requirements(
-                system.region_name,
-                applied_patches=target_version_obj.applied_patches,
-                available_patches=target_version_obj.available_patches)
 
             # Update the upgrade state
             kube_upgrade_obj.state = kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES

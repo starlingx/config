@@ -6987,37 +6987,6 @@ class HostController(rest.RestController):
         hostupdate.ihost_val_prenotify_update(val)
         hostupdate.ihost_val.update(val)
 
-    @staticmethod
-    def _check_patch_requirements(region_name,
-                                  applied_patches=None,
-                                  available_patches=None):
-        """Checks whether specified patches are applied or available"""
-
-        api_token = None
-        if applied_patches is not None:
-            patches_applied = patch_api.patch_is_applied(
-                token=api_token,
-                timeout=constants.PATCH_DEFAULT_TIMEOUT_IN_SECS,
-                region_name=region_name,
-                patches=applied_patches
-            )
-            if not patches_applied:
-                raise wsme.exc.ClientSideError(_(
-                    "The following patches must be applied before doing "
-                    "this action: %s" % applied_patches))
-
-        if available_patches is not None:
-            patches_available = patch_api.patch_is_available(
-                token=api_token,
-                timeout=constants.PATCH_DEFAULT_TIMEOUT_IN_SECS,
-                region_name=region_name,
-                patches=available_patches
-            )
-            if not patches_available:
-                raise wsme.exc.ClientSideError(_(
-                    "The following patches must be available before doing "
-                    "this action: %s" % available_patches))
-
     @cutils.synchronized(LOCK_NAME)
     @wsme_pecan.wsexpose(Host, six.text_type, body=six.text_type)
     def kube_upgrade_control_plane(self, uuid, body):
@@ -7087,16 +7056,6 @@ class HostController(rest.RestController):
             raise wsme.exc.ClientSideError(_(
                 "The kubernetes upgrade is not in a valid state to "
                 "upgrade the control plane."))
-
-        # Verify patching requirements (since the api server may not be
-        # upgraded yet, patches could have been removed)
-
-        target_version_obj = objects.kube_version.get_by_version(
-            kube_upgrade_obj.to_version)
-        self._check_patch_requirements(
-            system.region_name,
-            applied_patches=target_version_obj.applied_patches,
-            available_patches=target_version_obj.available_patches)
 
         if current_cp_version != kube_upgrade_obj.to_version and \
                 system.system_mode == constants.SYSTEM_MODE_SIMPLEX:
@@ -7232,14 +7191,6 @@ class HostController(rest.RestController):
                 "upgrade the kubelet." % (
                     kubernetes.KUBE_UPGRADED_SECOND_MASTER,
                     kubernetes.KUBE_UPGRADING_KUBELETS)))
-
-        # Verify patching requirements
-        system = pecan.request.dbapi.isystem_get_one()
-        target_version_obj = objects.kube_version.get_by_version(
-            kube_upgrade_obj.to_version)
-        self._check_patch_requirements(
-            system.region_name,
-            applied_patches=target_version_obj.available_patches)
 
         # Enforce the ordering of controllers first
         kubelet_versions = self._kube_operator.kube_get_kubelet_versions()
