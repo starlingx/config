@@ -7844,10 +7844,14 @@ class ConductorManager(service.PeriodicService):
         # Delete current uploaded version if a newer one is available
         try:
             existing_app = kubeapp_obj.get_by_name(context, app_name)
-            app_bundle = self._get_app_bundle_for_update(existing_app, k8s_version, k8s_upgrade_timing)
+            app_bundle = self._get_app_bundle_for_update(
+                existing_app,
+                k8s_version,
+                k8s_upgrade_timing
+            )
             if app_bundle:
                 hook_info_delete = LifecycleHookInfo()
-                hook_info_delete.mode = constants.APP_LIFECYCLE_MODE_AUTO
+                hook_info_delete.mode = LifecycleConstants.APP_LIFECYCLE_MODE_AUTO
                 self.perform_app_delete(context, existing_app, hook_info_delete)
             else:
                 LOG.debug("No bundle found for uploading a new version of %s" % app_name)
@@ -7897,7 +7901,7 @@ class ConductorManager(service.PeriodicService):
                         "Uploading..." % app_name)
 
             hook_info = LifecycleHookInfo()
-            hook_info.mode = constants.APP_LIFECYCLE_MODE_AUTO
+            hook_info.mode = LifecycleConstants.APP_LIFECYCLE_MODE_AUTO
 
             if async_upload:
                 greenthread.spawn(self.perform_app_upload,
@@ -7933,9 +7937,9 @@ class ConductorManager(service.PeriodicService):
             return
 
         hook_info = LifecycleHookInfo()
-        hook_info.init(constants.APP_LIFECYCLE_MODE_AUTO,
-                       constants.APP_LIFECYCLE_TYPE_SEMANTIC_CHECK,
-                       constants.APP_LIFECYCLE_TIMING_PRE,
+        hook_info.init(LifecycleConstants.APP_LIFECYCLE_MODE_AUTO,
+                       LifecycleConstants.APP_LIFECYCLE_TYPE_SEMANTIC_CHECK,
+                       LifecycleConstants.APP_LIFECYCLE_TIMING_PRE,
                        constants.APP_APPLY_OP)
         try:
             self.app_lifecycle_actions(context, app, hook_info)
@@ -8153,9 +8157,9 @@ class ConductorManager(service.PeriodicService):
 
         try:
             hook_info = LifecycleHookInfo()
-            hook_info.init(constants.APP_LIFECYCLE_MODE_AUTO,
-                           constants.APP_LIFECYCLE_TYPE_SEMANTIC_CHECK,
-                           constants.APP_LIFECYCLE_TIMING_PRE,
+            hook_info.init(LifecycleConstants.APP_LIFECYCLE_MODE_AUTO,
+                           LifecycleConstants.APP_LIFECYCLE_TYPE_SEMANTIC_CHECK,
+                           LifecycleConstants.APP_LIFECYCLE_TIMING_PRE,
                            constants.APP_UPDATE_OP)
             hook_info[LifecycleConstants.EXTRA][LifecycleConstants.FROM_APP] = True
             self.app_lifecycle_actions(context, app, hook_info)
@@ -8264,7 +8268,7 @@ class ConductorManager(service.PeriodicService):
         LOG.info("Platform managed application %s: "
                  "Auto updating..." % target_app.name)
         hook_info = LifecycleHookInfo()
-        hook_info.mode = constants.APP_LIFECYCLE_MODE_AUTO
+        hook_info.mode = LifecycleConstants.APP_LIFECYCLE_MODE_AUTO
 
         if async_update:
             greenthread.spawn(self.perform_app_update,
@@ -8894,7 +8898,7 @@ class ConductorManager(service.PeriodicService):
         app.save()
 
         lifecycle_hook_info = LifecycleHookInfo()
-        lifecycle_hook_info.mode = constants.APP_LIFECYCLE_MODE_AUTO
+        lifecycle_hook_info.mode = LifecycleConstants.APP_LIFECYCLE_MODE_AUTO
         greenthread.spawn(self.perform_app_apply, context,
                           app, app.mode, lifecycle_hook_info)
 
@@ -17063,9 +17067,9 @@ class ConductorManager(service.PeriodicService):
 
                 try:
                     hook_info = LifecycleHookInfo()
-                    hook_info.mode = constants.APP_LIFECYCLE_MODE_AUTO
+                    hook_info.mode = LifecycleConstants.APP_LIFECYCLE_MODE_AUTO
                     hook_info.operation = constants.APP_EVALUATE_REAPPLY_OP
-                    hook_info.lifecycle_type = constants.APP_LIFECYCLE_TYPE_SEMANTIC_CHECK
+                    hook_info.lifecycle_type = LifecycleConstants.APP_LIFECYCLE_TYPE_SEMANTIC_CHECK
                     hook_info.extra[LifecycleConstants.EVALUATE_REAPPLY_TRIGGER] = trigger
                     self.app_lifecycle_actions(context=context, rpc_app=app, hook_info=hook_info)
                 except exception.LifecycleSemanticCheckException as e:
@@ -17416,8 +17420,10 @@ class ConductorManager(service.PeriodicService):
 
         # Perform post upload operation actions
         try:
-            lifecycle_hook_info_app_upload.lifecycle_type = constants.APP_LIFECYCLE_TYPE_OPERATION
-            lifecycle_hook_info_app_upload.relative_timing = constants.APP_LIFECYCLE_TIMING_POST
+            lifecycle_hook_info_app_upload.lifecycle_type = \
+                LifecycleConstants.APP_LIFECYCLE_TYPE_OPERATION
+            lifecycle_hook_info_app_upload.relative_timing = \
+                LifecycleConstants.APP_LIFECYCLE_TIMING_POST
             self.app_lifecycle_actions(context, rpc_app,
                                        lifecycle_hook_info_app_upload)
         except Exception as e:
@@ -17440,8 +17446,10 @@ class ConductorManager(service.PeriodicService):
 
         # Perform pre apply operation actions
         try:
-            lifecycle_hook_info_app_apply.lifecycle_type = constants.APP_LIFECYCLE_TYPE_OPERATION
-            lifecycle_hook_info_app_apply.relative_timing = constants.APP_LIFECYCLE_TIMING_PRE
+            lifecycle_hook_info_app_apply.lifecycle_type = \
+                LifecycleConstants.APP_LIFECYCLE_TYPE_OPERATION
+            lifecycle_hook_info_app_apply.relative_timing = \
+                LifecycleConstants.APP_LIFECYCLE_TIMING_PRE
             self.app_lifecycle_actions(context, rpc_app,
                                        lifecycle_hook_info_app_apply)
         except Exception as e:
@@ -17451,12 +17459,17 @@ class ConductorManager(service.PeriodicService):
         app_applied = self._app.perform_app_apply(rpc_app, mode,
                                                   lifecycle_hook_info_app_apply,
                                                   is_reapply_process=is_reapply_process)
-        lifecycle_hook_info_app_apply[LifecycleConstants.EXTRA][LifecycleConstants.APP_APPLIED] = app_applied
+        (
+            lifecycle_hook_info_app_apply[LifecycleConstants.EXTRA]
+            [LifecycleConstants.APP_APPLIED]
+        ) = app_applied
 
         # Perform post apply operation actions
         try:
-            lifecycle_hook_info_app_apply.lifecycle_type = constants.APP_LIFECYCLE_TYPE_OPERATION
-            lifecycle_hook_info_app_apply.relative_timing = constants.APP_LIFECYCLE_TIMING_POST
+            lifecycle_hook_info_app_apply.lifecycle_type = \
+                LifecycleConstants.APP_LIFECYCLE_TYPE_OPERATION
+            lifecycle_hook_info_app_apply.relative_timing = \
+                LifecycleConstants.APP_LIFECYCLE_TIMING_POST
             self.app_lifecycle_actions(context, rpc_app,
                                        lifecycle_hook_info_app_apply)
         except Exception as e:
@@ -17507,8 +17520,10 @@ class ConductorManager(service.PeriodicService):
 
         # Perform pre remove operation actions
         try:
-            lifecycle_hook_info_app_remove.relative_timing = constants.APP_LIFECYCLE_TIMING_PRE
-            lifecycle_hook_info_app_remove.lifecycle_type = constants.APP_LIFECYCLE_TYPE_OPERATION
+            lifecycle_hook_info_app_remove.relative_timing = \
+                LifecycleConstants.APP_LIFECYCLE_TIMING_PRE
+            lifecycle_hook_info_app_remove.lifecycle_type = \
+                LifecycleConstants.APP_LIFECYCLE_TYPE_OPERATION
             self.app_lifecycle_actions(context, rpc_app,
                                        lifecycle_hook_info_app_remove)
         except Exception as e:
@@ -17516,12 +17531,17 @@ class ConductorManager(service.PeriodicService):
 
         app_removed = self._app.perform_app_remove(
             rpc_app, lifecycle_hook_info_app_remove, force)
-        lifecycle_hook_info_app_remove[LifecycleConstants.EXTRA][LifecycleConstants.APP_REMOVED] = app_removed
+        (
+            lifecycle_hook_info_app_remove[LifecycleConstants.EXTRA]
+            [LifecycleConstants.APP_REMOVED]
+        ) = app_removed
 
         # Perform post remove operation actions
         try:
-            lifecycle_hook_info_app_remove.relative_timing = constants.APP_LIFECYCLE_TIMING_POST
-            lifecycle_hook_info_app_remove.lifecycle_type = constants.APP_LIFECYCLE_TYPE_OPERATION
+            lifecycle_hook_info_app_remove.relative_timing = \
+                LifecycleConstants.APP_LIFECYCLE_TIMING_POST
+            lifecycle_hook_info_app_remove.lifecycle_type = \
+                LifecycleConstants.APP_LIFECYCLE_TYPE_OPERATION
             self.app_lifecycle_actions(context, rpc_app,
                                        lifecycle_hook_info_app_remove)
         except Exception as e:
@@ -17553,8 +17573,10 @@ class ConductorManager(service.PeriodicService):
 
         # Perform pre delete operation actions
         try:
-            lifecycle_hook_info_app_delete.relative_timing = constants.APP_LIFECYCLE_TIMING_PRE
-            lifecycle_hook_info_app_delete.lifecycle_type = constants.APP_LIFECYCLE_TYPE_OPERATION
+            lifecycle_hook_info_app_delete.relative_timing = \
+                LifecycleConstants.APP_LIFECYCLE_TIMING_PRE
+            lifecycle_hook_info_app_delete.lifecycle_type = \
+                LifecycleConstants.APP_LIFECYCLE_TYPE_OPERATION
             self.app_lifecycle_actions(context, rpc_app,
                                        lifecycle_hook_info_app_delete)
         except Exception as e:
@@ -18266,7 +18288,7 @@ class ConductorManager(service.PeriodicService):
 
             if not self._check_app_kube_compatibility(app, k8s_version):
                 hook_info_delete = LifecycleHookInfo()
-                hook_info_delete.mode = constants.APP_LIFECYCLE_MODE_AUTO
+                hook_info_delete.mode = LifecycleConstants.APP_LIFECYCLE_MODE_AUTO
                 self.perform_app_delete(context, app, hook_info_delete)
 
     def kube_upgrade_abort(self, context, kube_state):
@@ -19280,10 +19302,10 @@ class ConductorManager(service.PeriodicService):
             try:
                 semantic_check_hook_info = LifecycleHookInfo()
                 semantic_check_hook_info.init(
-                    constants.APP_LIFECYCLE_MODE_MANUAL,
-                    constants.APP_LIFECYCLE_TYPE_SEMANTIC_CHECK,
-                    constants.APP_LIFECYCLE_TIMING_PRE,
-                    constants.APP_LIFECYCLE_OPERATION_MTC_ACTION)
+                    LifecycleConstants.APP_LIFECYCLE_MODE_MANUAL,
+                    LifecycleConstants.APP_LIFECYCLE_TYPE_SEMANTIC_CHECK,
+                    LifecycleConstants.APP_LIFECYCLE_TIMING_PRE,
+                    LifecycleConstants.APP_LIFECYCLE_OPERATION_MTC_ACTION)
                 semantic_check_hook_info.extra[
                     LifecycleConstants.APP_STATUS] = app.status
                 semantic_check_hook_info.extra[

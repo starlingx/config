@@ -261,7 +261,7 @@ class KubeAppController(rest.RestController):
             raise
 
         lifecycle_hook_info = LifecycleHookInfo()
-        lifecycle_hook_info.mode = constants.APP_LIFECYCLE_MODE_MANUAL
+        lifecycle_hook_info.mode = LifecycleConstants.APP_LIFECYCLE_MODE_MANUAL
 
         pecan.request.rpcapi.perform_app_upload(pecan.request.context,
                                                 new_app, tarfile_path,
@@ -333,9 +333,9 @@ class KubeAppController(rest.RestController):
 
             try:
                 lifecycle_hook_info = LifecycleHookInfo()
-                lifecycle_hook_info.init(constants.APP_LIFECYCLE_MODE_MANUAL,
-                                         constants.APP_LIFECYCLE_TYPE_SEMANTIC_CHECK,
-                                         constants.APP_LIFECYCLE_TIMING_PRE,
+                lifecycle_hook_info.init(LifecycleConstants.APP_LIFECYCLE_MODE_MANUAL,
+                                         LifecycleConstants.APP_LIFECYCLE_TYPE_SEMANTIC_CHECK,
+                                         LifecycleConstants.APP_LIFECYCLE_TIMING_PRE,
                                          constants.APP_APPLY_OP)
                 self._app_lifecycle_actions(db_app,
                                             lifecycle_hook_info)
@@ -353,7 +353,7 @@ class KubeAppController(rest.RestController):
             db_app.save()
 
             lifecycle_hook_info = LifecycleHookInfo()
-            lifecycle_hook_info.mode = constants.APP_LIFECYCLE_MODE_MANUAL
+            lifecycle_hook_info.mode = LifecycleConstants.APP_LIFECYCLE_MODE_MANUAL
 
             pecan.request.rpcapi.perform_app_apply(
                 pecan.request.context,
@@ -373,9 +373,9 @@ class KubeAppController(rest.RestController):
 
             try:
                 lifecycle_hook_info = LifecycleHookInfo()
-                lifecycle_hook_info.init(constants.APP_LIFECYCLE_MODE_MANUAL,
-                                         constants.APP_LIFECYCLE_TYPE_SEMANTIC_CHECK,
-                                         constants.APP_LIFECYCLE_TIMING_PRE,
+                lifecycle_hook_info.init(LifecycleConstants.APP_LIFECYCLE_MODE_MANUAL,
+                                         LifecycleConstants.APP_LIFECYCLE_TYPE_SEMANTIC_CHECK,
+                                         LifecycleConstants.APP_LIFECYCLE_TIMING_PRE,
                                          constants.APP_REMOVE_OP)
                 # Converting string to boolean
                 if force == 'True':
@@ -383,7 +383,7 @@ class KubeAppController(rest.RestController):
                 else:
                     force = False
 
-                lifecycle_hook_info.extra = {constants.APP_LIFECYCLE_FORCE_OPERATION: force}
+                lifecycle_hook_info.extra = {LifecycleConstants.APP_LIFECYCLE_FORCE_OPERATION: force}
                 self._app_lifecycle_actions(db_app,
                                             lifecycle_hook_info)
             except rpc_common.RemoteError as e:
@@ -398,7 +398,7 @@ class KubeAppController(rest.RestController):
             db_app.save()
 
             lifecycle_hook_info = LifecycleHookInfo()
-            lifecycle_hook_info.mode = constants.APP_LIFECYCLE_MODE_MANUAL
+            lifecycle_hook_info.mode = LifecycleConstants.APP_LIFECYCLE_MODE_MANUAL
 
             pecan.request.rpcapi.perform_app_remove(pecan.request.context,
                                                     db_app, lifecycle_hook_info=lifecycle_hook_info,
@@ -413,9 +413,9 @@ class KubeAppController(rest.RestController):
 
             try:
                 lifecycle_hook_info = LifecycleHookInfo()
-                lifecycle_hook_info.init(constants.APP_LIFECYCLE_MODE_MANUAL,
-                                         constants.APP_LIFECYCLE_TYPE_SEMANTIC_CHECK,
-                                         constants.APP_LIFECYCLE_TIMING_PRE,
+                lifecycle_hook_info.init(LifecycleConstants.APP_LIFECYCLE_MODE_MANUAL,
+                                         LifecycleConstants.APP_LIFECYCLE_TYPE_SEMANTIC_CHECK,
+                                         LifecycleConstants.APP_LIFECYCLE_TIMING_PRE,
                                          constants.APP_ABORT_OP)
                 self._app_lifecycle_actions(db_app,
                                             lifecycle_hook_info)
@@ -427,7 +427,7 @@ class KubeAppController(rest.RestController):
                     "Application-abort rejected: " + cutils.exception_msg(e)))
 
             lifecycle_hook_info = LifecycleHookInfo()
-            lifecycle_hook_info.mode = constants.APP_LIFECYCLE_MODE_MANUAL
+            lifecycle_hook_info.mode = LifecycleConstants.APP_LIFECYCLE_MODE_MANUAL
 
             pecan.request.rpcapi.perform_app_abort(pecan.request.context,
                                                    db_app, lifecycle_hook_info=lifecycle_hook_info)
@@ -481,9 +481,9 @@ class KubeAppController(rest.RestController):
 
         try:
             lifecycle_hook_info = LifecycleHookInfo()
-            lifecycle_hook_info.init(constants.APP_LIFECYCLE_MODE_MANUAL,
-                                     constants.APP_LIFECYCLE_TYPE_SEMANTIC_CHECK,
-                                     constants.APP_LIFECYCLE_TIMING_PRE,
+            lifecycle_hook_info.init(LifecycleConstants.APP_LIFECYCLE_MODE_MANUAL,
+                                     LifecycleConstants.APP_LIFECYCLE_TYPE_SEMANTIC_CHECK,
+                                     LifecycleConstants.APP_LIFECYCLE_TIMING_PRE,
                                      constants.APP_UPDATE_OP)
             lifecycle_hook_info[LifecycleConstants.EXTRA][LifecycleConstants.FROM_APP] = True
             self._app_lifecycle_actions(applied_app,
@@ -543,7 +543,7 @@ class KubeAppController(rest.RestController):
                     "application info update failed."))
 
         lifecycle_hook_info = LifecycleHookInfo()
-        lifecycle_hook_info.mode = constants.APP_LIFECYCLE_MODE_MANUAL
+        lifecycle_hook_info.mode = LifecycleConstants.APP_LIFECYCLE_MODE_MANUAL
 
         pecan.request.rpcapi.perform_app_update(pecan.request.context,
                                                 applied_app, target_app,
@@ -577,9 +577,9 @@ class KubeAppController(rest.RestController):
 
         try:
             lifecycle_hook_info = LifecycleHookInfo()
-            lifecycle_hook_info.init(constants.APP_LIFECYCLE_MODE_MANUAL,
-                                     constants.APP_LIFECYCLE_TYPE_SEMANTIC_CHECK,
-                                     constants.APP_LIFECYCLE_TIMING_PRE,
+            lifecycle_hook_info.init(LifecycleConstants.APP_LIFECYCLE_MODE_MANUAL,
+                                     LifecycleConstants.APP_LIFECYCLE_TYPE_SEMANTIC_CHECK,
+                                     LifecycleConstants.APP_LIFECYCLE_TIMING_PRE,
                                      constants.APP_DELETE_OP)
             # Converting string to boolean
             if force == 'True':
@@ -587,7 +587,7 @@ class KubeAppController(rest.RestController):
             else:
                 force = False
 
-            lifecycle_hook_info.extra = {constants.APP_LIFECYCLE_FORCE_OPERATION: force}
+            lifecycle_hook_info.extra = {LifecycleConstants.APP_LIFECYCLE_FORCE_OPERATION: force}
             self._app_lifecycle_actions(db_app,
                                         lifecycle_hook_info)
         except rpc_common.RemoteError as e:
@@ -598,7 +598,7 @@ class KubeAppController(rest.RestController):
                 "Application-delete rejected: " + cutils.exception_msg(e)))
 
         lifecycle_hook_info = LifecycleHookInfo()
-        lifecycle_hook_info.mode = constants.APP_LIFECYCLE_MODE_MANUAL
+        lifecycle_hook_info.mode = LifecycleConstants.APP_LIFECYCLE_MODE_MANUAL
 
         response = pecan.request.rpcapi.perform_app_delete(
             pecan.request.context, db_app, lifecycle_hook_info=lifecycle_hook_info)
