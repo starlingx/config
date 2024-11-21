@@ -12409,6 +12409,10 @@ class ConductorManager(service.PeriodicService):
             # kube apiserver service parameters can be applied without a reboot
             if section == constants.SERVICE_PARAM_SECTION_KUBERNETES_APISERVER:
                 reboot = False
+            if section == constants.SERVICE_PARAM_SECTION_KUBERNETES_CONTROLLER_MANAGER and \
+                    name == "pod-eviction-timeout":
+                reboot = False
+
             # The KUBERNETES_POD_MAX_PIDS affects workers.
             # A smarter way would be for update_service_config to receive the
             # diff list or dict, to only target required personalities.
