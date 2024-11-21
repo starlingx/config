@@ -3369,6 +3369,13 @@ class ConductorManager(service.PeriodicService):
         # remove old port and interface, processing inic_dict_array will create the new ones
         to_destroy = replaced_ports + unreported_ports
         for port in to_destroy:
+            if cinterface.get_pci_device_id(port) == dconstants.PCI_DEVICE_ID_FPGA_INTEL_I40_PF:
+                if any(field.get('mac') == port.mac for pci_addr, field in
+                   inic_pciaddr_dict.items()):
+                    LOG.info('Do not delete N3000 port %s addr:%s vendor:"%s" device:"%s". '
+                             'Entry will be updated' % (port.name, port.pciaddr, port.pvendor,
+                                                        port.pdevice))
+                    continue
             op_type = ('replaced' if (port in replaced_ports) else 'unreported')
             try:
                 LOG.info("Delete %s port %s associated interface id:%s"
