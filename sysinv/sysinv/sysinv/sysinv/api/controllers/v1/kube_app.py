@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2018-2022 Wind River Systems, Inc.
+# Copyright (c) 2018-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -27,10 +27,10 @@ from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils as cutils
 from sysinv.common import kubernetes
+from sysinv.common import usm_service
 from sysinv.helm.lifecycle_constants import LifecycleConstants
 from sysinv.helm.lifecycle_hook import LifecycleHookInfo
 from sysinv.openstack.common.rpc import common as rpc_common
-import cgcs_patch.constants as patch_constants
 
 LOG = log.getLogger(__name__)
 
@@ -615,24 +615,29 @@ class KubeAppHelper(object):
 
     def _check_patching_operation(self):
         try:
+            # Check for any ongoing platform patch using USM service
+            # If deploy operation is in progress, this will raise SysinvException
             system = self._dbapi.isystem_get_one()
-            response = patch_api.patch_query(
-                token=None,
-                timeout=constants.PATCH_DEFAULT_TIMEOUT_IN_SECS,
-                region_name=system.region_name
+            response = usm_service.is_deploy_in_progress(
+                region_name=system.region_name,
+                timeout=constants.PATCH_DEFAULT_TIMEOUT_IN_SECS
             )
-            query_patches = response['pd']
-        except Exception as e:
-            # Assume that a patching operation is underway, raise an exception.
-            LOG.error(_("No response from patch api: %s" % e))
-            raise
-
-        for patch in query_patches:
-            patch_state = query_patches[patch].get('patchstate', None)
-            if (patch_state == patch_constants.PARTIAL_APPLY or
-                    patch_state == patch_constants.PARTIAL_REMOVE):
+            # If deploy is in progress, raise an exception to indicate the same
+            if response:
                 raise exception.SysinvException(_(
-                    "Patching operation is in progress."))
+                    "Platform operation is in progress."))
+            else:
+                LOG.info("Platform operation is not in progress")
+
+        except exception.SysinvException as e:
+            # Log in-progress message
+            LOG.error(e)
+            raise
+        except Exception as e:
+            # General catch for any other communication errors with the USM service
+            LOG.error(_("Communication error with USM service: %s" % e))
+            raise exception.SysinvException(_(
+                "Unable to verify patching operation due to USM service communication error."))
 
     def _check_required_patches_are_applied(self, patches=None):
         """Validates that each patch provided is applied on the system"""
@@ -640,29 +645,25 @@ class KubeAppHelper(object):
             patches = []
         try:
             system = self._dbapi.isystem_get_one()
-            response = patch_api.patch_query(
-                token=None,
-                timeout=constants.PATCH_DEFAULT_TIMEOUT_IN_SECS,
-                region_name=system.region_name
-            )
+            response = usm_service.get_release_list(
+                    region_name=system.region_name,
+                    timeout=constants.PATCH_DEFAULT_TIMEOUT_IN_SECS)
         except Exception as e:
             LOG.error(e)
             raise exception.SysinvException(_(
                 "Error while querying patch-controller for the "
                 "state of the patch(es)."))
-        query_patches = response['pd']
         applied_patches = []
-        for patch_key in query_patches:
-            patch = query_patches[patch_key]
-            patchstate = patch.get('patchstate', None)
-            if patchstate == patch_constants.APPLIED or \
-                    patchstate == patch_constants.COMMITTED:
-                applied_patches.append(patch_key)
+        for patch_set in response:
+            patchstate = patch_set['state']
+            if patchstate == constants.DEPLOYED or \
+                    patchstate == constants.COMMITTED:
+                applied_patches.append(patch_set['release_id'])
 
         missing_patches = []
         for required_patch in patches:
-            if required_patch not in applied_patches:
-                missing_patches.append(required_patch)
+            if required_patch['release_id'] not in applied_patches:
+                missing_patches.append(required_patch['release_id'])
 
         success = not missing_patches
         return success, missing_patches
