@@ -11,5 +11,8 @@ ExecStart=/etc/init.d/sysinv-agent start
 ExecStop=/etc/init.d/sysinv-agent stop
 PIDFile=/var/run/sysinv-agent.pid
 
+# cgroup engineering
+CPUShares=256
+
 [Install]
 WantedBy=multi-user.target
