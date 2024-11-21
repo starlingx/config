@@ -23,6 +23,7 @@ override_dh_install:
 	install -p -D -m 755 scripts/controller_config $(ROOT)/etc/init.d/controller_config
 	install -d -m 755 $(ROOT)/etc/upgrade.d
 	install -p -D -m 755 upgrade-scripts/* $(ROOT)/etc/upgrade.d
+	install -d -m 755 $(ROOT)/etc/update.d
 	install -d -m 755 $(ROOT)/lib/systemd/system
 	dh_install
 
