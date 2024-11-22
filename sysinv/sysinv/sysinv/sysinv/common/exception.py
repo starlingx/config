@@ -413,8 +413,8 @@ class UpgradeAlreadyExists(Conflict):
     message = _("An Upgrade with UUID %(uuid)s already exists.")
 
 
-class UpgradeInProgress(Conflict):
-    message = _("An Upgrade is in progress with state %(state)s.")
+class DeployMajorReleaseInProgress(Conflict):
+    message = _("A major release deployment is in progress with state %(state)s.")
 
 
 class PortAlreadyExists(Conflict):
