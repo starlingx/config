@@ -7538,6 +7538,12 @@ class ConductorManager(service.PeriodicService):
                 config_uuid = host.config_target
                 host_id = host.id
 
+                # Skip if the host availability is explicitly offline
+                if host.availability == constants.AVAILABILITY_OFFLINE:
+                    LOG.info(f"Host {hostname} (config_uuid={config_uuid}) is offline "
+                             f"(availability={host.availability}). Skipping configuration update.")
+                    continue
+
                 rc = self.dbapi.runtime_config_get(config_uuid, host_id=host_id)
                 config_dict = json.loads(rc.config_dict)
                 config_dict.update({"host_uuids": [host.uuid]})
