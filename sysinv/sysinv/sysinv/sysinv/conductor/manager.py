@@ -12557,7 +12557,7 @@ class ConductorManager(service.PeriodicService):
                 personalities = [constants.WORKER, constants.STORAGE]
                 config_dict = {
                     "personalities": personalities,
-                    "classes": ['platform::patching::runtime', 'platform::usm::runtime']
+                    "classes": ['platform::usm::runtime']
                 }
                 self._config_apply_runtime_manifest(context, config_uuid,
                                                     config_dict)
@@ -12569,7 +12569,6 @@ class ConductorManager(service.PeriodicService):
                     "classes": ['openstack::lighttpd::runtime',
                                 'platform::helm::runtime',
                                 'platform::firewall::runtime',
-                                'platform::patching::runtime',
                                 'platform::usm::runtime'],
                     puppet_common.REPORT_STATUS_CFG:
                         puppet_common.REPORT_HTTP_CONFIG
