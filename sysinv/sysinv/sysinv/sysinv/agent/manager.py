@@ -43,6 +43,7 @@ import shutil
 import sys
 import tempfile
 import time
+import traceback
 import socket
 import yaml
 
@@ -1206,6 +1207,18 @@ class AgentManager(service.PeriodicService):
         :param status: config status
         :param error: config error
         """
+        if not context:
+            # If context is None, it could indicate a rare issue where context
+            # is lost during the RPC call chain. To debug this scenario and
+            # identify patterns leading to this, log a traceback.
+            tb = ''.join(traceback.format_stack())
+            LOG.info("Context is None in _report_config_applied. "
+                     "Recording traceback to identify the pattern. "
+                     "Traceback: %s", tb)
+            # Fallback to obtaining an admin context to avoid errors during
+            # subsequent processing.
+            context = mycontext.get_admin_context()
+
         rpcapi = conductor_rpcapi.ConductorAPI(
             topic=conductor_rpcapi.MANAGER_TOPIC)
 
