@@ -241,11 +241,22 @@ class ZmqRpcClient(object):
                     host_fqdn = constants.CONTROLLER_1_FQDN
                 endpoint = get_tcp_endpoint(host_fqdn, self.port)
             else:
-                address = utils.get_primary_address_by_name(dbapi,
-                                        utils.format_address_name(host.hostname,
-                                                        constants.NETWORK_TYPE_MGMT),
-                                        constants.NETWORK_TYPE_MGMT, True)
-                endpoint = get_tcp_endpoint(address.address, self.port)
+                address = utils.get_primary_address_by_name(
+                    dbapi,
+                    utils.format_address_name(
+                        host.hostname,
+                        constants.NETWORK_TYPE_MGMT),
+                    constants.NETWORK_TYPE_MGMT,
+                    False)
+
+                if address:
+                    endpoint = get_tcp_endpoint(address.address, self.port)
+                else:
+                    LOG.error(
+                        "Skipping host %s as its address could not be found",
+                        host.hostname if host.hostname else "unknown-host",
+                    )
+                    continue
 
             endpoints.append(endpoint)
             LOG.debug("Add host {} with endpoint {} to fanout request".format(
