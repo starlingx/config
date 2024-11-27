@@ -3774,11 +3774,11 @@ class AppImageParser(object):
                     try:
                         image = {}
                         keys = v.keys()
-                        if 'repository' in keys:
+                        if 'registry' in keys and 'repository' in keys:
+                            image.update({'registry': v['registry']})
                             image.update({'repository': v['repository']})
-                            if 'registry' in keys:
-                                image.update({'repository': '{}/{}'.format(
-                                    v['registry'], v['repository'])})
+                        if 'registry' not in keys and 'repository' in keys:
+                            image.update({'repository': v['repository']})
                         if 'tag' in keys:
                             image.update({'tag': v['tag']})
                         if image:
@@ -3846,7 +3846,12 @@ class AppImageParser(object):
                     imgs_dict[k] = v
 
             elif isinstance(v, dict):
-                self.update_images_with_local_registry(v)
+                if "registry" in v and "repository" in v:
+                    if not re.search(r'^.+:.+/', v["registry"]):
+                        v["registry"] = '{}/{}'.format(
+                            constants.DOCKER_REGISTRY_SERVER, v["registry"])
+                else:
+                    self.update_images_with_local_registry(v)
         return imgs_dict
 
     def generate_download_images_list(self, download_imgs_dict, download_imgs_list):
@@ -3875,7 +3880,10 @@ class AppImageParser(object):
 
             elif dict_key == 'image':
                 try:
-                    img = v['repository'] + ':' + v['tag']
+                    if "registry" in v:
+                        img = v['registry'] + '/' + v['repository'] + ':' + v['tag']
+                    else:
+                        img = v['repository'] + ':' + v['tag']
                 except (KeyError, TypeError):
                     img = ''
                     if v and isinstance(v, str):
