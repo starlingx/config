@@ -92,8 +92,9 @@ IMAGES_RESOURCE = {
     },
     'metricsServer': {
         'image': {
-            'tag': '0.6.1',
-            'repository': 'k8s.gcr.io/metrics-server/metrics-server'
+            'registry': 'k8s.gcr.io',
+            'repository': 'metrics-server/metrics-server',
+            'tag': '0.6.1'
         }
     }
 }
@@ -196,8 +197,9 @@ class TestKubeAppImageParser(base.TestCase):
             },
             'metricsServer': {
                 'image': {
-                    'tag': '0.6.1',
-                    'repository': 'registry.local:9001/k8s.gcr.io/metrics-server/metrics-server'
+                    'registry': 'registry.local:9001/k8s.gcr.io',
+                    'repository': 'metrics-server/metrics-server',
+                    'tag': '0.6.1'
                 }
             }
         }
@@ -320,8 +322,9 @@ class TestKubeAppImageParser(base.TestCase):
             },
             'metricsServer': {
                 'image': {
-                    'tag': '0.6.1',
-                    'repository': 'k8s.gcr.io/metrics-server/metrics-server'
+                    'registry': 'k8s.gcr.io',
+                    'repository': 'metrics-server/metrics-server',
+                    'tag': '0.6.1'
                 }
             }
         }
