@@ -330,6 +330,12 @@ def get_kube_versions():
          'applied_patches': [],
          'available_patches': [],
          },
+        {'version': 'v1.30.6',
+         'upgrade_from': ['v1.29.2'],
+         'downgrade_to': [],
+         'applied_patches': [],
+         'available_patches': [],
+         },
     ]
 
 
