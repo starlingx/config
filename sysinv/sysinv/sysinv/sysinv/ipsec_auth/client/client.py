@@ -270,12 +270,22 @@ class Client(object):
 
                     return True
 
+                # Reload credentials
                 load_creds = subprocess.run(['swanctl', '--load-creds', '--clear'],
                         stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
 
                 if load_creds.returncode != 0:
                     err = "Error: %s" % (load_creds.stderr.decode("utf-8"))
                     LOG.exception("Failed to load StrongSwan credentials: %s" % err)
+                    return False
+
+                # Reload connections
+                load_conns = subprocess.run(['swanctl', '--load-conns'],
+                        stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+
+                if load_conns.returncode != 0:
+                    err = "Error: %s" % (load_conns.stderr.decode("utf-8"))
+                    LOG.exception("Failed to load StrongSwan connections: %s" % err)
                     return False
 
                 rekey = subprocess.run(['swanctl', '--rekey', '--ike', constants.IKE_SA_NAME,
@@ -287,7 +297,7 @@ class Client(object):
                     LOG.exception("Failed to rekey IKE SA with StrongSwan: %s" % err)
                     return False
 
-                LOG.info('IPsec certificate renewed successfully with load-creds')
+                LOG.info('IPsec certificate renewed successfully with load-creds/conns')
 
         return True
 
