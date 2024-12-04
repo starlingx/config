@@ -92,7 +92,9 @@ def get_region_name(dbapi):
 
 
 def get_usm_endpoint(token):
-    return token.get_service_internal_url("usm", "usm")
+    if token:
+        return token.get_service_internal_url("usm", "usm")
+    return "http://127.0.0.1:5493"
 
 
 def _get_token(region_name):
