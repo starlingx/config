@@ -14,7 +14,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2021,2024 Wind River Systems, Inc.
+# Copyright (c) 2013-2021,2024-2025 Wind River Systems, Inc.
 # Copyright (c) 2020 Intel Corporation, Inc
 #
 
@@ -577,33 +577,36 @@ def _set_initial_values(storage_ceph_rook):
         deployment = constants.CEPH_ROOK_DEPLOYMENT_CONTROLLER
     capabilities = storage_ceph_rook.get('capabilities', {})
 
+    is_aio_simplex = cutils.is_aio_simplex_system(pecan.request.dbapi)
+
     # If no replication was specified, use default values
     if constants.CEPH_BACKEND_REPLICATION_CAP not in capabilities:
-        if cutils.is_aio_simplex_system(pecan.request.dbapi):
+        if is_aio_simplex:
             def_replication = str(constants.AIO_SX_CEPH_REPLICATION_FACTOR_DEFAULT)
         else:
             def_replication = str(constants.CEPH_REPLICATION_FACTOR_DEFAULT)
 
         def_min_replication = str(constants.CEPH_REPLICATION_MAP_DEFAULT[int(def_replication)])
 
-    # If 'replication' parameter is provided with a valid value and optional
-    # 'min_replication' parameter is not provided, default its value
-    # depending on the 'replication' value.
+    # If the 'replication' parameter is provided, use it and check if the 'min_replication'
+    # parameter is set. If not, use a default value based on the 'replication'. If there is
+    # no default value based on 'replication', set it as 'replication' - 1;
+    # Do not check boundaries. They will be checked later.
     else:
         def_replication = capabilities.get(constants.CEPH_BACKEND_REPLICATION_CAP)
-        def_min_replication = capabilities.get(constants.CEPH_BACKEND_MIN_REPLICATION_CAP)
 
-        if constants.CEPH_BACKEND_MIN_REPLICATION_CAP not in capabilities:
-            if int(def_replication) in constants.CEPH_REPLICATION_FACTOR_SUPPORTED:
-                def_min_replication = \
-                    str(constants.CEPH_REPLICATION_MAP_DEFAULT[int(def_replication)])
+        if constants.CEPH_BACKEND_MIN_REPLICATION_CAP in capabilities:
+            def_min_replication = capabilities.get(constants.CEPH_BACKEND_MIN_REPLICATION_CAP)
+        else:
+            if is_aio_simplex:
+                def_replication_factor_supported = constants.AIO_SX_CEPH_REPLICATION_FACTOR_SUPPORTED
+            else:
+                def_replication_factor_supported = constants.CEPH_REPLICATION_FACTOR_SUPPORTED
 
-            if deployment == constants.CEPH_ROOK_DEPLOYMENT_OPEN:
-                if int(def_replication) > 0:
-                    def_min_replication = max(1, int(def_replication) - 1)
-                else:
-                    raise wsme.exc.ClientSideError(
-                        _("Invalid replication factor. Value should be greater than 0."))
+            def_min_replication = str(max(1, int(def_replication) - 1))
+            if (constants.CEPH_ROOK_DEPLOYMENT_OPEN is not deployment
+                    and int(def_replication) in def_replication_factor_supported):
+                def_min_replication = str(constants.CEPH_REPLICATION_MAP_DEFAULT[int(def_replication)])
 
     def_services = f'{constants.SB_SVC_CEPH_ROOK_BLOCK},{constants.SB_SVC_CEPH_ROOK_FILESYSTEM}'
     def_capabilities = {
