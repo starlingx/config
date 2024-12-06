@@ -235,6 +235,7 @@ class StrongswanPuppet(object):
                     'local_ts': '0.0.0.0/0, ::/0',
                     'remote_ts': ('dynamic[tcp/22],'
                                   'dynamic[tcp/443],'
+                                  'dynamic[tcp/636],'
                                   'dynamic[tcp/8443],'
                                   'dynamic[tcp/9001],'
                                   'dynamic[tcp/9002],'
@@ -264,6 +265,7 @@ class StrongswanPuppet(object):
                     'start_action': 'trap',
                     'local_ts': ('dynamic[tcp/22],'
                                  'dynamic[tcp/443],'
+                                 'dynamic[tcp/636],'
                                  'dynamic[tcp/8443],'
                                  'dynamic[tcp/9001],'
                                  'dynamic[tcp/9002],'
