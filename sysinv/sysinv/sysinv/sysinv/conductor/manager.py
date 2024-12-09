@@ -17366,7 +17366,7 @@ class ConductorManager(service.PeriodicService):
         """
         lifecycle_hook_info_app_upload.operation = constants.APP_UPLOAD_OP
 
-        self._app.perform_app_upload(rpc_app, tarfile, lifecycle_hook_info_app_upload, images)
+        self._app.perform_app_upload(rpc_app, tarfile, images)
         self._app.load_application_metadata_from_file(rpc_app)
 
         # Perform post upload operation actions
@@ -17494,7 +17494,7 @@ class ConductorManager(service.PeriodicService):
         """
         lifecycle_hook_info_app_abort.operation = constants.APP_ABORT_OP
 
-        return self._app.perform_app_abort(rpc_app, lifecycle_hook_info_app_abort)
+        return self._app.perform_app_abort(rpc_app)
 
     def perform_app_delete(self, context, rpc_app, lifecycle_hook_info_app_delete):
         """Handling of application delete request (via AppOperator)
