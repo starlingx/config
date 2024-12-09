@@ -368,8 +368,8 @@ class NetworkingPuppet(base.BasePuppet):
 
         default_device_parameters = {
             'input_mode': constants.PTP_SYNCE_INPUT_MODE_LINE,
-            'external_input_QL': constants.PTP_SYNCE_EXTERNAL_INPUT_QL,
-            'external_input_ext_QL': constants.PTP_SYNCE_EXTERNAL_INPUT_EXT_QL,
+            'input_QL': constants.PTP_SYNCE_EXTERNAL_INPUT_QL,
+            'input_ext_QL': constants.PTP_SYNCE_EXTERNAL_INPUT_EXT_QL,
             'extended_tlv': constants.PTP_SYNCE_EXTERNAL_TLV,
             'network_option': constants.PTP_SYNCE_NETWORK_OPTION,
             'recover_time': constants.PTP_SYNCE_RECOVER_TIME,
