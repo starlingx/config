@@ -59,9 +59,10 @@ def enable_fluxcd_controllers(from_release):
                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     stdout, stderr = sub.communicate()
     if sub.returncode != 0:
-        LOG.error('Command failed:\n %s\n. %s\n%s' % (cmd, stdout, stderr))
+        LOG.error('Command failed:\n %s\n. %s\n%s' % (
+            cmd, stdout.decode('utf-8'), stderr.decode('utf-8')))
         raise Exception('Cannot install fluxcd controllers')
-    LOG.info('FluxCD controllers enabled')
+    LOG.info('FluxCD controllers enabled. Output: %s' % stdout.decode('utf-8'))
 
 
 if __name__ == "__main__":
