@@ -1847,6 +1847,50 @@ class ManagerTestCase(base.DbTestCase):
         self.assertEqual(kube_upgrade_obj.state,
                          new_state)
 
+    @mock.patch("time.sleep", return_value=None)  # Skip actual wait
+    @mock.patch('sysinv.objects.host.get_by_uuid')
+    @mock.patch('sysinv.objects.kube_host_upgrade.get_by_host_id')
+    @mock.patch('sysinv.common.kubernetes.KubeOperator')
+    def test_handle_k8s_upgrade_control_plane_first_master_version_mismatch(self,
+                                                                            mock_kube_operator,
+                                                                            mock_get_kube_host_upgrade,
+                                                                            mock_get_host_by_uuid,
+                                                                            mock_sleep):
+        mock_host = mock.MagicMock()
+        mock_host.hostname = 'controller-0'
+        mock_host.id = str(uuid.uuid4())
+        mock_get_host_by_uuid.return_value = mock_host
+
+        mock_kube_host_upgrade = mock.MagicMock()
+        mock_kube_host_upgrade.target_version = "v1.21.0"
+        mock_kube_host_upgrade.status = None
+        mock_get_kube_host_upgrade.return_value = mock_kube_host_upgrade
+
+        mock_kube_operator_instance = mock_kube_operator.return_value
+        mock_kube_operator_instance.kube_get_control_plane_versions.side_effect = [
+            {'controller-0': "v1.20.0"}, {'controller-0': "v1.20.0"},
+            {'controller-0': "v1.20.0"}, {'controller-0': "v1.20.0"},  # 4 Failed retries
+            {'controller-0': "v1.21.0"}  # Fifth attempt: control plane version matches
+        ]
+        # Mock kube_upgrade_obj
+        mock_kube_upgrade_obj = mock.MagicMock()
+        mock_kube_upgrade_obj.state = "initial"
+        new_state = kubernetes.KUBE_UPGRADED_SECOND_MASTER
+        fail_state = kubernetes.KUBE_UPGRADING_SECOND_MASTER_FAILED
+
+        result = self.service.handle_k8s_upgrade_control_plane_success(
+            context=self.context,
+            kube_upgrade_obj=mock_kube_upgrade_obj,
+            host_uuid=str(uuid.uuid4()),
+            new_state=new_state,
+            fail_state=fail_state
+        )
+
+        # Assert successful retry after 4 failed retries
+        self.assertTrue(result)
+        # Assert total number of retries
+        self.assertEqual(mock_kube_operator_instance.kube_get_control_plane_versions.call_count, 5)
+
     @mock.patch('sysinv.conductor.manager.'
                 'ConductorManager._config_apply_runtime_manifest')
     @mock.patch('sysinv.conductor.manager.'

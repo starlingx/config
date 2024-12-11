@@ -10707,6 +10707,11 @@ class ConductorManager(service.PeriodicService):
         }
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
+    # Retrying a few times and waiting between each retry
+    # In rare cases, restart of one or more of the control-plane pods may be delayed.
+    @retry(retry_on_result=lambda x: x is False,
+           stop_max_attempt_number=10,
+           wait_fixed=1000)
     def handle_k8s_upgrade_control_plane_success(self, context, kube_upgrade_obj, host_uuid,
                                           new_state, fail_state):
         host_obj = objects.host.get_by_uuid(context, host_uuid)
@@ -10730,7 +10735,7 @@ class ConductorManager(service.PeriodicService):
             kube_host_upgrade_obj.save()
             kube_upgrade_obj.state = fail_state
             kube_upgrade_obj.save()
-            return
+            return False
 
         # The control plane update was successful
         LOG.info("Control plane was updated for host %s" % host_name)
@@ -10738,6 +10743,7 @@ class ConductorManager(service.PeriodicService):
         kube_host_upgrade_obj.save()
         kube_upgrade_obj.state = new_state
         kube_upgrade_obj.save()
+        return True
 
     def report_config_status(self, context, iconfig, status, error=None):
         """ Callback from Sysinv Agent on manifest apply success or failure
@@ -10983,8 +10989,12 @@ class ConductorManager(service.PeriodicService):
             if status == puppet_common.REPORT_SUCCESS:
                 # Upgrade control-plane action was successful.
                 success = True
-                self.handle_k8s_upgrade_control_plane_success(context, kube_upgrade_obj, host_uuid,
-                                                       new_state, fail_state)
+                try:
+                    self.handle_k8s_upgrade_control_plane_success(context, kube_upgrade_obj,
+                                                                  host_uuid, new_state,
+                                                                  fail_state)
+                except retrying.RetryError:
+                    LOG.info("Retry failed while handling k8s upgrade control plane success")
             if status == puppet_common.REPORT_FAILURE:
                 # Upgrade control-plane action failed to apply puppet manifest.
                 if kube_upgrade_obj.recovery_attempts < constants.CONTROL_PLANE_RETRY_COUNT:
