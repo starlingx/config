@@ -97,7 +97,7 @@ def do_subclouds_migration_work(conn_dcmanager, conn_sysinv):
         ip_family = 4 if oam_network['primary_pool_family'] == 'IPv4' else 6
         query = (
             f"UPDATE subclouds SET external_oam_subnet_ip_family='{ip_family}'"
-            f"WHERE external_oam_subnet_ip_family='';"
+            f"WHERE external_oam_subnet_ip_family is NULL;"
         )
         LOG.info(
             f"Update external_oam_subnet_ip_family from '' to "
