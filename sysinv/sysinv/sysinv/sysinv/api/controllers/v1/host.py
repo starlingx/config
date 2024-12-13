@@ -15,7 +15,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2024 Wind River Systems, Inc.
+# Copyright (c) 2013-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -6735,13 +6735,28 @@ class HostController(rest.RestController):
             hostupdate.ihost_val_update({'capabilities': capabilities})
 
         hostupdate.notify_mtce = True
+
         if hostupdate.ihost_orig['personality'] == constants.STORAGE:
-            istors = pecan.request.dbapi.istor_get_by_ihost(
-                                         hostupdate.ihost_orig['uuid'])
+            istors = pecan.request.dbapi.istor_get_by_ihost(hostupdate.ihost_orig['uuid'])
+
             for stor in istors:
                 istor_obj = objects.storage.get_by_uuid(
                                     pecan.request.context, stor.uuid)
                 self._ceph.remove_osd_key(istor_obj['osdid'])
+        else:
+            has_ceph_rook_backend = StorageBackendConfig.has_backend(
+                pecan.request.dbapi,
+                target=constants.SB_TYPE_CEPH_ROOK
+            )
+
+            if has_ceph_rook_backend:
+                istors = pecan.request.dbapi.istor_get_by_ihost(
+                                                hostupdate.ihost_orig['uuid'])
+                for stor in istors:
+                    istor_obj = objects.storage.get_by_uuid(
+                                        pecan.request.context, stor.uuid)
+                    istor_values = {'state': constants.SB_STATE_CONFIGURING_WITH_APP}
+                    pecan.request.dbapi.istor_update(istor_obj['uuid'], istor_values)
 
         hostupdate.ihost_val_update(
             {

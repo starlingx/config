@@ -551,6 +551,7 @@ SB_STATE_CONFIGURING = 'configuring'
 SB_STATE_CONFIG_ERR = 'configuration-failed'
 SB_STATE_CONFIGURING_ON_UNLOCK = 'configuring-on-unlock'
 SB_STATE_CONFIGURING_WITH_APP = 'configuring-with-app'
+SB_STATE_DELETING_WITH_APP = 'deleting-with-app'
 
 # Storage backend tasks
 SB_TASK_NONE = None

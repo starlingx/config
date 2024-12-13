@@ -14,7 +14,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2021,2024 Wind River Systems, Inc.
+# Copyright (c) 2013-2021,2024-2025 Wind River Systems, Inc.
 # Copyright (c) 2020 Intel Corporation, Inc
 #
 
@@ -821,6 +821,11 @@ def _patch(storcephrook_uuid, patch):
     _check_backend_ceph_rook(constants.SB_API_OP_MODIFY,
                         rpc_storcephrook.as_dict(),
                         True)
+
+    # Transitioning to the `configuring-with-app` state because the backend has been updated.
+    # The rook-ceph application must be reapplied to get the new changes,
+    # which will then update the state back to `configured`.
+    rpc_storcephrook.state = constants.SB_STATE_CONFIGURING_WITH_APP
 
     try:
         rpc_storcephrook.save()
