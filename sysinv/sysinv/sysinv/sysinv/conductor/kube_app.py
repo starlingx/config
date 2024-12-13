@@ -2060,7 +2060,7 @@ class AppOperator(object):
             LOG.error("Application %s recover to version %s aborted!"
                     % (old_app.name, old_app.version))
 
-    def perform_app_upload(self, rpc_app, tarfile, lifecycle_hook_info_app_upload, images=False):
+    def perform_app_upload(self, rpc_app, tarfile, images=False):
         """Process application upload request
 
         This method validates the application manifest. If Helm charts are
@@ -2070,7 +2070,6 @@ class AppOperator(object):
 
         :param rpc_app: application object in the RPC request
         :param tarfile: location of application tarfile
-        :param lifecycle_hook_info_app_upload: LifecycleHookInfo object
         :param images: save application images in the registry as part of app upload
 
         """
@@ -3252,7 +3251,7 @@ class AppOperator(object):
         app = AppOperator.Application(rpc_app)
         return app.active
 
-    def perform_app_abort(self, rpc_app, lifecycle_hook_info_app_abort):
+    def perform_app_abort(self, rpc_app):
         """Process application abort request
 
         This method retrieves the latest application status from the
@@ -3262,7 +3261,6 @@ class AppOperator(object):
         next opportunity.
 
         :param rpc_app: application object in the RPC request
-        :param lifecycle_hook_info_app_abort: LifecycleHookInfo object
 
         """
 
