@@ -747,8 +747,7 @@ class TrustedCARenew(CertificateRenew):
     def install_ca_certificate(self,
                                event_data,
                                cert_type,
-                               force=False,
-                               uninstall_subject_dup=False):
+                               force=False):
         """Install CA certificate stored in a secret
 
         Save the CA certificate from the secret into a PEM file and send it to the
@@ -759,9 +758,6 @@ class TrustedCARenew(CertificateRenew):
         :param cert_type: the type of the certificate that is being updated
         :param force: whether to bypass semantic checks and force the update,
             defaults to False
-        :param uninstall_subject_dup: whether to remove a existing cert with same subject.
-            Installation will not succeed if another CA certificate with same subject is
-            already installed as trusted and this flag is not enabled. Defaults to False.
         """
         token = self.context.get_token()
         try:
@@ -777,21 +773,6 @@ class TrustedCARenew(CertificateRenew):
                     LOG.info('Certificate %s is already installed. Skipping installation.' %
                              certificate['signature'])
                     return
-
-                if cert_to_be_installed.subject.rfc4514_string() == certificate['subject']:
-                    LOG.warning("A different certificate with same subject as %s is "
-                                "alredy installed as trusted." % certificate['signature'])
-                    if uninstall_subject_dup:
-                        LOG.warning("Uninstalling certificate %s, subject: %s" %
-                                    (certificate['signature'], certificate['subject']))
-                        utils.uninstall_ca_certificate(token, certificate['uuid'], cert_type)
-                    else:
-                        msg = ("The CA certificate of %s cannot be installed as trusted. "
-                               "The already installed certificate %s (uuid: %s) has the same "
-                               "subject (%s), which is not allowed." %
-                                (self.secret_name, certificate['signature'],
-                                certificate['uuid'], certificate['subject']))
-                        raise Exception(msg)
 
             pem_file_path = utils.update_pemfile(event_data.ca_crt, "")
             utils.update_platform_cert(token, cert_type, pem_file_path, force)
@@ -861,8 +842,7 @@ class SystemLocalCACertRenew(TrustedCARenew):
         LOG.info('SystemLocalCACertRenew: Secret changes detected. Initiating CA certificate install')
         self.install_ca_certificate(event_data,
                                     constants.CERT_MODE_SSL_CA,
-                                    force=True,
-                                    uninstall_subject_dup=True)
+                                    force=True)
 
 
 class RestApiCertRenew(PlatformCertRenew):

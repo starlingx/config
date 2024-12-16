@@ -407,14 +407,28 @@ class CertificateController(rest.RestController):
                                               if certificate.hash_subject
                                               if hash_subject == int(certificate.hash_subject)
                                               if certificate.signature != signature]
+
                     if duplicate_certificates:
-                        msg = "Cannot install certificate with same subject" \
-                              "\nPlease uninstall the following CA certs that have " \
-                              "the same subject first"
-                        for uuid in duplicate_certificates:
-                            msg += "\nUUID : %s" % uuid
-                        LOG.error(msg)
-                        return dict(success="", error=msg)
+                        try:
+                            # There should be at most one duplicate
+                            for dupe_uuid in duplicate_certificates:
+                                LOG.info(
+                                    "Removing old CA cert with same subject: UUID=%s",
+                                    dupe_uuid
+                                )
+
+                                dupe_cert = pecan.request.dbapi.certificate_get(dupe_uuid)
+                                pecan.request.rpcapi.delete_certificate(
+                                    pecan.request.context,
+                                    dupe_cert.certtype,
+                                    dupe_cert.signature
+                                )
+                                pecan.request.dbapi.certificate_destroy(dupe_uuid)
+
+                        except Exception as e:
+                            msg = f"Failed to remove duplicate certificate UUID={dupe_uuid}"
+                            LOG.warn("%s: %s" % (msg, e))
+                            return dict(success="", error=msg)
                 else:
                     msg = "Cannot install CA certificate without subject"
                     LOG.error(msg)
