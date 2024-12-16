@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2021 Wind River Systems, Inc.
+# Copyright (c) 2021,2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -27,3 +27,4 @@ class LifecycleConstants(object):
     APP_STATUS = 'app_status'
     FROM_APP = 'from_app'
     TO_APP = 'to_app'
+    ABORTED_OP = 'aborted_op'
