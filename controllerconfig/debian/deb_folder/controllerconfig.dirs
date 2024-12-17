@@ -1,4 +1,4 @@
-etc/upgrade.d
+usr/local/share/upgrade.d
 etc/init.d
 etc/goenabled.d
 usr/sbin

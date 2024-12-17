@@ -2,4 +2,4 @@ usr/bin/*
 etc/goenabled.d/*
 usr/lib/python*/dist-packages/*
 etc/init.d/*
-etc/upgrade.d/*
+usr/local/share/upgrade.d/*
