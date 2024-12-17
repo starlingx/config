@@ -265,6 +265,7 @@ class KubeAppController(rest.RestController):
 
         pecan.request.rpcapi.perform_app_upload(pecan.request.context,
                                                 new_app, tarfile_path,
+                                                lifecycle_hook_info=lifecycle_hook_info,
                                                 images=images)
         return KubeApp.convert_with_links(new_app)
 
@@ -429,7 +430,7 @@ class KubeAppController(rest.RestController):
             lifecycle_hook_info.mode = constants.APP_LIFECYCLE_MODE_MANUAL
 
             pecan.request.rpcapi.perform_app_abort(pecan.request.context,
-                                                   db_app)
+                                                   db_app, lifecycle_hook_info=lifecycle_hook_info)
         return KubeApp.convert_with_links(db_app)
 
     @cutils.synchronized(LOCK_NAME)
