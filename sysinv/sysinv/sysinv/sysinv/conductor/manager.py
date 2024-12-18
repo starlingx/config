@@ -17384,7 +17384,7 @@ class ConductorManager(service.PeriodicService):
         """
         lifecycle_hook_info_app_upload.operation = constants.APP_UPLOAD_OP
 
-        self._app.perform_app_upload(rpc_app, tarfile, lifecycle_hook_info_app_upload, images)
+        self._app.perform_app_upload(rpc_app, tarfile, images)
         self._app.load_application_metadata_from_file(rpc_app)
 
         # Perform post upload operation actions
