@@ -5743,16 +5743,12 @@ class HostController(rest.RestController):
             # No upgrade in progress
             return
 
-        if (upgrade.state in [constants.UPGRADE_STARTING] and
-                hostname == constants.CONTROLLER_1_HOSTNAME):
-            # Lock of controller-1 is not allowed during
-            # the UPGRADE_STARTING state
+        if upgrade.state in constants.DEPLOY_STATE_TRANSIENT_STATES:
+            # Lock of controllers is not allowed during
+            # the deployment transient states
             raise wsme.exc.ClientSideError(
-                _("host-lock %s is not allowed during upgrade state '%s'. "
-                  "Upgrade state must be '%s'.") %
-                (hostname,
-                 constants.UPGRADE_STARTING,
-                 constants.UPGRADE_STARTED))
+                _("host-lock %s is not allowed during upgrade state '%s'") %
+                (hostname, upgrade.state))
 
     def check_unlock_application(self, hostupdate, force_unlock=False):
         LOG.info("%s ihost check_unlock_application" % hostupdate.displayid)
@@ -6081,6 +6077,13 @@ class HostController(rest.RestController):
             return
 
         if isinstance(upgrade, usm_service.UsmUpgrade):
+            err_msg = "Swact is not allowed. "
+
+            # fail if deployment is in a transient state
+            if upgrade.state in constants.DEPLOY_STATE_TRANSIENT_STATES:
+                err_msg += "Upgrade in progress with '%s' state." % upgrade.state
+                raise wsme.exc.ClientSideError(err_msg)
+
             to_host_deploy = usm_service.UsmHostUpgrade.get_by_hostname(
                 pecan.request.dbapi, to_host['hostname'])
             if to_host_deploy.state in constants.DEPLOY_HOST_DEPLOYED_STATES:
@@ -6094,8 +6097,7 @@ class HostController(rest.RestController):
                     # no host has started deploy yet
                     pass
                 else:
-                    err_msg = "Swact is not allowed. " + \
-                              "New release has not been deployed to %s" % to_host['hostname']
+                    err_msg += "New release has not been deployed to %s" % to_host['hostname']
                     raise wsme.exc.ClientSideError(err_msg)
 
     def _semantic_check_swact_kube_rootca_update(self, ihost, force_swact=False):
