@@ -203,6 +203,28 @@ def is_armada_required():
 
 
 @test_k8s_health
+def force_delete_pods(pod_name):
+    try:
+        LOG.info(f"Trying to force the deletion of {pod_name}.")
+        cmd = "kubectl delete pod %s --request-timeout=%s --timeout=%s -n %s \
+                --grace-period=%s --force --kubeconfig %s" \
+                % (pod_name,
+                   REQUEST_TIMEOUT_KUBECTL,
+                   TIMEOUT_KUBECTL,
+                   ARMADA_NS,
+                   GRACE_PERIOD_TIME,
+                   KUBERNETES_ADMIN_CONF)
+        result, err = run_cmd(cmd)
+        if 'force deleted' in result:
+            return True
+        elif err:
+            raise Exception(err)
+    except Exception as e:
+        LOG.error(f"Failed to delete pod {pod_name} after forced attempt: {e}")
+        return False
+
+
+@test_k8s_health
 def delete_armada_pods():
     """
     Best effort approach to delete lingering Armada pods
@@ -251,9 +273,9 @@ def delete_armada_pods():
                     LOG.warning("Attempt %d to delete pod %s failed: %s"
                                 % (attempt, pod_name, e))
                     if attempt == retries:
-                        LOG.error("Failed to delete pod %s after %d attempts."
-                                  % (pod_name, retries))
-                        result = False
+                        LOG.warning("Failed to delete pod %s after %d attempts"
+                                    % (pod_name, retries))
+                        result = force_delete_pods(pod_name)
                     else:
                         LOG.info("Retrying...")
 
