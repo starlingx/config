@@ -390,14 +390,6 @@ class BaseHelm(object):
         """
         return {}
 
-    def version_check(self, app_version):
-        """
-        Validate application version
-
-        Return False if version is not supported by the plugin.
-        """
-        return True
-
     def execute_kustomize_updates(self, operator):
         """
         Update the elements of FluxCD kustomize manifests.

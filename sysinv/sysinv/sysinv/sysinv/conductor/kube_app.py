@@ -2079,19 +2079,6 @@ class AppOperator(object):
         LOG.info("Application %s (%s) upload started." % (app.name, app.version))
 
         try:
-            # TODO (rchurch): Remove this version check once all applications
-            # have been decoupled. Since compatible plugins will be delivered
-            # with the versioned application tarball, no version check will be
-            # required. For decoupled apps, plugins are loaded later in this
-            # method and this base class version check is called.
-            if not self._helm.version_check(app.name, app.version):
-                LOG.info("Application %s (%s) upload rejected. Unsupported version."
-                         % (app.name, app.version))
-                raise exception.KubeAppUploadFailure(
-                    name=app.name,
-                    version=app.version,
-                    reason="Unsupported application version.")
-
             app.tarfile = tarfile
 
             if cutils.is_url(app.tarfile):
