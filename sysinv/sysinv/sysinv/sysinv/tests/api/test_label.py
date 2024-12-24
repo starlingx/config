@@ -10,7 +10,9 @@ from six.moves.urllib.parse import urlencode
 from sysinv.common import constants
 from sysinv.db import api as dbapi
 from sysinv.tests.api import base
+from sysinv.api.controllers.v1 import label as policylabel
 from sysinv.tests.db import utils as dbutils
+import wsme
 
 
 HEADER = {'User-Agent': 'sysinv'}
@@ -187,6 +189,105 @@ class LabelAssignTestCase(LabelTestCase):
             'kube-cpu-mgr-policy': 'none',
         }
         self.assign_labels_failure(host_uuid, cpu_mgr_label)
+
+    @mock.patch('sysinv.api.controllers.v1.label._case_agnostic_check')
+    def test_valid_topology_manager_label(self, mock_case_check):
+        body = {
+            constants.KUBE_TOPOLOGY_MANAGER_LABEL: 'best-effort'
+        }
+
+        policylabel._semantic_check_worker_labels(body)
+
+        mock_case_check.assert_called_once_with('best-effort',
+                    constants.KUBE_TOPOLOGY_MANAGER_VALUES, constants.KUBE_TOPOLOGY_MANAGER_LABEL)
+
+    @mock.patch('sysinv.api.controllers.v1.label._case_agnostic_check')
+    def test_invalid_topology_manager_label(self, mock_case_check):
+        body = {
+            constants.KUBE_TOPOLOGY_MANAGER_LABEL: 'BestEffort'
+        }
+
+        # Simulate invalid value in allowed values for KUBE_TOPOLOGY_MANAGER_LABEL
+        mock_case_check.side_effect = wsme.exc.ClientSideError(
+            "Invalid value for %s label." % constants.KUBE_TOPOLOGY_MANAGER_LABEL
+        )
+
+        self.assertRaises(wsme.exc.ClientSideError, policylabel._semantic_check_worker_labels, body)
+
+        mock_case_check.assert_called_once_with('BestEffort',
+                constants.KUBE_TOPOLOGY_MANAGER_VALUES, constants.KUBE_TOPOLOGY_MANAGER_LABEL)
+
+    @mock.patch('sysinv.api.controllers.v1.label._case_agnostic_check')
+    def test_valid_cpu_mgr_policy_label(self, mock_case_check):
+        body = {
+            'kube-cpu-mgr-policy': 'static'
+        }
+
+        policylabel._semantic_check_worker_labels(body)
+
+        mock_case_check.assert_called_once_with('static',
+                        constants.KUBE_CPU_MEMORY_MANAGER_VALUES, 'kube-cpu-mgr-policy')
+
+    @mock.patch('sysinv.api.controllers.v1.label._case_agnostic_check')
+    def test_invalid_cpu_mgr_policy_label(self, mock_case_check):
+        body = {
+            'kube-cpu-mgr-policy': 'invalid_policy'
+        }
+
+        # Simulate invalid value in allowed values for 'kube-cpu-mgr-policy'
+        mock_case_check.side_effect = wsme.exc.ClientSideError(
+            "Invalid value for %s label." % 'kube-cpu-mgr-policy'
+        )
+
+        self.assertRaises(wsme.exc.ClientSideError, policylabel._semantic_check_worker_labels,
+                                                                                 body)
+
+        mock_case_check.assert_called_once_with('invalid_policy',
+                              constants.KUBE_CPU_MEMORY_MANAGER_VALUES, 'kube-cpu-mgr-policy')
+
+    @mock.patch('sysinv.api.controllers.v1.label._case_agnostic_check')
+    def test_invalid_kube_cpu_mgr_policy_none(self, mock_case_check):
+        body = {
+            'kube-cpu-mgr-policy': 'None'
+        }
+
+        # Simulate 'none' value which should raise an error
+        mock_case_check.side_effect = wsme.exc.ClientSideError(
+            "Setting kube-cpu-mgr-policy to 'none' is not supported"
+        )
+
+        self.assertRaises(wsme.exc.ClientSideError, policylabel._semantic_check_worker_labels,
+                                                                   body)
+
+        mock_case_check.assert_not_called()
+
+    @mock.patch('sysinv.api.controllers.v1.label._case_agnostic_check')
+    def test_valid_memory_manager_label(self, mock_case_check):
+        body = {
+            constants.KUBE_MEMORY_MANAGER_LABEL: 'StaTIc'
+        }
+
+        policylabel._semantic_check_worker_labels(body)
+
+        mock_case_check.assert_called_once_with('StaTIc',
+                constants.KUBE_CPU_MEMORY_MANAGER_VALUES, constants.KUBE_MEMORY_MANAGER_LABEL)
+
+    @mock.patch('sysinv.api.controllers.v1.label._case_agnostic_check')
+    def test_invalid_memory_manager_label(self, mock_case_check):
+        body = {
+            constants.KUBE_MEMORY_MANAGER_LABEL: 'invalid_policy'
+        }
+
+        # Simulate invalid value in allowed values for KUBE_MEMORY_MANAGER_LABEL
+        mock_case_check.side_effect = wsme.exc.ClientSideError(
+            "Invalid value for %s label." % constants.KUBE_MEMORY_MANAGER_LABEL
+        )
+
+        self.assertRaises(wsme.exc.ClientSideError, policylabel._semantic_check_worker_labels,
+                                                body)
+
+        mock_case_check.assert_called_once_with('invalid_policy',
+                 constants.KUBE_CPU_MEMORY_MANAGER_VALUES, constants.KUBE_MEMORY_MANAGER_LABEL)
 
     @mock.patch('sysinv.api.controllers.v1.label._get_system_enabled_k8s_plugins',
                 mock_get_system_enabled_k8s_plugins_return_plugins)

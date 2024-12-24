@@ -364,35 +364,45 @@ def _check_host_locked(host, host_labels):
                 (host.hostname, lock_required_labels))
 
 
+def _case_agnostic_check(policy_value, allowed_values, policy_name):
+    """
+    Helper function to check if a policy value is among the allowed values,
+    case-insensitively.
+    """
+    if policy_value.casefold() not in \
+                       [allowed_value.casefold() for allowed_value in allowed_values]:
+        raise wsme.exc.ClientSideError(
+            _(
+                "Invalid value for %s label." % policy_name))
+
+
+def evaluate_case_agnostic_policy_name(policy_name, policy_value):
+    """
+    Enable case-agnostic policy name validation for the given policy.
+    """
+    if policy_name == constants.KUBE_TOPOLOGY_MANAGER_LABEL:
+        _case_agnostic_check(policy_value, constants.KUBE_TOPOLOGY_MANAGER_VALUES, policy_name)
+    elif policy_name == 'kube-cpu-mgr-policy' and policy_value.casefold() == 'none':
+        raise wsme.exc.ClientSideError(
+            _(
+                "Setting kube-cpu-mgr-policy to 'none' is not supported"))
+    else:
+        _case_agnostic_check(policy_value, constants.KUBE_CPU_MEMORY_MANAGER_VALUES, policy_name)
+
+
 def _semantic_check_worker_labels(body):
     """
     Perform semantic checks to ensure the worker labels are valid.
     """
     for label_key, label_value in body.items():
-        if label_key == constants.KUBE_TOPOLOGY_MANAGER_LABEL:
-            if label_value not in constants.KUBE_TOPOLOGY_MANAGER_VALUES:
-                raise wsme.exc.ClientSideError(
-                    _(
-                        "Invalid value for %s label." % constants.KUBE_TOPOLOGY_MANAGER_LABEL))
-        elif label_key == constants.KUBE_CPU_MANAGER_LABEL:
-            if label_value not in constants.KUBE_CPU_MANAGER_VALUES:
-                raise wsme.exc.ClientSideError(
-                    _(
-                        "Invalid value for %s label." % constants.KUBE_CPU_MANAGER_LABEL))
-            elif label_value == constants.KUBE_CPU_MANAGER_VALUES[0]:
-                raise wsme.exc.ClientSideError(
-                    _(
-                        "Setting kube-cpu-mgr-policy to 'none' is not supported"))
-        elif label_key == constants.KUBE_POWER_MANAGER_LABEL:
+        if label_key == constants.KUBE_POWER_MANAGER_LABEL:
             if label_value != constants.KUBE_POWER_MANAGER_VALUE:
                 raise wsme.exc.ClientSideError(
                     _(
                         "Invalid value for %s label." % constants.KUBE_POWER_MANAGER_LABEL))
-        elif label_key == constants.KUBE_MEMORY_MANAGER_LABEL:
-            if label_value not in constants.KUBE_MEMORY_MANAGER_VALUES:
-                raise wsme.exc.ClientSideError(
-                    _(
-                        "Invalid value for %s label." % constants.KUBE_MEMORY_MANAGER_LABEL))
+        elif label_key in [constants.KUBE_MEMORY_MANAGER_LABEL, constants.KUBE_CPU_MANAGER_LABEL,
+                           constants.KUBE_TOPOLOGY_MANAGER_LABEL]:
+            evaluate_case_agnostic_policy_name(label_key, label_value)
 
 
 def _get_system_enabled_k8s_plugins():
