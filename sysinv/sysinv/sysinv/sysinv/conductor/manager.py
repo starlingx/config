@@ -10111,7 +10111,8 @@ class ConductorManager(service.PeriodicService):
                             'platform::sm::enable_admin_config::runtime',
                             'platform::haproxy::runtime',
                             'openstack::keystone::endpoint::runtime',
-                            'platform::firewall::runtime']
+                            'platform::firewall::runtime',
+                            'platform::nfv::runtime']
             }
 
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
