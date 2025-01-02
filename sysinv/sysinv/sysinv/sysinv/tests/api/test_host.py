@@ -2596,7 +2596,7 @@ class TestPatch(TestHost):
     @mock.patch('sysinv.common.usm_service.is_usm_authapi_ready', lambda: True)
     @mock.patch('sysinv.common.usm_service.get_platform_upgrade')
     def test_lock_action_controller_during_upgrade_starting(self, mock_get_platform_upgrade):
-        usm_deploy = UsmUpgrade("starting",
+        usm_deploy = UsmUpgrade("start",
                                 "0.0",
                                 "0.0")
         mock_get_platform_upgrade.return_value = usm_deploy
@@ -2616,7 +2616,7 @@ class TestPatch(TestHost):
             availability=constants.AVAILABILITY_ONLINE)
 
         upgrade = dbutils.create_test_upgrade(
-            state=constants.UPGRADE_STARTING
+            state=constants.DEPLOY_STATE_START
         )
         # Verify the error response on lock controller attempt
         response = self._patch_host_action(c1_host['hostname'],
@@ -2626,11 +2626,8 @@ class TestPatch(TestHost):
         self.assertEqual(response.content_type, 'application/json')
         self.assertEqual(http_client.BAD_REQUEST, response.status_int)
         self.assertTrue(response.json['error_message'])
-        self.assertIn("host-lock %s is not allowed during upgrade state '%s'. "
-                      "Upgrade state must be '%s'." %
-                      (c1_host['hostname'],
-                       upgrade.state,
-                       constants.UPGRADE_STARTED),
+        self.assertIn("host-lock %s is not allowed during upgrade state '%s'" %
+                      (c1_host['hostname'], upgrade.state),
                       response.json['error_message'])
 
     def test_lock_action_controller_during_upgrade_started(self):
