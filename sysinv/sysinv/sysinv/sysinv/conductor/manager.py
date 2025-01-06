@@ -17020,77 +17020,84 @@ class ConductorManager(service.PeriodicService):
         metadata_map = constants.APP_EVALUATE_REAPPLY_TRIGGER_TO_METADATA_MAP
 
         for app in apps:
+            if app.status == constants.APP_UPDATE_IN_PROGRESS:
+                # If the app is evaluated for reapplication during the update, the old plugin
+                # folder is recreated, causing any operations performed with the apps to fail.
+                LOG.info(f"Skipping reapply evaluation for {app.name}, "
+                         "reason: update in progress.")
+            else:
+                app_metadata = self.apps_metadata[constants.APP_METADATA_APPS].get(app.name, {})
+                try:
+                    app_triggers = app_metadata[constants.APP_METADATA_BEHAVIOR][
+                        constants.APP_METADATA_EVALUATE_REAPPLY][
+                        constants.APP_METADATA_TRIGGERS]
+                except KeyError:
+                    continue
 
-            app_metadata = self.apps_metadata[constants.APP_METADATA_APPS].get(app.name, {})
-            try:
-                app_triggers = app_metadata[constants.APP_METADATA_BEHAVIOR][
-                    constants.APP_METADATA_EVALUATE_REAPPLY][
-                    constants.APP_METADATA_TRIGGERS]
-            except KeyError:
-                continue
+                try:
+                    hook_info = LifecycleHookInfo()
+                    hook_info.mode = constants.APP_LIFECYCLE_MODE_AUTO
+                    hook_info.operation = constants.APP_EVALUATE_REAPPLY_OP
+                    hook_info.lifecycle_type = constants.APP_LIFECYCLE_TYPE_SEMANTIC_CHECK
+                    hook_info.extra[LifecycleConstants.EVALUATE_REAPPLY_TRIGGER] = trigger
+                    self.app_lifecycle_actions(context=context, rpc_app=app, hook_info=hook_info)
+                except exception.LifecycleSemanticCheckException as e:
+                    LOG.info("Evaluate reapply for {} rejected: {}".format(app.name, e))
+                    continue
+                except exception.LifecycleMissingInfo as e:
+                    LOG.error("Evaluate reapply for {} error: {}".format(app.name, e))
+                    continue
+                except Exception as e:
+                    LOG.error("Unexpected error during hook for app {}, error: {}"
+                            "".format(app.name, e))
+                    continue
 
-            try:
-                hook_info = LifecycleHookInfo()
-                hook_info.mode = constants.APP_LIFECYCLE_MODE_AUTO
-                hook_info.operation = constants.APP_EVALUATE_REAPPLY_OP
-                hook_info.lifecycle_type = constants.APP_LIFECYCLE_TYPE_SEMANTIC_CHECK
-                hook_info.extra[LifecycleConstants.EVALUATE_REAPPLY_TRIGGER] = trigger
-                self.app_lifecycle_actions(context=context, rpc_app=app, hook_info=hook_info)
-            except exception.LifecycleSemanticCheckException as e:
-                LOG.info("Evaluate reapply for {} rejected: {}".format(app.name, e))
-                continue
-            except exception.LifecycleMissingInfo as e:
-                LOG.error("Evaluate reapply for {} error: {}".format(app.name, e))
-                continue
-            except Exception as e:
-                LOG.error("Unexpected error during hook for app {}, error: {}"
-                          "".format(app.name, e))
-                continue
+                if trigger['type'] in metadata_map.keys():
+                    # Check if the app subscribes to this trigger type
+                    if [t for t in app_triggers if t.get('type', None) ==
+                                        metadata_map[trigger['type']]]:
+                        # Get the first trigger with a specific type in the metadata
+                        app_trigger = [x for x in app_triggers if
+                                       x.get(constants.APP_METADATA_TYPE, None) ==
+                                       metadata_map[trigger['type']]][0]
 
-            if trigger['type'] in metadata_map.keys():
-                # Check if the app subscribes to this trigger type
-                if [t for t in app_triggers if t.get('type', None) ==
-                                    metadata_map[trigger['type']]]:
-                    # Get the first trigger with a specific type in the metadata
-                    app_trigger = [x for x in app_triggers if
-                                   x.get(constants.APP_METADATA_TYPE, None) == metadata_map[trigger['type']]][0]
+                        # Get the filters for the trigger
+                        trigger_filters = app_trigger.get(constants.APP_METADATA_FILTERS, [])
 
-                    # Get the filters for the trigger
-                    trigger_filters = app_trigger.get(constants.APP_METADATA_FILTERS, [])
+                        # Get which field inside the trigger should have the filters applied on
+                        # Default is the trigger dictionary itself, but can be redirected to
+                        # a sub-dictionary
+                        target_for_filters_field = app_trigger.get(
+                            constants.APP_METADATA_FILTER_FIELD, None)
+                        if target_for_filters_field is None:
+                            target_for_filters = trigger
+                        else:
+                            if target_for_filters_field not in trigger:
+                                LOG.error("Trigger {} does not have field {}"
+                                        "".format(trigger, target_for_filters_field))
+                                continue
+                            target_for_filters = trigger[target_for_filters_field]
 
-                    # Get which field inside the trigger should have the filters applied on
-                    # Default is the trigger dictionary itself, but can be redirected to
-                    # a sub-dictionary
-                    target_for_filters_field = app_trigger.get(constants.APP_METADATA_FILTER_FIELD, None)
-                    if target_for_filters_field is None:
-                        target_for_filters = trigger
-                    else:
-                        if target_for_filters_field not in trigger:
-                            LOG.error("Trigger {} does not have field {}"
-                                      "".format(trigger, target_for_filters_field))
-                            continue
-                        target_for_filters = trigger[target_for_filters_field]
+                        allow = True
+                        # All filters must match, if any doesn't match then reject
+                        # the evaluation
+                        for filter_ in trigger_filters:
+                            # Each filter is a single entry dict
+                            k = list(filter_.keys())[0]
+                            if k not in target_for_filters:
+                                LOG.info("Evaluate reapply for {} rejected: "
+                                        "trigger field {} absent".format(app.name, k))
+                                allow = False
+                                break
+                            elif str(target_for_filters[k]) != str(filter_[k]):
+                                LOG.info("Evaluate reapply for {} rejected: "
+                                        "trigger field {} expected {} but got {} "
+                                        "".format(app.name, k, filter_[k], target_for_filters[k]))
+                                allow = False
+                                break
 
-                    allow = True
-                    # All filters must match, if any doesn't match then reject
-                    # the evaluation
-                    for filter_ in trigger_filters:
-                        # Each filter is a single entry dict
-                        k = list(filter_.keys())[0]
-                        if k not in target_for_filters:
-                            LOG.info("Evaluate reapply for {} rejected: "
-                                     "trigger field {} absent".format(app.name, k))
-                            allow = False
-                            break
-                        elif str(target_for_filters[k]) != str(filter_[k]):
-                            LOG.info("Evaluate reapply for {} rejected: "
-                                     "trigger field {} expected {} but got {} "
-                                     "".format(app.name, k, filter_[k], target_for_filters[k]))
-                            allow = False
-                            break
-
-                    if allow:
-                        self.evaluate_app_reapply(context, app.name)
+                        if allow:
+                            self.evaluate_app_reapply(context, app.name)
 
     def evaluate_app_reapply(self, context, app_name):
         """Synchronously, determine whether an application

@@ -4016,8 +4016,10 @@ class PluginHelper(object):
                 os.remove(pth_fqpn)
                 LOG.info("PluginHelper: Disabled plugin directory %s: removed "
                          "%s" % (app.sync_plugins_dir, pth_fqpn))
-            except OSError:
+            except OSError as e:
                 # Not present, should be, but continue on...
+                LOG.warning("PluginHelper: Failed to remove plugin directory:"
+                            " %s. Error: %s" % (pth_fqpn, e))
                 pass
 
         # Make sure the sys.path reflects only enabled plugins
