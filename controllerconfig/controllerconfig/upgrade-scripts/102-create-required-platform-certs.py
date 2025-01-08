@@ -39,9 +39,9 @@ RETRIES = 3
 
 # At the end of activation, wait for configuration to finish
 # before moving to the next scripts.
-# 240 attempts * 5 seconds ~= 20 min max
-WAIT_RECONFIG_ATTEMPTS = 240
-WAIT_RECONFIG_SLEEP = 5
+# 60 attempts * 20 seconds ~= 20 min max
+WAIT_RECONFIG_ATTEMPTS = 60
+WAIT_RECONFIG_SLEEP = 20
 
 KUBE_CMD = 'kubectl --kubeconfig=/etc/kubernetes/admin.conf '
 KUBE_IGNORE_NOT_FOUND = ' --ignore-not-found=true'
@@ -308,6 +308,7 @@ def wait_system_reconfiguration(from_release='22.12'):
         if sub.returncode == 0:
             if stdout.decode('utf-8').rstrip('\n') == "":
                 if one_attempt_clear:
+                    LOG.info("Out-of-date alarms cleared. Proceeding.")
                     return
                 one_attempt_clear = True
             else:
@@ -318,25 +319,6 @@ def wait_system_reconfiguration(from_release='22.12'):
     LOG.error("NOTICE: Out-of-date alarms didn't clear out after more than %s \
               seconds. Ignoring and continuing with the upgrade activation."
               % str(WAIT_RECONFIG_ATTEMPTS * WAIT_RECONFIG_SLEEP))
-
-
-@test_k8s_health
-def update_system_local_ca_secret():
-    """Update system-local-ca secret
-    """
-    tls_crt, tls_key, ca_crt = sysinv_utils.get_certificate_from_secret(
-        'system-local-ca', 'cert-manager')
-
-    if ca_crt == "" or not sysinv_utils.verify_cert_issuer(tls_crt, ca_crt):
-        ca_crt = find_root_ca(tls_crt)
-        secret_body = create_tls_secret_body('system-local-ca',
-                                             'cert-manager',
-                                             tls_crt,
-                                             tls_key,
-                                             find_root_ca(tls_crt))
-
-        apply_k8s_yml(secret_body)
-        wait_system_reconfiguration(from_release='')
 
 
 def update_certificate(certificate, short_name):
@@ -626,7 +608,6 @@ def main():
         for retry in range(0, RETRIES):
             try:
                 adapt_legacy_certificate_config(to_release)
-                update_system_local_ca_secret()
                 reconfigure_certificates_subject()
                 create_platform_certificates(to_release)
                 patch_https_enabled(True)

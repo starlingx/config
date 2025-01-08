@@ -7,22 +7,37 @@
 # with the one in the SystemController in DC systems, if
 # required.
 #
+# It also includes missing ca.crt data for every system (standalone,
+# DC Systemcontroller and subclouds).
+#
 
+from cryptography.hazmat.primitives import serialization
 import logging as LOG
+import os
 import subprocess
 import sys
 from time import sleep
 import yaml
 
+from oslo_serialization import base64
 from sysinv.common.kubernetes import test_k8s_health
+from sysinv.common import utils as sysinv_utils
 
 KUBE_CMD = 'kubectl --kubeconfig=/etc/kubernetes/admin.conf '
 KUBE_IGNORE_NOT_FOUND = ' --ignore-not-found=true'
 SSH_CMD = 'ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -q '
 SSH_TIMEOUT = "30"
 
+K8S_RESOURCES_TMP_FILENAME = '/tmp/update_cert.yml'
+TRUSTED_BUNDLE_FILEPATH = '/etc/ssl/certs/ca-cert.pem'
+
 NETWORK_TYPES = ['OAM', 'MGMT']
 RETRIES = len(NETWORK_TYPES) * 3
+
+# Wait reconfiguration after installing ssl_ca
+# 60 attempts * 20 seconds ~= 20 min max
+WAIT_RECONFIG_ATTEMPTS = 60
+WAIT_RECONFIG_SLEEP = 20
 
 
 def get_distributed_cloud_role():
@@ -260,6 +275,121 @@ def create_tls_secret(name, namespace, tls_crt, tls_key):
                         % (name, namespace))
 
 
+def find_root_ca(certificate):
+    """Search for the RCA of the certificate provided
+       Returns a bool informing if the RCA is trusted and the RCA cert
+    """
+    with open(TRUSTED_BUNDLE_FILEPATH, 'r') as file:
+        bundle = file.read().encode('utf-8')
+        for rca_obj in sysinv_utils.extract_certs_from_pem(bundle):
+            rca = rca_obj.public_bytes(
+                serialization.Encoding.PEM).decode('utf-8')
+            if sysinv_utils.verify_cert_issuer(certificate, rca):
+                return True, rca
+
+    LOG.warning("Root CA not found in the bundle for %s." % certificate)
+    if sysinv_utils.verify_self_signed_ca_cert(certificate):
+        return False, certificate
+    else:
+        LOG.error("No Root CA data is available for %s." % certificate)
+        return False, ""
+
+
+def create_tls_secret_body(name, namespace, tls_crt, tls_key, ca_crt=''):
+    secret_body = {
+        'apiVersion': 'v1',
+        'kind': 'Secret',
+        'metadata': {
+            'name': name,
+            'namespace': namespace
+        },
+        'type': 'kubernetes.io/tls',
+        'data': {
+            'ca.crt': base64.encode_as_text(ca_crt),
+            'tls.crt': base64.encode_as_text(tls_crt),
+            'tls.key': base64.encode_as_text(tls_key),
+        }
+    }
+
+    return secret_body
+
+
+@test_k8s_health
+def apply_k8s_yml(resources_yml):
+    with open(K8S_RESOURCES_TMP_FILENAME, 'w') as yaml_file:
+        yaml.safe_dump(resources_yml, yaml_file, default_flow_style=False)
+
+    apply_cmd = KUBE_CMD + 'apply -f ' + K8S_RESOURCES_TMP_FILENAME
+
+    sub = subprocess.Popen(apply_cmd, shell=True, stdout=subprocess.PIPE,
+                           stderr=subprocess.PIPE)
+    stdout, stderr = sub.communicate()
+    if sub.returncode != 0:
+        LOG.error('Command failed:\n%s\n%s.\n%s.' % (
+            apply_cmd, stdout.decode('utf-8'), stderr.decode('utf-8')))
+        raise Exception('Cannot apply k8s resource file.')
+    else:
+        os.remove(K8S_RESOURCES_TMP_FILENAME)
+        LOG.info('K8s resources applied. Output: %s'
+                 % stdout.decode('utf-8'))
+
+
+def wait_system_reconfiguration():
+    cmd = "fm alarm-list --query alarm_id=250.001"
+
+    # Stop after two sequential attempts without 250.001 alarms. This avoids
+    # missing the transition between two alarms.
+    one_attempt_clear = False
+    for attempt in range(WAIT_RECONFIG_ATTEMPTS):
+        LOG.info("Waiting out-of-date alarms to clear. Attempt %s of %s."
+                 % (attempt + 1, WAIT_RECONFIG_ATTEMPTS))
+        # Sleep first as to allow cert-mon to start installing the new certs
+        sleep(WAIT_RECONFIG_SLEEP)
+
+        sub = subprocess.Popen(
+            cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        stdout, stderr = sub.communicate()
+
+        if sub.returncode == 0:
+            if stdout.decode('utf-8').rstrip('\n') == "":
+                if one_attempt_clear:
+                    LOG.info("Out-of-date alarms cleared. Proceeding.")
+                    return
+                one_attempt_clear = True
+            else:
+                one_attempt_clear = False
+        else:
+            LOG.error('Command failed:\n%s\n%s.\n%s.'
+                      % (cmd, stdout.decode('utf-8'), stderr.decode('utf-8')))
+    LOG.error("NOTICE: Out-of-date alarms didn't clear out after more than %s \
+              seconds. Ignoring and continuing with the upgrade activation."
+              % str(WAIT_RECONFIG_ATTEMPTS * WAIT_RECONFIG_SLEEP))
+
+
+@test_k8s_health
+def update_system_local_ca_secret():
+    """Update system-local-ca secret
+    """
+    tls_crt, tls_key, ca_crt = sysinv_utils.get_certificate_from_secret(
+        'system-local-ca', 'cert-manager')
+
+    if ca_crt == "" or not sysinv_utils.verify_cert_issuer(tls_crt, ca_crt):
+        is_trusted, rca = find_root_ca(tls_crt)
+        if rca == "":
+            LOG.error("No available RCA certificate matches "
+                      "system-local-ca's tls.crt data.")
+            return 1
+        secret_body = create_tls_secret_body('system-local-ca',
+                                             'cert-manager',
+                                             tls_crt,
+                                             tls_key,
+                                             rca)
+        apply_k8s_yml(secret_body)
+        LOG.info("RCA data inserted in system-local-ca secret.")
+        if not is_trusted:
+            wait_system_reconfiguration()
+
+
 def main():
     action = None
     from_release = None
@@ -290,9 +420,6 @@ def main():
         LOG.info("%s invoked with from_release = %s to_release = %s "
                  "action = %s"
                  % (sys.argv[0], from_release, to_release, action))
-        if get_distributed_cloud_role() != 'subcloud':
-            LOG.info("No action required for this system.")
-            return 0
 
         current_net = 0
         for retry in range(0, RETRIES):
@@ -305,36 +432,43 @@ def main():
                                 "Certificate object. It will be deleted.")
                     delete_certificate(certificateName, 'cert-manager')
 
-                # We need to sync if secret isn't TLS or it was owned
-                secret_type = get_secret_type('system-local-ca',
-                                              'cert-manager')
-                if (secret_type != 'kubernetes.io/tls' or
-                        certificateName is not None):
-                    LOG.info("Syncing system-local-ca w/ SystemController.")
+                # Sync subcloud data secret w/ SystemController
+                if get_distributed_cloud_role() == 'subcloud':
+                    # We need to sync if secret isn't TLS or it was owned
+                    secret_type = get_secret_type('system-local-ca',
+                                                  'cert-manager')
+                    if (secret_type != 'kubernetes.io/tls' or
+                            certificateName is not None):
+                        LOG.info(
+                            "Syncing system-local-ca w/ SystemController.")
 
-                    # Get SSH connection parameters
-                    address = get_hostname_or_ip(NETWORK_TYPES[current_net])
-                    credentials = get_admin_credentials()
+                        # Get SSH connection parameters
+                        address = \
+                            get_hostname_or_ip(NETWORK_TYPES[current_net])
+                        credentials = get_admin_credentials()
 
-                    # SSH and get the data
-                    LOG.info("Trying to connect to SystemController using %s"
-                             " network." % NETWORK_TYPES[current_net])
-                    secret_data = get_secret_data_ssh(address,
-                                                      credentials,
-                                                      'system-local-ca',
-                                                      'cert-manager')
-                    tls_crt, tls_key = parse_tls_data(secret_data)
+                        # SSH and get the data
+                        LOG.info("Trying to connect to SystemController using"
+                                 " %s network." % NETWORK_TYPES[current_net])
+                        secret_data = get_secret_data_ssh(address,
+                                                          credentials,
+                                                          'system-local-ca',
+                                                          'cert-manager')
+                        tls_crt, tls_key = parse_tls_data(secret_data)
 
-                    # Recreate secret
-                    delete_secret('system-local-ca', 'cert-manager')
-                    create_tls_secret('system-local-ca', 'cert-manager',
-                                      tls_crt, tls_key)
-                    LOG.info("Successfully synced system-local-ca.")
-                else:
-                    LOG.info("No action required.")
+                        # Recreate secret
+                        delete_secret('system-local-ca', 'cert-manager')
+                        create_tls_secret('system-local-ca', 'cert-manager',
+                                          tls_crt, tls_key)
+                        LOG.info("Successfully synced system-local-ca.")
+                    else:
+                        LOG.info("No action required.")
+
+                # Add ca.crt data
+                update_system_local_ca_secret()
             except Exception as e:
                 if retry == RETRIES - 1:
-                    LOG.error("Error syncing system-local-ca in the subcloud. "
+                    LOG.error("Error updating system-local-ca. "
                               "Please verify the logs.")
                     return 1
                 else:
