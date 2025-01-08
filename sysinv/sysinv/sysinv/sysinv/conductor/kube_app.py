@@ -395,6 +395,17 @@ class AppOperator(object):
             LOG.error("No abort handling code for app status = '%s'!" % app.status)
             return
 
+        # Run post lifecycle hook for the abort operation
+        lifecycle_hook_info = LifecycleHookInfo()
+        lifecycle_hook_info.operation = constants.APP_ABORT_OP
+        lifecycle_hook_info.relative_timing = constants.APP_LIFECYCLE_TIMING_POST
+        lifecycle_hook_info.lifecycle_type = constants.APP_LIFECYCLE_TYPE_OPERATION
+        lifecycle_hook_info.extra[LifecycleConstants.ABORTED_OP] = operation
+        try:
+            self.app_lifecycle_actions(None, None, app._kube_app, lifecycle_hook_info)
+        except Exception as e:
+            LOG.error(f"Error while performing post abort lifecycle actions: {e}")
+
         if not reset_status:
             self._update_app_status(app, new_status, progress)
             if not user_initiated:
@@ -3239,7 +3250,7 @@ class AppOperator(object):
         app = AppOperator.Application(rpc_app)
         return app.active
 
-    def perform_app_abort(self, rpc_app, lifecycle_hook_info_app_abort):
+    def perform_app_abort(self, rpc_app, lifecycle_hook_info):
         """Process application abort request
 
         This method retrieves the latest application status from the
@@ -3257,13 +3268,28 @@ class AppOperator(object):
 
         # Retrieve the latest app status from the database
         db_app = self._dbapi.kube_app_get(app.name)
-        if db_app.status in [constants.APP_APPLY_IN_PROGRESS,
-                             constants.APP_UPDATE_IN_PROGRESS,
-                             constants.APP_REMOVE_IN_PROGRESS]:
+
+        aborted_operation = None
+        if db_app.status == constants.APP_APPLY_IN_PROGRESS:
+            aborted_operation = constants.APP_APPLY_OP
+        elif db_app.status == constants.APP_UPDATE_IN_PROGRESS:
+            aborted_operation = constants.APP_UPDATE_OP
+        elif db_app.status == constants.APP_REMOVE_IN_PROGRESS:
+            aborted_operation = constants.APP_REMOVE_OP
+
+        if aborted_operation:
+            # Run pre lifecycle hook for the abort operation
+            lifecycle_hook_info.relative_timing = constants.APP_LIFECYCLE_TIMING_PRE
+            lifecycle_hook_info.lifecycle_type = constants.APP_LIFECYCLE_TYPE_OPERATION
+            lifecycle_hook_info.extra[LifecycleConstants.ABORTED_OP] = aborted_operation
+            try:
+                self.app_lifecycle_actions(None, None, rpc_app, lifecycle_hook_info)
+            except Exception as e:
+                LOG.error(f"Error while performing pre abort lifecycle actions: {e}")
+
             # Turn on the abort flag so the processing thread that is
             # in progress can bail out in the next opportunity.
             self._set_abort_flag(app.name)
-
         else:
             # Either the previous operation has completed or already failed
             LOG.info("Abort request ignored. The previous operation for app %s "
