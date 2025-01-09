@@ -11,6 +11,8 @@ import logging as LOG
 import subprocess
 import sys
 
+from sysinv.common import exception
+from sysinv.common.retrying import retry
 from sysinv.common.kubernetes import test_k8s_health
 
 
@@ -45,6 +47,8 @@ def main():
         enable_fluxcd_controllers(from_release)
 
 
+@retry(retry_on_exception=lambda x: isinstance(x, exception.SysinvException),
+       stop_max_attempt_number=3)
 @test_k8s_health
 def enable_fluxcd_controllers(from_release):
     """Run fluxcd_controllers ansible playbook to enable fluxcd controllers
@@ -55,14 +59,21 @@ def enable_fluxcd_controllers(from_release):
     upgrade_script = 'upgrade-fluxcd-controllers.yml'
     cmd = 'ansible-playbook {}/{} -e "upgrade_activate_from_release={}"'\
           ''.format(playbooks_root, upgrade_script, from_release)
-    sub = subprocess.Popen(cmd, shell=True,
-                           stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    stdout, stderr = sub.communicate()
-    if sub.returncode != 0:
-        LOG.error('Command failed:\n %s\n. %s\n%s' % (
-            cmd, stdout.decode('utf-8'), stderr.decode('utf-8')))
-        raise Exception('Cannot install fluxcd controllers')
-    LOG.info('FluxCD controllers enabled. Output: %s' % stdout.decode('utf-8'))
+
+    try:
+        sub = subprocess.Popen(cmd, shell=True,
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        stdout, stderr = sub.communicate()
+        if sub.returncode != 0:
+            LOG.error('Command failed:\n %s\n. %s\n%s' % (
+                cmd, stdout.decode('utf-8'), stderr.decode('utf-8')))
+            raise Exception('Cannot install fluxcd controllers')
+        LOG.info('FluxCD controllers enabled. Output: %s' %
+                 stdout.decode('utf-8'))
+    except Exception as e:
+        raise exception.SysinvException(
+            f"Error trying to enable fluxcd controllers via {cmd}, reason: {e}"
+        )
 
 
 if __name__ == "__main__":
