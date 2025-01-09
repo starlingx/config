@@ -1,4 +1,4 @@
-# Copyright (c) 2017-2024 Wind River Systems, Inc.
+# Copyright (c) 2017-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -1566,7 +1566,7 @@ class PlatformFirewallTestCaseControllerDcSubcloud_Setup01(PlatformFirewallTestC
 
         idx = 3  # admin network, IGMP
         self.assertEqual(gnp['spec']['ingress'][idx]['protocol'], 2)
-        self.assertEqual(gnp['spec']['ingress'][idx]['source']['nets'][0], "10.10.30.0/24")
+        self.assertEqual(gnp['spec']['ingress'][idx]['source']['nets'][0], "0.0.0.0/0")
 
         idx = 4  # admin routes, TCP
         self.assertEqual(gnp['spec']['ingress'][idx]['protocol'], "TCP")
@@ -3033,8 +3033,7 @@ class PlatformFirewallTestCaseControllerDcSubcloud_Setup05(PlatformFirewallTestC
 
         idx += 1  # admin network, IGMP IPv4
         self.assertEqual(gnp['spec']['ingress'][idx]['protocol'], 2)
-        self.assertEqual(gnp['spec']['ingress'][idx]['source']['nets'][0], "10.10.30.0/24")
-        self.assertEqual(gnp['spec']['ingress'][idx]['source']['nets'][1], "0.0.0.0/32")
+        self.assertEqual(gnp['spec']['ingress'][idx]['source']['nets'][0], "0.0.0.0/0")
 
         idx += 1  # admin routes, TCP IPv6
         self.assertEqual(gnp['spec']['ingress'][idx]['protocol'], "TCP")

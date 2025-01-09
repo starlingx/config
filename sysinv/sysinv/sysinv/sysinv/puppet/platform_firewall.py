@@ -1,5 +1,5 @@
 
-# Copyright (c) 2017-2024 Wind River Systems, Inc.
+# Copyright (c) 2017-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -370,21 +370,7 @@ class PlatformFirewallPuppet(base.BasePuppet):
                 rule = self._get_dhcp_rule(host.personality, "UDP", constants.IPV4_FAMILY)
                 gnp_config["spec"]["ingress"].append(rule)
 
-                # copy the TCP rule and do the same for IGMP
-                igmp_proto = 2
-                igmp_egr_rule = self._copy_tcp_rule(gnp_config["spec"], "egress", ip_version)
-                igmp_egr_rule["protocol"] = igmp_proto
-                igmp_egr_rule["metadata"]["annotations"]["name"] = \
-                    f"stx-egr-{host.personality}-{network.type}-igmp{constants.IPV4_FAMILY}"
-                gnp_config["spec"]["egress"].append(igmp_egr_rule)
-                igmp_ingr_rule = self._copy_tcp_rule(gnp_config["spec"], "ingress", ip_version)
-                igmp_ingr_rule["protocol"] = igmp_proto
-                igmp_ingr_rule["metadata"]["annotations"]["name"] = \
-                    f"stx-ingr-{host.personality}-{network.type}-igmp{constants.IPV4_FAMILY}"
-                # Allow 0.0.0.0/32 for the case the switch sends IGMP queries from
-                # a VLAN without the IP address configured.
-                igmp_ingr_rule["source"]["nets"].append("0.0.0.0/32")
-                gnp_config["spec"]["ingress"].append(igmp_ingr_rule)
+                self._create_igmp_rule(gnp_config, host, network, ip_version)
 
     def _set_rules_admin(self, gnp_config, network, host):
         """ Fill the admin network specific filtering data
@@ -400,21 +386,7 @@ class PlatformFirewallPuppet(base.BasePuppet):
             if (ip_version == 6):
                 self._add_source_net_filter(gnp_config["spec"]["ingress"], LINK_LOCAL, ip_version)
             if (ip_version == 4):
-                # copy the TCP rule and do the same for IGMP
-                igmp_proto = 2
-                igmp_egr_rule = self._copy_tcp_rule(gnp_config["spec"], "egress", ip_version)
-                igmp_egr_rule["protocol"] = igmp_proto
-                igmp_egr_rule["metadata"]["annotations"]["name"] = \
-                    f"stx-egr-{host.personality}-{network.type}-igmp{ip_version}"
-                gnp_config["spec"]["egress"].append(igmp_egr_rule)
-                igmp_ingr_rule = self._copy_tcp_rule(gnp_config["spec"], "ingress", ip_version)
-                igmp_ingr_rule["protocol"] = igmp_proto
-                igmp_ingr_rule["metadata"]["annotations"]["name"] = \
-                    f"stx-ingr-{host.personality}-{network.type}-igmp{ip_version}"
-                # Allow 0.0.0.0/32 for the case the switch sends IGMP queries from
-                # a VLAN without the IP address configured.
-                igmp_ingr_rule["source"]["nets"].append("0.0.0.0/32")
-                gnp_config["spec"]["ingress"].append(igmp_ingr_rule)
+                self._create_igmp_rule(gnp_config, host, network, ip_version)
 
     def _set_rules_cluster_host(self, gnp_config, network, host):
         """ Fill the cluster-host network specific filtering data
@@ -466,21 +438,7 @@ class PlatformFirewallPuppet(base.BasePuppet):
                 rule = self._get_dhcp_rule(host.personality, "UDP", ip_version)
                 gnp_config["spec"]["ingress"].append(rule)
 
-                # copy the TCP rule and do the same for IGMP
-                igmp_proto = 2
-                igmp_egr_rule = self._copy_tcp_rule(gnp_config["spec"], "egress", ip_version)
-                igmp_egr_rule["protocol"] = igmp_proto
-                igmp_egr_rule["metadata"]["annotations"]["name"] = \
-                    f"stx-egr-{host.personality}-{network.type}-igmp{ip_version}"
-                gnp_config["spec"]["egress"].append(igmp_egr_rule)
-                igmp_ingr_rule = self._copy_tcp_rule(gnp_config["spec"], "ingress", ip_version)
-                igmp_ingr_rule["protocol"] = igmp_proto
-                igmp_ingr_rule["metadata"]["annotations"]["name"] = \
-                    f"stx-ingr-{host.personality}-{network.type}-igmp{ip_version}"
-                # Allow 0.0.0.0/32 for the case the switch sends IGMP queries from
-                # a VLAN without the IP address configured.
-                igmp_ingr_rule["source"]["nets"].append("0.0.0.0/32")
-                gnp_config["spec"]["ingress"].append(igmp_ingr_rule)
+                self._create_igmp_rule(gnp_config, host, network, ip_version)
 
     def _set_rules_pxeboot(self, gnp_config, network, host):
         """ Fill the pxeboot network specific filtering data
@@ -789,6 +747,27 @@ class PlatformFirewallPuppet(base.BasePuppet):
                 host_endpoints["spec"].update({"expectedIPs": address_texts})
         else:
             LOG.info(f"cannot find address:{address_name} for net_type:{net_type} expectedIPs")
+
+    def _create_igmp_rule(self, gnp_config, host, network, ip_version):
+
+        igmp_proto = 2
+
+        # egress
+        igmp_egr_rule = self._copy_tcp_rule(gnp_config["spec"], "egress", ip_version)
+        igmp_egr_rule["protocol"] = igmp_proto
+        igmp_egr_rule["metadata"]["annotations"]["name"] = \
+            f"stx-egr-{host.personality}-{network.type}-igmp{ip_version}"
+        gnp_config["spec"]["egress"].append(igmp_egr_rule)
+
+        # ingress
+        igmp_ingr_rule = self._copy_tcp_rule(gnp_config["spec"], "ingress", ip_version)
+        igmp_ingr_rule["protocol"] = igmp_proto
+        igmp_ingr_rule["metadata"]["annotations"]["name"] = \
+            f"stx-ingr-{host.personality}-{network.type}-igmp{constants.IPV4_FAMILY}"
+        # Allow for all sources (0.0.0.0/0) as IGMPv3 query does not have a mandatory source address
+        igmp_ingr_rule["source"]["nets"] = ["0.0.0.0/0"]
+
+        gnp_config["spec"]["ingress"].append(igmp_ingr_rule)
 
 
 def _get_dc_role(dbapi):
