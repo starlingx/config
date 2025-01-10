@@ -39,7 +39,7 @@ HELMV2_PATH = '/usr/local/sbin/helmv2-cli'
 ERROR_CODE_TIMEOUT_HELMV2_CLI = -9
 TIMEOUT = 180  # timeout in seconds for armada pods to terminate
 TIME_STEP = 15  # wait X seconds between checks
-ATTEMPTS_TO_DELETE_ARMADA_POD = 3
+ATTEMPTS_TO_DELETE_ARMADA_RESOURCE = 3
 REQUEST_TIMEOUT_KUBECTL = "2m"
 TIMEOUT_KUBECTL = "2m"
 GRACE_PERIOD_TIME = "0"
@@ -203,104 +203,74 @@ def is_armada_required():
 
 
 @test_k8s_health
-def force_delete_pods(pod_name):
+def force_delete_resource(resource_type, resource_name):
     try:
-        LOG.info(f"Trying to force the deletion of {pod_name}.")
-        cmd = "kubectl delete pod %s --request-timeout=%s --timeout=%s -n %s \
-                --grace-period=%s --force --kubeconfig %s" \
-                % (pod_name,
-                   REQUEST_TIMEOUT_KUBECTL,
-                   TIMEOUT_KUBECTL,
-                   ARMADA_NS,
-                   GRACE_PERIOD_TIME,
-                   KUBERNETES_ADMIN_CONF)
+        LOG.info(f"Trying to force the deletion of \
+            {resource_type}/{resource_name}.")
+        cmd = f"kubectl delete {resource_type} {resource_name} \
+                    --request-timeout={REQUEST_TIMEOUT_KUBECTL} \
+                    --timeout={TIMEOUT_KUBECTL} -n {ARMADA_NS} \
+                    --grace-period={GRACE_PERIOD_TIME} \
+                    --force --kubeconfig {KUBERNETES_ADMIN_CONF}"
         result, err = run_cmd(cmd)
         if 'force deleted' in result:
+            LOG.info(f"Successfully deleted the \
+                {resource_type}/{resource_name}.")
             return True
         elif err:
             raise Exception(err)
     except Exception as e:
-        LOG.error(f"Failed to delete pod {pod_name} after forced attempt: {e}")
+        LOG.error(f"Failed to delete {resource_type} {resource_name} \
+            after forced attempt: {e}")
         return False
 
 
 @test_k8s_health
-def delete_armada_pods():
+def remove_resource(resource_type):
     """
-    Best effort approach to delete lingering Armada pods
-
-    This function is only used if deleting helmrelease is not enough
-    to delete the armada pods.
+    Check if there is an active resource in the armada namespace.
+    If so, the function will try to delete it.
     """
-
-    get_pods_cmd = "kubectl get po -n %s -o name --kubeconfig %s" \
-        % (ARMADA_NS, KUBERNETES_ADMIN_CONF)
-
+    cmd = f"kubectl get {resource_type} -n {ARMADA_NS} \
+                -o name --kubeconfig {KUBERNETES_ADMIN_CONF} \
+                --request-timeout={REQUEST_TIMEOUT_KUBECTL}"
     result = False
 
     try:
-        # Capture the output of the kubectl command
-        output, _ = run_cmd(get_pods_cmd)
-        # Extract pod names from the result
-        pods = output.splitlines()  # Get each line as a pod name
-        if not pods:
-            LOG.info("No pods found in the namespace %s." % ARMADA_NS)
-            result = True
-            return result
+        armada_resources, _ = run_cmd(cmd, interrupt_on_error=True)
+        resources = armada_resources.splitlines()
 
-        # Delete each pod
-        for pod in pods:
-            pod_name = pod.split('/')[1]  # Extract the pod name
-            delete_pod_cmd = "kubectl delete pod %s \
-                --now --request-timeout=%s --timeout=%s -n %s --kubeconfig %s" \
-                % (pod_name,
-                   REQUEST_TIMEOUT_KUBECTL,
-                   TIMEOUT_KUBECTL,
-                   ARMADA_NS,
-                   KUBERNETES_ADMIN_CONF)
+        if not resources:
+            LOG.info(f"No {resource_type}s found in the namespace {ARMADA_NS}")
+            return True
 
-            LOG.info("Deleting pod: %s" % pod_name)
+        for resource in resources:
+            resource_name = resource.split('/')[-1]
+            retries = ATTEMPTS_TO_DELETE_ARMADA_RESOURCE
+            cmd_input = f"kubectl delete {resource_type} {resource_name}\
+                            -n {ARMADA_NS} \
+                            --kubeconfig {KUBERNETES_ADMIN_CONF}"
 
-            # Retry logic for deleting the pod
-            retries = ATTEMPTS_TO_DELETE_ARMADA_POD
             for attempt in range(1, retries + 1):
                 try:
-                    run_cmd(delete_pod_cmd, interrupt_on_error=True)
-                    LOG.info("Pod %s deleted successfully." % pod_name)
+                    run_cmd(cmd_input, interrupt_on_error=True)
+                    LOG.info(f"Successfully removed armada {resource_type}")
                     result = True
                     break
                 except Exception as e:
-                    LOG.warning("Attempt %d to delete pod %s failed: %s"
-                                % (attempt, pod_name, e))
+                    LOG.warning(f"Attempt {attempt} to delete {resource_type} \
+                        {resource_name} failed: {e}")
                     if attempt == retries:
-                        LOG.warning("Failed to delete pod %s after %d attempts"
-                                    % (pod_name, retries))
-                        result = force_delete_pods(pod_name)
+                        result = force_delete_resource(
+                            resource_type,
+                            resource_name
+                        )
                     else:
                         LOG.info("Retrying...")
-
     except Exception as e:
         LOG.error("An error occurred: %s" % e)
 
     return result
-
-
-@test_k8s_health
-def has_armada_deployment():
-    """
-    Check if there is an active deployment in the armada namespace
-    """
-
-    cmd = "kubectl get deployment -n %s --kubeconfig %s" \
-        % (ARMADA_NS, KUBERNETES_ADMIN_CONF)
-    try:
-        output, _ = run_cmd(cmd)
-        if output:
-            return True
-        else:
-            return False
-    except Exception as e:
-        LOG.error("An error occurred: %s" % e)
 
 
 @test_k8s_health
@@ -309,6 +279,10 @@ def remove_armada_resources():
     Remove Armada helm release and namespace.
     Note: removing the HR terminates pods and secrets.
     """
+
+    if not remove_resource(resource_type="deployment"):
+        LOG.error("Deletion of Armada deployment failed")
+        return False
 
     # Remove armada helm v3 release
     try:
@@ -334,13 +308,12 @@ def remove_armada_resources():
         # In some cases, when deleting the armada helmrelease, the pod
         # continues to run. For this cases, a targeted deletion of the
         # pods is performed.
-        if not delete_armada_pods():
-            LOG.error("Deletion of Armada pods failed")
+        if ARMADA_RELEASE_NAME in helm_utils.retrieve_helm_releases():
+            LOG.error("Deletion of Armada helm release failed")
             return False
 
-        # Check if there is an active deployment in the armada namespace
-        if has_armada_deployment():
-            LOG.error("Deletion of Armada deployment failed")
+        if not remove_resource(resource_type="pod"):
+            LOG.error("Deletion of Armada pods failed")
             return False
 
     # Remove armada namespace
@@ -352,7 +325,6 @@ def remove_armada_resources():
            GRACE_PERIOD_TIME,
            KUBERNETES_ADMIN_CONF)
     run_cmd(cmd)
-
     return True
 
 
