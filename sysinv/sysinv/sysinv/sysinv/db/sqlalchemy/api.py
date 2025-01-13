@@ -3902,6 +3902,7 @@ class Connection(api.Connection):
     def ptp_instance_get_assignees(self, ptp_instance_id, limit=None,
                                    marker=None, sort_key=None, sort_dir=None):
         query = model_query(models.ihost)
+        query = add_host_options(query)
         query = query.join(models.PtpInstanceMaps).filter(
             models.PtpInstanceMaps.ptp_instance_id == ptp_instance_id)
         return _paginate_query(models.ihost, limit, marker, sort_key, sort_dir,
@@ -4031,7 +4032,8 @@ class Connection(api.Connection):
     @db_objects.objectify(objects.interface)
     def ptp_interface_get_assignees(self, ptp_interface_id, limit=None,
                                     marker=None, sort_key=None, sort_dir=None):
-        query = model_query(models.Interfaces)
+        entity = with_polymorphic(models.Interfaces, '*')
+        query = model_query(entity)
         query = query.join(models.PtpInterfaceMaps).filter(
             models.PtpInterfaceMaps.ptp_interface_id == ptp_interface_id)
         return _paginate_query(models.Interfaces, limit, marker, sort_key,

@@ -305,24 +305,25 @@ class TestDeletePtpInstance(BasePtpInstanceTestCase):
         self.assertIn('still associated with host',
                       response.json['error_message'])
 
-    def test_delete_ptp_instance_with_parameters_failed(self):
+    def test_delete_ptp_instance_with_parameters_ok(self):
         response = self.patch_json(
             self.get_single_url(self.uuid),
             [{'path': constants.PTP_PARAMETER_ARRAY_PATH,
               'value': 'param0=value0',
               'op': constants.PTP_PATCH_OPERATION_ADD}],
             headers=self.API_HEADERS)
-        self.assertEqual(response.content_type, 'application/json')
         self.assertEqual(response.status_code, http_client.OK)
 
         response = self.delete(self.get_single_url(self.uuid),
-                               headers=self.API_HEADERS, expect_errors=True)
-        self.assertEqual('application/json', response.content_type)
-        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
-        self.assertIn('still associated with PTP parameter',
-                      response.json['error_message'])
+                               headers=self.API_HEADERS, expect_errors=False)
+        self.assertEqual(response.status_code, http_client.NO_CONTENT)
+        # Verify instance was removed
+        response = self.get_json(self.get_single_url(self.uuid), expect_errors=True)
+        error_message = 'No PTP instance with id %s found' % self.uuid
+        self.assertEqual(response.status_code, http_client.NOT_FOUND)
+        self.assertIn(error_message, response.json['error_message'])
 
-    def test_delete_ptp_instance_with_interfaces_failed(self):
+    def test_delete_ptp_instance_with_interfaces_ok(self):
         ptp_interface = dbutils.create_test_ptp_interface(
             name='test',
             ptp_instance_id=self.ptp_instance['id'],
@@ -331,8 +332,10 @@ class TestDeletePtpInstance(BasePtpInstanceTestCase):
                          ptp_interface['ptp_instance_id'])
 
         response = self.delete(self.get_single_url(self.uuid),
-                               headers=self.API_HEADERS, expect_errors=True)
-        self.assertEqual('application/json', response.content_type)
-        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
-        self.assertIn('still associated with PTP interface',
-                      response.json['error_message'])
+                               headers=self.API_HEADERS, expect_errors=False)
+        self.assertEqual(response.status_code, http_client.NO_CONTENT)
+        # Verify instance was removed
+        response = self.get_json(self.get_single_url(self.uuid), expect_errors=True)
+        error_message = 'No PTP instance with id %s found' % self.uuid
+        self.assertEqual(response.status_code, http_client.NOT_FOUND)
+        self.assertIn(error_message, response.json['error_message'])
