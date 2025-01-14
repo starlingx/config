@@ -2902,6 +2902,9 @@ class AppOperator(object):
                  % (to_app.name, from_app.version, to_app.version))
 
         try:
+            self._update_app_status(
+                to_app, new_progress=constants.APP_PROGRESS_UPDATE_STARTING)
+
             # Upload new app tarball. The upload will enable the new plugins to
             # generate overrides for images. Disable the plugins for the current
             # application as the new plugin module will have the same name. Only
