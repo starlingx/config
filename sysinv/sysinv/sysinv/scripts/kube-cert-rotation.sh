@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Copyright (C) 2019 Intel Corporation
-# Copyright (c) 2021-2024 Wind River Systems, Inc.
+# Copyright (c) 2021-2025 Wind River Systems, Inc.
 #
 
 . /usr/bin/tsconfig
@@ -11,6 +11,34 @@
 #
 # This script is to rotate kubernetes cluster certificates automatically
 #
+
+source /etc/platform/openrc
+
+# Check if a Kubernetes upgrade is in progress
+check_upgrade_status() {
+    local kube_upgrade_status
+    kube_upgrade_status=$(system kube-upgrade-show)
+    if [ "$kube_upgrade_status" != "A kubernetes upgrade is not in progress" ]; then
+        return 1
+    fi
+    return 0
+}
+
+# Check for K8S upgrade in progress and wait an hour and recheck.
+# Number of attempts to check upgrade status
+MAX_ATTEMPTS=2
+ATTEMPT=0
+K8S_UPGRADE_WAITING_TIME=3600
+
+while ! check_upgrade_status; do
+    ATTEMPT=$((ATTEMPT + 1))
+    if [ $ATTEMPT -ge $MAX_ATTEMPTS ]; then
+        echo "Kubernetes upgrade is still in progress after $ATTEMPT attempts. Exiting script."
+        # Exit here is OK since this will be called via cron next day.
+        exit 1
+    fi
+    sleep $K8S_UPGRADE_WAITING_TIME
+done
 
 # Renew certificates 15 days before expiration
 declare -r CUTOFF_DAYS=15
@@ -187,6 +215,7 @@ if [[ "$sourced" -eq "1" ]]; then
 fi
 
 ERR=0
+ERR_REASON=""
 RESTART_APISERVER=0
 RESTART_CONTROLLER_MANAGER=0
 RESTART_SCHEDULER=0
@@ -201,7 +230,7 @@ do
     sudo cat ${CA} | openssl x509 -checkend 0 >/dev/null
     RC=$?
     if [ ${RC} -eq 1 ]; then
-        echo "${CA} Root CA is expired. Leaf certificates renewal will not be attempted."
+        ERR_REASON="${CA} Root CA is expired. Leaf certificates renewal will not be attempted."
         ERR=1
     fi
 done
@@ -215,6 +244,7 @@ if [ ${ERR} -eq 0 ]; then
     if [ ${result} -eq 0 ]; then
         RESTART_APISERVER=1
     elif [ ${result} -eq 1 ]; then
+        ERR_REASON="Failed to renew apiserver certificate."
         ERR=1
     fi
 fi
@@ -225,6 +255,7 @@ if [ ${ERR} -eq 0 ]; then
     if [ ${result} -eq 0 ]; then
         RESTART_APISERVER=1
     elif [ ${result} -eq 1 ]; then
+        ERR_REASON="Failed to renew apiserver-kubelet-client certificate."
         ERR=1
     fi
 fi
@@ -232,6 +263,7 @@ fi
 if [ ${ERR} -eq 0 ]; then
     renew_cert 'front-proxy-client'
     if [ $? -eq 1 ]; then
+        ERR_REASON="Failed to renew front-proxy-client certificate."
         ERR=1
     fi
 fi
@@ -243,6 +275,7 @@ if [ ${ERR} -eq 0 ]; then
         RESTART_SYSINV=1
         RESTART_CERT_MON=1
     elif [ ${result} -eq 1 ]; then
+        ERR_REASON="Failed to renew admin.conf certificate."
         ERR=1
     fi
 fi
@@ -251,6 +284,7 @@ if [ ${ERR} -eq 0 ]; then
     renew_cert 'super-admin.conf'
     result=$?
     if [ ${result} -eq 1 ]; then
+        ERR_REASON="Failed to renew super-admin.conf certificate."
         ERR=1
     fi
 fi
@@ -261,6 +295,7 @@ if [ ${ERR} -eq 0 ]; then
     if [ ${result} -eq 0 ]; then
         RESTART_CONTROLLER_MANAGER=1
     elif [ ${result} -eq 1 ]; then
+        ERR_REASON="Failed to renew controller-manager.conf certificate."
         ERR=1
     fi
 fi
@@ -271,6 +306,7 @@ if [ ${ERR} -eq 0 ]; then
     if [ ${result} -eq 0 ]; then
         RESTART_SCHEDULER=1
     elif [ ${result} -eq 1 ]; then
+        ERR_REASON="Failed to renew scheduler.conf certificate."
         ERR=1
     fi
 fi
@@ -280,6 +316,7 @@ if [ ${ERR} -eq 0 ]; then
     mkdir -p ${TEMP_WORK_DIR}
     chmod 0600 ${TEMP_WORK_DIR}
     if [ $? -ne 0 ]; then
+        ERR_REASON="Failed to create temporary working directory."
         ERR=1
     fi
 fi
@@ -288,6 +325,7 @@ fi
 if [ ${ERR} -eq 0 ]; then
     floating_ip=$(get_cluster_host_floating_ip)
     if [ "x${floating_ip}" == "x" ]; then
+        ERR_REASON="Failed to retrieve cluster host floating IP address."
         ERR=1
     fi
 fi
@@ -314,6 +352,7 @@ if [ ${ERR} -eq 0 ]; then
     if [ ${result} -eq 0 ]; then
         RESTART_APISERVER=1
     elif [ ${result} -eq 1 ]; then
+        ERR_REASON="Failed to renew apiserver-etcd-client certificate."
         ERR=1
     fi
 fi
@@ -344,6 +383,7 @@ if [ ${ERR} -eq 0 ]; then
             cp "/etc/etcd/etcd-server.key" ${CONFIG_PATH}/etcd
         fi
     elif [ ${result} -eq 1 ]; then
+        ERR_REASON="Failed to renew etcd-server certificate."
         ERR=1
     fi
 fi
@@ -372,6 +412,7 @@ if [ ${ERR} -eq 0 ]; then
             cp "/etc/etcd/etcd-client.key" ${CONFIG_PATH}/etcd
         fi
     elif [ ${result} -eq 1 ]; then
+        ERR_REASON="Failed to renew etcd-client certificate."
         ERR=1
     fi
 fi
@@ -384,6 +425,7 @@ rm -rf ${TEMP_WORK_DIR}
 if [ ${RESTART_APISERVER} -eq 1 ]; then
     crictl ps | awk '/kube-apiserver/{print$1}' | xargs crictl stop > /dev/null
     if [ $? -ne 0 ]; then
+        ERR_REASON="Failed to restart kube-apiserver."
         ERR=2
     fi
 fi
@@ -391,6 +433,7 @@ fi
 if [ ${RESTART_CONTROLLER_MANAGER} -eq 1 ]; then
     crictl ps | awk '/kube-controller-manager/{print$1}' | xargs crictl stop > /dev/null
     if [ $? -ne 0 ]; then
+        ERR_REASON="Failed to restart kube-controller-manager."
         ERR=2
     fi
 fi
@@ -398,6 +441,7 @@ fi
 if [ ${RESTART_SCHEDULER} -eq 1 ]; then
     crictl ps | awk '/kube-scheduler/{print$1}' | xargs crictl stop > /dev/null
     if [ $? -ne 0 ]; then
+        ERR_REASON="Failed to restart kube-scheduler."
         ERR=2
     fi
 fi
@@ -408,6 +452,7 @@ fi
 if [ ${RESTART_SYSINV} -eq 1 ]; then
     sm-restart service sysinv-conductor
     if [ $? -ne 0 ]; then
+        ERR_REASON="Failed to restart sysinv-conductor service."
         ERR=2
     fi
 fi
@@ -415,6 +460,7 @@ fi
 if [ ${RESTART_CERT_MON} -eq 1 ]; then
     sm-restart-safe service cert-mon
     if [ $? -ne 0 ]; then
+        ERR_REASON="Failed to restart cert-mon service."
         ERR=2
     fi
 fi
@@ -422,16 +468,17 @@ fi
 if [ ${RESTART_ETCD} -eq 1 ]; then
     sm-restart-safe service etcd
     if [ $? -ne 0 ]; then
+        ERR_REASON="Failed to restart etcd service."
         ERR=2
     fi
 fi
 
 if [ ${ERR} -eq 2 ]; then
     # Notify admin to lock and unlock this master node if restart k8s components failed
-    /usr/local/bin/fmClientCli -c "### ###250.003###set###host###host=${HOSTNAME}### ###major###Kubernetes certificates have been renewed but not all services have been updated.###operational-violation### ###Lock and unlock the host to update services with new certificates (Manually renew kubernetes certificates first if renewal failed).### ### ###"
+    /usr/local/bin/fmClientCli -c "### ###250.003###set###host###host=${HOSTNAME}### ###major###Kubernetes certificates have been renewed but not all services have been updated.###operational-violation### ###Lock and unlock the host to update services with new certificates (Manually renew kubernetes certificates first if renewal failed). Reason: ${ERR_REASON}### ### ###"
 elif [ ${ERR} -eq 1 ]; then
     # Notify admin to renew kube cert manually and restart services by lock/unlock if cert renew or config failed
-    /usr/local/bin/fmClientCli -c "### ###250.003###set###host###host=${HOSTNAME}### ###major###Kubernetes certificates renewal failed.###operational-violation### ###Lock and unlock the host to update services with new certificates (Manually renew kubernetes certificates first if renewal failed).### ### ###"
+    /usr/local/bin/fmClientCli -c "### ###250.003###set###host###host=${HOSTNAME}### ###major###Kubernetes certificates renewal failed.###operational-violation### ###Lock and unlock the host to update services with new certificates (Manually renew kubernetes certificates first if renewal failed). Reason: ${ERR_REASON}### ### ###"
 else
     # Clear the alarm if cert rotation completed
     # Check if alarm exist first before deleting. fmClientCli -A returns 0 when found and 255 when not found
