@@ -17020,7 +17020,19 @@ class ConductorManager(service.PeriodicService):
         metadata_map = constants.APP_EVALUATE_REAPPLY_TRIGGER_TO_METADATA_MAP
 
         for app in apps:
-            if app.status == constants.APP_UPDATE_IN_PROGRESS:
+
+            # We need to get an updated app status before moving on. It may have
+            # changed during the for loop execution. This avoids race conditions
+            # during upgrade activation.
+            try:
+                updated_app = self.dbapi.kube_app_get(app.name)
+                LOG.info(f"{app.name} status for reapply evaluation: {updated_app.status}.")
+            except exception.KubeAppNotFound:
+                LOG.warning(f"Application {app.name} not found to be reapplied.")
+                continue
+
+            if (updated_app.status == constants.APP_UPDATE_IN_PROGRESS or
+                    updated_app.progress == constants.APP_PROGRESS_UPDATE_STARTING):
                 # If the app is evaluated for reapplication during the update, the old plugin
                 # folder is recreated, causing any operations performed with the apps to fail.
                 LOG.info(f"Skipping reapply evaluation for {app.name}, "

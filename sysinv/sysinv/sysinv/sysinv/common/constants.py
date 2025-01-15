@@ -2175,6 +2175,7 @@ APP_PROGRESS_TARFILE_DOWNLOAD = 'downloading tarfile'
 APP_PROGRESS_VALIDATE_UPLOAD_CHARTS = 'validating and uploading charts'
 APP_PROGRESS_DEPS_PLATFORM_APP = "%s is required and is not applied" % HELM_APP_PLATFORM
 APP_PROGRESS_ROLLBACK_RELEASES = 'rolling back application releases'
+APP_PROGRESS_UPDATE_STARTING = 'Application update starting.'
 APP_PROGRESS_UPDATE_ABORTED = 'Application update from version {} to version {} aborted. '
 APP_PROGRESS_UPDATE_COMPLETED = 'Application update from version {} to version {} completed.'
 APP_PROGRESS_RECOVER_ABORTED = 'Application recover to version {} aborted. '
