@@ -27,6 +27,7 @@ from sysinv.common.kubernetes import test_k8s_health
 
 SUCCESS = 0
 ERROR = 1
+RETRIES = 3
 
 CONFIG_DIR_PREFIX = '/opt/platform/config/'
 PORTIERIS_BACKUP_FILENAME = 'portieris_backup.yml'
@@ -75,7 +76,10 @@ class ServiceParametersApplier(object):
         for controller in controllers:
             if controller not in result:
                 controllers.remove(controller)
-        return controllers
+        if len(controllers) == 0:
+            raise Exception("Couldn't retrieve nodes from kubernetes API.")
+        else:
+            return controllers
 
     def __service_parameter_apply(self) -> None:
         command = self.SP_APPLY_CMD
@@ -121,8 +125,9 @@ class ServiceParametersApplier(object):
             LOG.warning("After timeout, kube-apiserver is ready in "
                         "controller-0, but not in the standby controller. "
                         "Moving forward.")
-            return
-        raise Exception("Timeout restarting Kube-apiserver pods.")
+        else:
+            LOG.error("Timeout restarting Kube-apiserver pods.")
+            sys.exit(ERROR)
 
     def __get_portieris_webhook_data(self):
         get_cmd = self.KUBE_CMD + "get " + PORTIERIS_WEBHOOK_CRD + \
@@ -252,17 +257,27 @@ def main():
         % (sys.argv[0], from_release, to_release, action)
     )
 
-    try:
-        if action == "activate" and from_release == "22.12":
-            ServiceParametersApplier(from_release).apply()
-        elif action == "activate-rollback" and from_release == "24.09":
-            ServiceParametersApplier(to_release).rollback()
+    for retry in range(0, RETRIES):
+        try:
+            if action == "activate" and from_release == "22.12":
+                ServiceParametersApplier(from_release).apply()
+            elif action == "activate-rollback" and from_release == "24.09":
+                ServiceParametersApplier(to_release).rollback()
+            else:
+                LOG.info("Nothing to do. "
+                         "Skipping K8s service parameter apply.")
+        except Exception as ex:
+            if retry == RETRIES - 1:
+                LOG.error("Error applying K8s service parameters. "
+                          "Please verify logs.")
+                return ERROR
+            else:
+                LOG.exception(ex)
+                LOG.error("Exception ocurred during script execution, "
+                          "retrying after 5 seconds.")
+                time.sleep(5)
         else:
-            LOG.info("Nothing to do, skipping K8s service parameter apply.")
-        return SUCCESS
-    except Exception as ex:
-        LOG.exception(ex)
-        return ERROR
+            return SUCCESS
 
 
 if __name__ == "__main__":
