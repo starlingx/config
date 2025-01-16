@@ -6012,7 +6012,9 @@ class ConductorManager(service.PeriodicService):
             # Search the current pv to see if this one exists
             found = False
             for ipv in ipvs:
-                if ipv.lvm_pv_name == i['lvm_pv_name'] or ipv.disk_or_part_device_path == device_path:
+                if (ipv.lvm_pv_name == i.get('lvm_pv_name') or
+                        ipv.disk_or_part_device_path == device_path or
+                        ipv.lvm_pv_uuid == i.get('lvm_pv_uuid')):
                     found = True
                     if ipv.lvm_pv_uuid != i['lvm_pv_uuid']:
                         # The physical volume has been replaced.
