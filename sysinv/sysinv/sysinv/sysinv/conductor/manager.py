@@ -6988,6 +6988,19 @@ class ConductorManager(service.PeriodicService):
         if not self._controller_config_active_check():
             return  # already finalized on this active controller
 
+        # check if there is an upgrade in progress
+        upgrade_in_progress = False
+        try:
+            usm_service.get_platform_upgrade(self.dbapi)
+            upgrade_in_progress = True
+        except exception.NotFound:
+            # No upgrade in progress
+            pass
+
+        if upgrade_in_progress:
+            LOG.info("Skipped _controller_config_active_apply while upgrading")
+            return
+
         try:
             hostname = socket.gethostname()
             controller_hosts =\
