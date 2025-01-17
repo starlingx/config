@@ -1551,6 +1551,28 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.call(context,
                          self.make_msg('get_software_upgrade_status'))
 
+    def get_usm_host_upgrade_state_by_hostname(self, context, hostname):
+        """
+        Get the USM upgrade object for a given hostname.
+
+        :param context: request context.
+        :param hostname: Hostname to consider when retrieving the host upgrade
+        :returns: UsmHostUpgrade.
+        """
+        return self.call(context,
+                         self.make_msg('get_usm_host_upgrade_state_by_hostname',
+                                        hostname=hostname))
+
+    def is_usm_upgrade_in_progress_cached(self, context):
+        """
+        Checks if the USM report upgrade in progress.
+
+        :param context: request context.
+        :returns: True or False.
+        """
+        return self.call(context,
+                         self.make_msg('is_usm_upgrade_in_progress_cached'))
+
     def distribute_ceph_external_config(self, context, ceph_conf_filename):
         """Synchronously, have the conductor update the Ceph configuration
         file for external cluster.

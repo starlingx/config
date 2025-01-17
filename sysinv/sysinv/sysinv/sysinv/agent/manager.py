@@ -229,6 +229,7 @@ class AgentManager(service.PeriodicService):
         self._inventory_reported = set()
         self._first_boot_flag = os.path.exists(FIRST_BOOT_FLAG) or \
             os.path.exists(constants.VOLATILE_FIRST_BOOT_FLAG)
+        self._block_updates_usm = False
 
     def start(self):
         super(AgentManager, self).start()
@@ -1040,58 +1041,59 @@ class AgentManager(service.PeriodicService):
                               "conductor.")
                 pass
 
-        idisk = self._idisk_operator.idisk_get()
-        try:
-            rpcapi.idisk_update_by_ihost(icontext,
-                                         ihost['uuid'],
-                                         idisk)
-            self._inventory_reported.add(self.DISK)
-        except exception.SysinvException:
-            LOG.exception("Sysinv Agent exception updating idisk conductor.")
-            pass
+        if not self._block_updates_usm:
+            idisk = self._idisk_operator.idisk_get()
+            try:
+                rpcapi.idisk_update_by_ihost(icontext,
+                                             ihost['uuid'],
+                                             idisk)
+                self._inventory_reported.add(self.DISK)
+            except exception.SysinvException:
+                LOG.exception("Sysinv Agent exception updating idisk conductor.")
+                pass
 
-        self._update_disk_partitions(rpcapi, icontext,
-                                     ihost['uuid'], force_update=True, first_report=True)
+            self._update_disk_partitions(rpcapi, icontext,
+                                         ihost['uuid'], force_update=True, first_report=True)
 
-        ipv = self._ipv_operator.ipv_get()
-        try:
-            rpcapi.ipv_update_by_ihost(icontext,
-                                       ihost['uuid'],
-                                       ipv)
-            self._inventory_reported.add(self.PV)
-        except exception.SysinvException:
-            LOG.exception("Sysinv Agent exception updating ipv conductor.")
-            pass
+            ipv = self._ipv_operator.ipv_get()
+            try:
+                rpcapi.ipv_update_by_ihost(icontext,
+                                           ihost['uuid'],
+                                           ipv)
+                self._inventory_reported.add(self.PV)
+            except exception.SysinvException:
+                LOG.exception("Sysinv Agent exception updating ipv conductor.")
+                pass
 
-        host_fs = self._host_fs_operator.ilv_get_supported_hostfs()
-        try:
-            rpcapi.hostfs_update_by_ihost(icontext,
-                                          ihost['uuid'],
-                                          host_fs)
-            self._inventory_reported.add(self.HOST_FILESYSTEMS)
-        except RemoteError as e:
-            # ignore because active controller is not yet upgraded,
-            # so it's current load may not implement this RPC call
-            if "NameError" in str(e):
-                LOG.warn("Skip report host filesystems. "
-                            "Upgrade in progress.")
+            host_fs = self._host_fs_operator.ilv_get_supported_hostfs()
+            try:
+                rpcapi.hostfs_update_by_ihost(icontext,
+                                              ihost['uuid'],
+                                              host_fs)
                 self._inventory_reported.add(self.HOST_FILESYSTEMS)
-            else:
-                LOG.exception(f"Failed to report host filesystems update: {e}")
-            pass
-        except exception.SysinvException:
-            LOG.exception("Sysinv Agent exception updating host_fs conductor.")
-            pass
+            except RemoteError as e:
+                # ignore because active controller is not yet upgraded,
+                # so it's current load may not implement this RPC call
+                if "NameError" in str(e):
+                    LOG.warn("Skip report host filesystems. "
+                                "Upgrade in progress.")
+                    self._inventory_reported.add(self.HOST_FILESYSTEMS)
+                else:
+                    LOG.exception(f"Failed to report host filesystems update: {e}")
+                pass
+            except exception.SysinvException:
+                LOG.exception("Sysinv Agent exception updating host_fs conductor.")
+                pass
 
-        ilvg = self._ilvg_operator.ilvg_get()
-        try:
-            rpcapi.ilvg_update_by_ihost(icontext,
-                                        ihost['uuid'],
-                                        ilvg)
-            self._inventory_reported.add(self.LVG)
-        except exception.SysinvException:
-            LOG.exception("Sysinv Agent exception updating ilvg conductor.")
-            pass
+            ilvg = self._ilvg_operator.ilvg_get()
+            try:
+                rpcapi.ilvg_update_by_ihost(icontext,
+                                            ihost['uuid'],
+                                            ilvg)
+                self._inventory_reported.add(self.LVG)
+            except exception.SysinvException:
+                LOG.exception("Sysinv Agent exception updating ilvg conductor.")
+                pass
 
         kernel_running = self._get_kernel_running()
         try:
@@ -1571,6 +1573,8 @@ class AgentManager(service.PeriodicService):
         icontext = mycontext.get_admin_context()
         rpcapi = conductor_rpcapi.ConductorAPI(topic=conductor_rpcapi.MANAGER_TOPIC)
 
+        self._block_updates_usm = self.should_block_agent_updates(icontext, rpcapi)
+
         if self._ihost_uuid:
             if os.path.isfile(tsc.INITIAL_CONFIG_COMPLETE_FLAG):
                 self._report_config_applied(icontext)
@@ -1654,84 +1658,85 @@ class AgentManager(service.PeriodicService):
                 if constants.FILESYSTEM_AUDIT_REQUEST in force_updates:
                     self._prev_fs = None
 
-            # Update disks
-            idisk = self._idisk_operator.idisk_get()
-            if ((self._prev_disk is None) or
-                    (self._prev_disk != idisk)):
-                self._prev_disk = idisk
+            if not self._block_updates_usm or force_updates:
+                # Update disks
+                idisk = self._idisk_operator.idisk_get()
+                if ((self._prev_disk is None) or
+                        (self._prev_disk != idisk)):
+                    self._prev_disk = idisk
+                    try:
+                        rpcapi.idisk_update_by_ihost(icontext,
+                                                     self._ihost_uuid,
+                                                     idisk)
+                        self._inventory_reported.add(self.DISK)
+                    except exception.SysinvException:
+                        LOG.exception("Sysinv Agent exception updating idisk"
+                                      "conductor.")
+                        self._prev_disk = None
+
+                # Update disk partitions
+                if self._ihost_personality != constants.STORAGE:
+                    self._update_disk_partitions(rpcapi, icontext, self._ihost_uuid)
+
+                # Update local volume groups
+                ilvg = self._ilvg_operator.ilvg_get(cinder_device=cinder_device)
+                if ((self._prev_lvg is None) or
+                        (self._prev_lvg != ilvg)):
+                    self._prev_lvg = ilvg
+                    try:
+                        rpcapi.ilvg_update_by_ihost(icontext,
+                                                    self._ihost_uuid,
+                                                    ilvg)
+                        self._inventory_reported.add(self.LVG)
+                    except exception.SysinvException:
+                        LOG.exception("Sysinv Agent exception updating ilvg"
+                                      "conductor.")
+                        self._prev_lvg = None
+                        pass
+
+                # Update physical volumes
+                ipv = self._ipv_operator.ipv_get(cinder_device=cinder_device)
+                if ((self._prev_pv is None) or
+                        (self._prev_pv != ipv)):
+                    self._prev_pv = ipv
+                    try:
+                        rpcapi.ipv_update_by_ihost(icontext,
+                                                   self._ihost_uuid,
+                                                   ipv)
+                        self._inventory_reported.add(self.PV)
+                    except exception.SysinvException:
+                        LOG.exception("Sysinv Agent exception updating ipv"
+                                      "conductor.")
+                        self._prev_pv = None
+                        pass
+
+                self._create_host_filesystems(rpcapi, icontext)
+
+                # Update host filesystems
+                host_fs = self._host_fs_operator.ilv_get_supported_hostfs()
+                if ((self._prev_fs is None) or
+                        (self._prev_fs != host_fs)):
+                    self._prev_fs = host_fs
                 try:
-                    rpcapi.idisk_update_by_ihost(icontext,
-                                                 self._ihost_uuid,
-                                                 idisk)
-                    self._inventory_reported.add(self.DISK)
-                except exception.SysinvException:
-                    LOG.exception("Sysinv Agent exception updating idisk"
-                                  "conductor.")
-                    self._prev_disk = None
-
-            # Update disk partitions
-            if self._ihost_personality != constants.STORAGE:
-                self._update_disk_partitions(rpcapi, icontext, self._ihost_uuid)
-
-            # Update local volume groups
-            ilvg = self._ilvg_operator.ilvg_get(cinder_device=cinder_device)
-            if ((self._prev_lvg is None) or
-                    (self._prev_lvg != ilvg)):
-                self._prev_lvg = ilvg
-                try:
-                    rpcapi.ilvg_update_by_ihost(icontext,
-                                                self._ihost_uuid,
-                                                ilvg)
-                    self._inventory_reported.add(self.LVG)
-                except exception.SysinvException:
-                    LOG.exception("Sysinv Agent exception updating ilvg"
-                                  "conductor.")
-                    self._prev_lvg = None
-                    pass
-
-            # Update physical volumes
-            ipv = self._ipv_operator.ipv_get(cinder_device=cinder_device)
-            if ((self._prev_pv is None) or
-                    (self._prev_pv != ipv)):
-                self._prev_pv = ipv
-                try:
-                    rpcapi.ipv_update_by_ihost(icontext,
-                                               self._ihost_uuid,
-                                               ipv)
-                    self._inventory_reported.add(self.PV)
-                except exception.SysinvException:
-                    LOG.exception("Sysinv Agent exception updating ipv"
-                                  "conductor.")
-                    self._prev_pv = None
-                    pass
-
-            self._create_host_filesystems(rpcapi, icontext)
-
-            # Update host filesystems
-            host_fs = self._host_fs_operator.ilv_get_supported_hostfs()
-            if ((self._prev_fs is None) or
-                    (self._prev_fs != host_fs)):
-                self._prev_fs = host_fs
-            try:
-                rpcapi.hostfs_update_by_ihost(icontext,
-                                              self._ihost_uuid,
-                                              host_fs)
-                self._inventory_reported.add(self.HOST_FILESYSTEMS)
-            except RemoteError as e:
-                # ignore because active controller is not yet upgraded,
-                # so it's current load may not implement this RPC call
-                if "NameError" in str(e):
-                    LOG.warn("Skip report host filesystems. "
-                                "Upgrade in progress.")
+                    rpcapi.hostfs_update_by_ihost(icontext,
+                                                  self._ihost_uuid,
+                                                  host_fs)
                     self._inventory_reported.add(self.HOST_FILESYSTEMS)
-                else:
-                    LOG.exception(f"Failed to report host filesystems update: {e}")
-                pass
-            except exception.SysinvException:
-                LOG.exception("Sysinv Agent exception updating host_fs"
-                                " conductor.")
-                self._prev_fs = None
-                pass
+                except RemoteError as e:
+                    # ignore because active controller is not yet upgraded,
+                    # so it's current load may not implement this RPC call
+                    if "NameError" in str(e):
+                        LOG.warn("Skip report host filesystems. "
+                                    "Upgrade in progress.")
+                        self._inventory_reported.add(self.HOST_FILESYSTEMS)
+                    else:
+                        LOG.exception(f"Failed to report host filesystems update: {e}")
+                    pass
+                except exception.SysinvException:
+                    LOG.exception("Sysinv Agent exception updating host_fs"
+                                    " conductor.")
+                    self._prev_fs = None
+                    pass
 
             # Collect FPGA PCI data for this host.
             # We know that the PCI address of the N3000 can change the first time
@@ -2422,3 +2427,56 @@ class AgentManager(service.PeriodicService):
             self._prev_fs = None
             self._inventoried_initial = False
             self._inventory_reported = set()
+
+    def should_block_agent_updates(self, context, rpcapi):
+        """Determine if agent updates should be blocked based on upgrade status.
+
+        :param context: The request context
+        :param rpc_api: The RPC API client for interacting with remote services
+        :return: True if updates should be blocked, False otherwise
+        """
+
+        # USM upgrade in progress
+        try:
+            is_upgrade_in_progress = rpcapi.is_usm_upgrade_in_progress_cached(context)
+        except Exception:
+            LOG.info("Blocking agent updates! No RPC response due to unresponsive conductor"
+                     " or RPC call not implemented.")
+            return True
+
+        # No reason to keep checking if we are not mid upgrade
+        if not is_upgrade_in_progress:
+            return False
+
+        LOG.info("Upgrade in progress detected!")
+
+        my_hostname = self._hostname or socket.gethostname()
+
+        # USM upgrade state
+        try:
+            host_deploy_state = rpcapi.get_usm_host_upgrade_state_by_hostname(context, my_hostname)
+        except Exception:
+            LOG.error("Failed to get USM upgrade state.")
+        else:
+            if host_deploy_state not in constants.DEPLOY_HOST_DEPLOYED_STATES:
+                LOG.info(f"Blocking agent updates! USM state = '{host_deploy_state}'"
+                         f" is not one of {constants.DEPLOY_HOST_DEPLOYED_STATES}"
+                         " while upgrade is in progress.")
+                return True
+
+        # Software version
+        try:
+            ihost = rpcapi.get_ihost_by_hostname(context, my_hostname)
+        except Exception:
+            LOG.error("Failed to get software version from ihost.")
+        else:
+            if ihost.sw_version != tsc.SW_VERSION:
+                LOG.info(f"Blocking agent updates! Software load {ihost.sw_version}"
+                         f" is different than running software version {tsc.SW_VERSION}.")
+                return True
+
+        # If we cannot retrieve host_deploy_state and ihost, let's allow the updates
+        # to go through. Blocking updates in this case could cause unnecessary stalls,
+        # so we make a best-effort decision to proceed instead.
+
+        return False
