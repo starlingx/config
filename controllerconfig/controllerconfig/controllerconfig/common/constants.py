@@ -21,3 +21,6 @@ INITIAL_CONFIG_COMPLETE_FILE = '/etc/platform/.initial_config_complete'
 LOG_LOCAL1 = 'local1'
 
 POSTGRESQL_DEFAULT_PORT = 5432
+
+IPV4_FAMILY = 4
+IPV6_FAMILY = 6

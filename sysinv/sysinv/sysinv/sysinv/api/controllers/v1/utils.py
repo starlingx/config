@@ -196,7 +196,7 @@ def is_valid_address_within_subnet(ip_address, subnet):
             "Cannot use network address: %s. "
             "Please configure valid %s address.") %
             (ip_address, subnet.network, ip_version_to_string(subnet.version)))
-    elif ip_address == subnet.broadcast:
+    elif ip_address.version == constants.IPV4_FAMILY and ip_address == subnet.broadcast:
         raise wsme.exc.ClientSideError(_(
             "Cannot use broadcast address: %s. "
             "Please configure valid %s address.") %

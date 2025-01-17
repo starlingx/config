@@ -337,15 +337,25 @@ class TestPatchMixin(object):
                           f"Please configure valid IPv{addrpool.family} address.",
                           response.json['error_message'])
 
-    def test_fail_address_is_broadcast_address(self):
+    def test_address_is_broadcast_address(self):
         addrpool = self.find_addrpool_by_networktype(constants.NETWORK_TYPE_OAM)
         address = str(self.oam_subnet[-1])
+        start = str(self.oam_subnet[1])
+        end = str(self.oam_subnet[-1])
+        ranges = [[start, end]]
+        addr_cont = 1
         for addr_field in ADDRESS_TO_ID_FIELD_INDEX.keys():
-            response = self.patch_oam_fail(addrpool, http_client.BAD_REQUEST,
+            if self.oam_subnet.version == constants.IPV4_FAMILY:
+                response = self.patch_oam_fail(addrpool, http_client.BAD_REQUEST,
                                            **{addr_field: address})
-            self.assertIn(f"Cannot use broadcast address: {address}. "
-                          f"Please configure valid IPv{addrpool.family} address.",
-                          response.json['error_message'])
+                self.assertIn(f"Cannot use broadcast address: {address}. "
+                            f"Please configure valid IPv{addrpool.family} address.",
+                            response.json['error_message'])
+            else:
+                self.patch_oam_success(addrpool, **{addr_field: address}, ranges=ranges)
+                # Avoid duplicated address
+                addr_cont = addr_cont + 1
+                self.patch_oam_success(addrpool, **{addr_field: str(self.oam_subnet[addr_cont])})
 
     def test_remove_address(self):
         self._set_system_mode(constants.SYSTEM_MODE_SIMPLEX)
@@ -1182,11 +1192,15 @@ class TestPostMixin(object):
                                   headers=self.API_HEADERS,
                                   expect_errors=True)
 
-        # Check HTTP response is failed
-        self.assertEqual('application/json', response.content_type)
-        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
-        self.assertIn("Cannot use broadcast address: %s." % address,
-            response.json['error_message'])
+        if self.mgmt_subnet.version == constants.IPV4_FAMILY:
+            # Check HTTP response is failed
+            self.assertEqual('application/json', response.content_type)
+            self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+            self.assertIn("Cannot use broadcast address: %s." % address,
+                response.json['error_message'])
+        else:
+            self.assertEqual('application/json', response.content_type)
+            self.assertEqual(response.status_code, http_client.OK)
 
     def _test_create_address_pool_ip_out_of_range(self, addr_type):
 
@@ -1313,10 +1327,14 @@ class TestPostMixin(object):
                                   headers=self.API_HEADERS,
                                   expect_errors=True)
 
-        self.assertEqual('application/json', response.content_type)
-        self.assertEqual(response.status_code, http_client.CONFLICT)
-        self.assertIn("Address pool range cannot include broadcast address: %s" % end,
-                      response.json['error_message'])
+        if self.mgmt_subnet.version == constants.IPV4_FAMILY:
+            self.assertEqual('application/json', response.content_type)
+            self.assertEqual(response.status_code, http_client.CONFLICT)
+            self.assertIn("Address pool range cannot include broadcast address: %s" % end,
+                        response.json['error_message'])
+        else:
+            self.assertEqual('application/json', response.content_type)
+            self.assertEqual(response.status_code, http_client.OK)
 
     def test_address_pool_create_floating_ip_not_in_subnet(self):
         self._test_create_address_pool_address_not_in_subnet('floating')
