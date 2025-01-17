@@ -1,10 +1,11 @@
 #
-# Copyright (c) 2017-2023 Wind River Systems, Inc.
+# Copyright (c) 2017-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
 
 import netaddr
+import glob
 
 from oslo_log import log
 
@@ -382,7 +383,7 @@ class NetworkingPuppet(base.BasePuppet):
 
         allowed_instance_fields = ['global_parameters', 'interfaces', 'name', 'service',
                                    'cmdline_opts', 'id', 'pmc_gm_settings', 'device_parameters',
-                                   'gnss_uart_disable']
+                                   'gnss_uart_disable', 'external_source']
         ptp_config = {}
 
         for instance in ptp_instances:
@@ -395,6 +396,7 @@ class NetworkingPuppet(base.BasePuppet):
             instance['pmc_gm_settings'] = {}
             instance['device_parameters'] = {}
             instance['gnss_uart_disable'] = True
+            instance['external_source'] = {}
 
             # Additional defaults for ptp4l instances
             if instance['service'] == constants.PTP_INSTANCE_TYPE_PTP4L:
@@ -414,7 +416,8 @@ class NetworkingPuppet(base.BasePuppet):
                 })
             elif instance['service'] == constants.PTP_INSTANCE_TYPE_SYNCE4L:
                 instance['global_parameters'].update({
-                    'message_tag': instance['name']
+                    'message_tag': instance['name'],
+                    'smc_socket_path': '/tmp/synce4l_socket_%s' % instance['name']
                 })
                 instance['device_parameters'].update(default_device_parameters)
             elif instance['service'] == constants.PTP_INSTANCE_TYPE_TS2PHC:
@@ -516,7 +519,7 @@ class NetworkingPuppet(base.BasePuppet):
 
         return ptp_instances
 
-    def _set_ptp_instance_interface_parameters(self, ptp_instances, ptp_parameters_interface):
+    def _set_ptp_instance_interface_parameters(self, host, ptp_instances, ptp_parameters_interface):
 
         default_interface_parameters = {
             'ptp4l': {},
@@ -533,6 +536,8 @@ class NetworkingPuppet(base.BasePuppet):
                 'rx_heartbeat_msec': constants.PTP_SYNCE_RX_HEARTBEAT_MSEC,
             },
         }
+        recover_clk_cmd_fmt = 'echo %s 0 > /sys/class/net/%s/device/phy/synce'
+        ecc_get_state_cmd_fmt = 'cat /sys/class/net/%s/device/dpll_0_state'
 
         for instance in ptp_instances:
             current_instance = ptp_instances[instance]
@@ -546,6 +551,24 @@ class NetworkingPuppet(base.BasePuppet):
                             current_instance['global_parameters']['ha_enabled'] == '1':
                         iface['parameters'].update(default_interface_parameters
                                                    ['ha_phc2sys'])
+                # Handle synce4l dynamic parameters
+                if current_instance['service'] == constants.PTP_INSTANCE_TYPE_SYNCE4L:
+                    base_port = None
+                    port_name = iface['port_names'][0]
+                    if port_name:
+                        iface['parameters'].update({'recover_clock_disable_cmd':
+                            recover_clk_cmd_fmt % (0, port_name)})
+                        iface['parameters'].update({'recover_clock_enable_cmd':
+                            recover_clk_cmd_fmt % (1, port_name)})
+                        base_port = self._get_base_port(host, port_name)
+                        if base_port:
+                            current_instance['device_parameters'].update({'eec_get_state_cmd':
+                                ecc_get_state_cmd_fmt % base_port})
+                    # Handle synce4l external source parameters
+                    current_instance['external_source'] = self._set_external_source_parameters(
+                        iface['uuid'],
+                        ptp_parameters_interface,
+                        base_port)
                 # Add supplied params to the interface
                 for param in ptp_parameters_interface:
                     if iface['uuid'] in param['owners']:
@@ -553,7 +576,7 @@ class NetworkingPuppet(base.BasePuppet):
 
         return ptp_instances
 
-    def _generate_clock_port_dict(self, nic_clock_config, host_port_list):
+    def _generate_clock_port_dict(self, host, nic_clock_config, host_port_list):
         port_dict = {}
         for instance in nic_clock_config:
             for iface in nic_clock_config[instance]['interfaces']:
@@ -561,20 +584,99 @@ class NetworkingPuppet(base.BasePuppet):
                 for port in iface['port_names']:
                     port_dict[port] = iface
                     port_dict[port]['base_port'] = ""
-                # Get port 0 for the configured NIC
-                for p in host_port_list:
-                    if port_dict.get(p['name'], None):
-                        port_dict_name = p['name']
-                        # Take the PCI address of the supplied port and replace the end
-                        # value with 0 to identify the base port on that nic
-                        port_pci_base = p['pciaddr'].split('.')[0] + ".0"
-                        # Find the port that has the matching pci address and take this
-                        # as the base port
-                        for q in host_port_list:
-                            if q['pciaddr'] == port_pci_base:
-                                port_dict[port_dict_name]['base_port'] = q['name']
-                                break
+                    base_port = self._get_base_port(host, port)
+                    if base_port:
+                        port_dict[port]['base_port'] = base_port
         return port_dict
+
+    def _get_base_port(self, host, port_name):
+        base_port = ""
+        host_port_list = self.dbapi.port_get_all(hostid=host.id)
+        # Get port 0 for the configured NIC
+        for p in host_port_list:
+            if port_name == p['name']:
+                # Take the PCI address of the supplied port and replace the end
+                # value with 0 to identify the base port on that nic
+                port_pci_base = p['pciaddr'].split('.')[0] + ".0"
+                # Find the port that has the matching pci address and take this
+                # as the base port
+                for q in host_port_list:
+                    if q['pciaddr'] == port_pci_base:
+                        base_port = q['name']
+                        break
+        return base_port
+
+    def _get_ptp_dev_info(self, base_port, pin):
+        # Validate PTP dev and get pin path
+        path = '/sys/class/net/%s/device/ptp/*/pins/%s' % (base_port, pin)
+        path_list = glob.glob(path)
+        if len(path_list) != 1:
+            LOG.error(f'Cannot find a PTP device in {path}')
+            return None
+        pin_path = path_list[0]
+        # Get the pin channel
+        try:
+            with open(pin_path) as f:
+                line = f.readline().strip('\n')
+                channel = line.split(' ')[1]
+        except Exception:
+            LOG.error(f'Cannot find a PTP pin channel device in {pin_path}')
+            return None
+        # Get the pin enable function: 1=Rx 2=Tx
+        #   U.FL1 needs to be Tx and U.FL2 need to be Rx
+        #   SMA1 and SMA2 will default to Tx
+        func = 1 if pin == 'U.FL2' else 2
+        return {'func': func, 'channel': channel, 'path': pin_path}
+
+    def _set_external_source_parameters(self, iface_uuid, ptp_parameters_interface, base_port):
+        if not base_port:
+            LOG.warning('Cannot set synce4l external source, no base port')
+            return
+
+        default_params = {
+            'input_QL': constants.PTP_SYNCE_EXTERNAL_INPUT_QL,
+            'input_ext_QL': constants.PTP_SYNCE_EXTERNAL_INPUT_EXT_QL,
+            'internal_prio': constants.PTP_SYNCE_INTERNAL_PRIO,
+        }
+        allowed_params = ['external_source', 'input_QL', 'input_ext_QL', 'internal_prio',
+                                  'external_enable_cmd', 'external_disable_cmd']
+
+        # 'external_source' is a virtual parameter that wll not be forwarded to
+        # synce4l configuration. We first check if it is set to use it as the
+        # external source name. Then we set synce4l's real parameters with
+        # default values and remove it from the list or from the owners list
+        # depending if parameter is duplicated in other interfaces.
+        external_source = {}
+        for param in ptp_parameters_interface[:]:
+            if iface_uuid not in param['owners']:
+                continue
+            if param['name'] in allowed_params:
+                if param['name'] == 'external_source':
+                    ext_src_name = param['value']
+                    info = self._get_ptp_dev_info(base_port, ext_src_name)
+                    if info:
+                        external_source['name'] = ext_src_name
+                        external_source['params'] = default_params
+                        external_source['params'].update({'external_disable_cmd':
+                            'echo %s %s > %s' % (0, info['channel'], info['path'])})
+                        external_source['params'].update({'external_enable_cmd':
+                            'echo %s %s > %s' % (info['func'], info['channel'], info['path'])})
+                    if len(param['owners']) > 1:
+                        param['owners'].remove(iface_uuid)
+                    else:
+                        ptp_parameters_interface.remove(param)
+        # Now do the same for the synce4l's real parameters configured by the user.
+        if 'name' in external_source:
+            for param in ptp_parameters_interface[:]:
+                if iface_uuid not in param['owners']:
+                    continue
+                if param['name'] in allowed_params:
+                    external_source['params'].update({param['name']: param['value']})
+                    if len(param['owners']) > 1:
+                        param['owners'].remove(iface_uuid)
+                    else:
+                        ptp_parameters_interface.remove(param)
+        return external_source
 
     def _get_instance_ptp_config(self, host):
 
@@ -618,9 +720,10 @@ class NetworkingPuppet(base.BasePuppet):
             nic_clock_enabled = True
             host_port_list = self.dbapi.port_get_all(hostid=host.id)
             nic_clock_config = self._set_ptp_instance_interfaces(host, nic_clocks, ptp_interfaces)
-            nic_clock_config = self._set_ptp_instance_interface_parameters(nic_clock_config,
+            nic_clock_config = self._set_ptp_instance_interface_parameters(host, nic_clock_config,
                                                                            ptp_parameters_interface)
-            nic_clock_config = self._generate_clock_port_dict(nic_clock_config, host_port_list)
+            nic_clock_config = self._generate_clock_port_dict(host, nic_clock_config,
+                                                              host_port_list)
 
         # Generate the ptp instance config if ptp is enabled
         if ptpinstance_enabled:
@@ -628,7 +731,7 @@ class NetworkingPuppet(base.BasePuppet):
                                                                   ptp_parameters_instance)
             ptp_config = self._set_ptp_instance_interfaces(host, ptp_config,
                                                            ptp_interfaces)
-            ptp_config = self._set_ptp_instance_interface_parameters(ptp_config,
+            ptp_config = self._set_ptp_instance_interface_parameters(host, ptp_config,
                                                                      ptp_parameters_interface)
         else:
             ptp_config = {}

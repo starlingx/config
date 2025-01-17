@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2024 Wind River Systems, Inc.
+# Copyright (c) 2013-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -2299,6 +2299,7 @@ PTP_LEAPFILE_PATH = '/usr/share/zoneinfo/leap-seconds.list'
 PTP_SYNCE_INPUT_MODE_LINE = 'line'
 PTP_SYNCE_EXTERNAL_INPUT_QL = '0'
 PTP_SYNCE_EXTERNAL_INPUT_EXT_QL = '0'
+PTP_SYNCE_INTERNAL_PRIO = '0'
 PTP_SYNCE_EXTERNAL_TLV = '0'
 PTP_SYNCE_NETWORK_OPTION = '1'
 PTP_SYNCE_RECOVER_TIME = '300'
