@@ -318,8 +318,6 @@ class CertMonTestCase(base.DbTestCase):
         token = self.keystone_token
 
         new_certificate_file = 'rca_cert.pem'
-        new_certificate_serial = 518923625354339204099486224200794805079378585369
-        new_certificate_subject = 'CN=starlingx'
         pem_file_path = self.get_data_file_path('%s' % new_certificate_file)
 
         cert_content = None
@@ -363,20 +361,12 @@ class CertMonTestCase(base.DbTestCase):
                 return self in string
 
         ca_cert_renew = cert_mon_watcher.SystemLocalCACertRenew(FakeContext())
-        ca_cert_renew.install_ca_certificate(FakeEventData(), cert_type, force=True, uninstall_subject_dup=True)
+        ca_cert_renew.install_ca_certificate(FakeEventData(), cert_type, force=True)
 
         # Cert list is always called
         cert_list_method = 'GET'
         cert_list_url_suffix = '/certificate'
         mocked_rest_api_req.assert_any_call(token, cert_list_method, AnyStringEndingIn(cert_list_url_suffix))
-
-        # Cert uninstall is called if serial is diffent but suject is the same
-        cert_uninstall_method = 'DELETE'
-        cert_uninstall_url_suffix = '/certificate/'
-
-        if new_certificate_subject == subject and new_certificate_serial != serial_number:
-            mocked_rest_api_req.assert_any_call(
-                token, cert_uninstall_method, AnyStringContaining(cert_uninstall_url_suffix))
 
         # If expected to install, cert upload is called once
         if expected_to_install:
