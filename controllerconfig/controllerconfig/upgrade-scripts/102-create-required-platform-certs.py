@@ -50,6 +50,7 @@ AUTO_CREATED_TAG = '.auto_created_cert-'
 K8S_RESOURCES_TMP_FILENAME = '/tmp/update_cert.yml'
 TRUSTED_BUNDLE_FILEPATH = '/etc/ssl/certs/ca-cert.pem'
 CONFIG_FOLDER = '/opt/platform/config/'
+HTTPS_CONFIG_FLAG = '.https_config_required'
 
 OPENLDAP_CERT_NAME = 'system-openldap-local-certificate'
 HTTPS_CERT_NAME = 'system-restapi-gui-certificate'
@@ -429,6 +430,15 @@ def check_cert_auto_creation_file_flag(cert_name, version):
     return os.path.isfile(get_cert_auto_creation_filename(cert_name, version))
 
 
+def remove_https_config_flag(version):
+    try:
+        file = os.path.join(CONFIG_FOLDER, version, HTTPS_CONFIG_FLAG)
+        os.remove(file)
+        LOG.warning("Removing config flag: %s" % file)
+    except OSError:
+        pass
+
+
 def remove_cert_auto_creation_file_flag(cert_name, version):
     try:
         os.remove(get_cert_auto_creation_filename(cert_name, version))
@@ -610,6 +620,7 @@ def main():
                 adapt_legacy_certificate_config(to_release)
                 reconfigure_certificates_subject()
                 create_platform_certificates(to_release)
+                remove_https_config_flag(to_release)
                 patch_https_enabled(True)
                 create_platform_certificates_updated_file_flag()
                 LOG.info("Successfully created/updated required platform "
