@@ -39,6 +39,7 @@ import io
 import json
 import math
 import os
+import psutil
 import re
 import requests
 import ruamel.yaml as yaml
@@ -18540,7 +18541,37 @@ class ConductorManager(service.PeriodicService):
         controller_hosts = self.dbapi.ihost_get_by_personality(
             constants.CONTROLLER)
         system = self.dbapi.isystem_get_one()
+        puppet_class = ['platform::kubernetes::upgrade_first_control_plane']
         if system.system_mode == constants.SYSTEM_MODE_SIMPLEX:
+            # Terminate lingering kubeadm and puppet processes
+            # left-over from timed out operation.
+            try:
+                for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+                    cmdline = proc.info.get('cmdline', [])
+                    if any('kubeadm' in line for line in cmdline):
+                        kubeadm_puppet_pid = []
+                        parent_proc = proc.parent()
+                        proc.kill()
+                        while parent_proc:
+                            parent_cmdline = parent_proc.cmdline()
+                            if any('puppet' in line for line in parent_cmdline):
+                                kubeadm_puppet_pid.append(parent_proc)
+                            else:
+                                break
+                            parent_proc = parent_proc.parent()
+                        for puppet_pid in kubeadm_puppet_pid:
+                            puppet_pid.kill()
+            except Exception as e:
+                LOG.error("Error in killing process %s" % e)
+            # update runtime config report status for upgrade control plane to failed.
+            pending_runtime_config = self.dbapi.runtime_config_get_all(
+                state=constants.RUNTIME_CONFIG_STATE_PENDING)
+            for rc in pending_runtime_config:
+                config_dict = json.loads(rc.config_dict)
+                if config_dict["classes"][0] in puppet_class:
+                    rc_update_values = {"state": constants.RUNTIME_CONFIG_STATE_FAILED}
+                    self.dbapi.runtime_config_update(rc.id, rc_update_values)
+
             # check for the control plane backup path exists
             if not os.path.exists(kubernetes.KUBE_CONTROL_PLANE_ETCD_BACKUP_PATH) or \
                     not os.path.exists(kubernetes.KUBE_CONTROL_PLANE_STATIC_PODS_BACKUP_PATH):
