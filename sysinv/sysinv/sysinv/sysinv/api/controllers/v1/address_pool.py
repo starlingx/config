@@ -332,7 +332,7 @@ class AddressPoolController(rest.RestController):
             raise exception.AddressPoolRangeTransposed(start=start_address, end=end_address)
         if start_address == network.network:
             raise exception.AddressPoolRangeCannotIncludeNetwork(address=start_address)
-        if end_address == network.broadcast:
+        if end_address.version == constants.IPV4_FAMILY and end_address == network.broadcast:
             raise exception.AddressPoolRangeCannotIncludeBroadcast(address=end_address)
         intersection = ipset & netaddr.IPSet(netaddr.IPRange(start, end))
         if intersection.size:

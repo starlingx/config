@@ -15,6 +15,7 @@ import sys
 import time
 
 import controllerconfig.common.exceptions as exeptions
+import controllerconfig.common.constants as constants
 import controllerconfig.utils as utils
 from six.moves import input
 
@@ -30,7 +31,8 @@ def is_valid_management_address(ip_address, management_subnet):
     if ip_address == management_subnet.network:
         print("Cannot use network address")
         return False
-    elif ip_address == management_subnet.broadcast:
+    elif ip_address.version == constants.IPV4_FAMILY and \
+            ip_address == management_subnet.broadcast:
         print("Cannot use broadcast address")
         return False
     elif ip_address.is_multicast():

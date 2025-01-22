@@ -397,7 +397,8 @@ def validate_address_str(ip_address_str, network):
             raise ValidateFail(msg)
         elif ip_address == network:
             raise ValidateFail("Cannot use network address")
-        elif ip_address == network.broadcast:
+        elif ip_address.version == constants.IPV4_FAMILY and \
+                ip_address == network.broadcast:
             raise ValidateFail("Cannot use broadcast address")
         elif ip_address not in network:
             raise ValidateFail(
