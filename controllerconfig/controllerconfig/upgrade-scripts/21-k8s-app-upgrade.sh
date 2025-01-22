@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Copyright (c) 2020-2024 Wind River Systems, Inc.
+# Copyright (c) 2020-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -270,6 +270,7 @@ function check_pod_readiness {
 function update_in_series {
     log "App ${EXISTING_APP_NAME} needs to be updated serially"
     # Wait on the upload, should be quick
+    UPDATED=false
     for tries in $(seq 1 $UPDATE_RESULT_ATTEMPTS); do
         UPDATING_APP_INFO=$(system application-show $UPGRADE_APP_NAME --column name --column app_version --column status --format yaml)
         UPDATING_APP_NAME=$(echo ${UPDATING_APP_INFO} | sed 's/.*name:[[:space:]]\(\S*\).*/\1/')
@@ -284,12 +285,13 @@ function update_in_series {
                 fm alarm-delete $alarm
             done
             log "$NAME: ${UPGRADE_APP_NAME} has been updated to version ${UPGRADE_APP_VERSION} from version ${EXISTING_APP_VERSION}"
+            UPDATED=true
             break
         fi
         sleep $UPDATE_RESULT_SLEEP
     done
 
-    if [ $tries == $UPDATE_RESULT_ATTEMPTS ]; then
+    if [ ! $UPDATED ] && [ $tries == $UPDATE_RESULT_ATTEMPTS ]; then
         log "$NAME: ${UPGRADE_APP_NAME}, version ${UPGRADE_APP_VERSION}, was not updated in the alloted time. Exiting for manual intervention..."
         exit 1
     fi
