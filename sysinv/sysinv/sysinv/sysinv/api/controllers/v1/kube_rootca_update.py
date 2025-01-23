@@ -444,6 +444,7 @@ class KubeRootCAUpdateController(rest.RestController):
 
         secret_list = [
             constants.KUBE_ADMIN_CERT,
+            constants.KUBE_SUPER_ADMIN_CERT,
             constants.KUBE_ROOTCA_SECRET,
         ]
 

@@ -2514,6 +2514,7 @@ KUBE_SELFSIGNED_ISSUER = 'system-kube-selfsigned-issuer'
 
 # kubernetes components secrets on rootCA update procedure
 KUBE_ADMIN_CERT = 'system-kube-admin-client-certificate'
+KUBE_SUPER_ADMIN_CERT = 'system-kube-super-admin-client-certificate'
 KUBE_APISERVER_CERT = 'system-kube-apiserver-{}-server-certificate'
 KUBE_APISERVER_KUBELET_CERT = 'system-kube-apiserver-{}-kubelet-client-certificate'
 KUBE_SCHEDULER_CERT = 'system-kube-scheduler-{}-client-certificate'

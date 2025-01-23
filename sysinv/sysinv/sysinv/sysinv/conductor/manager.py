@@ -19576,239 +19576,110 @@ class ConductorManager(service.PeriodicService):
         LOG.info("Creating secrets for %s kubernetes control plane components "
                  "due to rootCA update" % host.hostname)
 
-        # Create admin.conf cert/key.
-        # the admin cert/key will be the same for all controller hosts.
-        # This way we need to check if it is already created
-        # or if we'll have to generate a new Certificate resource
-        # to issue a new pair cert/key
-
-        admin_certificate_name = constants.KUBE_ADMIN_CERT
-        admin_secret = kube_operator.get_cert_secret(admin_certificate_name, kubernetes.NAMESPACE_DEPLOYMENT)
-        if admin_secret is None:
-            # Create k8s admin certificate/key
-            admin_certificate = {
-                'apiVersion': api_version,
-                'kind': 'Certificate',
-                'metadata': {
-                    'name': admin_certificate_name,
-                    'namespace': kubernetes.NAMESPACE_DEPLOYMENT
-                },
-                'spec': {
-                    'secretName': admin_certificate_name,
-                    'commonName': 'kubernetes-admin',
-                    'duration': str(duration) + 'h',
-                    'renewBefore': renew_before,
-                    'subject': {
-                        'organizations': ['system:masters']
+        def apply_certificate_to_k8s(certificate_to_apply):
+            secret = kube_operator.get_cert_secret(certificate_to_apply.certificateName,
+                                                   kubernetes.NAMESPACE_DEPLOYMENT)
+            if secret is None:
+                # Create certificate and key
+                certificate_spec = {
+                    'apiVersion': api_version,
+                    'kind': 'Certificate',
+                    'metadata': {
+                        'name': certificate_to_apply.certificateName,
+                        'namespace': kubernetes.NAMESPACE_DEPLOYMENT
                     },
-                    'usages': usages,
-                    'issuerRef': issuer_reference
+                    'spec': {
+                        'secretName': certificate_to_apply.certificateName,
+                        'commonName': certificate_to_apply.commonName,
+                        'duration': str(duration) + 'h',
+                        'renewBefore': renew_before,
+                        'usages': usages,
+                        'issuerRef': issuer_reference
+                    }
                 }
-            }
+                if certificate_to_apply.subjectOrg:
+                    certificate_spec['spec']['subject'] = {
+                            'organizations': [certificate_to_apply.subjectOrg]
+                    }
+                if certificate_to_apply.usages:
+                    certificate_spec['spec']['usages'] = certificate_to_apply.usages
+                if certificate_to_apply.ipAddresses:
+                    certificate_spec['spec']['ipAddresses'] = certificate_to_apply.ipAddresses
+                if certificate_to_apply.dnsNames:
+                    certificate_spec['spec']['dnsNames'] = certificate_to_apply.dnsNames
 
-            try:
-                kube_operator.apply_custom_resource(kubernetes.CERT_MANAGER_GROUP,
-                                                    kubernetes.CERT_MANAGER_VERSION,
-                                                    kubernetes.NAMESPACE_DEPLOYMENT,
-                                                    'certificates',
-                                                    admin_certificate_name,
-                                                    admin_certificate)
-            except Exception:
-                LOG.error("Failed to create %s resource" % admin_certificate_name)
-                raise
+                try:
+                    kube_operator.apply_custom_resource(kubernetes.CERT_MANAGER_GROUP,
+                                                        kubernetes.CERT_MANAGER_VERSION,
+                                                        kubernetes.NAMESPACE_DEPLOYMENT,
+                                                        'certificates',
+                                                        certificate_to_apply.certificateName,
+                                                        certificate_spec)
+                except Exception:
+                    LOG.error("Failed to create %s resource" % certificate_to_apply.certificateName)
+                    raise
 
-            self._wait_secret_creation(admin_certificate_name)
+                self._wait_secret_creation(certificate_to_apply.certificateName)
 
-            LOG.info("%s Secret successfully created and populated with cert/key data" % admin_certificate_name)
+                LOG.info("%s Secret successfully created and populated with cert/key data" %
+                         certificate_to_apply.certificateName)
 
-        # Create apiserver server certificate/key
-        # for this one the SAN should maintain the same addresses
-        # as the apiserver actually running
+        cert_fields = ['certificateName', 'commonName', 'subjectOrg', 'usages', 'ipAddresses',
+                       'dnsNames']
+        K8sCertificate = namedtuple('K8sCertificate', cert_fields,
+                                    defaults=(None,) * len(cert_fields))
+
+        admin_conf_cert = K8sCertificate(
+            certificateName=constants.KUBE_ADMIN_CERT,
+            commonName='kubernetes-admin',
+            subjectOrg='kubeadm:cluster-admins')
+
+        super_admin_conf_cert = K8sCertificate(
+            certificateName=constants.KUBE_SUPER_ADMIN_CERT,
+            commonName='kubernetes-super-admin',
+            subjectOrg='system:masters')
+
         apiserver_cert = cutils.get_certificate_from_file(kubernetes.KUBERNETES_APISERVER_CERT)
         dns_names = cutils.get_cert_DNSNames(apiserver_cert)
         ip_addresses = cutils.get_cert_IPAddresses(apiserver_cert)
 
-        apiserver_certificate_name = constants.KUBE_APISERVER_CERT.format(host.hostname)
-        apiserver_certificate = {
-            'apiVersion': api_version,
-            'kind': 'Certificate',
-            'metadata': {
-                'name': apiserver_certificate_name,
-                'namespace': kubernetes.NAMESPACE_DEPLOYMENT
-            },
-            'spec': {
-                'secretName': apiserver_certificate_name,
-                'commonName': 'kube-apiserver',
-                'duration': str(duration) + 'h',
-                'renewBefore': renew_before,
-                'dnsNames': dns_names,
-                'ipAddresses': ip_addresses,
-                'usages': ['digital signature', 'key encipherment', 'server auth'],
-                'issuerRef': issuer_reference
-            }
-        }
+        apiserver_cert = K8sCertificate(
+            certificateName=constants.KUBE_APISERVER_CERT.format(host.hostname),
+            commonName='kube-apiserver',
+            usages=['digital signature', 'key encipherment', 'server auth'],
+            ipAddresses=ip_addresses,
+            dnsNames=dns_names)
 
-        try:
-            kube_operator.apply_custom_resource(kubernetes.CERT_MANAGER_GROUP,
-                                                    kubernetes.CERT_MANAGER_VERSION,
-                                                    kubernetes.NAMESPACE_DEPLOYMENT,
-                                                    'certificates',
-                                                    apiserver_certificate_name,
-                                                    apiserver_certificate)
-        except Exception:
-            LOG.error("Failed to create %s resource" % apiserver_certificate_name)
-            raise
+        apiserver_kubelet_client_cert = K8sCertificate(
+            certificateName=constants.KUBE_APISERVER_KUBELET_CERT.format(host.hostname),
+            commonName='kube-apiserver-kubelet-client',
+            subjectOrg='kubeadm:cluster-admins')
 
-        self._wait_secret_creation(apiserver_certificate_name)
+        kube_scheduler_cert = K8sCertificate(
+            certificateName=constants.KUBE_SCHEDULER_CERT.format(host.hostname),
+            commonName='system:kube-scheduler')
 
-        LOG.info("%s Secret successfully created and populated with cert/key data" % apiserver_certificate_name)
+        controller_manager_cert = K8sCertificate(
+            certificateName=constants.KUBE_CONTROLLER_MANAGER_CERT.format(host.hostname),
+            commonName='system:kube-controller-manager')
 
-        # Create apiserver server kubelet client certificate/key
-        apiserver_kubelet_client_certificate_name = constants.KUBE_APISERVER_KUBELET_CERT.format(host.hostname)
-        apiserver_kubelet_client_certificate = {
-            'apiVersion': api_version,
-            'kind': 'Certificate',
-            'metadata': {
-                'name': apiserver_kubelet_client_certificate_name,
-                'namespace': kubernetes.NAMESPACE_DEPLOYMENT
-            },
-            'spec': {
-                'secretName': apiserver_kubelet_client_certificate_name,
-                'commonName': 'kube-apiserver-kubelet-client',
-                'duration': str(duration) + 'h',
-                'renewBefore': renew_before,
-                'subject': {
-                    'organizations': ['system:masters']
-                },
-                'usages': usages,
-                'issuerRef': issuer_reference
-            }
-        }
+        kubelet_cert = K8sCertificate(
+            certificateName=constants.KUBE_KUBELET_CERT.format(host.hostname),
+            commonName='system:node:' + host.hostname,
+            subjectOrg='system:nodes')
 
-        try:
-            kube_operator.apply_custom_resource(kubernetes.CERT_MANAGER_GROUP,
-                                                    kubernetes.CERT_MANAGER_VERSION,
-                                                    kubernetes.NAMESPACE_DEPLOYMENT,
-                                                    'certificates',
-                                                    apiserver_kubelet_client_certificate_name,
-                                                    apiserver_kubelet_client_certificate)
-        except Exception:
-            LOG.error("Failed to create %s resource" % apiserver_kubelet_client_certificate_name)
-            raise
+        certificates_to_be_applied = [
+            admin_conf_cert,
+            super_admin_conf_cert,
+            apiserver_cert,
+            apiserver_kubelet_client_cert,
+            kube_scheduler_cert,
+            controller_manager_cert,
+            kubelet_cert
+        ]
 
-        self._wait_secret_creation(apiserver_kubelet_client_certificate_name)
-
-        LOG.info("%s Secret successfully created and populated with cert/key data" %
-        apiserver_kubelet_client_certificate_name)
-
-        # Create scheduler certificate/key
-        kube_scheduler_certificate_name = constants.KUBE_SCHEDULER_CERT.format(host.hostname)
-
-        kube_scheduler_certificate = {
-            'apiVersion': api_version,
-            'kind': 'Certificate',
-            'metadata': {
-                'name': kube_scheduler_certificate_name,
-                'namespace': kubernetes.NAMESPACE_DEPLOYMENT
-            },
-            'spec': {
-                'secretName': kube_scheduler_certificate_name,
-                'commonName': 'system:kube-scheduler',
-                'duration': str(duration) + 'h',
-                'renewBefore': renew_before,
-                'usages': usages,
-                'issuerRef': issuer_reference
-            }
-        }
-
-        try:
-            kube_operator.apply_custom_resource(kubernetes.CERT_MANAGER_GROUP,
-                                                    kubernetes.CERT_MANAGER_VERSION,
-                                                    kubernetes.NAMESPACE_DEPLOYMENT,
-                                                    'certificates',
-                                                    kube_scheduler_certificate_name,
-                                                    kube_scheduler_certificate)
-        except Exception:
-            LOG.error("Failed to create %s resource" % kube_scheduler_certificate_name)
-            raise
-
-        self._wait_secret_creation(kube_scheduler_certificate_name)
-
-        LOG.info("%s Secret successfully created and populated with cert/key data" %
-        kube_scheduler_certificate_name)
-
-        # Create controller manager certificate/key
-        controller_manager_certificate_name = constants.KUBE_CONTROLLER_MANAGER_CERT.format(host.hostname)
-        controller_manager_certificate = {
-            'apiVersion': api_version,
-            'kind': 'Certificate',
-            'metadata': {
-                'name': controller_manager_certificate_name,
-                'namespace': kubernetes.NAMESPACE_DEPLOYMENT
-            },
-            'spec': {
-                'secretName': controller_manager_certificate_name,
-                'commonName': 'system:kube-controller-manager',
-                'duration': str(duration) + 'h',
-                'renewBefore': renew_before,
-                'usages': usages,
-                'issuerRef': issuer_reference
-            }
-        }
-
-        try:
-            kube_operator.apply_custom_resource(kubernetes.CERT_MANAGER_GROUP,
-                                                    kubernetes.CERT_MANAGER_VERSION,
-                                                    kubernetes.NAMESPACE_DEPLOYMENT,
-                                                    'certificates',
-                                                    controller_manager_certificate_name,
-                                                    controller_manager_certificate)
-        except Exception:
-            LOG.error("Failed to create %s resource" % controller_manager_certificate_name)
-            raise
-
-        self._wait_secret_creation(controller_manager_certificate_name)
-
-        LOG.info("%s Secret successfully created and populated with cert/key data" %
-        controller_manager_certificate_name)
-
-        # Create kubelet client certificate/key
-        kubelet_certificate_name = constants.KUBE_KUBELET_CERT.format(host.hostname)
-        kubelet_certificate = {
-            'apiVersion': api_version,
-            'kind': 'Certificate',
-            'metadata': {
-                'name': kubelet_certificate_name,
-                'namespace': kubernetes.NAMESPACE_DEPLOYMENT
-            },
-            'spec': {
-                'secretName': kubelet_certificate_name,
-                'commonName': 'system:node:' + host.hostname,
-                'duration': str(duration) + 'h',
-                'renewBefore': renew_before,
-                'subject': {
-                    'organizations': ['system:nodes']
-                },
-                'usages': usages,
-                'issuerRef': issuer_reference
-            }
-        }
-
-        try:
-            kube_operator.apply_custom_resource(kubernetes.CERT_MANAGER_GROUP,
-                                                    kubernetes.CERT_MANAGER_VERSION,
-                                                    kubernetes.NAMESPACE_DEPLOYMENT,
-                                                    'certificates',
-                                                    kubelet_certificate_name,
-                                                    kubelet_certificate)
-        except Exception:
-            LOG.error("Failed to create %s resource" % kubelet_certificate_name)
-            raise
-
-        self._wait_secret_creation(kubelet_certificate_name)
-
-        LOG.info("%s Secret successfully created and populated with cert/key data" %
-        kubelet_certificate_name)
+        for certificate in certificates_to_be_applied:
+            apply_certificate_to_k8s(certificate)
 
     def _build_k8s_worker_certificates(self, host, api_version, issuer_reference, usages):
         kube_operator = kubernetes.KubeOperator()

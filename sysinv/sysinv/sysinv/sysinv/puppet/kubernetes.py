@@ -186,6 +186,15 @@ class KubernetesPuppet(base.BasePuppet):
             'platform::kubernetes::params::admin_key': cert_data[constants.KUBE_ADMIN_CERT][1],
         })
 
+        secret_list = [constants.KUBE_SUPER_ADMIN_CERT]
+        cert_data = self._get_kubernetes_components_cert_and_key(secret_list)
+        config.update({
+            'platform::kubernetes::params::super_admin_cert':
+                cert_data[constants.KUBE_SUPER_ADMIN_CERT][0],
+            'platform::kubernetes::params::super_admin_key':
+                cert_data[constants.KUBE_SUPER_ADMIN_CERT][1],
+        })
+
         return config
 
     @staticmethod
