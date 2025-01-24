@@ -46,7 +46,7 @@ UPDATE_RESULT_ATTEMPTS=30  # ~15 min to update app
 COMMAND_RETRY_SLEEP=30
 COMMAND_RETRY_ATTEMPTS=10  # ~5 min to wait on a retried command.
 SOFTWARE_LOG_PATH='/var/log/software.log'
-CRITICAL_APPS='nginx-ingress-controller cert-manager'
+CRITICAL_APPS='nginx-ingress-controller cert-manager platform-integ-apps'
 APPS_NOT_TO_UPDATE='deployment-manager'
 
 TEST_CERT_CM="
@@ -212,7 +212,7 @@ function check_cert_manager {
             kubectl apply -f <(echo "$TEST_CERT_CM") --kubeconfig=/etc/kubernetes/admin.conf
             if [ $? -ne 0 ]; then
                 log "Error applying certificate CRD. Retrying."
-                sleep 5
+                sleep 3
                 continue
             fi
             apply_failed=0
