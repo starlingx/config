@@ -606,7 +606,15 @@ class NetworkingPuppet(base.BasePuppet):
                         break
         return base_port
 
-    def _get_ptp_dev_info(self, base_port, pin):
+    def _get_ptp_dev_info(self, base_port, meta_params_dict):
+        pin = meta_params_dict['external_source']
+        direction_map = {'input': 1, 'output': 2}
+        default_pin_map = {'SMA1': 'input',
+                           'SMA2': 'output',
+                           'U.FL1': 'input',
+                           'U.FL2': 'output',
+                           }
+
         # Validate PTP dev and get pin path
         path = '/sys/class/net/%s/device/ptp/*/pins/%s' % (base_port, pin)
         path_list = glob.glob(path)
@@ -622,11 +630,21 @@ class NetworkingPuppet(base.BasePuppet):
         except Exception:
             LOG.error(f'Cannot find a PTP pin channel device in {pin_path}')
             return None
-        # Get the pin enable function: 1=Rx 2=Tx
-        #   U.FL1 needs to be Tx and U.FL2 need to be Rx
-        #   SMA1 and SMA2 will default to Tx
-        func = 1 if pin == 'U.FL2' else 2
-        return {'func': func, 'channel': channel, 'path': pin_path}
+        if 'external_source_direction' in meta_params_dict:
+            direction = meta_params_dict['external_source_direction']
+        else:
+            direction = default_pin_map[pin]
+            LOG.info(f'PTP pin {pin} direction not specified, using the default: {direction}')
+        if direction not in direction_map.keys():
+            LOG.error(f'Bad PTP pin direction: \'{direction}\'')
+            return None
+        return {'func': direction_map[direction], 'channel': channel, 'path': pin_path}
+
+    def _ptp_parameters_interface_del(self, ptp_parameters_interface, param, iface_uuid):
+        if len(param['owners']) > 1:
+            param['owners'].remove(iface_uuid)
+        else:
+            ptp_parameters_interface.remove(param)
 
     def _set_external_source_parameters(self, iface_uuid, ptp_parameters_interface, base_port):
         if not base_port:
@@ -638,44 +656,39 @@ class NetworkingPuppet(base.BasePuppet):
             'input_ext_QL': constants.PTP_SYNCE_EXTERNAL_INPUT_EXT_QL,
             'internal_prio': constants.PTP_SYNCE_INTERNAL_PRIO,
         }
-        allowed_params = ['external_source', 'input_QL', 'input_ext_QL', 'internal_prio',
-                                  'external_enable_cmd', 'external_disable_cmd']
 
-        # 'external_source' is a virtual parameter that wll not be forwarded to
-        # synce4l configuration. We first check if it is set to use it as the
-        # external source name. Then we set synce4l's real parameters with
-        # default values and remove it from the list or from the owners list
-        # depending if parameter is duplicated in other interfaces.
-        external_source = {}
+        meta_params = ('external_source', 'external_source_direction')
+        synce4l_params = ('input_QL', 'input_ext_QL', 'internal_prio', 'external_enable_cmd', 'external_disable_cmd')
+
+        # Handle meta parameters first (not forwarded to the sync4l config)
+        meta_params_dict = {}
         for param in ptp_parameters_interface[:]:
             if iface_uuid not in param['owners']:
                 continue
-            if param['name'] in allowed_params:
-                if param['name'] == 'external_source':
-                    ext_src_name = param['value']
-                    info = self._get_ptp_dev_info(base_port, ext_src_name)
-                    if info:
-                        external_source['name'] = ext_src_name
-                        external_source['params'] = default_params
-                        external_source['params'].update({'external_disable_cmd':
-                            'echo %s %s > %s' % (0, info['channel'], info['path'])})
-                        external_source['params'].update({'external_enable_cmd':
-                            'echo %s %s > %s' % (info['func'], info['channel'], info['path'])})
-                    if len(param['owners']) > 1:
-                        param['owners'].remove(iface_uuid)
-                    else:
-                        ptp_parameters_interface.remove(param)
-        # Now do the same for the synce4l's real parameters configured by the user.
+            if param['name'] in meta_params:
+                meta_params_dict[param['name']] = param['value']
+                self._ptp_parameters_interface_del(ptp_parameters_interface, param, iface_uuid)
+
+        # Create the external source section
+        external_source = {}
+        if 'external_source' in meta_params_dict:
+            info = self._get_ptp_dev_info(base_port, meta_params_dict)
+            if info:
+                external_source['name'] = meta_params_dict['external_source']
+                external_source['params'] = default_params
+                external_source['params'].update({'external_disable_cmd':
+                    'echo %s %s > %s' % (0, info['channel'], info['path'])})
+                external_source['params'].update({'external_enable_cmd':
+                    'echo %s %s > %s' % (info['func'], info['channel'], info['path'])})
+
+        # Finish handling the real parameters
         if 'name' in external_source:
             for param in ptp_parameters_interface[:]:
                 if iface_uuid not in param['owners']:
                     continue
-                if param['name'] in allowed_params:
+                if param['name'] in synce4l_params:
                     external_source['params'].update({param['name']: param['value']})
-                    if len(param['owners']) > 1:
-                        param['owners'].remove(iface_uuid)
-                    else:
-                        ptp_parameters_interface.remove(param)
+                    self._ptp_parameters_interface_del(ptp_parameters_interface, param, iface_uuid)
         return external_source
 
     def _get_instance_ptp_config(self, host):
