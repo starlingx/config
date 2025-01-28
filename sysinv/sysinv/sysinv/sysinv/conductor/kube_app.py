@@ -398,8 +398,8 @@ class AppOperator(object):
         # Run post lifecycle hook for the abort operation
         lifecycle_hook_info = LifecycleHookInfo()
         lifecycle_hook_info.operation = constants.APP_ABORT_OP
-        lifecycle_hook_info.relative_timing = constants.APP_LIFECYCLE_TIMING_POST
-        lifecycle_hook_info.lifecycle_type = constants.APP_LIFECYCLE_TYPE_OPERATION
+        lifecycle_hook_info.relative_timing = LifecycleConstants.APP_LIFECYCLE_TIMING_POST
+        lifecycle_hook_info.lifecycle_type = LifecycleConstants.APP_LIFECYCLE_TYPE_OPERATION
         lifecycle_hook_info.extra[LifecycleConstants.ABORTED_OP] = operation
         try:
             self.app_lifecycle_actions(None, None, app._kube_app, lifecycle_hook_info)
@@ -1874,8 +1874,10 @@ class AppOperator(object):
                 # lifecycle to handle custom k8s services from apps
                 # that need to be checked after helmrelease is installed
                 try:
-                    lifecycle_hook_info.relative_timing = constants.APP_LIFECYCLE_TIMING_STATUS
-                    lifecycle_hook_info.lifecycle_type = constants.APP_LIFECYCLE_TYPE_FLUXCD_REQUEST
+                    lifecycle_hook_info.relative_timing = \
+                        LifecycleConstants.APP_LIFECYCLE_TIMING_STATUS
+                    lifecycle_hook_info.lifecycle_type = \
+                        LifecycleConstants.APP_LIFECYCLE_TYPE_FLUXCD_REQUEST
                     self.app_lifecycle_actions(None, None, app._kube_app, lifecycle_hook_info)
                 except exception.LifecycleStatusCheckNotReady:
                     return False
@@ -1890,8 +1892,8 @@ class AppOperator(object):
 
         lifecycle_hook_info = LifecycleHookInfo()
         lifecycle_hook_info.operation = request
-        lifecycle_hook_info.relative_timing = constants.APP_LIFECYCLE_TIMING_PRE
-        lifecycle_hook_info.lifecycle_type = constants.APP_LIFECYCLE_TYPE_FLUXCD_REQUEST
+        lifecycle_hook_info.relative_timing = LifecycleConstants.APP_LIFECYCLE_TIMING_PRE
+        lifecycle_hook_info.lifecycle_type = LifecycleConstants.APP_LIFECYCLE_TYPE_FLUXCD_REQUEST
         self.app_lifecycle_actions(None, None, app._kube_app, lifecycle_hook_info)
         try:
             with Timeout(constants.APP_INSTALLATION_TIMEOUT,
@@ -1912,8 +1914,8 @@ class AppOperator(object):
             rc = False
 
         # Here a manifest retry can be performed by throwing ApplicationApplyFailure
-        lifecycle_hook_info.relative_timing = constants.APP_LIFECYCLE_TIMING_POST
-        lifecycle_hook_info.lifecycle_type = constants.APP_LIFECYCLE_TYPE_FLUXCD_REQUEST
+        lifecycle_hook_info.relative_timing = LifecycleConstants.APP_LIFECYCLE_TIMING_POST
+        lifecycle_hook_info.lifecycle_type = LifecycleConstants.APP_LIFECYCLE_TYPE_FLUXCD_REQUEST
         lifecycle_hook_info[LifecycleConstants.EXTRA][LifecycleConstants.RETURN_CODE] = rc
         self.app_lifecycle_actions(None, None, app._kube_app, lifecycle_hook_info)
         return rc
@@ -1982,10 +1984,12 @@ class AppOperator(object):
             lifecycle_hook_info_app_recover = copy.deepcopy(lifecycle_hook_info_app)
             lifecycle_hook_info_app_recover.operation = constants.APP_RECOVER_OP
 
-            lifecycle_hook_info_app_recover.lifecycle_type = constants.APP_LIFECYCLE_TYPE_RBD
+            lifecycle_hook_info_app_recover.lifecycle_type = \
+                LifecycleConstants.APP_LIFECYCLE_TYPE_RBD
             self.app_lifecycle_actions(None, None, rpc_app, lifecycle_hook_info_app_recover)
 
-            lifecycle_hook_info_app_recover.lifecycle_type = constants.APP_LIFECYCLE_TYPE_RESOURCE
+            lifecycle_hook_info_app_recover.lifecycle_type = \
+                LifecycleConstants.APP_LIFECYCLE_TYPE_RESOURCE
             self.app_lifecycle_actions(None, None, rpc_app, lifecycle_hook_info_app_recover)
 
             LOG.info("Recovering helm charts for Application %s (%s)..."
@@ -2737,13 +2741,17 @@ class AppOperator(object):
             promote_desired_state(app)
 
             # Perform app resources actions
-            lifecycle_hook_info_app_apply.relative_timing = constants.APP_LIFECYCLE_TIMING_PRE
-            lifecycle_hook_info_app_apply.lifecycle_type = constants.APP_LIFECYCLE_TYPE_RESOURCE
+            lifecycle_hook_info_app_apply.relative_timing = \
+                LifecycleConstants.APP_LIFECYCLE_TIMING_PRE
+            lifecycle_hook_info_app_apply.lifecycle_type = \
+                LifecycleConstants.APP_LIFECYCLE_TYPE_RESOURCE
             self.app_lifecycle_actions(None, None, rpc_app, lifecycle_hook_info_app_apply)
 
             # Perform rbd actions
-            lifecycle_hook_info_app_apply.relative_timing = constants.APP_LIFECYCLE_TIMING_PRE
-            lifecycle_hook_info_app_apply.lifecycle_type = constants.APP_LIFECYCLE_TYPE_RBD
+            lifecycle_hook_info_app_apply.relative_timing = \
+                LifecycleConstants.APP_LIFECYCLE_TIMING_PRE
+            lifecycle_hook_info_app_apply.lifecycle_type = \
+                LifecycleConstants.APP_LIFECYCLE_TYPE_RBD
             self.app_lifecycle_actions(None, None, rpc_app, lifecycle_hook_info_app_apply)
 
             if AppOperator.is_app_aborted(app.name):
@@ -2790,8 +2798,10 @@ class AppOperator(object):
         try:
             if ready:
                 # Perform pre apply manifest actions
-                lifecycle_hook_info_app_apply.relative_timing = constants.APP_LIFECYCLE_TIMING_PRE
-                lifecycle_hook_info_app_apply.lifecycle_type = constants.APP_LIFECYCLE_TYPE_MANIFEST
+                lifecycle_hook_info_app_apply.relative_timing = \
+                    LifecycleConstants.APP_LIFECYCLE_TIMING_PRE
+                lifecycle_hook_info_app_apply.lifecycle_type = \
+                    LifecycleConstants.APP_LIFECYCLE_TYPE_MANIFEST
                 self.app_lifecycle_actions(None, None, rpc_app, lifecycle_hook_info_app_apply)
 
                 self._update_app_status(
@@ -2814,9 +2824,14 @@ class AppOperator(object):
                     LOG.info("Application %s (%s) apply completed." % (app.name, app.version))
 
                     # Perform post apply manifest actions
-                    lifecycle_hook_info_app_apply.relative_timing = constants.APP_LIFECYCLE_TIMING_POST
-                    lifecycle_hook_info_app_apply.lifecycle_type = constants.APP_LIFECYCLE_TYPE_MANIFEST
-                    lifecycle_hook_info_app_apply[LifecycleConstants.EXTRA][LifecycleConstants.MANIFEST_APPLIED] = True
+                    lifecycle_hook_info_app_apply.relative_timing = \
+                        LifecycleConstants.APP_LIFECYCLE_TIMING_POST
+                    lifecycle_hook_info_app_apply.lifecycle_type = \
+                        LifecycleConstants.APP_LIFECYCLE_TYPE_MANIFEST
+                    (
+                        lifecycle_hook_info_app_apply[LifecycleConstants.EXTRA]
+                        [LifecycleConstants.MANIFEST_APPLIED]
+                    ) = True
                     self.app_lifecycle_actions(None, None, rpc_app, lifecycle_hook_info_app_apply)
 
                     return True
@@ -2825,19 +2840,27 @@ class AppOperator(object):
             LOG.exception(e)
 
             # Perform post apply manifest actions
-            lifecycle_hook_info_app_apply.relative_timing = constants.APP_LIFECYCLE_TIMING_POST
-            lifecycle_hook_info_app_apply.lifecycle_type = constants.APP_LIFECYCLE_TYPE_MANIFEST
-            lifecycle_hook_info_app_apply[LifecycleConstants.EXTRA][LifecycleConstants.MANIFEST_APPLIED] = False
+            lifecycle_hook_info_app_apply.relative_timing = \
+                LifecycleConstants.APP_LIFECYCLE_TIMING_POST
+            lifecycle_hook_info_app_apply.lifecycle_type = \
+                LifecycleConstants.APP_LIFECYCLE_TYPE_MANIFEST
+            (
+                lifecycle_hook_info_app_apply[LifecycleConstants.EXTRA]
+                [LifecycleConstants.MANIFEST_APPLIED]
+            ) = False
             self.app_lifecycle_actions(None, None, rpc_app, lifecycle_hook_info_app_apply)
 
         # Perform rbd actions
-        lifecycle_hook_info_app_apply.relative_timing = constants.APP_LIFECYCLE_TIMING_POST
-        lifecycle_hook_info_app_apply.lifecycle_type = constants.APP_LIFECYCLE_TYPE_RBD
+        lifecycle_hook_info_app_apply.relative_timing = \
+            LifecycleConstants.APP_LIFECYCLE_TIMING_POST
+        lifecycle_hook_info_app_apply.lifecycle_type = LifecycleConstants.APP_LIFECYCLE_TYPE_RBD
         self.app_lifecycle_actions(None, None, rpc_app, lifecycle_hook_info_app_apply)
 
         # Perform app resources actions
-        lifecycle_hook_info_app_apply.relative_timing = constants.APP_LIFECYCLE_TIMING_POST
-        lifecycle_hook_info_app_apply.lifecycle_type = constants.APP_LIFECYCLE_TYPE_RESOURCE
+        lifecycle_hook_info_app_apply.relative_timing = \
+            LifecycleConstants.APP_LIFECYCLE_TIMING_POST
+        lifecycle_hook_info_app_apply.lifecycle_type = \
+            LifecycleConstants.APP_LIFECYCLE_TYPE_RESOURCE
         self.app_lifecycle_actions(None, None, rpc_app, lifecycle_hook_info_app_apply)
 
         # If it gets here, something went wrong
@@ -2930,8 +2953,9 @@ class AppOperator(object):
             semantic_check_result = False
             try:
                 lifecycle_hook_info = copy.deepcopy(lifecycle_hook_info_app_update)
-                lifecycle_hook_info.relative_timing = constants.APP_LIFECYCLE_TIMING_PRE
-                lifecycle_hook_info.lifecycle_type = constants.APP_LIFECYCLE_TYPE_SEMANTIC_CHECK
+                lifecycle_hook_info.relative_timing = LifecycleConstants.APP_LIFECYCLE_TIMING_PRE
+                lifecycle_hook_info.lifecycle_type = \
+                    LifecycleConstants.APP_LIFECYCLE_TYPE_SEMANTIC_CHECK
                 lifecycle_hook_info[LifecycleConstants.EXTRA][LifecycleConstants.TO_APP] = True
 
                 self.app_lifecycle_actions(None, None, to_rpc_app, lifecycle_hook_info)
@@ -3203,13 +3227,17 @@ class AppOperator(object):
                 demote_desired_state(app)
 
                 # Perform rbd actions
-                lifecycle_hook_info_app_remove.relative_timing = constants.APP_LIFECYCLE_TIMING_POST
-                lifecycle_hook_info_app_remove.lifecycle_type = constants.APP_LIFECYCLE_TYPE_RBD
+                lifecycle_hook_info_app_remove.relative_timing = \
+                    LifecycleConstants.APP_LIFECYCLE_TIMING_POST
+                lifecycle_hook_info_app_remove.lifecycle_type = \
+                    LifecycleConstants.APP_LIFECYCLE_TYPE_RBD
                 self.app_lifecycle_actions(None, None, rpc_app, lifecycle_hook_info_app_remove)
 
                 # Perform app resources actions
-                lifecycle_hook_info_app_remove.relative_timing = constants.APP_LIFECYCLE_TIMING_POST
-                lifecycle_hook_info_app_remove.lifecycle_type = constants.APP_LIFECYCLE_TYPE_RESOURCE
+                lifecycle_hook_info_app_remove.relative_timing = \
+                    LifecycleConstants.APP_LIFECYCLE_TIMING_POST
+                lifecycle_hook_info_app_remove.lifecycle_type = \
+                    LifecycleConstants.APP_LIFECYCLE_TYPE_RESOURCE
                 self.app_lifecycle_actions(None, None, rpc_app, lifecycle_hook_info_app_remove)
 
             except Exception as e:
@@ -3282,8 +3310,8 @@ class AppOperator(object):
 
         if aborted_operation:
             # Run pre lifecycle hook for the abort operation
-            lifecycle_hook_info.relative_timing = constants.APP_LIFECYCLE_TIMING_PRE
-            lifecycle_hook_info.lifecycle_type = constants.APP_LIFECYCLE_TYPE_OPERATION
+            lifecycle_hook_info.relative_timing = LifecycleConstants.APP_LIFECYCLE_TIMING_PRE
+            lifecycle_hook_info.lifecycle_type = LifecycleConstants.APP_LIFECYCLE_TYPE_OPERATION
             lifecycle_hook_info.extra[LifecycleConstants.ABORTED_OP] = aborted_operation
             try:
                 self.app_lifecycle_actions(None, None, rpc_app, lifecycle_hook_info)
@@ -3313,13 +3341,17 @@ class AppOperator(object):
         app = AppOperator.Application(rpc_app)
         try:
             # Perform rbd actions
-            lifecycle_hook_info_app_delete.relative_timing = constants.APP_LIFECYCLE_TIMING_PRE
-            lifecycle_hook_info_app_delete.lifecycle_type = constants.APP_LIFECYCLE_TYPE_RBD
+            lifecycle_hook_info_app_delete.relative_timing = \
+                LifecycleConstants.APP_LIFECYCLE_TIMING_PRE
+            lifecycle_hook_info_app_delete.lifecycle_type = \
+                LifecycleConstants.APP_LIFECYCLE_TYPE_RBD
             self.app_lifecycle_actions(None, None, rpc_app, lifecycle_hook_info_app_delete)
 
             # Perform app resources actions
-            lifecycle_hook_info_app_delete.relative_timing = constants.APP_LIFECYCLE_TIMING_PRE
-            lifecycle_hook_info_app_delete.lifecycle_type = constants.APP_LIFECYCLE_TYPE_RESOURCE
+            lifecycle_hook_info_app_delete.relative_timing = \
+                LifecycleConstants.APP_LIFECYCLE_TIMING_PRE
+            lifecycle_hook_info_app_delete.lifecycle_type = \
+                LifecycleConstants.APP_LIFECYCLE_TYPE_RESOURCE
             self.app_lifecycle_actions(None, None, rpc_app, lifecycle_hook_info_app_delete)
 
             self._plugins.deactivate_plugins(app)

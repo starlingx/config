@@ -2001,25 +2001,25 @@ APP_BACKUP = 'backup'
 APP_ETCD_BACKUP = 'etcd-backup'
 APP_RESTORE = 'restore'
 
-# Lifecycle constants
+# -----------------------------------------------------------------------------------------------
+# These constants are outdated and were copied to sysinv/helm/lifecycle_constants.py
+# TODO(edias): after all apps start to use the new constants, the ones below should be deleted.
+
 APP_LIFECYCLE_TIMING_PRE = 'pre'
 APP_LIFECYCLE_TIMING_STATUS = 'status'
 APP_LIFECYCLE_TIMING_POST = 'post'
-
 APP_LIFECYCLE_TYPE_SEMANTIC_CHECK = 'check'
 APP_LIFECYCLE_TYPE_OPERATION = 'operation'
 APP_LIFECYCLE_TYPE_RBD = 'rbd'
 APP_LIFECYCLE_TYPE_RESOURCE = 'resource'
-# fluxcd manifest
-# outside the function that has the retry decorator
 APP_LIFECYCLE_TYPE_MANIFEST = 'manifest'
-# inside the function that has a retry decorator
 APP_LIFECYCLE_TYPE_FLUXCD_REQUEST = 'fluxcd-request'
-
 APP_LIFECYCLE_MODE_MANUAL = 'manual'
 APP_LIFECYCLE_MODE_AUTO = 'auto'
 APP_LIFECYCLE_FORCE_OPERATION = 'force'
 APP_LIFECYCLE_OPERATION_MTC_ACTION = 'mtc-action'
+
+# -----------------------------------------------------------------------------------------------
 
 BACKUP_ACTION_NOTIFY_SUCCESS = 'success'
 BACKUP_ACTION_NOTIFY_FAILURE = 'failure'
