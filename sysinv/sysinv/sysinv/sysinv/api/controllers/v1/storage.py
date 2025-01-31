@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2024 Wind River Systems, Inc.
+# Copyright (c) 2013-2025 Wind River Systems, Inc.
 #
 
 from eventlet.green import subprocess
@@ -72,6 +72,39 @@ class StoragePatchType(types.JsonPatchType):
     @staticmethod
     def mandatory_attrs():
         return ['/address', '/ihost_uuid']
+
+    @staticmethod
+    def validate(patch):
+        if patch.path in patch.internal_attrs():
+            msg = _("'%s' is an internal attribute and can not be updated")
+            raise wsme.exc.ClientSideError(msg % patch.path)
+
+        if patch.path in patch.mandatory_attrs() and patch.op == 'remove':
+            msg = _("'%s' is a mandatory attribute and can not be removed")
+            raise wsme.exc.ClientSideError(msg % patch.path)
+
+        if patch.op == 'add':
+            if patch.path.count('/') == 1:
+                msg = _('Adding a new attribute (%s) to the root of '
+                        ' the resource is not allowed')
+                raise wsme.exc.ClientSideError(msg % patch.path)
+
+        # Allow None on replace operation for OSDID reset purpose when using rook-ceph
+        is_rook_ceph_backend = StorageBackendConfig.has_backend(pecan.request.dbapi,
+                                                                 constants.SB_TYPE_CEPH_ROOK)
+
+        osdid_reset_allow_none = is_rook_ceph_backend and patch.op == 'replace' and patch.path == '/osdid'
+
+        if patch.op != 'remove' and patch.value is None:
+            if not osdid_reset_allow_none:
+                msg = _("Edit and Add operation of the field requires "
+                        "non-empty value.")
+                raise wsme.exc.ClientSideError(msg)
+
+        ret = {'path': patch.path, 'op': patch.op}
+        if patch.value is not None or osdid_reset_allow_none:
+            ret['value'] = patch.value
+        return ret
 
 
 class Storage(base.APIBase):
@@ -366,6 +399,8 @@ class StorageController(rest.RestController):
         # replace ihost_uuid and istor_uuid with corresponding
         patch_obj = jsonpatch.JsonPatch(patch)
         osdid = None
+        is_rook_ceph_backend = StorageBackendConfig.has_backend(pecan.request.dbapi,
+                                                                 constants.SB_TYPE_CEPH_ROOK)
         for p in patch_obj:
             if p['path'] == '/ihost_uuid':
                 p['path'] = '/forihostid'
@@ -378,10 +413,14 @@ class StorageController(rest.RestController):
                                                         p['value'])
                 p['value'] = tier.id
             elif p['path'] == '/osdid':
-                try:
-                    osdid = int(p['value'])
-                except ValueError:
-                    raise wsme.exc.ClientSideError("The osdid must be an integer!")
+                # Allow None for OSDID for the reset purpose when using rook-ceph
+                if is_rook_ceph_backend and p['value'] is None:
+                    osdid = None
+                else:
+                    try:
+                        osdid = int(p['value'])
+                    except ValueError:
+                        raise wsme.exc.ClientSideError("The osdid must be an integer!")
                 p['value'] = osdid
 
         try:
