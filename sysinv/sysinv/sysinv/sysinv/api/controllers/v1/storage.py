@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2024 Wind River Systems, Inc.
+# Copyright (c) 2013-2025 Wind River Systems, Inc.
 #
 
 from eventlet.green import subprocess
@@ -510,16 +510,20 @@ class StorageController(rest.RestController):
                                                 ihost['hostname']))
             self.delete_stor(stor_uuid)
         elif (stor.function == constants.STOR_FUNCTION_OSD and
-              stor.state in [constants.SB_STATE_CONFIGURING_ON_UNLOCK,
-                             constants.SB_STATE_CONFIGURING_WITH_APP]):
-            # Host must be locked
+              stor.state == constants.SB_STATE_CONFIGURING_ON_UNLOCK):
+            # Host must be locked only for ceph bare-metal
             if ihost['administrative'] != constants.ADMIN_LOCKED:
                 raise wsme.exc.ClientSideError(_("Host %s must be locked." %
                                                 ihost['hostname']))
 
             self.delete_stor(stor_uuid)
         elif _satisfy_other_conditions_to_delete_osd():
-            if ihost['administrative'] != constants.ADMIN_LOCKED:
+            has_ceph_rook_backend = StorageBackendConfig.has_backend(
+                pecan.request.dbapi,
+                target=constants.SB_TYPE_CEPH_ROOK
+            )
+            # Host must be locked only for ceph bare-metal
+            if not has_ceph_rook_backend and ihost['administrative'] != constants.ADMIN_LOCKED:
                 raise wsme.exc.ClientSideError(_("Host %s must be locked." %
                                                 ihost['hostname']))
             self.delete_stor(stor_uuid)
@@ -531,27 +535,147 @@ class StorageController(rest.RestController):
                          constants.STOR_FUNCTION_OSD,
                          constants.SB_STATE_CONFIGURING_ON_UNLOCK))
 
+    def _get_replication_factor(self, storage_backend):
+        if not storage_backend:
+            if utils.is_aio_simplex_system(pecan.request.dbapi):
+                return constants.AIO_SX_CEPH_REPLICATION_FACTOR_DEFAULT
+            return constants.CEPH_REPLICATION_FACTOR_DEFAULT
+
+        replication = storage_backend.capabilities.get(constants.CEPH_BACKEND_REPLICATION_CAP, None)
+        if not replication:
+            raise exception.SysinvException(
+                '{} missing from storage backend {}.'.format(
+                    constants.CEPH_BACKEND_REPLICATION_CAP,
+                    storage_backend.name))
+
+        try:
+            replication = int(replication)
+        except ValueError:
+            raise exception.SysinvException(
+                '{} from storage backend {} must be a integer.'.format(
+                    constants.CEPH_BACKEND_REPLICATION_CAP,
+                    storage_backend.name))
+
+        return replication
+
+    def _get_rook_hosts(self, caps, only_rook=False):
+        if caps.get('deployment_model', '') == constants.CEPH_ROOK_DEPLOYMENT_CONTROLLER:
+            hosts = pecan.request.dbapi.ihost_get_by_personality(constants.CONTROLLER)
+        elif caps.get('deployment_model', '') == constants.CEPH_ROOK_DEPLOYMENT_DEDICATED:
+            hosts = pecan.request.dbapi.ihost_get_by_personality(constants.WORKER)
+        else:
+            hosts = pecan.request.dbapi.ihost_get_list()
+
+        if only_rook:
+            hosts_rook = []
+            for host in hosts:
+                try:
+                    host_fs = pecan.request.dbapi.host_fs_get_by_name_ihost(
+                                    host.uuid, constants.FILESYSTEM_NAME_CEPH)
+                    functions = host_fs['capabilities']['functions']
+                    if (constants.FILESYSTEM_CEPH_FUNCTION_MONITOR in functions or
+                            constants.FILESYSTEM_CEPH_FUNCTION_OSD in functions):
+                        hosts_rook.append(host)
+                except exception.HostFSNameNotFound:
+                    LOG.warn(f"Host {host.uuid} does not have host-fs ceph")
+            LOG.debug(f"hosts_rook: {hosts_rook}")
+            return hosts_rook
+
+        LOG.debug(f"hosts: {hosts}")
+        return hosts
+
+    def _get_osd_count(self, ceph_rook_backend, stor_to_remove):
+        hosts_by_deployment_model = self._get_rook_hosts(ceph_rook_backend.get('capabilities', {}))
+        host_with_osds_count = 0
+        osds_count = 0
+        for host in hosts_by_deployment_model:
+            istors = pecan.request.dbapi.istor_get_by_ihost(host.uuid)
+            has_osd = False
+
+            for stor in istors:
+                if (stor.function == constants.STOR_FUNCTION_OSD and
+                        stor.state == constants.SB_STATE_CONFIGURED):
+                    if stor_to_remove.uuid != stor.uuid:
+                        has_osd = True
+                        osds_count += 1
+            if has_osd:
+                host_with_osds_count += 1
+
+        return host_with_osds_count, osds_count
+
     def delete_stor(self, stor_uuid, remove_from_cluster=False):
         """Delete a stor"""
 
         stor = objects.storage.get_by_uuid(pecan.request.context, stor_uuid)
 
         try:
-            # The conductor will handle removing the stor, not all functions
-            # need special handling
-            if stor.function == constants.STOR_FUNCTION_OSD and remove_from_cluster:
-                pecan.request.rpcapi.unconfigure_osd_istor(pecan.request.context,
-                                                            stor)
-            if stor.function == constants.STOR_FUNCTION_JOURNAL:
-                pecan.request.dbapi.istor_disable_journal(stor_uuid)
-            # Now remove the stor from DB
-            pecan.request.dbapi.istor_remove_disk_association(stor_uuid)
-            pecan.request.dbapi.istor_destroy(stor_uuid)
-            # Now remove the osd function from the ceph host filesystem
-            # if this is the last OSD on this host.
-            if StorageBackendConfig.has_backend(pecan.request.dbapi,
-                                                constants.SB_TYPE_CEPH_ROOK):
-                if (stor.function == constants.STOR_FUNCTION_OSD and
+            ceph_rook_backend = StorageBackendConfig.get_backend(pecan.request.dbapi,
+                                                                 constants.SB_TYPE_CEPH_ROOK)
+
+            rook_app_in_progress = ceph_rook_backend and ceph_rook_backend.task in \
+                         [constants.APP_UPLOAD_IN_PROGRESS,
+                          constants.APP_APPLY_IN_PROGRESS,
+                          constants.APP_REMOVE_IN_PROGRESS,
+                          constants.APP_UPDATE_IN_PROGRESS,
+                          constants.APP_RECOVER_IN_PROGRESS]
+
+            # This condition is used for the rook-ceph app to transition the storage to the `deleting-with-app` state.
+            # The storage will only be fully removed upon applying the rook-ceph app.
+            # The transition to `deleting-with-app` occurs only if:
+            # 1. The rook-ceph app is not in a transition state,
+            # 2. It is in not the `configuring-with-app` state, and
+            # 3. The rook-ceph app exists.
+            if (ceph_rook_backend and
+                    stor.state != constants.SB_STATE_CONFIGURING_WITH_APP and
+                    not rook_app_in_progress):
+                if stor.state == constants.SB_STATE_DELETING_WITH_APP:
+                    err_msg = f"This stor is already on {constants.SB_STATE_DELETING_WITH_APP} state."
+                    raise wsme.exc.ClientSideError(_(err_msg))
+
+                replication_factor = self._get_replication_factor(ceph_rook_backend)
+                host_with_osds_count, osds_count = self._get_osd_count(ceph_rook_backend, stor)
+                deployment_model = ceph_rook_backend.get("capabilities", {}).get("deployment_model", "")
+
+                # Compare replication_factor with OSDs count when deployment model is not open.
+                if deployment_model != constants.CEPH_ROOK_DEPLOYMENT_OPEN:
+                    if cutils.is_aio_simplex_system(pecan.request.dbapi):
+                        # Compare replication_factor with OSD count when is simplex enviroment
+                        if osds_count < replication_factor:
+                            err_msg = "This stor cannot be removed. The configured OSD count must be greater " \
+                                      "than or equal to the replication factor."
+                            raise wsme.exc.ClientSideError(_(err_msg))
+                    else:
+                        # Compare replication_factor with HOSTS WITH OSDs when is not simplex env
+                        if host_with_osds_count < replication_factor:
+                            err_msg = "This stor cannot be removed. Hosts with configured OSDs must be greater " \
+                                      "than or equal to the replication factor."
+                            raise wsme.exc.ClientSideError(_(err_msg))
+
+                LOG.info(f"Updating stor with uuid {stor_uuid} to {constants.SB_STATE_DELETING_WITH_APP} state")
+                istor_values = {'state': constants.SB_STATE_DELETING_WITH_APP}
+                pecan.request.dbapi.istor_update(stor_uuid, istor_values)
+            elif rook_app_in_progress:
+                # If the rook-ceph app is in progress, the delete stor is not initialized.
+                err_msg = "The application %s is in transition, please " \
+                            "wait for the current operation to complete " \
+                            "before remove stor." % constants.SB_TYPE_CEPH_ROOK
+                raise wsme.exc.ClientSideError(_(err_msg))
+            else:
+                # The conductor will handle removing the stor, not all functions
+                # need special handling
+                if stor.function == constants.STOR_FUNCTION_OSD and remove_from_cluster:
+                    pecan.request.rpcapi.unconfigure_osd_istor(pecan.request.context,
+                                                                stor)
+                if stor.function == constants.STOR_FUNCTION_JOURNAL:
+                    pecan.request.dbapi.istor_disable_journal(stor_uuid)
+                # Now remove the stor from DB
+                pecan.request.dbapi.istor_remove_disk_association(stor_uuid)
+                pecan.request.dbapi.istor_destroy(stor_uuid)
+
+                # Now remove the osd function from the ceph host filesystem
+                # if this is the last OSD on this host.
+                if (ceph_rook_backend is not None and
+                        stor.function == constants.STOR_FUNCTION_OSD and
                         len(pecan.request.dbapi.istor_get_all(stor.forihostid)) == 0):
                     fs = pecan.request.dbapi.host_fs_get_by_name_ihost(
                             stor.forihostid, constants.FILESYSTEM_NAME_CEPH)

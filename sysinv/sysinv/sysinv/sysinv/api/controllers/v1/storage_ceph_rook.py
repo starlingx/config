@@ -825,6 +825,11 @@ def _patch(storcephrook_uuid, patch):
                         rpc_storcephrook.as_dict(),
                         True)
 
+    # Transitioning to the `configuring-with-app` state because the backend has been updated.
+    # The rook-ceph application must be reapplied to get the new changes,
+    # which will then update the state back to `configured`.
+    rpc_storcephrook.state = constants.SB_STATE_CONFIGURING_WITH_APP
+
     try:
         rpc_storcephrook.save()
 
