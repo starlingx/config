@@ -15,7 +15,7 @@
 source /etc/platform/openrc
 
 # Check if a Kubernetes upgrade is in progress
-check_upgrade_status() {
+check_k8s_upgrade_status() {
     local kube_upgrade_status
     kube_upgrade_status=$(system kube-upgrade-show)
     if [ "$kube_upgrade_status" != "A kubernetes upgrade is not in progress" ]; then
@@ -24,13 +24,24 @@ check_upgrade_status() {
     return 0
 }
 
-# Check for K8S upgrade in progress and wait an hour and recheck.
+# Check if the platform is upgraded in progress
+check_platform_upgrade_status() {
+    local platform_upgrade_status
+    platform_upgrade_status=$(software deploy show)
+    if [ "$platform_upgrade_status" != "No deploy in progress" ]; then
+        return 1
+    fi
+    return 0
+}
+
 # Number of attempts to check upgrade status
 MAX_ATTEMPTS=2
 ATTEMPT=0
 K8S_UPGRADE_WAITING_TIME=3600
+PLATFORM_UPGRADE_WAITING_TIME=7200
 
-while ! check_upgrade_status; do
+# Check for K8S upgrade in progress and wait an hour and recheck.
+while ! check_k8s_upgrade_status; do
     ATTEMPT=$((ATTEMPT + 1))
     if [ $ATTEMPT -ge $MAX_ATTEMPTS ]; then
         echo "Kubernetes upgrade is still in progress after $ATTEMPT attempts. Exiting script."
@@ -38,6 +49,17 @@ while ! check_upgrade_status; do
         exit 1
     fi
     sleep $K8S_UPGRADE_WAITING_TIME
+done
+
+# Check for platform upgrade in progress and wait for two hours and recheck.
+while ! check_platform_upgrade_status; do
+    ATTEMPT=$((ATTEMPT + 1))
+    if [ $ATTEMPT -ge $MAX_ATTEMPTS ]; then
+        echo "Platform upgrade is still in progress after $ATTEMPT attempts. Exiting script."
+        # Exit here is OK since this will be called via cron next day.
+        exit 1
+    fi
+    sleep $PLATFORM_UPGRADE_WAITING_TIME
 done
 
 # Renew certificates 15 days before expiration
