@@ -36,6 +36,11 @@ class ConfFixture(config_fixture.Config):
         super(ConfFixture, self).setUp()
 
         self.conf.set_default('host', 'fake-mini')
+        # TODO(RemoveOpenstackRPCBackend): The openstack.common.rpc backend
+        # is not used anymore. The unit tests use a fake implementation of
+        # this backend. This needs to be adjusted to use a mockable/fake
+        # version zeromq rpc backend. Then remove the openstack.common.rpc code
+        # from source tree.
         self.conf.set_default('rpc_backend',
                               'sysinv.openstack.common.rpc.impl_fake')
         self.conf.set_default('rpc_backend_zeromq', False)

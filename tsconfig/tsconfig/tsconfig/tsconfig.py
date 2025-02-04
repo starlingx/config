@@ -1,5 +1,5 @@
 """
-Copyright (c) 2014-2024 Wind River Systems, Inc.
+Copyright (c) 2014-2025 Wind River Systems, Inc.
 
 SPDX-License-Identifier: Apache-2.0
 
@@ -272,10 +272,6 @@ UPGRADE_ABORT_FLAG = os.path.join(
 PTP_UPDATE_PARAMETERS_DONE = '.update_ptp_parameters_done'
 PTP_UPDATE_PARAMETERS_FLAG = os.path.join(CONFIG_PATH,
                                           PTP_UPDATE_PARAMETERS_DONE)
-# TODO(RPCHybridMode): This is required only for 21.12 -> 22.12 upgrades.
-#  Remove in future release.
-SYSINV_HYBRID_RPC_FLAG = os.path.join(
-    PLATFORM_CONF_PATH, '.sysinv_hybrid_rpc')
 
 # Set on controller-0 (by controller-1) to indicate that data migration has
 # started
