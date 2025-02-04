@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2017-2024 Wind River Systems, Inc.
+# Copyright (c) 2017-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -118,12 +118,13 @@ class OpenstackBasePuppet(base.BasePuppet):
             (is_upgrading and
              os.path.isfile(constants.OLD_ANSIBLE_BOOTSTRAP_COMPLETED_FLAG))
 
-        if bootstrap_completed and \
-            (self._distributed_cloud_role() ==
-                constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER or
-                self._distributed_cloud_role() ==
-                constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD):
-            if os.path.isfile(constants.RESTORE_IN_PROGRESS_FLAG):
+        dc_role = self._distributed_cloud_role()
+        is_dc = (dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER or
+                 dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD)
+
+        if bootstrap_completed and is_dc:
+            if (os.path.isfile(constants.RESTORE_IN_PROGRESS_FLAG) or
+                 is_upgrading):
                 if os.path.isfile(constants.ADMIN_ENDPOINT_CONFIG_REQUIRED):
                     os.remove(constants.ADMIN_ENDPOINT_CONFIG_REQUIRED)
             else:
