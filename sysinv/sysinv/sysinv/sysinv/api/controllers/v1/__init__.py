@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2021 Wind River Systems, Inc.
+# Copyright (c) 2013-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -32,6 +32,7 @@ from sysinv.api.controllers.v1 import device_image_state
 from sysinv.api.controllers.v1 import device_label
 from sysinv.api.controllers.v1 import disk
 from sysinv.api.controllers.v1 import datanetwork
+from sysinv.api.controllers.v1 import evaluate_apps_reapply
 from sysinv.api.controllers.v1 import interface_datanetwork
 from sysinv.api.controllers.v1 import dns
 from sysinv.api.controllers.v1 import drbdconfig
@@ -308,6 +309,9 @@ class V1(base.APIBase):
 
     restore = [link.Link]
     "Links to the restore resource"
+
+    evaluate_apps_reapply = [link.Link]
+    "Links to the evaluate_apps_reapply resource"
 
     @classmethod
     def convert(self):
@@ -944,6 +948,14 @@ class V1(base.APIBase):
                                           'restore', '',
                                           bookmark=True)
                       ]
+
+        v1.evaluate_apps_reapply = [link.Link.make_link('self', pecan.request.host_url,
+                                                        'evaluate_apps_reapply', ''),
+                                    link.Link.make_link('bookmark',
+                                                        pecan.request.host_url,
+                                                        'evaluate_apps_reapply', '',
+                                                        bookmark=True)]
+
         return v1
 
 
@@ -1029,6 +1041,7 @@ class Controller(rest.RestController):
     device_labels = device_label.DeviceLabelController()
     restore = restore.RestoreController()
     network_addresspools = network_addrpool.NetworkAddresspoolController()
+    evaluate_apps_reapply = evaluate_apps_reapply.EvaluateAppsReapplyController()
 
     @wsme_pecan.wsexpose(V1)
     def get(self):
