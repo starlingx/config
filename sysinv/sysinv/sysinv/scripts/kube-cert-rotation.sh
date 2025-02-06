@@ -18,20 +18,30 @@ source /etc/platform/openrc
 check_k8s_upgrade_status() {
     local kube_upgrade_status
     kube_upgrade_status=$(system kube-upgrade-show)
-    if [ "$kube_upgrade_status" != "A kubernetes upgrade is not in progress" ]; then
-        return 1
+    # The above command may not work as this script is used for system recovery
+    # when services are down. So, if the command fails, return 0 to avoid
+    # blocking the script
+    if [ $? -ne 0 ]; then
+        return 0
+    elif [ "$kube_upgrade_status" == "A kubernetes upgrade is not in progress" ]; then
+        return 0
     fi
-    return 0
+    return 1
 }
 
 # Check if the platform is upgraded in progress
 check_platform_upgrade_status() {
     local platform_upgrade_status
     platform_upgrade_status=$(software deploy show)
-    if [ "$platform_upgrade_status" != "No deploy in progress" ]; then
-        return 1
+    # The above command may not work as this script is used for system recovery
+    # when services are down. So, if the command fails, return 0 to avoid
+    # blocking the script
+    if [ $? -ne 0 ]; then
+        return 0
+    elif [ "$platform_upgrade_status" == "No deploy in progress" ]; then
+        return 0
     fi
-    return 0
+    return 1
 }
 
 # Number of attempts to check upgrade status
