@@ -1482,6 +1482,12 @@ SERVICE_PARAM_PLATFORM_MAX_CPU_PERCENTAGE_DEFAULT = 80
 # The number of sysinv-api workers
 SERVICE_PARAM_NAME_PLATFORM_SYSINV_API_WORKERS = 'sysinv_api_workers'
 
+# SCTP Config parameters
+# enables/disables SCTP module load by default
+SERVICE_PARAM_NAME_PLATFORM_SCTP_AUTOLOAD = 'sctp_autoload'
+SERVICE_PARAM_PLATFORM_SCTP_AUTOLOAD_DISABLED = 'disabled'
+SERVICE_PARAM_PLATFORM_SCTP_AUTOLOAD_ENABLED = 'enabled'
+
 # DNS host record Service Parameters
 SERVICE_PARAM_SECTION_DNS_HOST_RECORD = 'host-record'
 SERVICE_PARAM_NAME_DNS_HOST_RECORD_HOSTS = 'hosts'

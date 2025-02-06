@@ -1018,6 +1018,11 @@ class ConductorManager(service.PeriodicService):
          'name': constants.SERVICE_PARAM_NAME_PLATFORM_OOT,
          'value': ",".join(constants.SERVICE_PARAM_PLAT_KERNEL_OOT_VALUES[1:]),
          },
+        {'service': constants.SERVICE_TYPE_PLATFORM,
+         'section': constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG,
+         'name': constants.SERVICE_PARAM_NAME_PLATFORM_SCTP_AUTOLOAD,
+         'value': constants.SERVICE_PARAM_PLATFORM_SCTP_AUTOLOAD_ENABLED,
+         },
     ]
 
     def _create_default_service_parameter(self):
@@ -12728,6 +12733,21 @@ class ConductorManager(service.PeriodicService):
                 reboot = True
                 personalities = [constants.CONTROLLER]
                 config_uuid = self._config_update_hosts(context, personalities, reboot=True)
+            elif section == constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG and \
+                    name == constants.SERVICE_PARAM_NAME_PLATFORM_SCTP_AUTOLOAD:
+                reboot = True
+                personalities = [constants.CONTROLLER]
+                config_uuid = self._config_update_hosts(context, personalities, reboot=reboot)
+
+                config_dict = {
+                    'personalities': personalities,
+                    "classes": ['platform::config::sctp::runtime']
+                }
+
+                # Apply runtime config but keep reboot required flag set in
+                # _config_update_hosts() above. Node needs a reboot to clear it.
+                config_uuid = self._config_clear_reboot_required(config_uuid)
+                self._config_apply_runtime_manifest(context, config_uuid, config_dict, force=True)
             elif section == constants.SERVICE_PARAM_SECTION_PLATFORM_COREDUMP:
                 personalities = [constants.CONTROLLER,
                                  constants.WORKER,

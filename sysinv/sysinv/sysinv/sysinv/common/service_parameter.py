@@ -469,6 +469,21 @@ def _validate_kernel_audit(name, value):
          constants.SERVICE_PARAM_PLATFORM_AUDITD_ENABLED)))
 
 
+def _validate_sctp_autoload(name, value):
+    """Check if specified value is supported"""
+    try:
+        if str(value) in [constants.SERVICE_PARAM_PLATFORM_SCTP_AUTOLOAD_DISABLED,
+                          constants.SERVICE_PARAM_PLATFORM_SCTP_AUTOLOAD_ENABLED]:
+            return
+    except ValueError:
+        pass
+
+    raise wsme.exc.ClientSideError(_(
+        "Parameter '%s' value must be either '%s' or '%s'" %
+        (name, constants.SERVICE_PARAM_PLATFORM_SCTP_AUTOLOAD_DISABLED,
+         constants.SERVICE_PARAM_PLATFORM_SCTP_AUTOLOAD_ENABLED)))
+
+
 def _validate_human_readable(name, value):
     pattern = r'^\d+(?:[.,]\d+)?\s*(K|Ki|M|Mi|G|Gi|T|Ti)$'
 
@@ -833,6 +848,7 @@ PLATFORM_CONFIG_PARAMETER_OPTIONAL = [
     constants.SERVICE_PARAM_NAME_PLATFORM_MAX_CPU_PERCENTAGE,
     constants.SERVICE_PARAM_NAME_PLAT_CONFIG_INTEL_PSTATE,
     constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_API_WORKERS,
+    constants.SERVICE_PARAM_NAME_PLATFORM_SCTP_AUTOLOAD
 ]
 
 PLATFORM_CONFIG_PARAMETER_READONLY = [
@@ -848,6 +864,8 @@ PLATFORM_CONFIG_PARAMETER_VALIDATOR = {
         _validate_intel_pstate,
     constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_API_WORKERS:
         _validate_sysinv_api_workers,
+    constants.SERVICE_PARAM_NAME_PLATFORM_SCTP_AUTOLOAD:
+        _validate_sctp_autoload,
 }
 
 PLATFORM_CONFIG_PARAMETER_RESOURCE = {
@@ -857,6 +875,8 @@ PLATFORM_CONFIG_PARAMETER_RESOURCE = {
         'platform::compute::grub::params::g_intel_pstate',
     constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_API_WORKERS:
         'platform::sysinv::params::sysinv_api_workers',
+    constants.SERVICE_PARAM_NAME_PLATFORM_SCTP_AUTOLOAD:
+        'platform::params::sctp_autoload',
 }
 
 IDENTITY_LDAP_PARAMETER_OPTIONAL = [
