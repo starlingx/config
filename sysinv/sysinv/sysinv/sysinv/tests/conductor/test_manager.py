@@ -312,6 +312,62 @@ class ManagerTestCase(base.DbTestCase):
                                         'kubernetesVersion: v1.42.1\n'
                                         'scheduler: {}\n'}}
 
+        self.kubeadm_config_map_read_etcd_endpoints = kubernetes.client.V1ConfigMap(
+            api_version='v1',
+            data={'ClusterConfiguration': 'apiServer:\n'
+                                            '  certSANs:\n'
+                                            '  - 192.168.206.1\n'
+                                            '  - 127.0.0.1\n'
+                                            '  - 10.10.6.3\n'
+                                            '  extraArgs:\n'
+                                            '    event-ttl: 24h\n'
+                                            '  extraVolumes:\n'
+                                            '  - hostPath: '
+                                            '/etc/kubernetes/encryption-provider.yaml\n'
+                                            'apiVersion: kubeadm.k8s.io/v1beta3\n'
+                                            'controllerManager:\n'
+                                            '  extraArgs:\n'
+                                            '    feature-gates: CSIMigrationPortworx=false\n'
+                                            '  extraVolumes:\n'
+                                            'etcd:\n'
+                                            '  external:\n'
+                                            '    caFile: /etc/etcd/ca.crt\n'
+                                            '    certFile: /etc/kubernetes/pki/apiserver-etcd-client.crt\n'
+                                            '    endpoints:\n'
+                                            '    - https://127.0.0.1:2379\n'
+                                            '    - https://192.168.206.1:2379\n'
+                                            '    - https://192.168.206.3:2379\n'
+                                            '    keyFile: /etc/kubernetes/pki/apiserver-etcd-client.key\n'
+                                            'kind: ClusterConfiguration\n'
+                                            'kubernetesVersion: v1.42.1\n'
+                                            'scheduler: {}\n'},
+
+            metadata=kubernetes.client.V1ObjectMeta(
+                        name='kubeadm-config',
+                        namespace='kube-system'),
+        )
+
+        self.kubeadm_config_map_patch_etcd_endpoints = \
+            {'data':
+             {'ClusterConfiguration': 'apiServer:\n'
+                                        '  certSANs: [192.168.206.1, 127.0.0.1, 10.10.6.3]\n'
+                                        '  extraArgs: {event-ttl: 24h}\n'
+                                        '  extraVolumes:\n'
+                                        '  - {hostPath: /etc/kubernetes/encryption-provider.yaml}\n'
+                                        'apiVersion: kubeadm.k8s.io/v1beta3\n'
+                                        'controllerManager:\n'
+                                        '  extraArgs: {feature-gates: CSIMigrationPortworx=false}\n'
+                                        '  extraVolumes: null\n'
+                                        'etcd:\n'
+                                        '  external:\n'
+                                        '    caFile: /etc/etcd/ca.crt\n'
+                                        '    certFile: /etc/kubernetes/pki/apiserver-etcd-client.crt\n'
+                                        '    endpoints: [https://192.168.206.1:2379]\n'
+                                        '    keyFile: /etc/kubernetes/pki/apiserver-etcd-client.key\n'
+                                        'kind: ClusterConfiguration\n'
+                                        'kubernetesVersion: v1.42.1\n'
+                                        'scheduler: {}\n'}}
+
         super(ManagerTestCase, self).setUp()
 
         # Set up objects for testing
@@ -2333,6 +2389,13 @@ class ManagerTestCase(base.DbTestCase):
             state=kubernetes.KUBE_UPGRADING_NETWORKING,
         )
 
+        mock_sanitize_kubeadm_configmap = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.conductor.manager.ConductorManager.'
+            'sanitize_kubeadm_configmap', mock_sanitize_kubeadm_configmap)
+        p.start()
+        self.addCleanup(p.stop)
+
         mock_backup_kube_control_plane = mock.MagicMock()
         p = mock.patch(
             'sysinv.conductor.manager.ConductorManager.'
@@ -2347,6 +2410,7 @@ class ManagerTestCase(base.DbTestCase):
         updated_upgrade = self.dbapi.kube_upgrade_get_one()
         self.assertEqual(updated_upgrade.state,
                          kubernetes.KUBE_UPGRADED_NETWORKING)
+        mock_sanitize_kubeadm_configmap.assert_called()
         mock_backup_kube_control_plane.assert_called()
 
     def test_kube_upgrade_networking_ansible_fail(self):
@@ -2356,6 +2420,13 @@ class ManagerTestCase(base.DbTestCase):
             to_version='v1.42.2',
             state=kubernetes.KUBE_UPGRADING_NETWORKING,
         )
+
+        mock_sanitize_kubeadm_configmap = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.conductor.manager.ConductorManager.'
+            'sanitize_kubeadm_configmap', mock_sanitize_kubeadm_configmap)
+        p.start()
+        self.addCleanup(p.stop)
 
         mock_backup_kube_control_plane = mock.MagicMock()
         p = mock.patch(
@@ -2374,6 +2445,7 @@ class ManagerTestCase(base.DbTestCase):
         updated_upgrade = self.dbapi.kube_upgrade_get_one()
         self.assertEqual(updated_upgrade.state,
                          kubernetes.KUBE_UPGRADING_NETWORKING_FAILED)
+        mock_sanitize_kubeadm_configmap.assert_called()
         mock_backup_kube_control_plane.assert_called()
 
     def test_kube_upgrade_networking_backup_control_plane_fail(self):
@@ -2383,6 +2455,13 @@ class ManagerTestCase(base.DbTestCase):
             to_version='v1.42.2',
             state=kubernetes.KUBE_UPGRADING_NETWORKING,
         )
+
+        mock_sanitize_kubeadm_configmap = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.conductor.manager.ConductorManager.'
+            'sanitize_kubeadm_configmap', mock_sanitize_kubeadm_configmap)
+        p.start()
+        self.addCleanup(p.stop)
 
         mock_backup_kube_control_plane = mock.MagicMock()
         p = mock.patch(
@@ -2407,6 +2486,7 @@ class ManagerTestCase(base.DbTestCase):
         self.assertEqual(updated_upgrade.state,
                          kubernetes.KUBE_UPGRADING_NETWORKING_FAILED)
         mock_backup_kube_control_plane.assert_called()
+        mock_sanitize_kubeadm_configmap.assert_called()
         mock_remove_kube_control_plane_backup.assert_called()
 
     def test_kube_post_application_update(self):
@@ -2759,6 +2839,37 @@ class ManagerTestCase(base.DbTestCase):
         self.service.sanitize_image_repository_kubeadm_configmap('v1.42.2')
         mock_kube_patch_config_map.assert_called_with(
                 'kubeadm-config', 'kube-system', self.kubeadm_config_map_patch_image_repository)
+
+    def test_sanitize_kubeadm_configmap_etcd_endpoints(self):
+        """
+        This unit test covers the following use cases:
+        1. configmap containing multiple etcd endpoints including loopback
+           and specified target_version
+        2. configmap containing multiple etcd endpoints including loopback
+           and target_version None
+        """
+        mock_kube_read_config_map = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.common.kubernetes.KubeOperator.kube_read_config_map',
+            mock_kube_read_config_map)
+        p.start().return_value = self.kubeadm_config_map_read_etcd_endpoints
+        self.addCleanup(p.stop)
+
+        mock_kube_patch_config_map = mock.MagicMock()
+        p2 = mock.patch(
+            'sysinv.common.kubernetes.KubeOperator.kube_patch_config_map',
+            mock_kube_patch_config_map)
+        p2.start().return_value = self.kubeadm_config_map_patch_etcd_endpoints
+        self.addCleanup(p2.stop)
+
+        self.service.start()
+        self.service.sanitize_kubeadm_configmap('v1.42.2')
+        mock_kube_patch_config_map.assert_called_with(
+                'kubeadm-config', 'kube-system', self.kubeadm_config_map_patch_etcd_endpoints)
+
+        self.service.sanitize_kubeadm_configmap(None)
+        mock_kube_patch_config_map.assert_called_with(
+                'kubeadm-config', 'kube-system', self.kubeadm_config_map_patch_etcd_endpoints)
 
     def _create_test_controller_config_out_of_date(self, hostname):
         config_applied = self.service._config_set_reboot_required(uuid.uuid4())
