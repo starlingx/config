@@ -6840,48 +6840,6 @@ class ConductorManager(service.PeriodicService):
                 values = {'state': constants.SB_STATE_CONFIGURED, 'task': constants.SB_TASK_NONE}
                 self.dbapi.ceph_mon_update(mon.uuid, values)
 
-    def disable_k8s_leader_election(self, context):
-        """Disables k8s leader election configuration using service config.
-
-        This method disables leader election for kube-scheduler and
-        kube-controller-manager by either adding new service-parameter
-        leader-elect=false or updating exisitng service parameter value
-        leader-elect=true to false
-        """
-        try:
-            do_apply = False
-            for section in [constants.SERVICE_PARAM_SECTION_KUBERNETES_SCHEDULER,
-                    constants.SERVICE_PARAM_SECTION_KUBERNETES_CONTROLLER_MANAGER]:
-                new_record = {
-                    'service': constants.SERVICE_TYPE_KUBERNETES,
-                    'section': section,
-                    'name': constants.SERVICE_PARAM_NAME_KUBERNETES_LEADER_ELECT,
-                    'value': 'false',
-                }
-                try:
-                    service_param = self.dbapi.service_parameter_get_one(
-                        constants.SERVICE_TYPE_KUBERNETES, section,
-                        constants.SERVICE_PARAM_NAME_KUBERNETES_LEADER_ELECT)
-
-                    if service_param.value.lower() == 'true':
-                        self.dbapi.service_parameter_update(
-                            service_param.uuid, new_record)
-                        do_apply = True
-
-                except exception.NotFound:
-                    self.dbapi.service_parameter_create(new_record)
-                    do_apply = True
-
-            if do_apply:
-                self.update_service_config(context,
-                                           constants.SERVICE_TYPE_KUBERNETES,
-                                           do_apply=do_apply)
-            LOG.info("Leader election disabled for kube-scheduler and"
-                     " kube-controller-manager")
-        except Exception as ex:
-            LOG.error("Error disabling k8s leader election: %s" % (ex))
-            raise ex
-
     def iplatform_update_by_ihost(self, context,
                                   ihost_uuid, imsg_dict):
         """Update node data when sysinv-agent is started after a boot.
@@ -7011,12 +6969,6 @@ class ConductorManager(service.PeriodicService):
                     ihost.reboot_needed = False
                     ihost.save(context)
                 self._clear_device_image_alarm(context)
-
-        try:
-            if cutils.is_aio_simplex_system(self.dbapi):
-                self.disable_k8s_leader_election(context)
-        except Exception as ex:
-            LOG.exception(ex)
 
     def iconfig_update_by_ihost(self, context,
                                 ihost_uuid, imsg_dict):
