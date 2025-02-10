@@ -18410,6 +18410,8 @@ class ConductorManager(service.PeriodicService):
     def kube_upgrade_networking(self, context, kube_version):
         """Upgrade kubernetes networking for this kubernetes version"""
         try:
+            if self.sanitize_kubeadm_configmap(None) == 1:
+                raise Exception("Problem sanitizing kubeadm configmap.")
             self.backup_kube_control_plane(context)
         except Exception as e:
             LOG.exception("Control-plane components backup failed: %s" % e)
@@ -19984,6 +19986,26 @@ class ConductorManager(service.PeriodicService):
 
             stream = StringIO(configmap.data['ClusterConfiguration'])
             kubeadm_config = yaml.safe_load(stream)
+
+            # Sanitize etcd endpoints. K8S upgrade will fail taking etcd
+            # snapshot if there are multiple endpoints. Loopback endpoints
+            # do not work multi-node on standby or worker nodes and should
+            # be removed. We expect only a single endpoint to be valid.
+            etcd = kubeadm_config.get('etcd', {})
+            external = etcd.get('external', {})
+            endpoints = external.get('endpoints', {})
+            if len(endpoints) > 1:
+                LOG.info('Sanitizing etcd endpoints %r in Kubeadm_config.'
+                            % endpoints)
+                # remove IPv4 loopback endpoint
+                loopback = '127.0.0.1'
+                for elem in endpoints:
+                    if loopback in elem:
+                        endpoints.remove(elem)
+                # keep first endpoint only
+                del endpoints[1:]
+                LOG.info('sanitized etcd endpoints %r in Kubeadm_config.' % endpoints)
+
             for component in ['apiServer', 'controllerManager', 'scheduler']:
                 k8s_component = kubeadm_config.get(component, {})
                 extra_args = k8s_component.get('extraArgs', {})
