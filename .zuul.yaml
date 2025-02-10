@@ -140,7 +140,7 @@
 - job:
     name: tsconfig__tox-pylint
     parent: tox
-    nodeset: ubuntu-xenial
+    nodeset: debian-bullseye
     description: Run pylint tests for tsconfig
     files:
       - tsconfig/*
