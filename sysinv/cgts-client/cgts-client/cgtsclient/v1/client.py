@@ -1,4 +1,4 @@
-# Copyright 2012-2021 OpenStack LLC.
+# Copyright 2012-2025 OpenStack LLC.
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -13,7 +13,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2021 Wind River Systems, Inc.
+# Copyright (c) 2013-2025 Wind River Systems, Inc.
 #
 
 
@@ -53,6 +53,7 @@ from cgtsclient.v1 import isensorgroup
 from cgtsclient.v1 import istor
 from cgtsclient.v1 import isystem
 from cgtsclient.v1 import iuser
+from cgtsclient.v1 import kube_app
 from cgtsclient.v1 import kube_cluster
 from cgtsclient.v1 import kube_cmd_version
 from cgtsclient.v1 import kube_config_kubelet
@@ -186,3 +187,4 @@ class Client(object):
         self.kube_rootca_update = kube_rootca_update.KubeRootCAUpdateManager(self.http_client)
         self.kube_config_kubelet = \
             kube_config_kubelet.KubeConfigKubeletManager(self.http_client)
+        self.kube_app = kube_app.KubeAppManager(self.http_client)

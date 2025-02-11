@@ -17215,11 +17215,12 @@ class ConductorManager(service.PeriodicService):
         """Synchronously, determine whether an application
         re-apply is needed, and if so, raise the re-apply flag.
 
-        Run 3 checks before doing an app evaluation.
-        First check is to verify whether Kubernetes upgrades are not in progress.
-        Second check is a semantic check calling a lifecycle hook which can
+        Run 4 checks before doing an app evaluation.
+        First check is to verify whether platform upgrade is not in progress.
+        Second check is to verify whether Kubernetes upgrades are not in progress.
+        Third check is a semantic check calling a lifecycle hook which can
         implement complex logic.
-        Third check is specified in metadata which allows faster development
+        Fourth check is specified in metadata which allows faster development
         time, doing simple key:value comparisons. Check that the 'trigger'
         parameter of the function contains a list of key:value pairs at a
         specified location. Default location for searching is root of 'trigger'
@@ -17230,6 +17231,15 @@ class ConductorManager(service.PeriodicService):
         :param trigger: dictionary containing at least the 'type' field
 
         """
+
+        # Check if platform upgrade is in progress
+        try:
+            upgrade = usm_service.get_platform_upgrade(self.dbapi)
+            if upgrade:
+                LOG.info("Deferring apps reapply evaluation. Upgrade in progress.")
+                return
+        except exception.NotFound:
+            pass
 
         # Defer apps reapply evaluation if Kubernetes upgrades are in progress
         # or if apps are still post updating.
