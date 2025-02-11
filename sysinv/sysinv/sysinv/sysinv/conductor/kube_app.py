@@ -2075,7 +2075,7 @@ class AppOperator(object):
             LOG.error("Application %s recover to version %s aborted!"
                     % (old_app.name, old_app.version))
 
-    def perform_app_upload(self, rpc_app, tarfile, lifecycle_hook_info_app_upload, images=False):
+    def perform_app_upload(self, rpc_app, tarfile, images=False):
         """Process application upload request
 
         This method validates the application manifest. If Helm charts are
@@ -2085,7 +2085,6 @@ class AppOperator(object):
 
         :param rpc_app: application object in the RPC request
         :param tarfile: location of application tarfile
-        :param lifecycle_hook_info_app_upload: LifecycleHookInfo object
         :param images: save application images in the registry as part of app upload
 
         """
@@ -2934,14 +2933,9 @@ class AppOperator(object):
             # one version of the module can be enabled at any given moment
             self._plugins.deactivate_plugins(from_app)
 
-            # Note: this will not trigger the upload hooks present in conductor/manager:perform_app_upload
-            # Note: here we lose the information that this is an upload triggered by an update
-            # TODO(dvoicule): we may want to also trigger the upload hooks
-            # TODO(dvoicule): we may want to track the fact that this is called during an update
-            lifecycle_hook_info_app_update.operation = constants.APP_UPLOAD_OP
             to_app = self.perform_app_upload(
-                to_rpc_app, tarfile,
-                lifecycle_hook_info_app_upload=lifecycle_hook_info_app_update)
+                to_rpc_app, tarfile)
+
             lifecycle_hook_info_app_update.operation = constants.APP_UPDATE_OP
 
             # Get the skip_recovery flag from app metadata
