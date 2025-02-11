@@ -14,7 +14,7 @@
 # | oidc_username_claim | oidc-username-claim |
 # +---------------------+---------------------+
 #
-# This script rely on 'security-kubeapi-service-parameters-apply.py'
+# This script rely on 'kubernetes-service-parameters-apply.py'
 # to apply the parameters to kubeapi, needing to be executed before it.
 #
 

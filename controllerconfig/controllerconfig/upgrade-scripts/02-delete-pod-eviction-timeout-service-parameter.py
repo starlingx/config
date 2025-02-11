@@ -6,7 +6,7 @@
 # This script deletes pod-eviction-timeout service parameter
 # during the activate stage of platform upgrade if it is present.
 #
-# This script rely on 'security-kubeapi-service-parameters-apply.py'
+# This script rely on 'kubernetes-service-parameters-apply.py'
 # to apply the parameters to kubeapi, needing to be executed before it.
 #
 

@@ -8,6 +8,8 @@
 # executed before this one), and monitors the kubeapi restart thru the
 # pods.
 # Scripts that should be executed before this one:
+# - delete-pod-eviction-timeout-service-parameter.py
+# - k8s-disable-sched-controllermanager-leader-election.sh
 # - remove-psp-service-parameter.py
 # - delete-encrypted-fs-service-parameter.sh
 # - add-tls-version-cipher-parameters.sh

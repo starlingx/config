@@ -7,7 +7,7 @@
 # This script includes in upgraded systems the requirements for
 # the min TLS version and cipher suites to be used by k8s API.
 #
-# This script rely on 'security-kubeapi-service-parameters-apply.py'
+# This script rely on 'kubernetes-service-parameters-apply.py'
 # to apply the parameters to kubeapi, needing to be executed before it.
 #
 
