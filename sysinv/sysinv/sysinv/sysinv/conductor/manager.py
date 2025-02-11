@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2024 Wind River Systems, Inc.
+# Copyright (c) 2013-2025 Wind River Systems, Inc.
 #
 
 """Conduct all activity related system inventory.
@@ -7142,6 +7142,13 @@ class ConductorManager(service.PeriodicService):
 
         return False
 
+    def _is_upgrade_in_progress(self):
+        try:
+            usm_service.get_platform_upgrade(self.dbapi)
+            return True
+        except exception.NotFound:
+            return False
+
     @periodic_task.periodic_task(
         spacing=CONF.conductor_periodic_task_intervals.controller_config_active_apply)
     def _controller_config_active_apply(self, context):
@@ -7158,16 +7165,7 @@ class ConductorManager(service.PeriodicService):
         if not self._controller_config_active_check():
             return  # already finalized on this active controller
 
-        # check if there is an upgrade in progress
-        upgrade_in_progress = False
-        try:
-            usm_service.get_platform_upgrade(self.dbapi)
-            upgrade_in_progress = True
-        except exception.NotFound:
-            # No upgrade in progress
-            pass
-
-        if upgrade_in_progress:
+        if self._is_upgrade_in_progress():
             LOG.info("Skipped _controller_config_active_apply while upgrading")
             return
 
@@ -7194,31 +7192,37 @@ class ConductorManager(service.PeriodicService):
             oam_config_runtime_apply_file = self._get_oam_runtime_apply_file()
 
             manifest = []
+            run_endpoint_reconfig = False
 
             if (os.path.isfile(oam_config_runtime_apply_file) or
-               os.path.isfile(constants.HTTPS_CONFIG_REQUIRED) or
-               os.path.isfile(constants.PLATFORM_FIREWALL_CONFIG_REQUIRED) or
-               os.path.isfile(constants.ADMIN_ENDPOINT_CONFIG_REQUIRED)):
+                 os.path.isfile(constants.HTTPS_CONFIG_REQUIRED) or
+                 os.path.isfile(constants.PLATFORM_FIREWALL_CONFIG_REQUIRED) or
+                 os.path.isfile(constants.ADMIN_ENDPOINT_CONFIG_REQUIRED)):
 
                 # Firewall will be applied too
-                manifest.extend(['openstack::keystone::endpoint::runtime',
-                                 'platform::firewall::runtime',
+                manifest.extend(['platform::firewall::runtime',
                                  'platform::nfv::runtime'])
+                run_endpoint_reconfig = True
 
             # if the only change is the firewall, run only that.
-            if (os.path.isfile(constants.PLATFORM_FIREWALL_CONFIG_REQUIRED)
-                and not (os.path.isfile(constants.HTTPS_CONFIG_REQUIRED)
-                         or os.path.isfile(constants.ADMIN_ENDPOINT_CONFIG_REQUIRED))):
+            if (os.path.isfile(constants.PLATFORM_FIREWALL_CONFIG_REQUIRED) and
+                 not (os.path.isfile(constants.HTTPS_CONFIG_REQUIRED) or
+                      os.path.isfile(constants.ADMIN_ENDPOINT_CONFIG_REQUIRED))):
                 manifest = ['platform::firewall::runtime']
+                run_endpoint_reconfig = False
 
             # append the mgmt network update if necessary
             if (os.path.isfile(tsc.MGMT_NETWORK_RECONFIG_UPDATE_HOST_FILES)):
                 manifest.append('platform::config::mgmt_network_reconfig_update_runtime')
 
             if manifest:
-
                 if cutils.is_initial_config_complete():
-                    # apply keystone changes to current active controller
+                    # Run endpoint reconfiguration
+                    if run_endpoint_reconfig:
+                        openstack_config_endpoints.run_endpoint_config(self._puppet,
+                                                                       self._openstack)
+
+                    # apply remaining manifests
                     personalities = [constants.CONTROLLER]
                     config_uuid = self._config_update_hosts(context, personalities,
                                                             host_uuids=[active_host.uuid])
@@ -7230,6 +7234,7 @@ class ConductorManager(service.PeriodicService):
                     self._config_apply_runtime_manifest(
                         context, config_uuid, config_dict)
 
+                    # clean flags
                     if os.path.isfile(oam_config_runtime_apply_file):
                         LOG.info(f"remove {oam_config_runtime_apply_file}")
                         os.remove(oam_config_runtime_apply_file)
@@ -17789,26 +17794,27 @@ class ConductorManager(service.PeriodicService):
     def reconfigure_service_endpoints(self, context, host):
         """Reconfigure the service endpoints upon the creation of initial
         controller host and management/oam network change during bootstrap
-        playbook play and replay.
+        playbook play and replay, or at the end of upgrade activation.
 
         :param context: request context.
         :param host: an ihost object
 
         """
-        if (os.path.isfile(constants.ANSIBLE_BOOTSTRAP_FLAG) and
-                host.hostname == constants.CONTROLLER_0_HOSTNAME):
-
-            inventory_completed = True
-
+        if os.path.isfile(constants.ANSIBLE_BOOTSTRAP_FLAG):
+            # Should run only in c0 during bootstrap
+            if host.hostname != constants.CONTROLLER_0_HOSTNAME:
+                LOG.error("Endpoints should be reconfigured from controller-0."
+                          " Received request for host: %s." % host.hostname)
+                return
             # This could be called as part of host creation, wait for
             # inventory to complete
+            inventory_completed = False
             for i in range(constants.INVENTORY_WAIT_TIMEOUT_IN_SECS):
                 if cutils.is_inventory_config_complete(self.dbapi, host.uuid):
+                    inventory_completed = True
                     break
                 LOG.info('Inventory incomplete, will try again in 1 second.')
                 greenthread.sleep(1)
-            else:
-                inventory_completed = False
 
             if inventory_completed:
                 openstack_config_endpoints.run_endpoint_config(self._puppet,
@@ -17817,6 +17823,13 @@ class ConductorManager(service.PeriodicService):
             else:
                 LOG.error("Unable to reconfigure service endpoints. Timed out "
                           "waiting for inventory to complete.")
+        elif self._is_upgrade_in_progress():
+            if constants.CONTROLLER_HOSTNAME not in host.hostname:
+                LOG.error("Endpoints should be reconfigured from a controller."
+                          " Received request for host: %s." % host.hostname)
+                return
+            openstack_config_endpoints.run_endpoint_config(self._puppet,
+                                                           self._openstack)
         else:
             LOG.error("Received a request to reconfigure service endpoints "
                       "for host %s under the wrong condition." % host.hostname)
