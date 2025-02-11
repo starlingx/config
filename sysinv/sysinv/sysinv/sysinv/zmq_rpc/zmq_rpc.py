@@ -1,11 +1,10 @@
-# Copyright (c) 2022-2024 Wind River Systems, Inc.
+# Copyright (c) 2022-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 
 import dns.resolver
 import zerorpc
 import eventlet
-import os
 
 from eventlet import greenthread
 from oslo_log import log
@@ -19,7 +18,6 @@ from sysinv.zmq_rpc.client_provider import ClientProvider
 from sysinv.zmq_rpc.serializer import decode
 from sysinv.zmq_rpc.serializer import encode
 import sysinv.openstack.common.rpc.common as rpc_common
-import tsconfig.tsconfig as tsc
 
 LOG = log.getLogger(__name__)
 
@@ -163,7 +161,8 @@ class ZmqRpcClient(object):
         if not client:
             host_uuid = kwargs.get('host_uuid', None)
             if host_uuid is None:
-                raise Exception("Missing host_uuid parameter for rpc endpoint")
+                raise Exception(f"Remote call/cast to {method} is missing "
+                                f"host_uuid parameter for rpc endpoint")
             dbapi = api.get_instance()
             host = dbapi.ihost_get(host_uuid)
             if (utils.is_fqdn_ready_to_use()
@@ -267,22 +266,6 @@ class ZmqRpcClient(object):
                         "to fanout request.".format(endpoint))
             endpoints.append(endpoint)
         return endpoints
-
-
-# TODO(RPCHybridMode): This function is only useful for 21.12 -> 22.12 upgrades.
-#  Remove in future release.
-def is_rpc_hybrid_mode_active():
-    return os.path.isfile(tsc.SYSINV_HYBRID_RPC_FLAG)
-
-
-# TODO(RPCHybridMode): This function is only useful for 21.12 -> 22.12 upgrades.
-#  Remove in future release.
-def is_zmq_backend_available(host_uuid):
-    dbapi = api.get_instance()
-    host = dbapi.ihost_get(host_uuid)
-    host_upgrade = dbapi.host_upgrade_get_by_host(host.id)
-    target_load = dbapi.load_get(host_upgrade.target_load)
-    return target_load.software_version >= tsc.SW_VERSION_22_12
 
 
 def get_tcp_endpoint(host, port):

@@ -132,9 +132,7 @@ from sysinv.conductor import keystone_listener
 from sysinv.db import api as dbapi
 from sysinv.loads.loads import LoadImport
 from sysinv import objects
-from sysinv.objects import base as objects_base
 from sysinv.objects import kube_app as kubeapp_obj
-from sysinv.openstack.common.rpc import service as rpc_service
 from sysinv.puppet import common as puppet_common
 from sysinv.puppet import puppet
 from sysinv.puppet import interface as pinterface
@@ -143,7 +141,6 @@ from sysinv.helm.lifecycle_constants import LifecycleConstants
 from sysinv.helm.lifecycle_hook import LifecycleHookInfo
 from sysinv.helm import common
 from sysinv.zmq_rpc.zmq_rpc import ZmqRpcServer
-from sysinv.zmq_rpc.zmq_rpc import is_rpc_hybrid_mode_active
 
 MANAGER_TOPIC = 'sysinv.conductor_manager'
 
@@ -322,26 +319,12 @@ class ConductorManager(service.PeriodicService):
     def __init__(self, host, topic):
         self.host = host
         self.topic = topic
-        serializer = objects_base.SysinvObjectSerializer()
         super(ConductorManager, self).__init__()
-        self._rpc_service = None
-        self._zmq_rpc_service = None
 
-        # TODO(RPCHybridMode): Usage of RabbitMQ RPC is only required for
-        #  21.12 -> 22.12 upgrades.
-        #  Remove this in new releases, when it's no longer necessary do the
-        #  migration work through RabbitMQ and ZeroMQ
-        # NOTE: If more switches are necessary before RabbitMQ removal,
-        # refactor this into an RPC layer
-        if not CONF.rpc_backend_zeromq or is_rpc_hybrid_mode_active():
-            self._rpc_service = rpc_service.Service(self.host, self.topic,
-                                                    manager=self,
-                                                    serializer=serializer)
-        if CONF.rpc_backend_zeromq:
-            self._zmq_rpc_service = ZmqRpcServer(
-                self,
-                CONF.rpc_zeromq_conductor_bind_ip,
-                CONF.rpc_zeromq_conductor_bind_port)
+        self._zmq_rpc_service = ZmqRpcServer(
+            self,
+            CONF.rpc_zeromq_conductor_bind_ip,
+            CONF.rpc_zeromq_conductor_bind_port)
 
         self.dbapi = None
         self.fm_api = None
@@ -423,9 +406,6 @@ class ConductorManager(service.PeriodicService):
 
         # accept API calls and run periodic tasks after
         # initializing conductor manager service
-        if self._rpc_service:
-            self._rpc_service.start()
-
         if self._zmq_rpc_service:
             self._zmq_rpc_service.run()
 
@@ -577,12 +557,10 @@ class ConductorManager(service.PeriodicService):
         """ Periodic tasks are run at pre-specified intervals. """
         return self.run_periodic_tasks(context, raise_on_error=raise_on_error)
 
-    def stop(self):
-        if self._rpc_service:
-            self._rpc_service.stop()
+    def stop(self, graceful=False):
         if self._zmq_rpc_service:
             self._zmq_rpc_service.stop()
-        super(ConductorManager, self).stop()
+        super(ConductorManager, self).stop(graceful)
 
     @contextmanager
     def session(self):
@@ -15535,16 +15513,6 @@ class ConductorManager(service.PeriodicService):
 
         # Delete upgrade record
         self.dbapi.software_upgrade_destroy(upgrade.uuid)
-
-        # TODO(RPCHybridMode): This is only useful for 21.12 -> 22.12 upgrades.
-        #  Remove this in new releases, when it's no longer necessary
-        #  do the migration work through RabbitMQ and ZeroMQ
-        if (tsc.system_mode != constants.SYSTEM_MODE_SIMPLEX):
-            rpcapi = agent_rpcapi.AgentAPI()
-            controller_1 = self.dbapi.ihost_get_by_hostname(
-                constants.CONTROLLER_1_HOSTNAME)
-            LOG.info("Deleting Sysinv Hybrid state")
-            rpcapi.delete_sysinv_hybrid_state(context, controller_1['uuid'])
 
         # TODO(fcorream): This is just needed for upgrade from R7 to R8
         # need to remove the flag that disables the use of FQDN during the
