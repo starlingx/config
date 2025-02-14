@@ -1,4 +1,4 @@
-# Copyright (c) 2022 Wind River Systems, Inc.
+# Copyright (c) 2025 Wind River Systems, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may
 # not use this file except in compliance with the License. You may obtain
@@ -17,66 +17,55 @@
 from oslo_policy import policy
 from sysinv.api.policies import base
 
-POLICY_ROOT = 'config_api:service_parameter:%s'
+POLICY_ROOT = 'config_api:ihosts:%s'
 
 
-service_parameter_rules = [
+ihosts_rules = [
     policy.DocumentedRuleDefault(
         name=POLICY_ROOT % 'add',
         check_str='rule:' + base.ADMIN_IN_SYSTEM_PROJECTS,
-        description="Add a Service Parameter.",
+        description="Add a host Parameter.",
         operations=[
             {
                 'method': 'POST',
-                'path': '/v1/service_parameter'
-            }
-        ]
-    ),
-    policy.DocumentedRuleDefault(
-        name=POLICY_ROOT % 'apply',
-        check_str='rule:' + base.ADMIN_IN_SYSTEM_PROJECTS,
-        description="Apply Service Parameters.",
-        operations=[
-            {
-                'method': 'POST',
-                'path': '/v1/service_parameter/apply'
+                'path': '/v1/ihosts'
             }
         ]
     ),
     policy.DocumentedRuleDefault(
         name=POLICY_ROOT % 'delete',
         check_str='rule:' + base.ADMIN_IN_SYSTEM_PROJECTS,
-        description="Delete a Service Parameter.",
+        description="Delete a host Parameter.",
         operations=[
             {
                 'method': 'DELETE',
-                'path': '/v1/service_parameter/{parameter_id}'
+                'path': '/v1/ihosts/{parameter_id}'
             }
         ]
     ),
     policy.DocumentedRuleDefault(
         name=POLICY_ROOT % 'get',
         check_str='rule:' + base.READER_OR_OPERATOR_IN_SYSTEM_PROJECTS,
-        description="Get Service Parameters.",
+        description="Get host Parameters.",
         operations=[
             {
                 'method': 'GET',
-                'path': '/v1/service_parameter'
+                'path': '/v1/ihosts'
             },
             {
                 'method': 'GET',
-                'path': '/v1/service_parameter/{parameter_id}'
+                'path': '/v1/ihosts/{parameter_id}'
             }
         ]
     ),
     policy.DocumentedRuleDefault(
         name=POLICY_ROOT % 'modify',
-        check_str='rule:' + base.ADMIN_IN_SYSTEM_PROJECTS,
-        description="Modify Service Parameter value.",
+        check_str='rule:' + base.ADMIN_OR_OPERATOR_IN_SYSTEM_PROJECTS,
+        description="Modify host value.",
         operations=[
             {
                 'method': 'PATCH',
-                'path': '/v1/service_parameter/{parameter_id}'
+                'path': '/v1/ihosts/{parameter_id}'
             }
         ]
     )
@@ -84,4 +73,4 @@ service_parameter_rules = [
 
 
 def list_rules():
-    return service_parameter_rules
+    return ihosts_rules

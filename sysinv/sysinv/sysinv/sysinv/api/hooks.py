@@ -207,9 +207,9 @@ class AccessPolicyHook(hooks.PecanHook):
                 role = ""
                 method = state.request.method
                 if method == 'GET':
-                    role = "reader"
+                    role = "reader or operator"
                     has_api_access = policy.authorize(
-                        base_policy.READER_IN_SYSTEM_PROJECTS, {},
+                        base_policy.READER_OR_OPERATOR_IN_SYSTEM_PROJECTS, {},
                         context.to_dict(), do_raise=False)
                 else:
                     role = "admin"
