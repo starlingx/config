@@ -12608,6 +12608,9 @@ class ConductorManager(service.PeriodicService):
             if section == constants.SERVICE_PARAM_SECTION_KUBERNETES_CONTROLLER_MANAGER and \
                     name == "pod-eviction-timeout":
                 reboot = False
+            # This parameter can be applied without a reboot for any section we configure it for
+            if name == constants.SERVICE_PARAM_NAME_KUBERNETES_LEADER_ELECT:
+                reboot = False
 
             # The KUBERNETES_POD_MAX_PIDS affects workers.
             # A smarter way would be for update_service_config to receive the
