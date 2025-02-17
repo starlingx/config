@@ -1285,65 +1285,6 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                          self.make_msg('update_apparmor_config',
                                        ihost_uuid=ihost_uuid))
 
-    def start_import_load(self, context, path_to_iso, path_to_sig,
-                          import_type=None, timeout=180):
-        """Synchronously, mount the ISO and validate the load for import
-
-        :param context: request context.
-        :param path_to_iso: the file path of the iso on this host
-        :param path_to_sig: the file path of the iso's detached signature on
-                            this host
-        :param import_type: the type of the import, the possible values are
-                            constants.ACTIVE_LOAD_IMPORT for active load or
-                            constants.INACTIVE_LOAD_IMPORT for inactive load.
-        :param timeout:       rpc call timeout in seconds
-        :returns: the newly create load object.
-        """
-        return self.call(context,
-                         self.make_msg('start_import_load',
-                                       path_to_iso=path_to_iso,
-                                       path_to_sig=path_to_sig,
-                                       import_type=import_type),
-                         timeout=timeout)
-
-    def import_load(self, context, path_to_iso, new_load,
-                    import_type=None):
-        """Asynchronously, import a load and add it to the database
-
-        :param context: request context.
-        :param path_to_iso: the file path of the iso on this host
-        :param new_load: the load object
-        :param import_type: the type of the import (active or inactive)
-        :returns: none.
-        """
-        return self.cast(context,
-                         self.make_msg('import_load',
-                                       path_to_iso=path_to_iso,
-                                       new_load=new_load,
-                                       import_type=import_type))
-
-    def delete_load(self, context, load_id):
-        """Asynchronously, cleanup a load from both controllers
-
-        :param context: request context.
-        :param load_id: id of load to be deleted
-        :returns: none.
-        """
-        return self.cast(context,
-                         self.make_msg('delete_load',
-                                       load_id=load_id))
-
-    def finalize_delete_load(self, context, sw_version):
-        """Asynchronously, delete the load from the database
-
-        :param context: request context.
-        :param sw_version: software version of load to be deleted
-        :returns: none.
-        """
-        return self.cast(context,
-                         self.make_msg('finalize_delete_load',
-                                       sw_version=sw_version))
-
     def load_update_by_host(self, context, ihost_id, version):
         """Update the host_upgrade table with the running SW_VERSION
 
@@ -1406,15 +1347,6 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         """
         return self.call(context, self.make_msg('abort_upgrade',
                                                 upgrade=upgrade))
-
-    def complete_simplex_backup(self, context, success):
-        """Asynchronously, complete the simplex upgrade start process
-
-        :param context: request context.
-        :param success: If the create_simplex_backup call completed
-                """
-        return self.cast(context, self.make_msg('complete_simplex_backup',
-                                                success=success))
 
     def get_system_health(self, context, force=False, upgrade=False,
                           kube_upgrade=False, kube_rootca_update=False,

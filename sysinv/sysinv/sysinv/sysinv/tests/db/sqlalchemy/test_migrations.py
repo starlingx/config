@@ -1253,8 +1253,7 @@ class TestMigrations(BaseMigrationTestCase, WalkVersionsMixin):
         host_upgrades = db_utils.get_table(engine, 'host_upgrade')
         host_upgrades_col = {
             'id': 'Integer', 'uuid': 'String', 'deleted_at': 'DateTime',
-            'created_at': 'DateTime', 'updated_at': 'DateTime', 'forihostid': 'Integer',
-            'software_load': 'Integer', 'target_load': 'Integer',
+            'created_at': 'DateTime', 'updated_at': 'DateTime', 'forihostid': 'Integer'
         }
         for col, coltype in host_upgrades_col.items():
             self.assertTrue(isinstance(host_upgrades.c[col].type,

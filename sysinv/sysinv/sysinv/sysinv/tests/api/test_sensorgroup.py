@@ -16,7 +16,6 @@ class sensorgroupTestCase(base.FunctionalTest):
     def setUp(self):
         super(sensorgroupTestCase, self).setUp()
         self.system = dbutils.create_test_isystem()
-        self.load = dbutils.create_test_load()
         self.host = dbutils.create_test_ihost(forisystemid=self.system.id)
 
     def assertDeleted(self, fullPath):

@@ -313,7 +313,7 @@ class NfvPuppet(openstack.OpenstackBasePuppet):
     def get_host_config(self, host):
         if (constants.CONTROLLER not in utils.get_personalities(host)):
             return {}
-        database_dir = "/opt/platform/nfv/vim/%s" % host.software_load
+        database_dir = "/opt/platform/nfv/vim/%s" % host.sw_version
         return {
             'nfv::vim::database_dir': database_dir,
         }

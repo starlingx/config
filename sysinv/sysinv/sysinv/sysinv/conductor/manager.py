@@ -64,8 +64,6 @@ from urllib3.exceptions import MaxRetryError
 import tsconfig.tsconfig as tsc
 from collections import namedtuple
 from collections import OrderedDict
-from cgcs_patch.patch_verify import verify_files
-from controllerconfig.upgrades import management as upgrades_management
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
@@ -86,7 +84,6 @@ from oslo_serialization import base64
 from oslo_serialization import jsonutils
 from oslo_service import periodic_task
 from oslo_utils import encodeutils
-from oslo_utils import excutils
 from oslo_utils import timeutils
 from oslo_utils import uuidutils
 from platform_util.license import license
@@ -105,7 +102,6 @@ from sysinv.common import barbican_config
 from sysinv.common import fpga_constants
 from sysinv.common import constants
 from sysinv.common import ceph as cceph
-from sysinv.common import dc_api
 from sysinv.common import device as dconstants
 from sysinv.common import etcd
 from sysinv.common import exception
@@ -131,7 +127,6 @@ from sysinv.conductor import openstack
 from sysinv.conductor import docker_registry
 from sysinv.conductor import keystone_listener
 from sysinv.db import api as dbapi
-from sysinv.loads.loads import LoadImport
 from sysinv import objects
 from sysinv.objects import kube_app as kubeapp_obj
 from sysinv.puppet import common as puppet_common
@@ -140,7 +135,6 @@ from sysinv.puppet import interface as pinterface
 from sysinv.helm import helm
 from sysinv.helm.lifecycle_constants import LifecycleConstants
 from sysinv.helm.lifecycle_hook import LifecycleHookInfo
-from sysinv.helm import common
 from sysinv.zmq_rpc.zmq_rpc import ZmqRpcServer
 
 MANAGER_TOPIC = 'sysinv.conductor_manager'
@@ -465,8 +459,6 @@ class ConductorManager(service.PeriodicService):
         self._fernet = fernet.FernetOperator()
 
         # Upgrade start tasks
-        self._clear_stuck_loads()
-        self._upgrade_init_actions()
         self._kube_upgrade_init_actions()
 
         self._handle_restore_in_progress()
@@ -738,46 +730,6 @@ class ConductorManager(service.PeriodicService):
         elif self.fm_api.get_faults_by_id(fm_constants.FM_ALARM_ID_K8S_RESOURCE_PV):
             greenthread.spawn(self._pvc_monitor_migration)
 
-    def _upgrade_init_actions(self):
-        """ Perform any upgrade related startup actions"""
-        try:
-            # NOTE(bqian) this is legacy upgrade only code
-            upgrade = self.dbapi.software_upgrade_get_one()
-        except exception.NotFound:
-            # Not upgrading. No need to update status
-            return
-
-        hostname = socket.gethostname()
-        if hostname == constants.CONTROLLER_0_HOSTNAME:
-            if os.path.isfile(tsc.UPGRADE_ROLLBACK_FLAG):
-                self._set_state_for_rollback(upgrade)
-            elif os.path.isfile(tsc.UPGRADE_ABORT_FLAG):
-                self._set_state_for_abort(upgrade)
-        elif hostname == constants.CONTROLLER_1_HOSTNAME:
-            self._init_controller_for_upgrade(upgrade)
-            if upgrade.state == constants.UPGRADE_UPGRADING_CONTROLLERS:
-                # request report initial inventory as controller-1 has
-                # not had a chance to report inventory to upgraded system
-                context = ctx.RequestContext('admin', 'admin', is_admin=True)
-                ihost = self.dbapi.ihost_get_by_hostname(hostname)
-                rpcapi = agent_rpcapi.AgentAPI()
-                rpcapi.report_initial_inventory(context, ihost.uuid)
-
-        system_mode = self.dbapi.isystem_get_one().system_mode
-        if system_mode == constants.SYSTEM_MODE_SIMPLEX:
-            self._init_controller_for_upgrade(upgrade)
-
-        if upgrade.state in [constants.UPGRADE_ACTIVATION_REQUESTED,
-                             constants.UPGRADE_ACTIVATING]:
-            # Reset to activation-failed if the conductor restarts. This could
-            # be due to a swact or the process restarting. Either way we'll
-            # need to rerun the activation.
-            self.dbapi.software_upgrade_update(
-                upgrade.uuid, {'state': constants.UPGRADE_ACTIVATION_FAILED})
-
-        self._upgrade_default_service()
-        self._upgrade_default_service_parameter()
-
     def _handle_restore_in_progress(self):
         if os.path.isfile(tsc.SKIP_CEPH_OSD_WIPING):
             LOG.info("Starting thread to fix storage nodes install uuid.")
@@ -796,61 +748,6 @@ class ConductorManager(service.PeriodicService):
         files = constants.PARTITION_CONFIG_FLAG % ("*")
         for fname in glob.glob(files):
             cutils.remove(fname)
-
-    def _clear_stuck_loads(self):
-        load_stuck_states = [constants.IMPORTING_LOAD_STATE]
-
-        loads = self.dbapi.load_get_list()
-        stuck_loads = [load for load in loads
-                              if load.state in load_stuck_states]
-        if stuck_loads:
-            # set stuck isos state to error
-            for load in stuck_loads:
-                LOG.error("Unexpected restart during import of load %s for "
-                          "release %s, please delete the load and try again." %
-                          (load.id, load.software_version))
-                self.dbapi.load_update(load.id, {'state': constants.ERROR_LOAD_STATE})
-            cutils.unmount_stuck_isos()
-
-    def _set_state_for_abort(self, upgrade):
-        """ Update the database to reflect the abort"""
-        LOG.info("Upgrade Abort detected. Correcting database state.")
-
-        # Update the upgrade state
-        self.dbapi.software_upgrade_update(
-            upgrade.uuid, {'state': constants.UPGRADE_ABORTING})
-
-        try:
-            os.remove(tsc.UPGRADE_ABORT_FLAG)
-        except OSError:
-            LOG.exception("Failed to remove upgrade rollback flag")
-
-    def _set_state_for_rollback(self, upgrade):
-        """ Update the database to reflect the rollback"""
-        LOG.info("Upgrade Rollback detected. Correcting database state.")
-
-        # Update the upgrade state
-        self.dbapi.software_upgrade_update(
-            upgrade.uuid, {'state': constants.UPGRADE_ABORTING_ROLLBACK})
-
-        # At this point we are swacting to controller-0 which has just been
-        # downgraded.
-        # Before downgrading controller-0 all storage/worker nodes were locked
-        # The database of the from_load is not aware of this, so we set the
-        # state in the database to match the state of the system. This does not
-        # actually lock the nodes.
-        hosts = self.dbapi.ihost_get_list()
-        for host in hosts:
-            if host.personality not in [constants.WORKER, constants.STORAGE]:
-                continue
-            self.dbapi.ihost_update(host.uuid, {
-                'administrative': constants.ADMIN_LOCKED})
-
-        # Remove the rollback flag, we only want to modify the database once
-        try:
-            os.remove(tsc.UPGRADE_ROLLBACK_FLAG)
-        except OSError:
-            LOG.exception("Failed to remove upgrade rollback flag")
 
     def _init_controller_for_upgrade(self, upgrade):
         # Raise alarm to show an upgrade is in progress
@@ -1265,15 +1162,12 @@ class ConductorManager(service.PeriodicService):
             if utils.is_host_active_controller(h):
                 active_controller = h
                 break
-        software_load = None
         if active_controller is not None:
             tboot_value = active_controller.get('tboot')
             if tboot_value is not None:
                 values.update({'tboot': tboot_value})
-            software_load = active_controller.software_load
-            LOG.info("create_ihost software_load=%s" % software_load)
 
-        ihost = self.dbapi.ihost_create(values, software_load=software_load)
+        ihost = self.dbapi.ihost_create(values)
 
         try:
             hostname = values.get("hostname")
@@ -5295,9 +5189,9 @@ class ConductorManager(service.PeriodicService):
             # No upgrade in progress
             pass
         else:
-            if ihost.software_load != tsc.SW_VERSION:
+            if ihost.sw_version != tsc.SW_VERSION:
                 LOG.info("Ignore updating lvg for host: %s. Version "
-                         "%s mismatch." % (ihost.hostname, ihost.software_load))
+                         "%s mismatch." % (ihost.hostname, ihost.sw_version))
                 return
             elif (ihost.invprovision == constants.UPGRADING and
                     ihost.personality != constants.STORAGE):
@@ -5739,9 +5633,9 @@ class ConductorManager(service.PeriodicService):
             # No upgrade in progress
             pass
         else:
-            if db_host.software_load != tsc.SW_VERSION:
+            if db_host.sw_version != tsc.SW_VERSION:
                 LOG.info("Ignore updating disk partition for host: %s. Version "
-                         "%s mismatch." % (db_host.hostname, db_host.software_load))
+                         "%s mismatch." % (db_host.hostname, db_host.sw_version))
                 return
             elif (db_host.invprovision == constants.UPGRADING and
                     db_host.personality != constants.STORAGE):
@@ -6016,9 +5910,9 @@ class ConductorManager(service.PeriodicService):
             # No upgrade in progress
             pass
         else:
-            if ihost.software_load != tsc.SW_VERSION:
+            if ihost.sw_version != tsc.SW_VERSION:
                 LOG.info("Ignore updating physical volume for host: %s. Version "
-                         "%s mismatch." % (ihost.hostname, ihost.software_load))
+                         "%s mismatch." % (ihost.hostname, ihost.sw_version))
                 return
             elif (ihost.invprovision == constants.UPGRADING and
                     ihost.personality != constants.STORAGE):
@@ -6519,9 +6413,9 @@ class ConductorManager(service.PeriodicService):
             # No upgrade in progress
             pass
         else:
-            if ihost.software_load != tsc.SW_VERSION:
+            if ihost.sw_version != tsc.SW_VERSION:
                 LOG.info("Ignore updating host-fs for host: %s. Version "
-                         "%s mismatch." % (ihost.hostname, ihost.software_load))
+                         "%s mismatch." % (ihost.hostname, ihost.sw_version))
                 return
 
         if self._verify_restore_in_progress():
@@ -7354,65 +7248,6 @@ class ConductorManager(service.PeriodicService):
 
                     val = {'vim_progress_status': vim_progress_status_str}
                     self.dbapi.ihost_update(ihost.uuid, val)
-
-    @periodic_task.periodic_task(spacing=CONF.conductor_periodic_task_intervals.upgrade_status)
-    def _audit_upgrade_status(self, context):
-        """Audit upgrade related status"""
-        # NOTE(bqian) legacy upgrade only code
-        try:
-            upgrade = self.dbapi.software_upgrade_get_one()
-        except exception.NotFound:
-            # Not upgrading. No need to update status
-            return
-
-        if upgrade.state == constants.UPGRADE_ACTIVATING_HOSTS:
-            hosts = self.dbapi.ihost_get_list()
-            out_of_date_hosts = [host for host in hosts
-                                 if host.config_target and host.config_target != host.config_applied]
-            if not out_of_date_hosts:
-                LOG.info("Manifests applied. Upgrade activation complete.")
-                self._upgrade_manifest_start_time = None
-                self.dbapi.software_upgrade_update(
-                    upgrade.uuid,
-                    {'state': constants.UPGRADE_ACTIVATION_COMPLETE})
-            else:
-                LOG.info("Upgrade manifests running, config out-of-date hosts: %s" %
-                         str([host.hostname for host in out_of_date_hosts]))
-                # if the timeout interval is reached and hosts are
-                # still out-of-date then mark activation as failed
-                if not self._upgrade_manifest_start_time:
-                    self._upgrade_manifest_start_time = datetime.utcnow()
-                if (datetime.utcnow() - self._upgrade_manifest_start_time).total_seconds() >= \
-                        constants.UPGRADE_ACTIVATION_MANIFEST_TIMEOUT_IN_SECS:
-                    self._upgrade_manifest_start_time = None
-                    LOG.error("Upgrade activation failed, upgrade manifests apply timeout.")
-                    self.dbapi.software_upgrade_update(
-                        upgrade.uuid,
-                        {'state': constants.UPGRADE_ACTIVATION_FAILED})
-
-        elif upgrade.state == constants.UPGRADE_DATA_MIGRATION:
-            # Progress upgrade state if necessary...
-            if os.path.isfile(tsc.CONTROLLER_UPGRADE_COMPLETE_FLAG):
-                self.dbapi.software_upgrade_update(
-                    upgrade.uuid,
-                    {'state': constants.UPGRADE_DATA_MIGRATION_COMPLETE})
-            elif os.path.isfile(tsc.CONTROLLER_UPGRADE_FAIL_FLAG):
-                self.dbapi.software_upgrade_update(
-                    upgrade.uuid,
-                    {'state': constants.UPGRADE_DATA_MIGRATION_FAILED})
-
-        elif upgrade.state == constants.UPGRADE_UPGRADING_CONTROLLERS:
-            # In CPE upgrades, after swacting to controller-1, we need to clear
-            # the VIM upgrade flag on Controller-0 to allow VMs to be migrated
-            # to controller-1.
-            if constants.WORKER in tsc.subfunctions:
-                try:
-                    controller_0 = self.dbapi.ihost_get_by_hostname(
-                        constants.CONTROLLER_0_HOSTNAME)
-                    if not utils.is_host_active_controller(controller_0):
-                        vim_api.set_vim_upgrade_state(controller_0, False)
-                except Exception:
-                    LOG.exception("Unable to set VIM upgrade state to False")
 
     @periodic_task.periodic_task(spacing=CONF.conductor_periodic_task_intervals.install_states)
     def _audit_install_states(self, context):
@@ -12037,13 +11872,10 @@ class ConductorManager(service.PeriodicService):
         try:
             # TODO (bqian) change below report to USM if USM major release
             # deploy activate failed
-            upgrade = usm_service.get_platform_upgrade(self.dbapi)
+            usm_service.get_platform_upgrade(self.dbapi)
         except exception.NotFound:
             LOG.error("Upgrade record not found during config failure")
             return
-        self.dbapi.software_upgrade_update(
-            upgrade.uuid,
-            {'state': constants.UPGRADE_ACTIVATION_FAILED})
 
     def handle_kube_update_params_success(self, context, host_uuid):
         """
@@ -13904,7 +13736,7 @@ class ConductorManager(service.PeriodicService):
                 # node before the "worker_config_complete" has been
                 # executed.
                 elif force:
-                    if host.software_load == tsc.SW_VERSION:
+                    if host.sw_version == tsc.SW_VERSION:
                         try:
                             # if active controller, update without check
                             if utils.is_host_active_controller(host) and not skip_update_config:
@@ -13921,7 +13753,7 @@ class ConductorManager(service.PeriodicService):
                 elif (host.invprovision in [constants.PROVISIONED, constants.UPGRADING] or
                       (host.invprovision == constants.PROVISIONING and
                        host.personality == constants.CONTROLLER)):
-                    if host.software_load == tsc.SW_VERSION:
+                    if host.sw_version == tsc.SW_VERSION:
                         # We will not generate the hieradata in runtime here if the
                         # software load of the host is different from the active
                         # controller. The Hieradata of a host during an upgrade/rollback
@@ -14360,11 +14192,11 @@ class ConductorManager(service.PeriodicService):
             personalities = config_dict.get('personalities')
             for host in hosts:
                 if host.personality in personalities:
-                    if host.software_load == tsc.SW_VERSION:
+                    if host.sw_version == tsc.SW_VERSION:
                         host_uuids.append(host.uuid)
                     else:
                         LOG.info("Skip applying manifest for host: %s. Version %s mismatch." %
-                                 (host.hostname, host.software_load))
+                                 (host.hostname, host.sw_version))
                         self._update_host_config_applied(context, host, config_uuid)
 
             if not host_uuids:
@@ -14777,20 +14609,6 @@ class ConductorManager(service.PeriodicService):
                 patches.append(patch_id)
         return patches
 
-    def _import_load_error(self, new_load):
-        """
-        Update the load state to 'error' in the database
-        """
-        patch = {'state': constants.ERROR_LOAD_STATE}
-        try:
-            self.dbapi.load_update(new_load['id'], patch)
-
-        except exception.SysinvException as e:
-            LOG.exception(e)
-            raise exception.SysinvException(_("Error updating load in "
-                                              "database for load id: %s")
-                                            % new_load['id'])
-
     @staticmethod
     def _unmount_iso(mounted_iso, mntdir):
         # We need to sleep here because the mount/umount is happening too
@@ -14801,329 +14619,6 @@ class ConductorManager(service.PeriodicService):
         time.sleep(1)
         mounted_iso._umount_iso()
         shutil.rmtree(mntdir)
-
-    def start_import_load(self, context, path_to_iso, path_to_sig,
-                          import_type=None):
-        """
-        Mount the ISO and validate the load for import
-        """
-        loads = self.dbapi.load_get_list()
-
-        active_load = cutils.get_active_load(loads)
-
-        if import_type != constants.ACTIVE_LOAD_IMPORT:
-            cutils.validate_loads_for_import(loads)
-
-        current_version = active_load.software_version
-
-        if not os.path.exists(path_to_iso):
-            raise exception.SysinvException(_("Specified path not found %s") %
-                                            path_to_iso)
-
-        if not os.path.exists(path_to_sig):
-            raise exception.SysinvException(_("Specified path not found %s") %
-                                            path_to_sig)
-
-        if not verify_files([path_to_iso], path_to_sig):
-            raise exception.SysinvException(_("Signature %s could not be verified") %
-                                            path_to_sig)
-
-        mounted_iso = None
-        mntdir = tempfile.mkdtemp(dir='/tmp')
-        # Attempt to mount iso
-        try:
-            mounted_iso = cutils.ISO(path_to_iso, mntdir)
-            # Note: iso will be unmounted when object goes out of scope
-
-        except subprocess.CalledProcessError:
-            raise exception.SysinvException(_(
-                "Unable to mount iso"))
-
-        metadata_file_path = mntdir + '/upgrades/metadata.xml'
-
-        if not os.path.exists(metadata_file_path):
-            self._unmount_iso(mounted_iso, mntdir)
-            raise exception.SysinvException(_("Metadata file not found"))
-
-        # Read in the metadata file
-        try:
-            metadata_file = open(metadata_file_path, 'r')
-            root = ElementTree.fromstring(metadata_file.read())
-            metadata_file.close()
-        except Exception:
-            self._unmount_iso(mounted_iso, mntdir)
-            raise exception.SysinvException(_(
-                "Unable to read metadata file"))
-
-        new_version = root.findtext('version')
-        committed_patches = []
-        if import_type == constants.INACTIVE_LOAD_IMPORT:
-            committed_patches = self._get_committed_patches_from_iso(new_version, mntdir)
-
-        # unmount iso
-        self._unmount_iso(mounted_iso, mntdir)
-
-        if import_type == constants.ACTIVE_LOAD_IMPORT:
-            if new_version != current_version:
-                raise exception.SysinvException(
-                    _("Active version and import version must match (%s)")
-                    % current_version)
-
-            # return the matching (active) load in the database
-            loads = self.dbapi.load_get_list()
-
-            for load in loads:
-                if load.software_version == new_version:
-                    break
-            else:
-                raise exception.SysinvException(
-                    _("Active load not found (%s)") % current_version)
-
-            if os.path.exists(constants.LOAD_FILES_STAGING_DIR):
-                shutil.rmtree(constants.LOAD_FILES_STAGING_DIR)
-
-            return load
-
-        elif import_type == constants.INACTIVE_LOAD_IMPORT:
-            if LooseVersion(new_version) >= LooseVersion(current_version):
-                raise exception.SysinvException(
-                    _("Inactive load (%s) must be an older load than the current active (%s).")
-                    % (new_version, current_version))
-
-            supported_versions = self._get_current_supported_upgrade_versions()
-            is_version_upgradable = False
-
-            for upgrade_path in supported_versions:
-                if new_version == upgrade_path["version"]:
-                    is_version_upgradable = True
-                    patches = upgrade_path['required_patch']
-                    for patch in patches:
-                        if patch not in committed_patches:
-                            is_version_upgradable = False
-                            break
-
-            if not is_version_upgradable:
-                msg = """
-                    Inactive version must be upgradable to the
-                    current version (%s), please check the version
-                    and patches.
-                """ % current_version
-                raise exception.SysinvException(_(msg))
-
-            self.dbapi.load_update(active_load['id'], {'compatible_version': new_version,
-                                                       'required_patches': '\n'.join(patches)})
-
-            patch = dict()
-            patch['state'] = constants.IMPORTING_LOAD_STATE
-
-            patch['software_version'] = new_version
-            patch['compatible_version'] = ""
-            patch['required_patches'] = ""
-            new_load = self.dbapi.load_create(patch)
-            return new_load
-
-        else:
-            if new_version == current_version:
-                raise exception.SysinvException(
-                    _("Active version and import version match (%s)")
-                    % current_version)
-
-            supported_upgrades_elm = root.find('supported_upgrades')
-            if not supported_upgrades_elm:
-                raise exception.SysinvException(
-                    _("Invalid Metadata XML"))
-
-            path_found = False
-            upgrade_path = None
-            upgrade_paths = supported_upgrades_elm.findall('upgrade')
-
-            for upgrade_element in upgrade_paths:
-                valid_from_version = upgrade_element.findtext('version')
-                valid_from_versions = valid_from_version.split(",")
-                if current_version in valid_from_versions:
-                    path_found = True
-                    upgrade_path = upgrade_element
-                    break
-
-            if not path_found:
-                raise exception.SysinvException(
-                    _("No valid upgrade path found"))
-
-            # Create a patch with the values from the metadata
-            patch = dict()
-
-            patch['state'] = constants.IMPORTING_LOAD_STATE
-            patch['software_version'] = new_version
-            patch['compatible_version'] = current_version
-
-            required_patches = []
-
-            if upgrade_path:
-                patch_elements = upgrade_path.findall('required_patch')
-                for patch_element in patch_elements:
-                    required_patches.append(patch_element.text)
-
-            patch['required_patches'] = "\n".join(required_patches)
-
-            # create the new imported load in the database
-            new_load = self.dbapi.load_create(patch)
-
-            return new_load
-
-    def import_load(self, context, path_to_iso, new_load,
-                    import_type=None):
-        """
-        Run the import script and add the load to the database
-        """
-        loads = self.dbapi.load_get_list()
-
-        cutils.validate_loads_for_import(loads)
-
-        if new_load is None:
-            raise exception.SysinvException(
-                _("Error importing load. Load not found"))
-
-        if not os.path.exists(path_to_iso):
-            self._import_load_error(new_load)
-            raise exception.SysinvException(_("Specified path not found: %s") %
-                                            path_to_iso)
-
-        mounted_iso = None
-
-        mntdir = tempfile.mkdtemp(dir='/tmp')
-        # Attempt to mount iso
-        try:
-            mounted_iso = cutils.ISO(path_to_iso, mntdir)
-            # Note: iso will be unmounted when object goes out of scope
-
-        except subprocess.CalledProcessError:
-            self._import_load_error(new_load)
-            raise exception.SysinvException(_("Unable to mount iso"))
-
-        import_script = mntdir + "/upgrades/import.sh"
-
-        if import_type == constants.INACTIVE_LOAD_IMPORT:
-            import_script = ["/opt/upgrades/import.sh", mntdir]
-
-        # Run the upgrade script
-        with open(os.devnull, "w") as fnull:
-            try:
-                subprocess.check_call(import_script, stdout=fnull, stderr=fnull)  # pylint: disable=not-callable
-            except subprocess.CalledProcessError:
-                self._import_load_error(new_load)
-                raise exception.SysinvException(_(
-                    "Failure during import script"))
-
-        mounted_iso._umount_iso()
-        shutil.rmtree(mntdir)
-
-        state = constants.IMPORTED_LOAD_STATE
-
-        if import_type == constants.INACTIVE_LOAD_IMPORT:
-            state = constants.INACTIVE_LOAD_STATE
-
-            try:
-                LoadImport.extract_files(new_load['software_version'])
-            except exception.SysinvException as error:
-                self._import_load_error(new_load)
-                raise exception.SysinvException(
-                    "Failure during load extract_files: %s" % (error)
-                )
-
-        # Update the load status in the database
-        try:
-            self.dbapi.load_update(new_load['id'], {'state': state})
-
-        except exception.SysinvException as e:
-            LOG.exception(e)
-            raise exception.SysinvException(_("Error updating load in "
-                                              "database for load id: %s")
-                                            % new_load['id'])
-
-        # Run the sw-patch init-release commands
-        with open(os.devnull, "w") as fnull:
-            try:
-                subprocess.check_call(["/usr/sbin/sw-patch",  # pylint: disable=not-callable
-                                       "init-release",
-                                       new_load['software_version']],
-                                      stdout=fnull, stderr=fnull)
-            except subprocess.CalledProcessError:
-                self._import_load_error(new_load)
-                raise exception.SysinvException(_(
-                    "Failure during sw-patch init-release"))
-
-        if os.path.exists(constants.LOAD_FILES_STAGING_DIR):
-            shutil.rmtree(constants.LOAD_FILES_STAGING_DIR)
-
-        LOG.info("Load import completed.")
-        return True
-
-    def delete_load(self, context, load_id):
-        """
-        Cleanup a load and remove it from the database
-        """
-        load = self.dbapi.load_get(load_id)
-
-        cutils.validate_load_for_delete(load)
-
-        # We allow this command to be run again if the delete fails
-        if load.state != constants.DELETING_LOAD_STATE:
-            # Here we run the cleanup script locally
-            self._cleanup_load(load)
-            self.dbapi.load_update(
-                load_id, {'state': constants.DELETING_LOAD_STATE})
-
-        mate_hostname = cutils.get_mate_controller_hostname()
-
-        try:
-            standby_controller = self.dbapi.ihost_get_by_hostname(
-                mate_hostname)
-            rpcapi = agent_rpcapi.AgentAPI()
-            rpcapi.delete_load(
-                context, standby_controller['uuid'], load.software_version)
-        except exception.NodeNotFound:
-            # The mate controller has not been configured so complete the
-            # deletion of the load now.
-            self.finalize_delete_load(context, load.software_version)
-
-        LOG.info("Load (%s) deleted." % load.software_version)
-
-    def _cleanup_load(self, load):
-        # Run the sw-patch del-release commands
-        with open(os.devnull, "w") as fnull:
-            try:
-                subprocess.check_call(["/usr/sbin/sw-patch",  # pylint: disable=not-callable
-                                       "del-release",
-                                       load.software_version],
-                                      stdout=fnull, stderr=fnull)
-            except subprocess.CalledProcessError:
-                raise exception.SysinvException(_(
-                    "Failure during sw-patch del-release"))
-
-        cleanup_script = constants.DELETE_LOAD_SCRIPT
-        if os.path.isfile(cleanup_script):
-            with open(os.devnull, "w") as fnull:
-                try:
-                    subprocess.check_call(  # pylint: disable=not-callable
-                        [cleanup_script, load.software_version],
-                        stdout=fnull, stderr=fnull)
-                except subprocess.CalledProcessError:
-                    raise exception.SysinvException(_(
-                        "Failure during cleanup script"))
-        else:
-            raise exception.SysinvException(_(
-                "Cleanup script %s does not exist.") % cleanup_script)
-
-    def finalize_delete_load(self, context, sw_version):
-        # Clean up the staging directory in case an error occur during the
-        # import and this directory did not get cleaned up.
-        if os.path.exists(constants.LOAD_FILES_STAGING_DIR):
-            shutil.rmtree(constants.LOAD_FILES_STAGING_DIR)
-
-        loads = self.dbapi.load_get_list()
-        for load in loads:
-            if load.software_version == sw_version:
-                self.dbapi.load_destroy(load.id)
 
     def upgrade_ihost_pxe_config(self, context, host, load):
         """Upgrade a host.
@@ -15229,11 +14724,6 @@ class ConductorManager(service.PeriodicService):
                     upgrade.state == constants.UPGRADE_DATA_MIGRATION_COMPLETE):
                 LOG.info("Finished upgrade of %s" %
                          constants.CONTROLLER_1_HOSTNAME)
-                # Update upgrade state
-                upgrade_update = {
-                    'state': constants.UPGRADE_UPGRADING_CONTROLLERS}
-                self.dbapi.software_upgrade_update(upgrade.uuid,
-                                                   upgrade_update)
 
             if (host.hostname == constants.CONTROLLER_0_HOSTNAME and
                     host_upgrade.software_load == upgrade.to_load):
@@ -15245,410 +14735,6 @@ class ConductorManager(service.PeriodicService):
                     LOG.exception(e)
                     raise exception.SysinvException(_(
                         "Failure clearing VIM host upgrade state"))
-
-                # If we are in the upgrading controllers state and controller-0
-                # is running the new release, update the upgrade state
-                if upgrade.state == constants.UPGRADE_UPGRADING_CONTROLLERS:
-                    upgrade_update = {
-                        'state': constants.UPGRADE_UPGRADING_HOSTS}
-                    self.dbapi.software_upgrade_update(upgrade.uuid,
-                                                       upgrade_update)
-
-                    LOG.info("Prepare for swact to controller-0")
-                    # As a temporary solution we only migrate the etcd database
-                    # when we swact to controller-0. This solution will present
-                    # some problems when we do upgrade etcd, so further
-                    # development will be required at that time.
-                    try:
-                        with open(os.devnull, "w") as devnull:
-                            call_args = [
-                                '/usr/bin/upgrade_swact_migration.py',
-                                'prepare_swact',
-                                upgrade.from_release,
-                                upgrade.to_release
-                            ]
-                            subprocess.check_call(call_args, stdout=devnull)  # pylint: disable=not-callable
-                    except subprocess.CalledProcessError as e:
-                        LOG.exception(e)
-                        raise exception.SysinvException(
-                            "Failed upgrade_swact_migration prepare_swact")
-
-    def start_upgrade(self, context, upgrade):
-        """ Start the upgrade"""
-
-        from_load = self.dbapi.load_get(upgrade.from_load)
-        from_version = from_load.software_version
-        to_load = self.dbapi.load_get(upgrade.to_load)
-        to_version = to_load.software_version
-
-        controller_0 = self.dbapi.ihost_get_by_hostname(
-            constants.CONTROLLER_0_HOSTNAME)
-
-        # Prepare for upgrade
-        LOG.info("Preparing for upgrade from release: %s to release: %s" %
-                 (from_version, to_version))
-
-        try:
-            if tsc.system_mode == constants.SYSTEM_MODE_SIMPLEX:
-                LOG.info("Generating agent request to create simplex upgrade "
-                         "data")
-                # NOTE(bqian) this is legacy upgrade only code, so only fetch upgrade
-                # entity from sysinv db
-                software_upgrade = self.dbapi.software_upgrade_get_one()
-                rpcapi = agent_rpcapi.AgentAPI()
-                # In cases where there is no backup in progress alarm but the flag exists,
-                # it must be removed. So upgrade-start is not blocked.
-                if os.path.isfile(tsc.BACKUP_IN_PROGRESS_FLAG):
-                    LOG.info("Backup in Progress flag was found, cleaning it.")
-                    os.remove(tsc.BACKUP_IN_PROGRESS_FLAG)
-                    LOG.info("Backup in Progress flag was cleaned.")
-                rpcapi.create_simplex_backup(context, software_upgrade)
-                return
-            else:
-                # Extract N+1 packages necessary for installation of controller-1
-                # (ie. installer images, kickstarts)
-                subprocess.check_call(['/usr/sbin/upgrade-start-pkg-extract',  # pylint: disable=not-callable
-                                       '-r', to_version])
-                # get the floating management IP
-                mgmt_address = cutils.get_primary_address_by_name(self.dbapi,
-                                        cutils.format_address_name(constants.CONTROLLER_HOSTNAME,
-                                                                   constants.NETWORK_TYPE_MGMT),
-                                        constants.NETWORK_TYPE_MGMT, True)
-                i_system = self.dbapi.isystem_get_one()
-                upgrades_management.prepare_upgrade(
-                    from_version, to_version, i_system, mgmt_address.address)
-
-            LOG.info("Finished upgrade preparation")
-        except Exception:
-            LOG.exception("Upgrade preparation failed")
-            with excutils.save_and_reraise_exception():
-                if tsc.system_mode != constants.SYSTEM_MODE_SIMPLEX:
-                    vim_api.set_vim_upgrade_state(controller_0, False)
-                upgrades_management.abort_upgrade(from_version, to_version,
-                                                  upgrade)
-                # Delete upgrade record
-                self.dbapi.software_upgrade_destroy(upgrade.uuid)
-
-        # Raise alarm to show an upgrade is in progress
-        entity_instance_id = "%s=%s" % (fm_constants.FM_ENTITY_TYPE_HOST,
-                                        constants.CONTROLLER_HOSTNAME)
-        fault = fm_api.Fault(
-            alarm_id=fm_constants.FM_ALARM_ID_UPGRADE_IN_PROGRESS,
-            alarm_state=fm_constants.FM_ALARM_STATE_SET,
-            entity_type_id=fm_constants.FM_ENTITY_TYPE_HOST,
-            entity_instance_id=entity_instance_id,
-            severity=fm_constants.FM_ALARM_SEVERITY_MINOR,
-            reason_text="System Upgrade in progress.",
-            # operational
-            alarm_type=fm_constants.FM_ALARM_TYPE_7,
-            # congestion
-            probable_cause=fm_constants.ALARM_PROBABLE_CAUSE_8,
-            proposed_repair_action="No action required.",
-            service_affecting=False)
-        fm_api.FaultAPIs().set_fault(fault)
-
-        self.dbapi.software_upgrade_update(
-            upgrade.uuid, {'state': constants.UPGRADE_STARTED})
-
-    @cutils.synchronized(LOCK_IMAGE_PULL)
-    def activate_upgrade(self, context, upgrade):
-        """Activate the upgrade. Generate and apply new manifests.
-
-        """
-        # TODO Move upgrade methods to another file
-        from_load = self.dbapi.load_get(upgrade.from_load)
-        from_version = from_load.software_version
-        to_load = self.dbapi.load_get(upgrade.to_load)
-        to_version = to_load.software_version
-
-        self.dbapi.software_upgrade_update(
-            upgrade.uuid, {'state': constants.UPGRADE_ACTIVATING})
-
-        # Ask upgrade management to activate the upgrade
-        try:
-            i_system = self.dbapi.isystem_get_one()
-            upgrades_management.activate_upgrade(from_version,
-                                                 to_version, i_system)
-            LOG.info("Finished upgrade activation")
-        except Exception:
-            LOG.exception("Upgrade activation failed")
-            with excutils.save_and_reraise_exception():
-                # mark the activation as failed. The intention
-                # is for the user to retry activation once they
-                # have resolved the cause for failure
-                self.dbapi.software_upgrade_update(
-                    upgrade.uuid,
-                    {'state': constants.UPGRADE_ACTIVATION_FAILED})
-
-        # Remove platform-nfs-ip references if it exists
-        # TODO(fcorream): platform-nfs-ip is just necessary to allow an upgrade from
-        # StarlingX releases 6 or 7 to new releases.
-        # remove the plat_nfs_address_name and update_platform_nfs_ip_references when
-        # StarlingX rel. 6 or 7 are not being used anymore
-        plat_nfs_address_name = cutils.format_address_name("controller-platform-nfs",
-                                                constants.NETWORK_TYPE_MGMT)
-        try:
-            cutils.get_primary_address_by_name(self.dbapi,
-                                               plat_nfs_address_name,
-                                               constants.NETWORK_TYPE_MGMT, True)
-            LOG.info("platform-nfs-ip exists in the DB, updating all references")
-            self.update_platform_nfs_ip_references(context)
-
-        except exception.AddressNotFoundByName:
-            LOG.debug("activate_upgrade: {} does not exist".format(plat_nfs_address_name))
-        except Exception as e:
-            LOG.exception(e)
-            LOG.error("exception: update {} references could not be completed"
-                      .format(plat_nfs_address_name))
-
-        manifests_applied = False
-
-        if manifests_applied:
-            LOG.info("Running upgrade activation manifests")
-            self.dbapi.software_upgrade_update(
-                upgrade.uuid, {'state': constants.UPGRADE_ACTIVATING_HOSTS})
-        else:
-            LOG.info("Upgrade activation complete")
-            self.dbapi.software_upgrade_update(
-                upgrade.uuid, {'state': constants.UPGRADE_ACTIVATION_COMPLETE})
-
-    def complete_upgrade(self, context, upgrade, state):
-        """ Complete the upgrade"""
-
-        from_load = self.dbapi.load_get(upgrade.from_load)
-        from_version = from_load.software_version
-        to_load = self.dbapi.load_get(upgrade.to_load)
-        to_version = to_load.software_version
-
-        controller_0 = self.dbapi.ihost_get_by_hostname(
-            constants.CONTROLLER_0_HOSTNAME)
-
-        if state in [constants.UPGRADE_ABORTING,
-                constants.UPGRADE_ABORTING_ROLLBACK]:
-            if upgrade.state != constants.UPGRADE_ABORT_COMPLETING:
-                raise exception.SysinvException(
-                    _("Unable to complete upgrade-abort: Upgrade not in %s "
-                      "state.") % constants.UPGRADE_ABORT_COMPLETING)
-            LOG.info(
-                "Completing upgrade abort from release: %s to release: %s" %
-                (from_version, to_version))
-            upgrades_management.abort_upgrade(from_version, to_version, upgrade)
-
-            if (tsc.system_type == constants.SYSTEM_MODE_DUPLEX and
-                    tsc.system_type == constants.TIS_AIO_BUILD and
-                        state == constants.UPGRADE_ABORTING_ROLLBACK):
-
-                # For AIO Case, VM goes into no state when Controller-0 becomes active
-                # after swact. nova clean up will fail the instance and restart
-                # nova-compute service
-                LOG.info("Calling nova cleanup")
-                with open(os.devnull, "w") as fnull:
-                    try:
-                        subprocess.check_call(["systemctl", "start", "nova-cleanup"],  # pylint: disable=not-callable
-                                              stdout=fnull,
-                                              stderr=fnull)
-                    except subprocess.CalledProcessError:
-                        raise exception.SysinvException(_(
-                            "Failed to call nova cleanup during AIO abort"))
-
-            try:
-                vim_api.set_vim_upgrade_state(controller_0, False)
-            except Exception:
-                LOG.exception()
-                raise exception.SysinvException(_(
-                    "upgrade-abort rejected: unable to reset VIM upgrade "
-                    "state"))
-            LOG.info("Finished upgrade abort")
-        else:
-            if upgrade.state != constants.UPGRADE_COMPLETING:
-                raise exception.SysinvException(
-                    _("Unable to complete upgrade: Upgrade not in %s state.")
-                    % constants.UPGRADE_COMPLETING)
-
-            # Mark "kube-system" namespace with platform label
-            body = {
-                "metadata": {
-                    "labels": {
-                        common.COMPONENT_LABEL_KEY: common.COMPONENT_LABEL_VALUE_PLATFORM
-                    }
-                }
-            }
-
-            try:
-                self._kube.kube_patch_namespace('kube-system', body)
-            except Exception as e:
-                LOG.error(e)
-                raise
-
-            # Complete the restore procedure
-            if tsc.system_mode == constants.SYSTEM_MODE_SIMPLEX:
-                self.complete_restore(context)
-
-            # Force all host_upgrade entries to use the new load
-            # In particular we may have host profiles created in the from load
-            # that we need to update before we can delete the load.
-            hosts = self.dbapi.host_upgrade_get_list()
-            for host_upgrade in hosts:
-                if (host_upgrade.target_load == from_load.id or
-                        host_upgrade.software_load == from_load.id):
-                    LOG.info(_("Updating host id: %s to use load id: %s")
-                             % (host_upgrade.forihostid, upgrade.to_load))
-                    self.dbapi.host_upgrade_update(
-                        host_upgrade.id,
-                        {"software_load": upgrade.to_load,
-                         "target_load": upgrade.to_load})
-
-            # Complete the upgrade
-            LOG.info("Completing upgrade from release: %s to release: %s" %
-                     (from_version, to_version))
-            upgrades_management.complete_upgrade(from_version, to_version, upgrade)
-            LOG.info("Finished completing upgrade")
-            # If applicable, notify dcmanager upgrade is complete
-            system = self.dbapi.isystem_get_one()
-            role = system.get('distributed_cloud_role')
-            if role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
-                dc_api.notify_dcmanager_platform_upgrade_completed()
-
-        # Delete upgrade record
-        self.dbapi.software_upgrade_destroy(upgrade.uuid)
-
-        # TODO(fcorream): This is just needed for upgrade from R7 to R8
-        # need to remove the flag that disables the use of FQDN during the
-        # upgrade
-        if (tsc.system_mode != constants.SYSTEM_MODE_SIMPLEX):
-            personalities = [constants.CONTROLLER]
-            config_uuid = self._config_update_hosts(context, personalities)
-            config_dict = {
-                "personalities": personalities,
-                "classes": ['platform::network::upgrade_fqdn_cleanup::runtime'],
-            }
-            self._config_apply_runtime_manifest(context, config_uuid, config_dict)
-
-        # Clear upgrades alarm
-        entity_instance_id = "%s=%s" % (fm_constants.FM_ENTITY_TYPE_HOST,
-                                        constants.CONTROLLER_HOSTNAME)
-        fm_api.FaultAPIs().clear_fault(
-            fm_constants.FM_ALARM_ID_UPGRADE_IN_PROGRESS,
-            entity_instance_id)
-
-    def abort_upgrade(self, context, upgrade):
-        """ Abort the upgrade"""
-        from_load = self.dbapi.load_get(upgrade.from_load)
-        from_version = from_load.software_version
-        to_load = self.dbapi.load_get(upgrade.to_load)
-        to_version = to_load.software_version
-        LOG.info("Aborted upgrade from release: %s to release: %s" %
-                 (from_version, to_version))
-
-        updates = {'state': constants.UPGRADE_ABORTING}
-
-        controller_0 = self.dbapi.ihost_get_by_hostname(
-            constants.CONTROLLER_0_HOSTNAME)
-        host_upgrade = self.dbapi.host_upgrade_get_by_host(
-            controller_0.id)
-
-        if host_upgrade.target_load == to_load.id:
-            updates['state'] = constants.UPGRADE_ABORTING_ROLLBACK
-
-        rpc_upgrade = self.dbapi.software_upgrade_update(
-            upgrade.uuid, updates)
-        # make sure the to/from loads are in the correct state
-        self.dbapi.set_upgrade_loads_state(
-            upgrade,
-            constants.IMPORTED_LOAD_STATE,
-            constants.ACTIVE_LOAD_STATE)
-
-        self._puppet.update_system_config()
-        self._puppet.update_secure_system_config()
-
-        # There are upgrade flags that are written to controller-0 that need to
-        # be removed before downgrading controller-1. As these flags reside on
-        # controller-0, we restrict this to abort actions started on that
-        # controller. When the abort is run on controller-1 the data-migration
-        # must be complete, and only the CONTROLLER_UPGRADE_COMPLETE_FLAG would
-        # remain. The CONTROLLER_UPGRADE_COMPLETE_FLAG does not interfere with
-        # the host-downgrade. Any remaining flags will be removed during
-        # upgrade-complete.
-        if utils.is_host_active_controller(controller_0):
-            upgrade_flag_files = [
-                tsc.CONTROLLER_UPGRADE_FLAG,
-                tsc.CONTROLLER_UPGRADE_COMPLETE_FLAG,
-                tsc.CONTROLLER_UPGRADE_FAIL_FLAG,
-                tsc.CONTROLLER_UPGRADE_STARTED_FLAG
-            ]
-            for file in upgrade_flag_files:
-                try:
-                    if os.path.isfile(file):
-                        os.remove(file)
-                except OSError:
-                    LOG.exception("Failed to remove upgrade flag: %s" % file)
-
-        # When we abort from controller-1 while controller-0 is running
-        # the previous release, controller-0 will not be aware of the abort.
-        # We set the following flag so controller-0 will know we're
-        # aborting the upgrade and can set it's database accordingly
-        if tsc.system_mode != constants.SYSTEM_MODE_SIMPLEX:
-            if updates['state'] == constants.UPGRADE_ABORTING:
-                controller_1 = self.dbapi.ihost_get_by_hostname(
-                    constants.CONTROLLER_1_HOSTNAME)
-                c1_host_upgrade = self.dbapi.host_upgrade_get_by_host(
-                    controller_1.id)
-                if utils.is_host_active_controller(controller_1) and \
-                        c1_host_upgrade.target_load == to_load.id:
-                    abort_flag = os.path.join(
-                        tsc.PLATFORM_PATH, 'config', from_version,
-                        tsc.UPGRADE_ABORT_FILE)
-                    open(abort_flag, "w").close()
-
-        return rpc_upgrade
-
-    def complete_simplex_backup(self, context, success):
-        """Complete the simplex upgrade start process
-
-        :param context: request context.
-        :param success: If the create_simplex_backup call completed
-        """
-        try:
-            # NOTE(bqian) legacy upgrade only code
-            upgrade = self.dbapi.software_upgrade_get_one()
-        except exception.NotFound:
-            LOG.error("Software upgrade record not found")
-            return
-
-        from_version = upgrade.from_release
-        to_version = upgrade.to_release
-
-        if not success:
-            # The upgrade start data collection failed, stop the upgrade
-            upgrades_management.abort_upgrade(from_version, to_version,
-                                              upgrade)
-            # Delete upgrade record
-            self.dbapi.software_upgrade_destroy(upgrade.uuid)
-            LOG.info("Simplex upgrade start failed")
-        else:
-            LOG.info("Simplex upgrade start completed")
-            # Raise alarm to show an upgrade is in progress
-            entity_instance_id = "%s=%s" % (fm_constants.FM_ENTITY_TYPE_HOST,
-                                            constants.CONTROLLER_HOSTNAME)
-            fault = fm_api.Fault(
-                alarm_id=fm_constants.FM_ALARM_ID_UPGRADE_IN_PROGRESS,
-                alarm_state=fm_constants.FM_ALARM_STATE_SET,
-                entity_type_id=fm_constants.FM_ENTITY_TYPE_HOST,
-                entity_instance_id=entity_instance_id,
-                severity=fm_constants.FM_ALARM_SEVERITY_MINOR,
-                reason_text="System Upgrade in progress.",
-                # operational
-                alarm_type=fm_constants.FM_ALARM_TYPE_7,
-                # congestion
-                probable_cause=fm_constants.ALARM_PROBABLE_CAUSE_8,
-                proposed_repair_action="No action required.",
-                service_affecting=False)
-            fm_api.FaultAPIs().set_fault(fault)
-
-            self.dbapi.software_upgrade_update(
-                upgrade.uuid, {'state': constants.UPGRADE_STARTED})
-
-        return
 
     def get_system_health(self, context, force=False, upgrade=False,
                           kube_upgrade=False,

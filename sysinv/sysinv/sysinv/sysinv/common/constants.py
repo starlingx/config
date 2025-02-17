@@ -960,7 +960,6 @@ IMPORTED_LOAD_STATES = [
     INACTIVE_LOAD_STATE,
 ]
 
-DELETE_LOAD_SCRIPT = '/etc/sysinv/upgrades/delete_load.sh'
 IMPORTED_LOAD_MAX_COUNT = 1
 LOAD_ISO = 'path_to_iso'
 LOAD_SIGNATURE = 'path_to_sig'

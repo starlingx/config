@@ -140,8 +140,7 @@ class PlatformCephBackendAIODuplexHostTestCase(PuppetOperatorTestSuiteMixin,
 
 #  ============= Openstack environment tests ==============
 class PlatformUpgradeOpenstackAIODuplexHostTestCase(PuppetOperatorTestSuiteMixin,
-                                                    dbbase.BaseCephStorageBackendMixin,
-                                                    dbbase.PlatformUpgradeTestCase):
+                                                    dbbase.BaseCephStorageBackendMixin):
 
     @mock.patch('sysinv.common.usm_service.is_usm_authapi_ready', lambda: True)
     @mock.patch('sysinv.common.usm_service.get_platform_upgrade')

@@ -588,7 +588,6 @@ class TestPatchMixin(object):
                                 "0.0",
                                 "0.0")
         mock_get_platform_upgrade.return_value = usm_deploy
-        dbutils.create_test_upgrade(state=constants.UPGRADE_STARTING)
         addrpool = self.find_addrpool_by_networktype(constants.NETWORK_TYPE_OAM)
         response = self.patch_oam_fail(addrpool, http_client.BAD_REQUEST,
                                        controller1_address=str(self.oam_subnet[10]))

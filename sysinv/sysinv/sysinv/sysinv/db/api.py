@@ -127,7 +127,7 @@ class Connection(object):
         """
 
     @abc.abstractmethod
-    def ihost_create(self, values, software_load=None):
+    def ihost_create(self, values):
         """Create a new ihost.
 
         :param values: A dict containing several items used to identify
@@ -144,7 +144,6 @@ class Connection(object):
                          'availability': 'offduty',
                          'extra': { ... },
                         }
-        :param: software_load.  The load software_version.
         :returns: A ihost.
         """
 
@@ -3681,75 +3680,6 @@ class Connection(object):
         """
 
     @abc.abstractmethod
-    def load_create(self, values):
-        """Create a new Load.
-
-        :param values: A dict containing several items used to identify
-                       and track the load
-                        {
-                         'software_version': '16.10',
-                         'compatible_version': '15.10',
-                         'required_patches': '001,002,003',
-                        }
-        :returns: A load.
-        """
-
-    @abc.abstractmethod
-    def load_get(self, load):
-        """Returns a load.
-
-        :param load: The id or uuid of a load.
-        :returns: A load.
-        """
-
-    @abc.abstractmethod
-    def load_get_by_version(self, version):
-        """Returns the load with the specified version.
-
-        :param version: The software version of a load.
-        :returns: A load.
-        """
-
-    @abc.abstractmethod
-    def load_get_list(self, limit=None, marker=None, sort_key=None,
-                      sort_dir=None):
-        """Return a list of loads.
-
-        :param limit: Maximum number of loads to return.
-        :param marker: the last item of the previous page; we return the next
-                       result set.
-        :param sort_key: Attribute by which results should be sorted.
-        :param sort_dir: direction in which results should be sorted.
-                         (asc, desc)
-        """
-
-    @abc.abstractmethod
-    def load_update(self, load, values):
-        """Update properties of a load.
-
-        :param load: The id or uuid of a load.
-        :param values: Dict of values to update.
-                       May be a partial list,
-        :returns: A load.
-        """
-
-    @abc.abstractmethod
-    def load_destroy(self, load):
-        """Destroy a load.
-
-        :param load: The id or uuid of a load.
-        """
-
-    @abc.abstractmethod
-    def set_upgrade_loads_state(self, upgrade, to_state, from_state):
-        """Change the states of the loads in an upgrade.
-
-        :param upgrade: An upgrade object.
-        :param to_state: The state of the 'to' load.
-        :param from_state: The state of the 'from' load.
-        """
-
-    @abc.abstractmethod
     def fpga_device_create(self, hostid, values):
         """Create a new FPGA device for a host.
 
@@ -3881,123 +3811,6 @@ class Connection(object):
         """Destroy a pci_device
 
         :param deviceid: The id or uuid of a pci device.
-        """
-
-    @abc.abstractmethod
-    def software_upgrade_create(self, values):
-        """Create a new software_upgrade entry
-
-        :param values: A dict containing several items used to identify
-                       and track the entry, and several dicts which are passed
-                       into the Drivers when managing this node. For example:
-
-                        {
-                         'uuid': uuidutils.generate_uuid(),
-                         'state': 'start', 'migration_complete', 'activated',
-                                  'complete',
-                         'from_load': '15.10',
-                         'to_load'  : '16.10',
-                        }
-        :returns: A software_uprade record.
-        """
-
-    @abc.abstractmethod
-    def software_upgrade_get(self, id):
-        """Return a software_upgrade entry for a given id
-
-        :param _id: The id or uuid of a software_upgrade entry
-        :returns: a software_upgrade entry
-        """
-
-    @abc.abstractmethod
-    def software_upgrade_get_list(self, limit=None, marker=None,
-                                  sort_key=None, sort_dir=None):
-        """Return a list of software_upgrade entries.
-
-        :param limit: Maximum number of software_upgrade entries to return.
-        :param marker: the last item of the previous page; we return the next
-                       result set.
-        :param sort_key: Attribute by which results should be sorted.
-        :param sort_dir: direction in which results should be sorted.
-                         (asc, desc)
-        """
-
-    @abc.abstractmethod
-    def software_upgrade_get_one(self):
-        """Return exactly one software_upgrade.
-
-        :returns: A software_upgrade.
-        """
-
-    @abc.abstractmethod
-    def software_upgrade_update(self, uuid, values):
-        """Update properties of a software_upgrade.
-
-        :param node: The uuid of a software_upgrade entry.
-        :param values: Dict of values to update.
-                       {
-                         'state': 'complete',
-                        }
-        :returns: A software_upgrade entry.
-        """
-
-    @abc.abstractmethod
-    def software_upgrade_destroy(self, id):
-        """Destroy a software_upgrade entry.
-
-        :param id: The id or uuid of a software_upgrade entry.
-        """
-
-    @abc.abstractmethod
-    def host_upgrade_create(self, host_id, values):
-        """Create host_upgrade entry.
-        :param ihost_id: id of the host.
-        :param values: Dict of values to update.
-                       {
-                         'software_load': 'load.id',
-                        }
-        :returns:      a host_upgrade
-        """
-
-    @abc.abstractmethod
-    def host_upgrade_get(self, id):
-        """Return a host_upgrade entry for a given host
-
-        :param id: id or uuid of the host_upgrade entry.
-        :returns: a host_upgrade
-        """
-
-    @abc.abstractmethod
-    def host_upgrade_get_by_host(self, host_id):
-        """Return a host_upgrade entry for a given host
-
-        :param id: id of the host entry.
-        :returns: a host_upgrade
-        """
-
-    @abc.abstractmethod
-    def host_upgrade_get_list(self, limit=None, marker=None, sort_key=None,
-                              sort_dir=None):
-        """Return a list of host_upgrade entries.
-
-        :param limit: Maximum number of host_upgrade to return.
-        :param marker: the last item of the previous page; we return the next
-                       result set.
-        :param sort_key: Attribute by which results should be sorted.
-        :param sort_dir: direction in which results should be sorted.
-                         (asc, desc)
-        """
-
-    @abc.abstractmethod
-    def host_upgrade_update(self, host_id, values):
-        """Update properties of a host_upgrade entry.
-
-        :param host_id: The id of a host entry.
-        :param values: Dict of values to update.
-                       {
-                        'software_load': 'load.id'
-                       }
-        :returns: A host_upgrade entry.
         """
 
     @abc.abstractmethod

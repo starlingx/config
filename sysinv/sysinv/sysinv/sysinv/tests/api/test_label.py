@@ -43,7 +43,6 @@ class LabelTestCase(base.FunctionalTest):
         super(LabelTestCase, self).setUp()
         self.dbapi = dbapi.get_instance()
         self.system = dbutils.create_test_isystem()
-        self.load = dbutils.create_test_load()
 
     def _get_path(self, host=None, params=None):
         if host:

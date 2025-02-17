@@ -265,7 +265,6 @@ class ihost(Base):
 
     system = relationship("isystem", lazy="joined", join_depth=1)
 
-    host_upgrade = relationship("HostUpgrade", uselist=False)
     kube_host_upgrade = relationship("KubeHostUpgrade", uselist=False)
 
     ptp_instances = relationship(
@@ -1639,22 +1638,6 @@ class SensorsAnalog(Sensors):
     }
 
 
-class Load(Base):
-    __tablename__ = 'loads'
-
-    id = Column(Integer, primary_key=True, nullable=False)
-    uuid = Column(String(36))
-
-    state = Column(String(255))
-
-    software_version = Column(String(255))
-    compatible_version = Column(String(255))
-
-    required_patches = Column(String(2047))
-
-    UniqueConstraint('software_version')
-
-
 class PciDevice(Base):
     __tablename__ = 'pci_devices'
 
@@ -1842,28 +1825,6 @@ class DeviceImageState(Base):
         "DeviceImage", lazy="joined", backref="device_image_state")
 
 
-class SoftwareUpgrade(Base):
-    __tablename__ = 'software_upgrade'
-
-    id = Column('id', Integer, primary_key=True, nullable=False)
-    uuid = Column('uuid', String(36), unique=True)
-    state = Column('state', String(128), nullable=False)
-    from_load = Column('from_load', Integer, ForeignKey('loads.id',
-                                                        ondelete="CASCADE"),
-                       nullable=False)
-    to_load = Column('to_load', Integer, ForeignKey('loads.id',
-                                                    ondelete="CASCADE"),
-                     nullable=False)
-
-    # the from_load and to_load should have been named with an _id, but since
-    # they weren't we will just reverse the naming to not clash with the
-    # foreign key column
-    load_from = relationship("Load", lazy="joined", join_depth=1,
-                             foreign_keys=[from_load])
-    load_to = relationship("Load", lazy="joined", join_depth=1,
-                           foreign_keys=[to_load])
-
-
 class Restore(Base):
     __tablename__ = 'backup_restore'
 
@@ -1871,27 +1832,6 @@ class Restore(Base):
     uuid = Column('uuid', String(36), unique=True)
     state = Column('state', String(128), nullable=False)
     capabilities = Column(JSONEncodedDict)
-
-
-class HostUpgrade(Base):
-    __tablename__ = 'host_upgrade'
-
-    id = Column('id', Integer, primary_key=True, nullable=False)
-    uuid = Column('uuid', String(36), unique=True)
-    forihostid = Column('forihostid', Integer, ForeignKey('i_host.id',
-                                                          ondelete="CASCADE"))
-    software_load = Column('software_load', Integer, ForeignKey('loads.id'),
-                           nullable=False)
-    target_load = Column('target_load', Integer, ForeignKey('loads.id'),
-                         nullable=False)
-
-    # the software_load and target_load should have been named with an _id,
-    # but since they weren't we will just reverse the naming to not clash with
-    # the foreign key column
-    load_software = relationship("Load", lazy="joined", join_depth=1,
-                                 foreign_keys=[software_load])
-    load_target = relationship("Load", lazy="joined", join_depth=1,
-                               foreign_keys=[target_load])
 
 
 class ServiceParameter(Base):

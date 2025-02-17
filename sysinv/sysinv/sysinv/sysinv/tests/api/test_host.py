@@ -2615,9 +2615,6 @@ class TestPatch(TestHost):
             operational=constants.OPERATIONAL_ENABLED,
             availability=constants.AVAILABILITY_ONLINE)
 
-        upgrade = dbutils.create_test_upgrade(
-            state=constants.DEPLOY_STATE_START
-        )
         # Verify the error response on lock controller attempt
         response = self._patch_host_action(c1_host['hostname'],
                                            constants.LOCK_ACTION,
@@ -2626,15 +2623,6 @@ class TestPatch(TestHost):
         self.assertEqual(response.content_type, 'application/json')
         self.assertEqual(http_client.BAD_REQUEST, response.status_int)
         self.assertTrue(response.json['error_message'])
-        self.assertIn("host-lock %s is not allowed during upgrade state '%s'" %
-                      (c1_host['hostname'], upgrade.state),
-                      response.json['error_message'])
-
-    def test_lock_action_controller_during_upgrade_started(self):
-        dbutils.create_test_upgrade(
-            state=constants.UPGRADE_STARTED
-        )
-        self._test_lock_action_controller()
 
     @mock.patch('os.path.isfile')
     def test_lock_action_controller_during_backup_in_progress(self, mock_os_is_file):

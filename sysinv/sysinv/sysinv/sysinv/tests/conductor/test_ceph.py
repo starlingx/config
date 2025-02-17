@@ -52,7 +52,6 @@ class UpdateCephCluster(base.DbTestCase):
         self.context = context.get_admin_context()
         self.dbapi = dbapi.get_instance()
         self.system = utils.create_test_isystem()
-        self.load = utils.create_test_load()
         self.host_index = -1
 
         self.mock_fix_crushmap = self.fix_crushmap_patcher.start()

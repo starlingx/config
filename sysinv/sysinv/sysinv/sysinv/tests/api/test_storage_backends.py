@@ -83,7 +83,6 @@ class StorageBackendTestCases(base.FunctionalTest):
         self.system = dbutils.create_test_isystem()
         self.cluster = dbutils.create_test_cluster(system_id=self.system.id)
         self.tier = dbutils.create_test_storage_tier(forclusterid=self.cluster.id)
-        self.load = dbutils.create_test_load()
         self.host = dbutils.create_test_ihost(forisystemid=self.system.id)
         self.lvg = dbutils.create_test_lvg(lvm_vg_name='cgts-vg',
                                 forihostid=self.host.id)
@@ -840,7 +839,6 @@ class StorageFileTestCases(base.FunctionalTest):
     def setUp(self):
         super(StorageFileTestCases, self).setUp()
         self.system = dbutils.create_test_isystem()
-        self.load = dbutils.create_test_load()
         self.host = dbutils.create_test_ihost(forisystemid=self.system.id)
 
     def assertDeleted(self, fullPath):
@@ -1086,7 +1084,6 @@ class StorageLvmTestCases(base.FunctionalTest):
     def setUp(self):
         super(StorageLvmTestCases, self).setUp()
         self.system = dbutils.create_test_isystem()
-        self.load = dbutils.create_test_load()
         self.host = dbutils.create_test_ihost(forisystemid=self.system.id)
 
     def assertDeleted(self, fullPath):
@@ -1248,7 +1245,6 @@ class StorageCephTestCases(base.FunctionalTest):
         self.system = dbutils.create_test_isystem()
         self.cluster = dbutils.create_test_cluster(system_id=self.system.id)
         self.tier = dbutils.create_test_storage_tier(forclusterid=self.cluster.id)
-        self.load = dbutils.create_test_load()
         self.host = dbutils.create_test_ihost(forisystemid=self.system.id)
         self.lvg = dbutils.create_test_lvg(lvm_vg_name='cgts-vg',
                                 forihostid=self.host.id)
@@ -1403,7 +1399,6 @@ class StorageCephRookTestCases(base.FunctionalTest):
         self.system = dbutils.create_test_isystem()
         self.cluster = dbutils.create_test_cluster(system_id=self.system.id)
         self.tier = dbutils.create_test_storage_tier(forclusterid=self.cluster.id)
-        self.load = dbutils.create_test_load()
         self.host = dbutils.create_test_ihost(forisystemid=self.system.id)
 
         # Patch management network for ceph

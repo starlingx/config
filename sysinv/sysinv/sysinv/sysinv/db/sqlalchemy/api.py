@@ -282,12 +282,7 @@ def add_filter_by_many_identities(query, model, values):
 
 
 def add_host_options(query):
-    return query. \
-        options(joinedload(models.ihost.system)). \
-        options(joinedload(models.ihost.host_upgrade).
-                joinedload(models.HostUpgrade.load_software)). \
-        options(joinedload(models.ihost.host_upgrade).
-                joinedload(models.HostUpgrade.load_target))
+    return query.options(joinedload(models.ihost.system))
 
 
 def add_inode_filter_by_ihost(query, value):
@@ -1351,7 +1346,7 @@ class Connection(api.Connection):
             raise exception.ServerNotFound(server=server)
 
     @db_objects.objectify(objects.host)
-    def ihost_create(self, values, software_load=None):
+    def ihost_create(self, values):
         if not values.get('uuid'):
             values['uuid'] = uuidutils.generate_uuid()
         host = models.ihost()
@@ -1362,7 +1357,6 @@ class Connection(api.Connection):
                 session.flush()
             except db_exc.DBDuplicateEntry:
                 raise exception.NodeAlreadyExists(uuid=values['uuid'])
-            self._host_upgrade_create(host.id, software_load)
             self._kube_host_upgrade_create(host.id)
             return self._host_get(values['uuid'])
 
@@ -6985,242 +6979,6 @@ class Connection(api.Connection):
 
     def isensorgroup_discrete_destroy(self, sensorgroup_id):
         return self._isensorgroup_destroy(models.SensorGroupsDiscrete, sensorgroup_id)
-
-    @db_objects.objectify(objects.load)
-    def load_create(self, values):
-        if not values.get('uuid'):
-            values['uuid'] = uuidutils.generate_uuid()
-        load = models.Load()
-        load.update(values)
-        with _session_for_write() as session:
-            try:
-                session.add(load)
-                session.flush()
-            except db_exc.DBDuplicateEntry:
-                raise exception.LoadAlreadyExists(uuid=values['uuid'])
-        return load
-
-    @db_objects.objectify(objects.load)
-    def load_get(self, load):
-        # load may be passed as a string. It may be uuid or Int.
-        query = model_query(models.Load)
-        query = add_identity_filter(query, load)
-
-        try:
-            result = query.one()
-        except NoResultFound:
-            raise exception.LoadNotFound(load=load)
-
-        return result
-
-    @db_objects.objectify(objects.load)
-    def load_get_by_version(self, version):
-        query = model_query(models.Load)
-        query = query.filter_by(software_version=version)
-
-        try:
-            result = query.one()
-        except NoResultFound:
-            raise exception.LoadNotFound(load=version)
-
-        return result
-
-    @db_objects.objectify(objects.load)
-    def load_get_list(self, limit=None, marker=None, sort_key=None,
-                      sort_dir=None):
-
-        query = model_query(models.Load)
-
-        return _paginate_query(models.Load, limit, marker,
-                               sort_key, sort_dir, query)
-
-    @db_objects.objectify(objects.load)
-    def load_update(self, load, values):
-        with _session_for_write() as session:
-            query = model_query(models.Load, session=session)
-            query = add_identity_filter(query, load)
-
-            count = query.update(values, synchronize_session='fetch')
-            if count != 1:
-                raise exception.LoadNotFound(load=load)
-            return query.one()
-
-    def load_destroy(self, load):
-        with _session_for_write() as session:
-            query = model_query(models.Load, session=session)
-            query = add_identity_filter(query, load)
-
-            try:
-                query.one()
-            except NoResultFound:
-                raise exception.LoadNotFound(load=load)
-
-            query.delete()
-
-    def set_upgrade_loads_state(self, upgrade, to_state, from_state):
-        self.load_update(upgrade.from_load, {'state': from_state})
-        self.load_update(upgrade.to_load, {'state': to_state})
-
-    def _software_upgrade_get(self, id):
-        query = model_query(models.SoftwareUpgrade)
-        if utils.is_uuid_like(id):
-            query = query.filter_by(uuid=id)
-        else:
-            query = query.filter_by(id=id)
-
-        try:
-            result = query.one()
-        except NoResultFound:
-            raise exception.InvalidParameterValue(
-                    err="No software upgrade entry found for %s" % id)
-
-        return result
-
-    @db_objects.objectify(objects.software_upgrade)
-    def software_upgrade_create(self, values):
-        if not values.get('uuid'):
-            values['uuid'] = uuidutils.generate_uuid()
-        upgrade = models.SoftwareUpgrade()
-        upgrade.update(values)
-        with _session_for_write() as session:
-            try:
-                session.add(upgrade)
-                session.flush()
-            except db_exc.DBDuplicateEntry:
-                raise exception.UpgradeAlreadyExists(uuid=values['uuid'])
-
-            return self._software_upgrade_get(values['uuid'])
-
-    @db_objects.objectify(objects.software_upgrade)
-    def software_upgrade_get(self, id):
-        return self._software_upgrade_get(id)
-
-    @db_objects.objectify(objects.software_upgrade)
-    def software_upgrade_get_list(self, limit=None, marker=None,
-                                  sort_key=None, sort_dir=None):
-
-        query = model_query(models.SoftwareUpgrade)
-
-        return _paginate_query(models.SoftwareUpgrade, limit, marker,
-                               sort_key, sort_dir, query)
-
-    @db_objects.objectify(objects.software_upgrade)
-    def software_upgrade_get_one(self):
-        query = model_query(models.SoftwareUpgrade)
-
-        try:
-            return query.one()
-        except NoResultFound:
-            raise exception.NotFound()
-
-    @db_objects.objectify(objects.software_upgrade)
-    def software_upgrade_update(self, uuid, values):
-        with _session_for_write() as session:
-            query = model_query(models.SoftwareUpgrade, session=session)
-            query = query.filter_by(uuid=uuid)
-
-            count = query.update(values, synchronize_session='fetch')
-            if count != 1:
-                raise exception.NotFound(id)
-            return query.one()
-
-    def software_upgrade_destroy(self, id):
-        with _session_for_write() as session:
-            query = model_query(models.SoftwareUpgrade, session=session)
-            query = query.filter_by(uuid=id)
-
-            try:
-                query.one()
-            except NoResultFound:
-                raise exception.NotFound(id)
-
-            query.delete()
-
-    def _host_upgrade_create(self, host_id, version, values=None):
-        if values is None:
-            values = dict()
-            if not version:
-                systems = self.isystem_get_list()
-                if systems is not None:
-                    version = systems[0].software_version
-                    LOG.info("_host_upgrade_create system version=%s" % version)
-            if version:
-                # get the load_id from the loads table
-                query = model_query(models.Load)
-                query = query.filter_by(software_version=version)
-                try:
-                    result = query.one()
-                except NoResultFound:
-                    LOG.info("Fail to get load id from load table %s" %
-                             version)
-                    return None
-                values['software_load'] = result.id
-                values['target_load'] = result.id
-            values['forihostid'] = host_id
-        if not values.get('uuid'):
-            values['uuid'] = uuidutils.generate_uuid()
-        upgrade = models.HostUpgrade()
-        upgrade.update(values)
-        with _session_for_write() as session:
-            try:
-                session.add(upgrade)
-                session.flush()
-            except db_exc.DBDuplicateEntry:
-                raise exception.UpgradeAlreadyExists(uuid=values['uuid'])
-            return upgrade
-
-    @db_objects.objectify(objects.host_upgrade)
-    def host_upgrade_create(self, host_id, version, values):
-        return self._host_upgrade_create(host_id, version, values)
-
-    @db_objects.objectify(objects.host_upgrade)
-    def host_upgrade_get(self, id):
-        query = model_query(models.HostUpgrade)
-
-        if utils.is_uuid_like(id):
-            query = query.filter_by(uuid=id)
-        else:
-            query = query.filter_by(id=id)
-
-        try:
-            result = query.one()
-        except NoResultFound:
-            raise exception.InvalidParameterValue(
-                    err="No host upgrade entry found for %s" % id)
-
-        return result
-
-    @db_objects.objectify(objects.host_upgrade)
-    def host_upgrade_get_by_host(self, host_id):
-        query = model_query(models.HostUpgrade)
-        query = query.filter_by(forihostid=host_id)
-
-        try:
-            result = query.one()
-        except NoResultFound:
-            raise exception.NotFound(host_id)
-
-        return result
-
-    @db_objects.objectify(objects.host_upgrade)
-    def host_upgrade_get_list(self, limit=None, marker=None, sort_key=None,
-                              sort_dir=None):
-        query = model_query(models.HostUpgrade)
-
-        return _paginate_query(models.HostUpgrade, limit, marker,
-                               sort_key, sort_dir, query)
-
-    @db_objects.objectify(objects.host_upgrade)
-    def host_upgrade_update(self, object_id, values):
-        with _session_for_write() as session:
-            query = model_query(models.HostUpgrade, session=session)
-            query = query.filter_by(id=object_id)
-
-            count = query.update(values, synchronize_session='fetch')
-            if count != 1:
-                raise exception.NotFound(id)
-            session.flush()
-            return query.one()
 
     @db_objects.objectify(objects.service_parameter)
     def service_parameter_create(self, values):

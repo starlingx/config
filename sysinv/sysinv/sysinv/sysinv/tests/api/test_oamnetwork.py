@@ -369,9 +369,6 @@ class TestPatchMixin(OAMNetworkTestCase):
             'oam_c0_ip': str(oam_c0_ip),
             'oam_c1_ip': str(oam_c1_ip),
         }
-        dbutils.create_test_upgrade(
-            state=constants.UPGRADE_STARTING
-        )
         error_message = "Action rejected while a " \
                         "platform upgrade is in progress"
         self._test_patch_fail(patch_obj, http_client.BAD_REQUEST,
