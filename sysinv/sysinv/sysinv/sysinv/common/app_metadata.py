@@ -111,6 +111,8 @@ def validate_metadata_file(path, metadata_file, upgrade_from_release=None):
         desired_state: <uploaded/applied> - optional: state the app should
         reach
         evaluate_reapply: - optional: describe the reapply evaluation behaviour
+            TODO(dbarbosa): Once the implementation of key dependent apps is
+            complete the key after should be removed.
             after: - optional: list of apps that should be evaluated before
             the current one
               - <app_name.1>
@@ -137,6 +139,11 @@ def validate_metadata_file(path, metadata_file, upgrade_from_release=None):
                               dictionary. If specified the filters are applied
                               to trigger[filter_field] sub-dictionary instead
                               of the root trigger dictionary.
+
+    dependent_apps: - optional: list of dependent apps.
+        - name: <app_name>
+          version: <version>
+          action: <ignore|warn|error|apply>
     """
 
     # Type-level validations:
@@ -248,8 +255,7 @@ def validate_metadata_file(path, metadata_file, upgrade_from_release=None):
         try:
             value = parent[key]
             error_message = _("Invalid {}: {} should be a list."
-                              .format(metadata_file,
-                                      constants.APP_METADATA_AFTER))
+                              .format(metadata_file, key))
             validate_list(value, error_message)
         except KeyError:
             pass
@@ -363,6 +369,66 @@ def validate_metadata_file(path, metadata_file, upgrade_from_release=None):
                 "corresponding k8s_upgrade:auto_update field was found. Please "
                 "add an 'auto_update' field to the 'k8s_upgrade' section."))
 
+    def validate_dependent_apps_version(parent, key):
+        """ Validate a metadata version string field
+
+        :param parent: parent section that contains the version string field
+                    to be verified
+        :param key: field name to be validated
+
+        TODO(dbarbosa): support checks if the installed app version should
+        be > or < than the given version string. Exemple: "> 1.0.0" or "< 1.0.0"
+        """
+
+        value = None
+
+        error_message = _("Invalid {}: {} should be a valid version string."
+                           .format(metadata_file, key))
+
+        try:
+            value = parent[key]
+            if not re.fullmatch(r'^[0-9.-]+$', value):
+                raise exception.SysinvException(
+                    _(error_message)
+                )
+
+            try:
+                LooseVersion(value)
+            except ValueError:
+                raise exception.SysinvException(
+                    _(error_message)
+                )
+        except KeyError:
+            pass
+
+        return value
+
+    def validate_dependent_apps_action(action):
+        """ Validate the dependent apps action field
+
+        :param action: dependent apps action field value
+        """
+
+        if action not in constants.APP_METADATA_DEPENDENT_APPS_ACTION_TYPES:
+            raise exception.SysinvException(_(
+                "Invalid {}: {} expected values are {}."
+                .format(metadata_file,
+                        constants.APP_METADATA_DEPENDENT_APPS_ACTION,
+                        constants.APP_METADATA_DEPENDENT_APPS_ACTION_TYPES)))
+
+    def validate_class_types(app_class):
+        """ Validate the dependent apps action field
+
+        :param action: dependent apps action field value
+        """
+
+        if app_class not in constants.APP_METADATA_CLASS_TYPES:
+            raise exception.SysinvException(_(
+                "Invalid {}: {} expected values are {}."
+                .format(metadata_file,
+                        constants.APP_METADATA_CLASS,
+                        constants.APP_METADATA_CLASS_TYPES)))
+
     app_name = ''
     app_version = ''
     patches = []
@@ -403,6 +469,8 @@ def validate_metadata_file(path, metadata_file, upgrade_from_release=None):
                         constants.APP_METADATA_EVALUATE_REAPPLY)
 
                 if evaluate_reapply:
+                    # TODO(dbarbosa): Once the implementation of key dependent apps is
+                    # complete the key after should be removed.
                     validate_list_field(
                         evaluate_reapply,
                         constants.APP_METADATA_AFTER)
@@ -502,6 +570,29 @@ def validate_metadata_file(path, metadata_file, upgrade_from_release=None):
                              "check_release {}, requires patches {}"
                              .format(metadata_file, app_name, app_version,
                                      check_release, release_patches))
+
+        dependent_apps = validate_list_field(doc, constants.APP_METADATA_DEPENDENT_APPS)
+        if dependent_apps:
+            for dependence in dependent_apps:
+                validate_dict(dependence)
+                validate_string_field(
+                    dependence,
+                    constants.APP_METADATA_DEPENDENT_APPS_NAME)
+                validate_string_field(
+                    dependence,
+                    constants.APP_METADATA_DEPENDENT_APPS_VERSION)
+                validate_dependent_apps_version(
+                    dependence,
+                    constants.APP_METADATA_DEPENDENT_APPS_VERSION)
+                validate_string_field(
+                    dependence,
+                    constants.APP_METADATA_DEPENDENT_APPS_ACTION)
+                validate_dependent_apps_action(
+                    dependence.get(constants.APP_METADATA_DEPENDENT_APPS_ACTION))
+
+        app_class = validate_string_field(doc, constants.APP_METADATA_CLASS)
+        if app_class:
+            validate_class_types(app_class)
 
     return app_name, app_version, patches
 

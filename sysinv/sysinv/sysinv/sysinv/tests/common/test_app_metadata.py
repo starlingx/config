@@ -75,6 +75,138 @@ class Validate_metadata_file(testtools.TestCase):
 
     @mock.patch.object(io, 'open')
     @mock.patch.object(os.path, 'isfile')
+    def test_file_validation_dependent_apps(self, _mock_isfile, _mock_open):
+        """Validate dependent_apps key
+
+        This test mocks file operations with dependent_apps key
+        and returns static file contents to allow unit testing
+        the validation code
+        """
+        _mock_isfile.return_value = "True"
+
+        yaml_content = self.get_metadata_yaml_sample('sample_metadata_dependent_apps.yaml')
+        _mock_open.return_value = io.StringIO(yaml_content)
+
+        app_name, app_version, patches = \
+            app_metadata.validate_metadata_file("valid_path",
+                                                "valid_file",
+                                                upgrade_from_release=None)
+
+        self.assertEqual(app_name, "sample-app")
+        self.assertEqual(app_version, "1.2-3")
+
+    @mock.patch.object(io, 'open')
+    @mock.patch.object(os.path, 'isfile')
+    def test_file_validation_dependent_apps_bad_contents(self,
+                                                         _mock_isfile,
+                                                         _mock_open):
+        """Validate dependent_apps key with bad values
+
+        This test mocks file operations to dependent_apps key
+        and verifies failure handling in how the yaml is validated
+        """
+
+        _mock_isfile.return_value = "True"
+
+        # bad_replacements is a list of atomic changes that
+        # will trigger a SysinvException in the validator
+        bad_replacements = [
+            # dependent_apps must be a list
+            {constants.APP_METADATA_DEPENDENT_APPS: {}},
+            # dependent_apps item must be a dict
+            {constants.APP_METADATA_DEPENDENT_APPS: [
+                {"name": "app1"}, "invalid_item"]},
+            # dependent_apps item must have a name key
+            {constants.APP_METADATA_DEPENDENT_APPS: [
+                {"version": "1.0.0", "action": "invalid_action"}]},
+            # dependent_apps item must have a version key
+            {constants.APP_METADATA_DEPENDENT_APPS: [
+                {"name": "app1", "action": "invalid_action"}]},
+            # dependent_apps action must be one of the valid actions
+            {constants.APP_METADATA_DEPENDENT_APPS: [
+                {"name": "app1", "version": "1.0.0", "action": "invalid_action"}]},
+        ]
+
+        # start each loop with valid contents and replace
+        # a certain section with bad contents so that the
+        # validator will raise a SysinvException
+        for bad_dict in bad_replacements:
+            contents = self.get_metadata_yaml_sample('sample_metadata_dependent_apps.yaml')
+            contents = yaml.safe_load(contents)
+
+            for key, value in bad_dict.items():
+                contents[key] = value
+
+            bad_contents = yaml.dump(contents)
+            _mock_open.return_value = io.StringIO(bad_contents)
+
+            self.assertRaises(exception.SysinvException,
+                              app_metadata.validate_metadata_file,
+                              "valid_path",
+                              "valid_file")
+
+    @mock.patch.object(io, 'open')
+    @mock.patch.object(os.path, 'isfile')
+    def test_file_validation_app_class(self, _mock_isfile, _mock_open):
+        """Validate app_class key
+
+        This test mocks file operations with app_class key
+        and returns static file contents to allow unit testing
+        the validation code
+        """
+        _mock_isfile.return_value = "True"
+        yaml_content = self.get_metadata_yaml_sample('sample_metadata_app_class.yaml')
+        _mock_open.return_value = io.StringIO(yaml_content)
+
+        app_name, app_version, patches = \
+            app_metadata.validate_metadata_file("valid_path",
+                                                "valid_file",
+                                                upgrade_from_release=None)
+        self.assertEqual(app_name, "sample-app")
+        self.assertEqual(app_version, "1.2-3")
+
+    @mock.patch.object(io, 'open')
+    @mock.patch.object(os.path, 'isfile')
+    def test_file_validation_app_class_bad_contents(self, _mock_isfile, _mock_open):
+        """Validate app_class key with bad values
+
+        This test mocks file operations to app_class key
+        and verifies failure handling in how the yaml is validated
+        """
+        _mock_isfile.return_value = "True"
+
+        # bad_replacements is a list of atomic changes that
+        # will trigger a SysinvException in the validator
+        bad_replacements = [
+            # app_class must be a string
+            {constants.APP_METADATA_CLASS: 123},
+            # app_class cannot be None
+            {constants.APP_METADATA_CLASS: None},
+            # cannot be different from one of these strings:
+            # critical, storage, discovery, optional and reporting
+            {constants.APP_METADATA_CLASS: "invalid_class"},
+        ]
+
+        # start each loop with valid contents and replace
+        # a certain section with bad contents so that the
+        # validator will raise a SysinvException
+        for bad_dict in bad_replacements:
+            contents = self.get_metadata_yaml_sample('sample_metadata_app_class.yaml')
+            contents = yaml.safe_load(contents)
+
+            for key, value in bad_dict.items():
+                contents[key] = value
+
+            bad_contents = yaml.dump(contents)
+            _mock_open.return_value = io.StringIO(bad_contents)
+
+            self.assertRaises(exception.SysinvException,
+                              app_metadata.validate_metadata_file,
+                              "valid_path",
+                              "valid_file")
+
+    @mock.patch.object(io, 'open')
+    @mock.patch.object(os.path, 'isfile')
     def test_file_validate_with_bad_contents(self,
                                              _mock_isfile,
                                              _mock_open):
