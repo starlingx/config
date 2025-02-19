@@ -1492,6 +1492,11 @@ SERVICE_PARAM_PLATFORM_SCTP_AUTOLOAD_ENABLED = 'enabled'
 SERVICE_PARAM_SECTION_DNS_HOST_RECORD = 'host-record'
 SERVICE_PARAM_NAME_DNS_HOST_RECORD_HOSTS = 'hosts'
 
+# cli-confirmation parameters
+SERVICE_PARAM_NAME_PLATFORM_CLI_CONFIRMATIONS = 'cli_confirmations'
+SERVICE_PARAM_DISABLED = 'disabled'
+SERVICE_PARAM_ENABLED = 'enabled'
+
 # TIS part number, CPE = combined load, STD = standard load
 TIS_STD_BUILD = 'Standard'
 TIS_AIO_BUILD = 'All-in-one'

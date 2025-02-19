@@ -1,4 +1,4 @@
-# Copyright (c) 2017-2024 Wind River Systems, Inc.
+# Copyright (c) 2017-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -655,6 +655,21 @@ def _validate_oot(name, value):
         raise wsme.exc.ClientSideError(_(msg))
 
 
+def _validate_cli_confirmations(name, value):
+    """Check if specified value is supported"""
+    try:
+        if str(value) in [constants.SERVICE_PARAM_DISABLED,
+                          constants.SERVICE_PARAM_ENABLED]:
+            return
+    except ValueError:
+        pass
+
+    raise wsme.exc.ClientSideError(_(
+        "Parameter '%s' value must be either '%s' or '%s'" %
+        (name, constants.SERVICE_PARAM_DISABLED,
+         constants.SERVICE_PARAM_ENABLED)))
+
+
 def parse_volume_string_to_dict(parameter):
     """
     Parse volume string value from parameter to dictionary.
@@ -848,7 +863,8 @@ PLATFORM_CONFIG_PARAMETER_OPTIONAL = [
     constants.SERVICE_PARAM_NAME_PLATFORM_MAX_CPU_PERCENTAGE,
     constants.SERVICE_PARAM_NAME_PLAT_CONFIG_INTEL_PSTATE,
     constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_API_WORKERS,
-    constants.SERVICE_PARAM_NAME_PLATFORM_SCTP_AUTOLOAD
+    constants.SERVICE_PARAM_NAME_PLATFORM_SCTP_AUTOLOAD,
+    constants.SERVICE_PARAM_NAME_PLATFORM_CLI_CONFIRMATIONS
 ]
 
 PLATFORM_CONFIG_PARAMETER_READONLY = [
@@ -866,6 +882,8 @@ PLATFORM_CONFIG_PARAMETER_VALIDATOR = {
         _validate_sysinv_api_workers,
     constants.SERVICE_PARAM_NAME_PLATFORM_SCTP_AUTOLOAD:
         _validate_sctp_autoload,
+    constants.SERVICE_PARAM_NAME_PLATFORM_CLI_CONFIRMATIONS:
+        _validate_cli_confirmations,
 }
 
 PLATFORM_CONFIG_PARAMETER_RESOURCE = {
@@ -877,6 +895,8 @@ PLATFORM_CONFIG_PARAMETER_RESOURCE = {
         'platform::sysinv::params::sysinv_api_workers',
     constants.SERVICE_PARAM_NAME_PLATFORM_SCTP_AUTOLOAD:
         'platform::params::sctp_autoload',
+    constants.SERVICE_PARAM_NAME_PLATFORM_CLI_CONFIRMATIONS:
+        'platform::params::cli_confirmations',
 }
 
 IDENTITY_LDAP_PARAMETER_OPTIONAL = [
