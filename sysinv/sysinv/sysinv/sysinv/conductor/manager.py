@@ -12683,7 +12683,8 @@ class ConductorManager(service.PeriodicService):
             elif section == constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG and \
                     name == constants.SERVICE_PARAM_NAME_PLATFORM_SCTP_AUTOLOAD:
                 reboot = True
-                personalities = [constants.CONTROLLER]
+                personalities = [constants.CONTROLLER,
+                                 constants.WORKER]
                 config_uuid = self._config_update_hosts(context, personalities, reboot=reboot)
 
                 config_dict = {
