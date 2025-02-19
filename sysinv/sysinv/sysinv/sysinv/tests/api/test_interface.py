@@ -2,7 +2,7 @@
 # -*- encoding: utf-8 -*-
 #
 #
-# Copyright (c) 2013-2024 Wind River Systems, Inc.
+# Copyright (c) 2013-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -1369,6 +1369,39 @@ class TestPostMixin(object):
             txhashpolicy='layer2')
         self._post_and_check_failure(ndict)
 
+    # Expected error: Device interface class with interface type
+    # 'aggregated ethernet' must be 'platform' or 'data'.
+    def test_aemode_invalid_ifclass(self):
+        ndict = self._post_get_test_interface(
+            ihost_uuid=self.worker.uuid,
+            datanetworks='group0-data0',
+            ifname='name',
+            ifclass=constants.INTERFACE_CLASS_NONE,
+            iftype=constants.INTERFACE_TYPE_AE,
+            aemode='active_standby',
+            txhashpolicy=None)
+        self._post_and_check_failure(ndict)
+
+        ndict = self._post_get_test_interface(
+            ihost_uuid=self.controller.uuid,
+            datanetworks='group0-data0',
+            ifname='name',
+            ifclass=constants.INTERFACE_CLASS_PLATFORM,
+            iftype=constants.INTERFACE_TYPE_AE,
+            aemode='active_standby',
+            txhashpolicy=None)
+        self._post_and_check_success(ndict)
+
+        ndict = self._post_get_test_interface(
+            ihost_uuid=self.worker.uuid,
+            datanetworks='group0-data0',
+            ifname='name',
+            ifclass=constants.INTERFACE_CLASS_DATA,
+            iftype=constants.INTERFACE_TYPE_AE,
+            aemode='active_standby',
+            txhashpolicy=None)
+        self._post_and_check_success(ndict)
+
     # Expected error: Device interface with interface type 'aggregated ethernet'
     #  in ___ mode should not specify a Tx Hash Policy.
     def test_aemode_no_txhash(self):
@@ -1531,6 +1564,19 @@ class TestPostMixin(object):
             txhashpolicy='layer2',
             uses=[bond_iface['uses'][0], iface1['uuid']])
         self._post_and_check_failure(ndict)
+
+    def test_create_bond_valid_overlap_vf(self):
+        port, iface1 = self._create_sriov(
+            'enp0s9', host=self.worker, sriov_numvfs=51)
+        self._create_worker_bond('bond0',
+                                        constants.NETWORK_TYPE_DATA,
+                                        constants.INTERFACE_CLASS_DATA)
+        update_dict = {
+            'uses': ['enp0s9', 'eth3']
+        }
+        self.dbapi.iinterface_update(4, update_dict)
+        self._create_vf('vf1', lower_iface=iface1,
+            host=self.worker, sriov_numvfs=30, expect_errors=False)
 
     # Expected message: VLAN id must be between 1 and 4094.
     def test_create_invalid_vlan_id(self):

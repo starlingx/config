@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2024 Wind River Systems, Inc.
+# Copyright (c) 2013-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -1236,7 +1236,8 @@ def _check_interface_data(op, interface, ihost, existing_interface,
                         parent.ifname in interface['uses']):
                     supported_type = [constants.INTERFACE_TYPE_VLAN,
                                       constants.INTERFACE_TYPE_VF]
-                    if i.iftype == constants.INTERFACE_TYPE_AE:
+                    if (i.iftype == constants.INTERFACE_TYPE_AE and
+                            iftype != constants.INTERFACE_TYPE_VF):
                         msg = _("Interface '{}' is already used by another"
                                 " 'aggregated ethernet' interface "
                                 "'{}'".format(p, i.ifname))
@@ -1350,6 +1351,15 @@ def _check_interface_data(op, interface, ihost, existing_interface,
     if not iftype or iftype not in supported_type:
         msg = (_("Device interface type must be one of "
                  "{}").format(', '.join(supported_type)))
+        raise wsme.exc.ClientSideError(msg)
+
+    # Make sure if type 'ae' can only have if class 'platform' or 'data'
+    supported_ae_classes = [constants.INTERFACE_CLASS_PLATFORM,
+                            constants.INTERFACE_CLASS_DATA]
+    if (iftype == constants.INTERFACE_TYPE_AE and
+            interface['ifclass'] not in supported_ae_classes):
+        msg = _("Device interface class with interface type 'aggregated ethernet' "
+                 "must be 'platform' or 'data' ")
         raise wsme.exc.ClientSideError(msg)
 
     # Make sure network type 'data' with if type 'ae' can only be in ae mode
