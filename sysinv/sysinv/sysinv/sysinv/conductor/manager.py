@@ -373,9 +373,6 @@ class ConductorManager(service.PeriodicService):
         # track upgrade activation manifests status
         self._upgrade_manifest_start_time = None
 
-        # track USM upgrade in progress
-        self._is_usm_upgrade_in_progress = False
-
         self.rlock_runtime_config = threading.RLock()
         # track deferred runtime config which need to be applied
         self._host_deferred_runtime_config = []
@@ -4873,7 +4870,7 @@ class ConductorManager(service.PeriodicService):
         :return:
         """
         try:
-            self.get_usm_upgrade_status()
+            usm_service.get_platform_upgrade(self.dbapi)
         except exception.NotFound:
             # Not upgrading. We assume the host versions match
             # If they somehow don't match we've got bigger problems
@@ -5124,17 +5121,16 @@ class ConductorManager(service.PeriodicService):
             return
 
         try:
-            self.get_usm_upgrade_status()
+            usm_service.get_platform_upgrade(self.dbapi)
         except exception.NotFound:
             # No upgrade in progress
             pass
         else:
-            host_deploy = usm_service.UsmHostUpgrade.get_by_hostname(self.dbapi, ihost.hostname)
-            if ihost.sw_version != tsc.SW_VERSION:
+            if ihost.software_load != tsc.SW_VERSION:
                 LOG.info("Ignore updating lvg for host: %s. Version "
-                         "%s mismatch." % (ihost.hostname, ihost.sw_version))
+                         "%s mismatch." % (ihost.hostname, ihost.software_load))
                 return
-            elif (host_deploy.state not in constants.DEPLOY_HOST_DEPLOYED_STATES and
+            elif (ihost.invprovision == constants.UPGRADING and
                     ihost.personality != constants.STORAGE):
                 # storage nodes allocate all root disk for platform. Let the
                 # inventory report to tell what the disk is used after upgrade
@@ -5482,10 +5478,8 @@ class ConductorManager(service.PeriodicService):
 
             try:
                 ihost = self.dbapi.ihost_get(ipv.get('forihostid'))
-                host_deploy = usm_service.UsmHostUpgrade.get_by_hostname(self.dbapi, ihost.hostname)
                 values = {'foripvid': None}
-                if (ihost['invprovision'] == constants.PROVISIONED or
-                        host_deploy.state not in constants.DEPLOY_HOST_DEPLOYED_STATES):
+                if ihost['invprovision'] in [constants.PROVISIONED, constants.UPGRADING]:
                     values.update(
                         {'status': constants.PARTITION_READY_STATUS})
                 self.dbapi.partition_update(ipv['disk_or_part_uuid'], values)
@@ -5570,18 +5564,17 @@ class ConductorManager(service.PeriodicService):
 
         upgrade_in_progress = False
         try:
-            self.get_usm_upgrade_status()
+            usm_service.get_platform_upgrade(self.dbapi)
             upgrade_in_progress = True
         except exception.NotFound:
             # No upgrade in progress
             pass
         else:
-            host_deploy = usm_service.UsmHostUpgrade.get_by_hostname(self.dbapi, db_host.hostname)
-            if db_host.sw_version != tsc.SW_VERSION:
+            if db_host.software_load != tsc.SW_VERSION:
                 LOG.info("Ignore updating disk partition for host: %s. Version "
-                         "%s mismatch." % (db_host.hostname, db_host.sw_version))
+                         "%s mismatch." % (db_host.hostname, db_host.software_load))
                 return
-            elif (host_deploy.state not in constants.DEPLOY_HOST_DEPLOYED_STATES and
+            elif (db_host.invprovision == constants.UPGRADING and
                     db_host.personality != constants.STORAGE):
                 # storage nodes allocate all root disk for platform. Let the
                 # inventory report to tell what the disk is used after upgrade
@@ -5849,17 +5842,16 @@ class ConductorManager(service.PeriodicService):
             return
 
         try:
-            self.get_usm_upgrade_status()
+            usm_service.get_platform_upgrade(self.dbapi)
         except exception.NotFound:
             # No upgrade in progress
             pass
         else:
-            host_deploy = usm_service.UsmHostUpgrade.get_by_hostname(self.dbapi, ihost.hostname)
-            if ihost.sw_version != tsc.SW_VERSION:
+            if ihost.software_load != tsc.SW_VERSION:
                 LOG.info("Ignore updating physical volume for host: %s. Version "
-                         "%s mismatch." % (ihost.hostname, ihost.sw_version))
+                         "%s mismatch." % (ihost.hostname, ihost.software_load))
                 return
-            elif (host_deploy.state not in constants.DEPLOY_HOST_DEPLOYED_STATES and
+            elif (ihost.invprovision == constants.UPGRADING and
                     ihost.personality != constants.STORAGE):
                 # storage nodes allocate all root disk for platform. Let the
                 # inventory report to tell what the disk is used after upgrade
@@ -6353,7 +6345,7 @@ class ConductorManager(service.PeriodicService):
             return
 
         try:
-            self.get_usm_upgrade_status()
+            usm_service.get_platform_upgrade(self.dbapi)
         except exception.NotFound:
             # No upgrade in progress
             pass
@@ -11068,7 +11060,7 @@ class ConductorManager(service.PeriodicService):
         Raise an exception if one is found.
         """
         try:
-            self.get_usm_upgrade_status()
+            usm_service.get_platform_upgrade(self.dbapi)
         except exception.NotFound:
             pass
         else:
@@ -11887,7 +11879,7 @@ class ConductorManager(service.PeriodicService):
         try:
             # TODO (bqian) change below report to USM if USM major release
             # deploy activate failed
-            upgrade = self.get_usm_upgrade_status()
+            upgrade = usm_service.get_platform_upgrade(self.dbapi)
         except exception.NotFound:
             LOG.error("Upgrade record not found during config failure")
             return
@@ -14165,7 +14157,7 @@ class ConductorManager(service.PeriodicService):
 
         if not generate_optimized_hieradata:
             try:
-                self.get_usm_upgrade_status()
+                usm_service.get_platform_upgrade(self.dbapi)
             except exception.NotFound:
                 # No upgrade in progress
                 pass
@@ -15043,7 +15035,7 @@ class ConductorManager(service.PeriodicService):
 
         # Check if there is an upgrade in progress
         try:
-            upgrade = self.get_usm_upgrade_status()
+            upgrade = usm_service.get_platform_upgrade(self.dbapi)
         except exception.NotFound:
             # No upgrade in progress
             pass
@@ -15767,7 +15759,7 @@ class ConductorManager(service.PeriodicService):
         try:
             # this is checked by ceph-manager, so report both legacy upgrade or
             # USM major release deploy
-            row = self.get_usm_upgrade_status()
+            row = usm_service.get_platform_upgrade(self.dbapi)
             upgrade['from_version'] = row.from_release
             upgrade['to_version'] = row.to_release
             upgrade['state'] = row.state
@@ -15775,27 +15767,6 @@ class ConductorManager(service.PeriodicService):
             # No upgrade in progress
             pass
         return upgrade
-
-    def get_usm_host_upgrade_state_by_hostname(self, context, hostname):
-        host_upgrade = usm_service.UsmHostUpgrade.get_by_hostname(self.dbapi, hostname)
-        return host_upgrade.state
-
-    def get_usm_upgrade_status(self):
-        """
-        Software upgrade status coming from USM
-        used by the conductor to set _is_usm_upgrade_in_progress
-        which is verified by the agents
-        """
-        try:
-            upgrade = usm_service.get_platform_upgrade(self.dbapi)
-            self._is_usm_upgrade_in_progress = True
-            return upgrade
-        except Exception:
-            self._is_usm_upgrade_in_progress = False
-            raise
-
-    def is_usm_upgrade_in_progress_cached(self, context):
-        return self._is_usm_upgrade_in_progress
 
     def distribute_ceph_external_config(self, context, ceph_conf_filename):
         """Notify agent to distribute Ceph configuration file for external
