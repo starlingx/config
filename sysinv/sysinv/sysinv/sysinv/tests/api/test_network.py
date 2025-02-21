@@ -405,6 +405,19 @@ class TestPostMixin(object):
         self.assertIsNone(updated_addrpool.controller1_address)
         self.assertIsNone(updated_addrpool.gateway_address)
 
+    def test_create_success_cluster_pod_with_overlap_cluster_service(self):
+        if self.cluster_pod_subnet.version == 4:
+            cluster_svc_subnet = netaddr.IPNetwork('172.16.0.0/24')
+        else:
+            cluster_svc_subnet = netaddr.IPNetwork('fd03::/112')
+
+        self.assertTrue(cluster_svc_subnet in self.cluster_pod_subnet)
+        self._create_test_network('cluster-service', constants.NETWORK_TYPE_CLUSTER_SERVICE,
+                                  [cluster_svc_subnet])
+
+        addrpool = self._create_test_address_pool('cluster-pod', self.cluster_pod_subnet)
+        self._test_create_network_success(constants.NETWORK_TYPE_CLUSTER_POD, addrpool)
+
     def test_create_success_cluster_service(self):
         addrpool = self._create_test_address_pool('cluster-service', self.cluster_service_subnet)
         self._test_create_network_success(constants.NETWORK_TYPE_CLUSTER_SERVICE, addrpool)
@@ -413,6 +426,21 @@ class TestPostMixin(object):
         self.assertIsNone(updated_addrpool.controller0_address)
         self.assertIsNone(updated_addrpool.controller1_address)
         self.assertIsNone(updated_addrpool.gateway_address)
+
+    def test_create_success_cluster_service_with_overlap_cluster_pod(self):
+
+        if self.cluster_service_subnet.version == 4:
+            cluster_pod_subnet = netaddr.IPNetwork('10.96.0.0/10')
+        else:
+            cluster_pod_subnet = netaddr.IPNetwork('fd04::/64')
+
+        self.assertTrue(self.cluster_service_subnet in cluster_pod_subnet)
+
+        self._create_test_network('cluster-pod', constants.NETWORK_TYPE_CLUSTER_POD,
+                                  [cluster_pod_subnet])
+
+        addrpool = self._create_test_address_pool('cluster-service', self.cluster_service_subnet)
+        self._test_create_network_success(constants.NETWORK_TYPE_CLUSTER_SERVICE, addrpool)
 
     def test_create_success_storage(self):
         addrpool = self._create_test_address_pool('storage', self.storage_subnet)
