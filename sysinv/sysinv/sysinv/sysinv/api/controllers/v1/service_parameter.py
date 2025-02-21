@@ -668,6 +668,15 @@ class ServiceParameterController(rest.RestController):
                     name == constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_API_WORKERS:
                 new_name = name
 
+            # TODO (kdhokte): Remove this and change the code in sysinv conductor
+            # to mark all parameters of sections kube-scheduler and kube-controller-manager
+            # as non-reboot-required.
+            if section in (
+                constants.SERVICE_PARAM_SECTION_KUBERNETES_CONTROLLER_MANAGER,
+                constants.SERVICE_PARAM_SECTION_KUBERNETES_SCHEDULER) and \
+                    name == constants.SERVICE_PARAM_NAME_KUBERNETES_LEADER_ELECT:
+                new_name = name
+
             pecan.request.rpcapi.update_service_config(
                 pecan.request.context, service, section=section, name=new_name)
         except rpc_common.RemoteError as e:
@@ -829,6 +838,15 @@ class ServiceParameterController(rest.RestController):
         if parameter.section == constants.SERVICE_PARAM_SECTION_KUBERNETES_CONTROLLER_MANAGER and \
                 parameter.name == "pod-eviction-timeout":
             LOG.info("Updating pod-eviction-timeout")
+            name = parameter.name
+
+        # TODO (kdhokte): Remove this and change the code in sysinv conductor
+        # to mark all parameters of sections kube-scheduler and kube-controller-manager
+        # as non-reboot-required
+        if parameter.section in (
+            constants.SERVICE_PARAM_SECTION_KUBERNETES_CONTROLLER_MANAGER,
+            constants.SERVICE_PARAM_SECTION_KUBERNETES_SCHEDULER) and \
+                parameter.name == constants.SERVICE_PARAM_NAME_KUBERNETES_LEADER_ELECT:
             name = parameter.name
 
         try:
