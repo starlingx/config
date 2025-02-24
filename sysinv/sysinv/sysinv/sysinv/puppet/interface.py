@@ -1062,7 +1062,7 @@ def get_ethernet_network_config(context, iface, config):
             # the allow-* is a separated stanza in ifupdown, but without
             # support in puppet-network module, this stanza is needed to
             # make ifup to run the slave's pre-up commands. It will be
-            # adjusted during parsing in apply_network_config.sh
+            # adjusted during parsing in apply_network_config.py
             options['allow-{}'.format(master)] = osname
             if interface_class == constants.INTERFACE_CLASS_PCI_SRIOV:
                 if iface['iftype'] == constants.INTERFACE_TYPE_ETHERNET:

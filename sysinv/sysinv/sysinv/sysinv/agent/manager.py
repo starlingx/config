@@ -491,7 +491,7 @@ class AgentManager(service.PeriodicService):
         """
         def wrap(self, *args, **kwargs):
             try:
-                # Get lock to avoid conflict with apply_network_config.sh
+                # Get lock to avoid conflict with apply_network_config.py
                 lockfd = self._acquire_network_config_lock()
                 return func(self, *args, **kwargs)  # pylint: disable=not-callable
             finally:
@@ -582,10 +582,10 @@ class AgentManager(service.PeriodicService):
         LOG.info("Sysinv Agent platform update by host: %s" % msg_dict)
 
     def _acquire_network_config_lock(self):
-        """ Synchronization with apply_network_config.sh
+        """ Synchronization with apply_network_config.py
 
         This method is to acquire the lock to avoid
-        conflict with execution of apply_network_config.sh
+        conflict with execution of apply_network_config.py
         during puppet manifest application.
 
         :returns: fd of the lock, if successful. 0 on error.
@@ -595,7 +595,7 @@ class AgentManager(service.PeriodicService):
         return utils.acquire_exclusive_nb_flock(lock_file_fd)
 
     def _release_network_config_lock(self, lockfd):
-        """ Release the lock guarding apply_network_config.sh """
+        """ Release the lock guarding apply_network_config.py """
         if lockfd:
             utils.release_flock(lockfd)
             os.close(lockfd)
@@ -636,7 +636,7 @@ class AgentManager(service.PeriodicService):
         for inic in inics:
             lockfd = 0
             try:
-                # Get lock to avoid conflict with apply_network_config.sh
+                # Get lock to avoid conflict with apply_network_config.py
                 lockfd = self._acquire_network_config_lock()
                 pci_net_array = self._ipci_operator.pci_get_net_attrs(inic.pciaddr)
             finally:
