@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2024 Wind River Systems, Inc.
+# Copyright (c) 2024-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -33,6 +33,11 @@ BASE_USERS = [
     'smapi',
     'barbican',
     'mtce'
+]
+
+ADMIN_PROJECT_NAME = 'admin'
+USERS_TO_SET_ADMIN_PROJECT = [
+    {'name': 'dcmanager'}
 ]
 
 ADDITIONAL_SYSTEMCONTROLLER_USERS = [
@@ -228,7 +233,10 @@ def grant_admin_role(keystone, users_to_create, project_name):
     users_with_admin_role = [
         assign_role.user['id'] for assign_role in
         keystone.role_assignments.list() if
-        assign_role.role['id'] == admin_role_id
+        assign_role.role['id'] == admin_role_id and (
+            'project' in assign_role.scope and
+            assign_role.scope['project']['id'] == project_id
+        )
     ]
     for user in users_to_create:
         username = user['name']
@@ -527,6 +535,10 @@ def run_endpoint_config(puppet_operator: puppet.PuppetOperator,
     grant_admin_role(keystone,
                      users_to_create,
                      default_service_project_name)
+    if is_systemcontroller or is_subcloud:
+        grant_admin_role(keystone,
+                         copy.deepcopy(USERS_TO_SET_ADMIN_PROJECT),
+                         ADMIN_PROJECT_NAME)
     create_services(keystone, services_to_create)
     create_endpoints(keystone, endpoints_to_create)
     if is_subcloud:
