@@ -8081,6 +8081,11 @@ class ConductorManager(service.PeriodicService):
             else:
                 LOG.exception("App {} automatic upload {} failed with: {}"
                               .format(app.name, k8s_version, e))
+            if app:
+                app.status = constants.APP_UPLOAD_FAILURE
+                app.save()
+                LOG.error(f"auto upload managed app fails with {e}.\
+                    A new upload attempt will be made on the next audit iteration.")
             return False
 
     def _auto_apply_managed_app(self, context, app_name):
@@ -8930,7 +8935,7 @@ class ConductorManager(service.PeriodicService):
             except exception.KubeAppNotFound:
                 app_statuses[app_name] = constants.APP_NOT_PRESENT
 
-            if app_statuses[app_name] == constants.APP_NOT_PRESENT:
+            if app_statuses[app_name] in [constants.APP_NOT_PRESENT, constants.APP_UPLOAD_FAILURE]:
                 if app_name in self.apps_metadata[constants.APP_METADATA_DESIRED_STATES].keys() and \
                         self.apps_metadata[constants.APP_METADATA_DESIRED_STATES][
                             app_name] in [constants.APP_UPLOAD_SUCCESS, constants.APP_APPLY_SUCCESS]:
