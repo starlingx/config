@@ -1752,7 +1752,8 @@ class ConductorManager(service.PeriodicService):
             "host_uuids": host_uuids,
             "classes": [
                 'platform::grub::kernel_image::runtime',
-                'platform::config::file::subfunctions::lowlatency::runtime'
+                'platform::config::file::subfunctions::lowlatency::runtime',
+                'platform::compute::grub::runtime'
             ],
             puppet_common.REPORT_STATUS_CFG: puppet_common.REPORT_KERNEL_CONFIG
         }
