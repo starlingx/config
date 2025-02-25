@@ -701,8 +701,8 @@ class AppOperator(object):
                 if override_imgs != override_imgs_copy:
                     with open(app_overrides_file, 'w') as f:
                         try:
-                            overrides_file['data']['values'] = self._image.merge_dict(
-                                overrides_file['data']['values'], override_imgs)
+                            overrides_file = self._image.merge_dict(
+                                overrides_file, override_imgs)
                             yaml.safe_dump(overrides_file, f, default_flow_style=False)
                             LOG.info("Overrides file %s updated with new image tags" %
                                      app_overrides_file)
@@ -3889,7 +3889,7 @@ class AppImageParser(object):
 
             elif isinstance(v, dict):
                 if "registry" in v and "repository" in v:
-                    if not re.search(r'^.+:.+/', v["registry"]):
+                    if (not re.search(r'^.+:.+/', v["registry"]) and ":" not in v["registry"]):
                         v["registry"] = '{}/{}'.format(
                             constants.DOCKER_REGISTRY_SERVER, v["registry"])
                 else:
