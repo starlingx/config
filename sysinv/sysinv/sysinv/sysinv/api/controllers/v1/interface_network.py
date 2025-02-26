@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2024 Wind River Systems, Inc.
+# Copyright (c) 2013-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -256,20 +256,16 @@ class InterfaceNetworkController(rest.RestController):
                     caddress_pool.add_management_addresses_to_no_proxy_list(addrpools)
                 elif operation == constants.API_DELETE:
                     caddress_pool.remove_management_addresses_from_no_proxy_list(addrpools)
-            dc_role = utils.get_distributed_cloud_role()
-            if dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
-                cutils.update_subcloud_routes(pecan.request.dbapi, [_get_host()])
-            elif dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
-                if operation == constants.API_POST:
-                    cutils.update_system_controller_routes(pecan.request.dbapi,
-                                                           interface_network.interface_id,
-                                                           _get_host())
+            cutils.update_routes_to_system_controller(pecan.request.dbapi, [_get_host()])
+            if operation == constants.API_POST:
+                cutils.update_mgmt_controller_routes(pecan.request.dbapi,
+                                                        interface_network.interface_id,
+                                                        _get_host())
 
         elif interface_network.network_type == constants.NETWORK_TYPE_ADMIN:
             host = _get_host()
             disable = operation == constants.API_DELETE
-            if (utils.get_distributed_cloud_role() == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD):
-                cutils.update_subcloud_routes(pecan.request.dbapi, [host])
+            cutils.update_routes_to_system_controller(pecan.request.dbapi, [host])
             pecan.request.rpcapi.update_admin_config(pecan.request.context, host, disable)
 
         elif interface_network.network_type == constants.NETWORK_TYPE_STORAGE:

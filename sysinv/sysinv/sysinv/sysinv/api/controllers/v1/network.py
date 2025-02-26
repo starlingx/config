@@ -15,7 +15,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2015-2024 Wind River Systems, Inc.
+# Copyright (c) 2015-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -313,8 +313,6 @@ class NetworkController(rest.RestController):
         if network.type == constants.NETWORK_TYPE_ADMIN:
             hosts = pecan.request.dbapi.ihost_get_by_personality(constants.CONTROLLER)
             if hosts:
-                if (utils.get_distributed_cloud_role() ==
-                        constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD):
-                    cutils.update_subcloud_routes(pecan.request.dbapi, hosts)
+                cutils.update_routes_to_system_controller(pecan.request.dbapi, hosts)
                 for host in hosts:
                     pecan.request.rpcapi.update_admin_config(pecan.request.context, host, True)

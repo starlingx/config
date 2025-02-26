@@ -15,7 +15,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2015-2024 Wind River Systems, Inc.
+# Copyright (c) 2015-2025 Wind River Systems, Inc.
 #
 
 
@@ -870,9 +870,7 @@ class AddressPoolController(rest.RestController):
                 return
         if all(net_type not in network_types for net_type in self.SUBCLOUD_GATEWAY_NETWORKS):
             return
-        if utils.get_distributed_cloud_role() != constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
-            return
-        cutils.update_subcloud_routes(pecan.request.dbapi)
+        cutils.update_routes_to_system_controller(pecan.request.dbapi)
 
     def _operation_complete(self, addrpool, network_types, is_primary, operation):
         self._update_dc_routes(network_types, operation)
