@@ -191,9 +191,9 @@ def socket_recv_all_json(socket, buff_size):
     buffer = b''
     delimiter = b'}'
     iter = 0
-    while delimiter not in buffer and \
-          len(buffer) < buff_size and \
-          iter < 10:
+    # By reading maximum of 10 times, the max length of the message
+    # we can read here is 10 x buff_size.
+    while buffer[-1:] != delimiter and iter < 10:
         try:
             data = socket.recv(buff_size)
             if not data:
@@ -205,7 +205,8 @@ def socket_recv_all_json(socket, buff_size):
             time.sleep(1)
         buffer += data
         iter = iter + 1
-    if delimiter not in buffer:
+        LOG.debug("The length of the data read in buffer: %s" % len(buffer))
+    if buffer[-1:] != delimiter:
         return None
     return buffer
 
