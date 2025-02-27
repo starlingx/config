@@ -1734,7 +1734,7 @@ class AppOperator(object):
 
                     raise exception.ApplicationApplyFailure(name=app.name)
 
-        @kubernetes.test_k8s_health
+        @kubernetes.test_k8s_health(quiet=True)
         def _get_helmrelease_info(release_name, namespace):
             """ get helmrelease data from a given chart
 
