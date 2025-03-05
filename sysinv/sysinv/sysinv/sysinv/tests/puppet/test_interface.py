@@ -1,4 +1,4 @@
-# Copyright (c) 2017-2024 Wind River Systems, Inc.
+# Copyright (c) 2017-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -103,6 +103,7 @@ class InterfaceTestCaseMixin(base.PuppetTestCaseMixin):
                      'sriov_numvfs': kwargs.get('sriov_numvfs', 0),
                      'sriov_vf_driver': kwargs.get('iface_sriov_vf_driver', None),
                      'max_tx_rate': kwargs.get('max_tx_rate', None),
+                     'max_rx_rate': kwargs.get('max_rx_rate', None),
                      'ipv4_mode': kwargs.get('ipv4_mode', None),
                      'ipv6_mode': kwargs.get('ipv6_mode', None),
                      'ipv4_pool': kwargs.get('ipv4_pool', None),
@@ -165,7 +166,9 @@ class InterfaceTestCaseMixin(base.PuppetTestCaseMixin):
                      'ipv4_mode': kwargs.get('ipv4_mode', None),
                      'ipv6_mode': kwargs.get('ipv6_mode', None),
                      'ipv4_pool': kwargs.get('ipv4_pool', None),
-                     'ipv6_pool': kwargs.get('ipv6_pool', None)}
+                     'ipv6_pool': kwargs.get('ipv6_pool', None),
+                     'max_tx_rate': kwargs.get('max_tx_rate', None),
+                     'max_rx_rate': kwargs.get('max_rx_rate', None)}
         lower_iface['used_by'].append(interface['ifname'])
         db_interface = dbutils.create_test_interface(**interface)
         for network in networks:
@@ -209,7 +212,9 @@ class InterfaceTestCaseMixin(base.PuppetTestCaseMixin):
                      'ipv4_mode': kwargs.get('ipv4_mode', None),
                      'ipv6_mode': kwargs.get('ipv6_mode', None),
                      'ipv4_pool': kwargs.get('ipv4_pool', None),
-                     'ipv6_pool': kwargs.get('ipv6_pool', None)}
+                     'ipv6_pool': kwargs.get('ipv6_pool', None),
+                     'max_tx_rate': kwargs.get('max_tx_rate', None),
+                     'max_rx_rate': kwargs.get('max_rx_rate', None)}
 
         aemode = kwargs.get('aemode', None)
         if aemode:
@@ -4825,6 +4830,53 @@ class InterfaceConfigTestMixin(InterfaceTestCaseMixin):
                     OPTIONS: {POST_UP: [SET_TC, IPV6_CFG]}}],
         }
         self._validate_config(expected)
+
+    def test_get_interface_data_for_rate_limit(self):
+        self._create_host(constants.CONTROLLER)
+        oam_kwargs = {'max_tx_rate': 30, 'max_rx_rate': 30}
+        port, _ = self._create_ethernet_test('oam0', constants.INTERFACE_CLASS_PLATFORM,
+                                        constants.NETWORK_TYPE_OAM, **oam_kwargs)
+
+        # creating a pxeboot interface, mgmt interface will be created on top of it.
+        # Rate limit will not be configured for pxeboot as it has only internal traffic.
+        iface_pxeboot_kwargs = {'max_tx_rate': 30, 'max_rx_rate': 30}
+        iface_pxeboot = self._add_bond('pxeboot', constants.INTERFACE_CLASS_PLATFORM,
+                            constants.NETWORK_TYPE_PXEBOOT, **iface_pxeboot_kwargs)
+
+        iface_mgmt_kwargs = {'max_tx_rate': None, 'max_rx_rate': 0}
+        mgmt_vlan_id = 100
+        self._add_vlan(iface_pxeboot, mgmt_vlan_id, 'mgmt0',
+                            constants.INTERFACE_CLASS_PLATFORM, constants.NETWORK_TYPE_MGMT,
+                            **iface_mgmt_kwargs)
+
+        dbapi = db_api.get_instance()
+        config = {
+            interface.RATE_LIMIT_CONFIG_RESOURCE: {},
+        }
+        system_dict = self.system.as_dict()
+        mode = system_dict['system_mode']
+        address_pool = 'ipv4' if mode == SS_IPV4 else 'ipv6' if mode == SS_IPV6 else 'dual'
+        system_dict['system_mode'] = constants.SYSTEM_MODE_DUPLEX
+        system_dict['distributed_cloud_role'] = constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+        self._do_update_context()
+
+        expected_output = {
+            'vlan' + str(mgmt_vlan_id): {
+                'accept_subnet': ['mgmt'],
+                'max_tx_rate': None,
+                'max_rx_rate': 0,
+                'address_pool': address_pool
+            },
+            port['name']: {
+                'max_tx_rate': 30,
+                'max_rx_rate': 30,
+                'address_pool': address_pool
+            },
+        }
+        interface.generate_data_iface_rate_limit(self.context, config, dbapi)
+        rate_limit_config = config[interface.RATE_LIMIT_CONFIG_RESOURCE]
+        self.assertEqual(rate_limit_config, expected_output)
 
 
 class InterfaceConfigTestIPv4(InterfaceConfigTestMixin,
