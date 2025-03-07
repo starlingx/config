@@ -86,10 +86,14 @@ DYNAMIC_ALLOCATION_ENABLED_NETS = {constants.NETWORK_TYPE_MGMT,
                                    constants.NETWORK_TYPE_STORAGE}
 
 ALLOWED_OVERLAP_INDEX = {
-    constants.NETWORK_TYPE_OAM: constants.NETWORK_TYPE_SYSTEM_CONTROLLER_OAM,
-    constants.NETWORK_TYPE_SYSTEM_CONTROLLER_OAM: constants.NETWORK_TYPE_OAM,
-    constants.NETWORK_TYPE_CLUSTER_POD: constants.NETWORK_TYPE_CLUSTER_SERVICE,
-    constants.NETWORK_TYPE_CLUSTER_SERVICE: constants.NETWORK_TYPE_CLUSTER_POD}
+    constants.NETWORK_TYPE_OAM: [constants.NETWORK_TYPE_SYSTEM_CONTROLLER_OAM],
+    constants.NETWORK_TYPE_SYSTEM_CONTROLLER_OAM: [constants.NETWORK_TYPE_OAM],
+    constants.NETWORK_TYPE_CLUSTER_POD: [constants.NETWORK_TYPE_CLUSTER_SERVICE,
+                                         constants.NETWORK_TYPE_CLUSTER_HOST],
+    constants.NETWORK_TYPE_CLUSTER_SERVICE: [constants.NETWORK_TYPE_CLUSTER_POD,
+                                             constants.NETWORK_TYPE_CLUSTER_HOST],
+    constants.NETWORK_TYPE_CLUSTER_HOST: [constants.NETWORK_TYPE_CLUSTER_POD,
+                                          constants.NETWORK_TYPE_CLUSTER_SERVICE]}
 
 
 def _select_address(available, order):
@@ -411,8 +415,8 @@ def check_address_pools_overlaps(dbapi, ref_addrpools, network_types=None, show_
     if not overlaps:
         return
 
-    allowed_networks = {ALLOWED_OVERLAP_INDEX.get(t) for t in network_types
-                        if t in ALLOWED_OVERLAP_INDEX} if network_types else {}
+    allowed_networks = {network for t in network_types if t in ALLOWED_OVERLAP_INDEX
+                        for network in ALLOWED_OVERLAP_INDEX.get(t)} if network_types else {}
 
     addrpool_texts = []
     for overlap in overlaps:

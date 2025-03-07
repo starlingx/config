@@ -169,6 +169,18 @@ class TestPostMixin(object):
                          ndict[self.COMMON_FIELD])
         return addrpool.id
 
+    def _test_create_network_failed(self, network_type, addrpool, http_error_code):
+        # Test creation of object
+        ndict = self.get_post_object(network_type, addrpool.uuid)
+        response = self.post_json(self.API_PREFIX,
+                                  ndict,
+                                  headers=self.API_HEADERS,
+                                  expect_errors=True)
+
+        # Check HTTP response
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(response.status_code, http_error_code)
+
     def _test_create_network_fail_duplicate(self, name, network_type, subnet):
         # Test creation of object
 
@@ -418,6 +430,19 @@ class TestPostMixin(object):
         addrpool = self._create_test_address_pool('cluster-pod', self.cluster_pod_subnet)
         self._test_create_network_success(constants.NETWORK_TYPE_CLUSTER_POD, addrpool)
 
+    def test_create_success_cluster_pod_with_overlap_cluster_host(self):
+        if self.cluster_pod_subnet.version == 4:
+            cluster_host_subnet = netaddr.IPNetwork('172.16.0.0/24')
+        else:
+            cluster_host_subnet = netaddr.IPNetwork('fd03::/112')
+
+        self.assertTrue(cluster_host_subnet in self.cluster_pod_subnet)
+        self._create_test_network('cluster-host', constants.NETWORK_TYPE_CLUSTER_HOST,
+                                  [cluster_host_subnet])
+
+        addrpool = self._create_test_address_pool('cluster-pod', self.cluster_pod_subnet)
+        self._test_create_network_success(constants.NETWORK_TYPE_CLUSTER_POD, addrpool)
+
     def test_create_success_cluster_service(self):
         addrpool = self._create_test_address_pool('cluster-service', self.cluster_service_subnet)
         self._test_create_network_success(constants.NETWORK_TYPE_CLUSTER_SERVICE, addrpool)
@@ -435,12 +460,40 @@ class TestPostMixin(object):
             cluster_pod_subnet = netaddr.IPNetwork('fd04::/64')
 
         self.assertTrue(self.cluster_service_subnet in cluster_pod_subnet)
-
         self._create_test_network('cluster-pod', constants.NETWORK_TYPE_CLUSTER_POD,
                                   [cluster_pod_subnet])
 
         addrpool = self._create_test_address_pool('cluster-service', self.cluster_service_subnet)
         self._test_create_network_success(constants.NETWORK_TYPE_CLUSTER_SERVICE, addrpool)
+
+    def test_create_success_cluster_service_with_overlap_cluster_host(self):
+
+        if self.cluster_service_subnet.version == 4:
+            cluster_host_subnet = netaddr.IPNetwork('10.96.0.0/10')
+        else:
+            cluster_host_subnet = netaddr.IPNetwork('fd04::/64')
+
+        self.assertTrue(self.cluster_service_subnet in cluster_host_subnet)
+        self._create_test_network('cluster-host', constants.NETWORK_TYPE_CLUSTER_HOST,
+                                  [cluster_host_subnet])
+
+        addrpool = self._create_test_address_pool('cluster-service', self.cluster_service_subnet)
+        self._test_create_network_success(constants.NETWORK_TYPE_CLUSTER_SERVICE, addrpool)
+
+    def test_create_failed_cluster_service_with_overlap_storage(self):
+
+        if self.cluster_service_subnet.version == 4:
+            storage_subnet = netaddr.IPNetwork('10.96.0.0/10')
+        else:
+            storage_subnet = netaddr.IPNetwork('fd04::/64')
+
+        self.assertTrue(self.cluster_service_subnet in storage_subnet)
+        self._create_test_network('test-storage', constants.NETWORK_TYPE_STORAGE,
+                                  [storage_subnet])
+
+        addrpool = self._create_test_address_pool('cluster-service', self.cluster_service_subnet)
+        self._test_create_network_failed(constants.NETWORK_TYPE_CLUSTER_SERVICE, addrpool,
+                                         http_client.CONFLICT)
 
     def test_create_success_storage(self):
         addrpool = self._create_test_address_pool('storage', self.storage_subnet)
