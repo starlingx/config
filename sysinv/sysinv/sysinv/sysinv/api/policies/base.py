@@ -17,8 +17,8 @@
 from oslo_policy import policy
 
 ADMIN_IN_SYSTEM_PROJECTS = 'admin_in_system_projects'
-READER_IN_SYSTEM_PROJECTS = 'reader_in_system_projects'
-
+READER_OR_OPERATOR_IN_SYSTEM_PROJECTS = 'reader_or_operator_in_system_projects'
+ADMIN_OR_OPERATOR_IN_SYSTEM_PROJECTS = 'admin_or_operator_in_system_projects'
 
 base_rules = [
     policy.RuleDefault(
@@ -28,8 +28,14 @@ base_rules = [
         description="Base rule.",
     ),
     policy.RuleDefault(
-        name=READER_IN_SYSTEM_PROJECTS,
-        check_str='role:reader and (project_name:admin or ' +
+        name=ADMIN_OR_OPERATOR_IN_SYSTEM_PROJECTS,
+        check_str='(role:admin or role:operator) and (project_name:admin or ' +
+                  'project_name:services)',
+        description="Base rule."
+    ),
+    policy.RuleDefault(
+        name=READER_OR_OPERATOR_IN_SYSTEM_PROJECTS,
+        check_str='(role:reader or role:operator) and (project_name:admin or ' +
                   'project_name:services)',
         description="Base rule."
     )

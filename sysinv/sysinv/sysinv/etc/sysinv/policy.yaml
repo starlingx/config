@@ -2,10 +2,22 @@
 # The commented lines below contains the default values for presented rules.
 
 # admin_in_system_projects: role:admin and (project_name:admin or project_name:services)
-# reader_in_system_projects: role:reader and (project_name:admin or project_name:services)
+# reader_or_operator_in_system_projects: (role:reader or role:operator) and
+#  (project_name:admin or project_name:services)
+# admin_or_operator_in_system_projects: (role:admin or role:operator) and
+#  (project_name:admin or project_name:services)
 
 # config_api:service_parameter:add: rule:admin_in_system_projects
 # config_api:service_parameter:apply: rule:admin_in_system_projects
 # config_api:service_parameter:delete: rule:admin_in_system_projects
-# config_api:service_parameter:get: rule:reader_in_system_projects
-# config_api:service_parameter:modify: rule:admin_in_system_projects
+# config_api:service_parameter:get: rule:reader_or_operator_in_system_projects
+# config_api:service_parameter:modify: rule:admin_or_operator_in_system_projects
+
+# config_api:ihosts:add: rule:admin_in_system_projects
+# config_api:ihosts:delete: rule:admin_in_system_projects
+# config_api:ihosts:get: rule:reader_or_operator_in_system_projects
+# config_api:ihosts:modify: rule:admin_or_operator_in_system_projects
+
+# config_api:registry_image:add: rule:admin_or_operator_in_system_projects
+# config_api:registry_image:delete: rule:admin_in_system_projects
+# config_api:registry_image:get: "rule:reader_or_operator_in_system_projects

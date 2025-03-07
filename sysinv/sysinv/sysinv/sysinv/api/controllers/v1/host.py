@@ -88,11 +88,13 @@ from sysinv.api.controllers.v1 import patch_api
 from sysinv.api.controllers.v1 import ptp_instance
 from sysinv.api.controllers.v1 import ptp_interface
 from sysinv.api.controllers.v1 import kernel
+from sysinv.api.policies import ihosts as ihosts_policy
 from sysinv.common import ceph
 from sysinv.common import constants
 from sysinv.common import device
 from sysinv.common import exception
 from sysinv.common import kubernetes
+from sysinv.common import policy
 from sysinv.common import usm_service as usm_service
 from sysinv.common import utils as cutils
 from sysinv.common.storage_backend_conf import StorageBackendConfig
@@ -100,6 +102,7 @@ from sysinv.common import health
 from sysinv.ipsec_auth.common import constants as ipsec_constants
 
 from sysinv.openstack.common.rpc import common as rpc_common
+
 
 LOG = log.getLogger(__name__)
 KEYRING_BM_SERVICE = "BM"
@@ -7329,6 +7332,20 @@ class HostController(rest.RestController):
         pecan.request.rpcapi.host_device_image_update_abort(
             pecan.request.context, host_uuid)
         return Host.convert_with_links(host_obj)
+
+    def enforce_policy(self, method_name, request):
+        """Check policy rules for each action of this controller."""
+        context_dict = request.context.to_dict()
+        if method_name == "delete":
+            policy.authorize(ihosts_policy.POLICY_ROOT % "delete", {}, context_dict)
+        elif method_name in ["get_all", "get_one"]:
+            policy.authorize(ihosts_policy.POLICY_ROOT % "get", {}, context_dict)
+        elif method_name == "patch":
+            policy.authorize(ihosts_policy.POLICY_ROOT % "modify", {}, context_dict)
+        elif method_name == "post":
+            policy.authorize(ihosts_policy.POLICY_ROOT % "add", {}, context_dict)
+        else:
+            raise exception.PolicyNotFound()
 
 
 def _create_node(host, xml_node, personality, is_dynamic_ip):
