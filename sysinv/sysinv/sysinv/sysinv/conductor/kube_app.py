@@ -1,6 +1,6 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 #
-# Copyright (c) 2018-2024 Wind River Systems, Inc.
+# Copyright (c) 2018-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -829,6 +829,20 @@ class AppOperator(object):
             images_list = yaml.safe_load(f)
         return images_list
 
+    def _get_max_download_threads(self):
+        """ Get max-kube-app-download-threads service parameter.
+            If not set returns MAX_DOWNLOAD_THREAD
+        """
+        try:
+            download_threads_param = self._dbapi.service_parameter_get_one(
+                constants.SERVICE_TYPE_DOCKER,
+                constants.SERVICE_PARAM_SECTION_DOCKER_CONCURRENCY,
+                constants.SERVICE_PARAM_NAME_MAX_KUBE_APP_DOWNLOAD_THREADS).value
+            max_download_threads = int(download_threads_param)
+        except exception.NotFound:
+            max_download_threads = MAX_DOWNLOAD_THREAD
+        return max_download_threads
+
     def download_images(self, app):
         if os.path.isdir(app.inst_images_dir):
             return self._register_embedded_images(app)
@@ -850,7 +864,8 @@ class AppOperator(object):
                 app.sync_imgfile).get("download_images")
 
         total_count = len(images_to_download)
-        threads = min(MAX_DOWNLOAD_THREAD, total_count)
+        max_download_threads = self._get_max_download_threads()
+        threads = min(max_download_threads, total_count)
 
         self._docker.set_crictl_image_list([])
 
