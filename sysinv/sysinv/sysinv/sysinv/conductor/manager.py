@@ -1405,8 +1405,6 @@ class ConductorManager(service.PeriodicService):
             constants.NETWORK_TYPE_MGMT
         )
 
-        is_upgrading, upgrade = cutils.is_upgrade_in_progress(self.dbapi)
-
         func = "_generate_dnsmasq_hosts_file"
         with open(temp_dnsmasq_hosts_file, 'w') as f_out, \
                 open(temp_dnsmasq_addn_hosts_file, 'w') as f_out_addn:
@@ -1459,40 +1457,6 @@ class ConductorManager(service.PeriodicService):
                         addn_line_internal = self._dnsmasq_addn_host_entry_to_string(
                                 address.address, hostname_internal, hostname_alias)
                     f_out_addn.write(addn_line_internal)
-
-                if address.interface:
-                    mac_address = address.interface.imac
-                    # For cloning scenario, controller-1 MAC address will
-                    # be updated in ethernet_interfaces table only later
-                    # when sysinv-agent is initialized on controller-1.
-                    # So, use the mac_address passed in (got from PXE request).
-                    if (existing_host and
-                            constants.CLONE_ISO_MAC in mac_address and
-                            hostname == existing_host.hostname):
-                        LOG.info("gen dnsmasq (clone):{}:{}->{}"
-                                 .format(hostname, mac_address,
-                                         existing_host.mgmt_mac))
-                        mac_address = existing_host.mgmt_mac
-
-                if not is_upgrading or "activate" in upgrade.state:
-                    continue
-
-                # If host is being deleted, don't check ihost
-                if deleted_hostname and deleted_hostname == hostname:
-                    continue
-
-                try:
-                    ihost = self.dbapi.ihost_get_by_hostname(hostname)
-                    if ihost.personality == constants.CONTROLLER:
-                        continue
-                    mac_address = ihost.mgmt_mac
-                except exception.NodeNotFound:
-                    continue
-
-                line = self._dnsmasq_host_entry_to_string(address.address,
-                                                          hostname,
-                                                          mac_address)
-                f_out.write(line)
 
             # Add pxecontroller to dnsmasq.hosts file
             pxeboot_network = self.dbapi.network_get_by_type(
