@@ -1014,8 +1014,6 @@ class TestPostMixin(NetworkAddrpoolTestCase):
         self._setup_context()
         net_type = constants.NETWORK_TYPE_MGMT
 
-        self._set_dc_role(constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD)
-
         mgmt_subnet = netaddr.IPNetwork('3001::/64')
         ranges = [(str(mgmt_subnet[2]), str(mgmt_subnet[-2]))]
 
@@ -1035,7 +1033,7 @@ class TestPostMixin(NetworkAddrpoolTestCase):
             address="3001::2")
 
         gw_address = dbutils.create_test_address(
-            name=f"{constants.SYSTEM_CONTROLLER_GATEWAY_IP_NAME}-{net_type}",
+            name=f"{constants.CONTROLLER_GATEWAY}-{net_type}",
             family=mgmt_subnet.version, prefix=mgmt_subnet.prefixlen,
             address="3001::1")
 

@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2017-2024 Wind River Systems, Inc.
+# Copyright (c) 2017-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -103,14 +103,8 @@ class InterfacePuppet(base.BasePuppet):
             DATA_IFACE_LIST_RESOURCE: [],
         }
 
-        system = self._get_system()
-        # For AIO-SX subcloud, mgmt n/w will be on a separate
-        # physical interface instead of the loopback interface.
-        if system.system_mode != constants.SYSTEM_MODE_SIMPLEX or \
-                self._distributed_cloud_role() == \
-                constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
-            # Setup the loopback interface first
-            generate_loopback_config(config)
+        # Setup the loopback interface first
+        generate_loopback_config(config)
 
         # Generate the actual interface config resources
         generate_interface_configs(context, config, self.dbapi)

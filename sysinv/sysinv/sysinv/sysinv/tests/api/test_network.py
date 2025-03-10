@@ -344,8 +344,6 @@ class TestPostMixin(object):
                                     'gateway_address_id': 'controller-gateway-mgmt'})
 
     def test_create_success_management_subcloud(self):
-        self._set_dc_role(constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD)
-
         mgmt_pool = self._create_test_address_pool('mgmt', self.mgmt_subnet, link_addresses=True)
         gateway_addr = self.dbapi.address_get(mgmt_pool.gateway_address_id)
         self.dbapi.address_update(gateway_addr.uuid, {'name': 'mgmt-gw'})
@@ -357,7 +355,7 @@ class TestPostMixin(object):
         self.assertEqual(updated_mgmt_pool.gateway_address_id, gateway_addr.id)
 
         updated_addr = self.dbapi.address_get(gateway_addr.id)
-        self.assertEqual('system-controller-gateway-ip-mgmt', updated_addr.name)
+        self.assertEqual('controller-gateway-mgmt', updated_addr.name)
 
     def test_create_success_oam(self):
         addrpool = self._create_test_address_pool('oam', self.oam_subnet, link_addresses=True)
@@ -453,8 +451,6 @@ class TestPostMixin(object):
         self.assertIsNone(updated_addrpool.gateway_address)
 
     def test_create_success_admin(self):
-        self._set_dc_role(constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD)
-
         addrpool = self._create_test_address_pool('admin', self.admin_subnet)
         gateway_addr = self.dbapi.address_get_by_address(str(self.admin_subnet[1]))
         self.dbapi.address_update(gateway_addr.uuid, {'name': 'admin-gw',
@@ -468,7 +464,7 @@ class TestPostMixin(object):
                                    {'floating_address_id': 'controller-admin',
                                    'controller0_address_id': 'controller-0-admin',
                                    'controller1_address_id': 'controller-1-admin',
-                                   'gateway_address_id': 'system-controller-gateway-ip-admin'})
+                                   'gateway_address_id': 'controller-gateway-admin'})
 
     def test_create_fail_duplicate_pxeboot(self):
         self._test_create_network_fail_duplicate(
