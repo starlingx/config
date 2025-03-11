@@ -5598,7 +5598,8 @@ class ManagerTestCase(base.DbTestCase):
             "host_uuids": host_uuids,
             "classes": [
                 'platform::grub::kernel_image::runtime',
-                'platform::config::file::subfunctions::lowlatency::runtime'
+                'platform::config::file::subfunctions::lowlatency::runtime',
+                'platform::compute::grub::runtime'
             ],
             'report_status': 'host_kernel_config'
         }
