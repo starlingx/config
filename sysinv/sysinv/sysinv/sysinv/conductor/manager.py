@@ -1002,6 +1002,11 @@ class ConductorManager(service.PeriodicService):
          'name': constants.SERVICE_PARAM_NAME_PLATFORM_SCTP_AUTOLOAD,
          'value': constants.SERVICE_PARAM_PLATFORM_SCTP_AUTOLOAD_ENABLED,
          },
+        {'service': constants.SERVICE_TYPE_PLATFORM,
+         'section': constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG,
+         'name': constants.SERVICE_PARAM_NAME_PLATFORM_CLI_CONFIRMATIONS,
+         'value': constants.SERVICE_PARAM_DISABLED,
+         },
     ]
 
     def _create_default_service_parameter(self):
@@ -12693,6 +12698,12 @@ class ConductorManager(service.PeriodicService):
                 }
 
                 self._config_apply_runtime_manifest(context, config_uuid, config_dict)
+            elif section == constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG and \
+                    name == constants.SERVICE_PARAM_NAME_PLATFORM_CLI_CONFIRMATIONS:
+                # Do nothing. Does not need to update target config of any hosts
+                personalities = None
+                reboot = False
+
         elif service == constants.SERVICE_TYPE_IDENTITY:
             remote_ldap_domains = [constants.SERVICE_PARAM_SECTION_IDENTITY_LDAP_DOMAIN1,
                                     constants.SERVICE_PARAM_SECTION_IDENTITY_LDAP_DOMAIN2,
