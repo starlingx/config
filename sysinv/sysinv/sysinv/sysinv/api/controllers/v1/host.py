@@ -7336,14 +7336,14 @@ class HostController(rest.RestController):
     def enforce_policy(self, method_name, request):
         """Check policy rules for each action of this controller."""
         context_dict = request.context.to_dict()
-        if method_name == "delete":
-            policy.authorize(ihosts_policy.POLICY_ROOT % "delete", {}, context_dict)
-        elif method_name in ["get_all", "get_one"]:
+        if method_name in ["get_all", "get_one"]:
             policy.authorize(ihosts_policy.POLICY_ROOT % "get", {}, context_dict)
-        elif method_name == "patch":
-            policy.authorize(ihosts_policy.POLICY_ROOT % "modify", {}, context_dict)
-        elif method_name == "post":
-            policy.authorize(ihosts_policy.POLICY_ROOT % "add", {}, context_dict)
+        elif method_name in ["delete", "patch", "post"]:
+            policy.authorize(ihosts_policy.POLICY_ROOT % method_name, {}, context_dict)
+        elif method_name in self._custom_actions:
+            request_method = self._custom_actions[method_name][0].lower()
+            policy.authorize(ihosts_policy.POLICY_ROOT % request_method, {},
+                             context_dict)
         else:
             raise exception.PolicyNotFound()
 

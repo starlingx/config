@@ -22,7 +22,7 @@ POLICY_ROOT = 'config_api:ihosts:%s'
 
 ihosts_rules = [
     policy.DocumentedRuleDefault(
-        name=POLICY_ROOT % 'add',
+        name=POLICY_ROOT % 'post',
         check_str='rule:' + base.ADMIN_IN_SYSTEM_PROJECTS,
         description="Add a host Parameter.",
         operations=[
@@ -59,7 +59,7 @@ ihosts_rules = [
         ]
     ),
     policy.DocumentedRuleDefault(
-        name=POLICY_ROOT % 'modify',
+        name=POLICY_ROOT % 'patch',
         check_str='rule:' + base.ADMIN_OR_OPERATOR_IN_SYSTEM_PROJECTS,
         description="Modify host value.",
         operations=[
