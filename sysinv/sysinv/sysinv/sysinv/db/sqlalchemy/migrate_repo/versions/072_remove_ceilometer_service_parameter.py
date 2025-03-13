@@ -1,11 +1,12 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 #
-# Copyright (c) 2018 Wind River Systems, Inc.
+# Copyright (c) 2018, 2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
 
-from sqlalchemy import Column, MetaData, Table, Integer
+from sqlalchemy import Column, MetaData, Table, Integer, inspect
+from sqlalchemy import __version__ as sa_version
 
 from oslo_log import log
 
@@ -25,7 +26,11 @@ def upgrade(migrate_engine):
     meta.bind = migrate_engine
 
     LOG.info("Deleting ceilometer metering_time_to_live service parameter")
-    if migrate_engine.dialect.has_table(migrate_engine, "service_parameter"):
+    if sa_version >= '1.4.0':
+        table_exists = inspect(migrate_engine).has_table("service_parameter")
+    else:
+        table_exists = migrate_engine.dialect.has_table(migrate_engine, "service_parameter")
+    if table_exists:
 
         sp_t = Table('service_parameter',
                      meta,
