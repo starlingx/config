@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2020-2024 Wind River Systems, Inc.
+# Copyright (c) 2020-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -523,18 +523,6 @@ class TestPostMixin(object):
                                    'controller1_address_id': 'controller-1-admin',
                                    'gateway_address_id': 'system-controller-gateway-ip-admin'})
 
-    def test_create_success_admin_non_subcloud(self):
-        addrpool = self._create_test_address_pool('admin', self.admin_subnet)
-        p = mock.patch('sysinv.api.controllers.v1.utils.get_distributed_cloud_role')
-        self.mock_utils_get_distributed_cloud_role = p.start()
-        self.mock_utils_get_distributed_cloud_role.return_value = \
-            constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER
-        self.addCleanup(p.stop)
-
-        self._test_create_network_success(
-            constants.NETWORK_TYPE_ADMIN,
-            addrpool)
-
     def test_create_fail_duplicate_pxeboot(self):
         self._test_create_network_fail_duplicate(
             'pxeboot',
@@ -578,7 +566,6 @@ class TestPostMixin(object):
             self.storage_subnet)
 
     def test_create_fail_duplicate_admin(self):
-        self._set_dc_role(constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD)
         self._test_create_network_fail_duplicate(
             'admin',
             constants.NETWORK_TYPE_ADMIN,
@@ -880,12 +867,6 @@ class TestDelete(NetworkTestCase):
     def test_delete_admin_dual_stack(self):
         p = mock.patch('sysinv.conductor.rpcapi.ConductorAPI.update_admin_config')
         self.mock_rpcapi_update_admin_config = p.start()
-        self.addCleanup(p.stop)
-
-        p = mock.patch('sysinv.api.controllers.v1.utils.get_distributed_cloud_role')
-        self.mock_get_distributed_cloud_role = p.start()
-        self.mock_get_distributed_cloud_role.return_value =\
-            constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD
         self.addCleanup(p.stop)
 
         mgmt_network = self._create_test_network(

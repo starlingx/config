@@ -18,7 +18,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2024 Wind River Systems, Inc.
+# Copyright (c) 2013-2025 Wind River Systems, Inc.
 #
 
 
@@ -1783,7 +1783,8 @@ def get_central_cloud_gateway_network_and_addresses(dbapi, primary_only):
     # If the Admin network exists, use its gateway addresses. If not, use Management's instead.
     for networktype in [constants.NETWORK_TYPE_ADMIN, constants.NETWORK_TYPE_MGMT]:
         pools = get_network_address_pools(dbapi, networktype, primary_only)
-        if pools:
+        iface_network_list = dbapi.interface_networks_get_by_network_type(networktype)
+        if pools and iface_network_list:
             gateway_addresses = {}
             for pool in pools:
                 if pool.gateway_address:
@@ -1792,8 +1793,8 @@ def get_central_cloud_gateway_network_and_addresses(dbapi, primary_only):
     return None, {}
 
 
-def update_subcloud_routes(dbapi, hosts=None, primary_only=True):
-    # Add the routes back to the system controller.
+def update_routes_to_system_controller(dbapi, hosts=None, primary_only=True):
+    # Update routes to system controller network.
     # Assumption is we do not have to do any error checking
     # for local & reachable gateway etc, as config_subcloud
     # will have already done these checks before allowing
@@ -1802,7 +1803,7 @@ def update_subcloud_routes(dbapi, hosts=None, primary_only=True):
     cc_network_addr_pools = get_network_address_pools(dbapi,
         constants.NETWORK_TYPE_SYSTEM_CONTROLLER, primary_only)
     if not cc_network_addr_pools:
-        LOG.warning("DC Config: Failed to retrieve central cloud network")
+        LOG.info("DC Config: No entries found for the central cloud network")
         return
 
     if hosts is None:
@@ -1865,11 +1866,10 @@ def update_subcloud_routes(dbapi, hosts=None, primary_only=True):
             LOG.info("DC Config: Added route to system controller: {}".format(route_descr))
 
 
-def update_system_controller_routes(dbapi, mgmt_iface_id, host=None):
-    # Add routes to get from this controller to all the existing subclouds.
+def update_mgmt_controller_routes(dbapi, mgmt_iface_id, host=None):
+    # Mirror the management routes from the mate controller.
     # Do this by copying all the routes configured on the management
     # interface on the mate controller (if it exists).
-
     if host:
         host_id = host.id
     else:
@@ -1917,12 +1917,8 @@ def perform_distributed_cloud_config(dbapi, mgmt_iface_id, host):
     Check if we are running in distributed cloud mode and perform any
     necessary configuration.
     """
-    system = dbapi.isystem_get_one()
-    if system.distributed_cloud_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
-        update_system_controller_routes(dbapi, mgmt_iface_id, host)
-    elif (system.distributed_cloud_role == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD and
-            host.personality == constants.CONTROLLER):
-        update_subcloud_routes(dbapi, [host])
+    update_mgmt_controller_routes(dbapi, mgmt_iface_id, host)
+    update_routes_to_system_controller(dbapi, [host])
 
 
 def is_upgrade_in_progress(dbapi):

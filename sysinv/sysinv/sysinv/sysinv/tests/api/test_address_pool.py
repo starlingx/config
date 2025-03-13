@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2023-2024 Wind River Systems, Inc.
+# Copyright (c) 2023-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -877,12 +877,45 @@ class TestPatchMixin(object):
 
         self.mock_rpcapi_update_dnsmasq_config.assert_called_once()
 
+    def test_change_admin_gateway(self):
+        p = mock.patch('sysinv.conductor.rpcapi.ConductorAPI.update_admin_config')
+        self.mock_rpcapi_update_admin_config = p.start()
+        self.addCleanup(p.stop)
+
+        controller0 = self._create_test_host(constants.CONTROLLER, unit=0)
+        c0_if0 = self.create_test_interface('c0-if0', controller0)
+        network = self._find_network_by_type(constants.NETWORK_TYPE_ADMIN)
+        admin_pool = self.find_addrpool_by_networktype(constants.NETWORK_TYPE_ADMIN)
+
+        sc_pool = self.find_addrpool_by_networktype(constants.NETWORK_TYPE_SYSTEM_CONTROLLER)
+        response = self.delete(self.get_single_url(sc_pool.uuid), headers=self.API_HEADERS)
+        self.assertEqual(response.status_code, http_client.NO_CONTENT)
+
+        dbutils.create_test_interface_network(interface_id=c0_if0.id, network_id=network.id)
+        self.dbapi.address_update(admin_pool.controller0_address_id, {'interface_id': c0_if0.id})
+
+        dbutils.create_test_route(interface_id=c0_if0.id,
+                                  family=sc_pool.family,
+                                  network=sc_pool.network,
+                                  prefix=sc_pool.prefix,
+                                  gateway=admin_pool.gateway_address,
+                                  metric=1)
+
+        subnet = self.admin_subnet
+        new_gateway = str(subnet[20])
+        self.patch_success(admin_pool, gateway_address=new_gateway)
+
+        route = self.dbapi.routes_get_by_interface(c0_if0.id)[0]
+        self.assertNotEqual(new_gateway, route.gateway)
+
+        self.mock_rpcapi_update_admin_config.assert_called_once()
+        self.assertEqual(False, self.mock_rpcapi_update_admin_config.call_args.kwargs['disable'])
+
     def test_change_admin_gateway_in_subcloud(self):
         p = mock.patch('sysinv.conductor.rpcapi.ConductorAPI.update_admin_config')
         self.mock_rpcapi_update_admin_config = p.start()
         self.addCleanup(p.stop)
 
-        self._set_dc_role(constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD)
         controller0 = self._create_test_host(constants.CONTROLLER, unit=0)
         c0_if0 = self.create_test_interface('c0-if0', controller0)
         network = self._find_network_by_type(constants.NETWORK_TYPE_ADMIN)
@@ -917,7 +950,6 @@ class TestPatchMixin(object):
         self.mock_rpcapi_update_admin_config = p.start()
         self.addCleanup(p.stop)
 
-        self._set_dc_role(constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD)
         controller0 = self._create_test_host(constants.CONTROLLER, unit=0)
         admin0 = self.create_test_interface('admin0', controller0)
         mgmt0 = self.create_test_interface('mgm0', controller0)
@@ -963,8 +995,6 @@ class TestPatchMixin(object):
 
     def test_change_mgmt_gateway_in_subcloud(self):
         self.mock_utils_is_initial_config_complete.return_value = False
-
-        self._set_dc_role(constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD)
 
         controller0 = self._create_test_host(constants.CONTROLLER, unit=0)
         c0_mgmt0 = self.create_test_interface('c0_mgm0', controller0)
@@ -1822,8 +1852,6 @@ class TestDelete(AddressPoolTestCase):
         p = mock.patch('sysinv.conductor.rpcapi.ConductorAPI.update_admin_config')
         self.mock_rpcapi_update_admin_config = p.start()
         self.addCleanup(p.stop)
-
-        self._set_dc_role(constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD)
 
         mgmt_net = self._find_network_by_type(constants.NETWORK_TYPE_MGMT)
         admin_net = self._find_network_by_type(constants.NETWORK_TYPE_ADMIN)

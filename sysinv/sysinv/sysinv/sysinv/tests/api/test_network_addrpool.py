@@ -1434,8 +1434,6 @@ class TestPostMixin(NetworkAddrpoolTestCase):
         self.assertEqual('controller-1-mgmt', c1_address.name)
 
     def test_success_create_network_addrpool_secondary_admin(self):
-        self._set_dc_role(constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD)
-
         p = mock.patch('sysinv.conductor.rpcapi.ConductorAPI.update_admin_config')
         self.mock_rpcapi_update_admin_config = p.start()
         self.addCleanup(p.stop)
