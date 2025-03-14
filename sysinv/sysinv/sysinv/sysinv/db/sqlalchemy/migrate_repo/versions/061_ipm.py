@@ -1,6 +1,6 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 #
-# Copyright (c) 2017 Wind River Systems, Inc.
+# Copyright (c) 2017, 2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -8,7 +8,8 @@
 import uuid
 from datetime import datetime
 from sqlalchemy import Integer
-from sqlalchemy import Column, MetaData, Table
+from sqlalchemy import Column, inspect, MetaData, Table
+from sqlalchemy import __version__ as sa_version
 
 from oslo_log import log
 from sysinv.common import constants
@@ -32,7 +33,11 @@ def upgrade(migrate_engine):
     # Verify the 'i_pm' table exists before trying to load it.
     # Doing so makes error handling more graceful by avoiding
     #   a traceback error if it does not exist.
-    if not migrate_engine.dialect.has_table(migrate_engine, "i_pm"):
+    if sa_version >= '1.4.0':
+        i_pm_table_exists = inspect(migrate_engine).has_table("i_pm")
+    else:
+        i_pm_table_exists = migrate_engine.dialect.has_table(migrate_engine, "i_pm")
+    if not i_pm_table_exists:
         return True
 
     # load the ipm table
@@ -50,8 +55,12 @@ def upgrade(migrate_engine):
         return True
 
     LOG.info("migrating i_pm retention_secs value:%s" % ret_secs)
-    if migrate_engine.dialect.has_table(migrate_engine, "service_parameter"):
+    if sa_version >= '1.4.0':
+        sp_table_exists = inspect(migrate_engine).has_table("service_parameter")
+    else:
+        sp_table_exists = migrate_engine.dialect.has_table(migrate_engine, "service_parameter")
 
+    if sp_table_exists:
         sp_t = Table('service_parameter',
                      meta,
                      Column('id', Integer, primary_key=True, nullable=False),

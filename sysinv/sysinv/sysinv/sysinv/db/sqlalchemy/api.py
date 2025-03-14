@@ -14,14 +14,15 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 #
-# Copyright (c) 2013-2024 Wind River Systems, Inc.
+# Copyright (c) 2013-2025 Wind River Systems, Inc.
 #
 
 """SQLAlchemy storage backend."""
 
+import functools
+import sys
 
 import eventlet
-
 from oslo_config import cfg
 from oslo_db import exception as db_exc
 from oslo_db.sqlalchemy import enginefacade
@@ -96,6 +97,46 @@ def _session_for_write():
     return enginefacade.writer.using(_context)
 
 
+def db_session_cleanup(cls):
+    """Class decorator that automatically adds session cleanup to all non-special methods."""
+
+    def method_decorator(method):
+        @functools.wraps(method)
+        def wrapper(self, *args, **kwargs):
+            _context = eventlet.greenthread.getcurrent()
+            exc_info = (None, None, None)
+
+            try:
+                return method(self, *args, **kwargs)
+            except Exception:
+                exc_info = sys.exc_info()
+                raise
+            finally:
+                if (
+                    hasattr(_context, "_db_session_context")
+                    and _context._db_session_context is not None
+                ):
+                    try:
+                        _context._db_session_context.__exit__(*exc_info)
+                    except Exception as e:
+                        LOG.warning(f"Error closing database session: {e}")
+
+                    # Clear the session
+                    _context._db_session = None
+                    _context._db_session_context = None
+
+        return wrapper
+
+    for attr_name in dir(cls):
+        # Skip special methods
+        if not attr_name.startswith("__"):
+            attr = getattr(cls, attr_name)
+            if callable(attr):
+                setattr(cls, attr_name, method_decorator(attr))
+
+    return cls
+
+
 def _paginate_query(model, limit=None, marker=None, sort_key=None,
                     sort_dir=None, query=None):
     if not query:
@@ -118,16 +159,24 @@ def _paginate_query(model, limit=None, marker=None, sort_key=None,
 def model_query(model, *args, **kwargs):
     """Query helper for simpler session usage.
 
+    If the session is already provided in the kwargs, use it. Otherwise,
+    try to get it from thread context. If it's not there, create a new one.
+
     :param session: if present, the session to use
     """
     session = kwargs.get('session')
-    if session:
-        query = session.query(model, *args)
-    else:
-        with _session_for_read() as session:
-            query = session.query(model, *args)
+    if not session:
+        _context = eventlet.greenthread.getcurrent()
+        if hasattr(_context, '_db_session') and _context._db_session is not None:
+            session = _context._db_session
+        else:
+            session_context = _session_for_read()
+            session = session_context.__enter__()
+            _context._db_session = session
+            # Need to store the session context to call __exit__ method later
+            _context._db_session_context = session_context
 
-    return query
+    return session.query(model, *args)
 
 
 def sql_query(model, sql, *args, **kwargs):
@@ -135,8 +184,16 @@ def sql_query(model, sql, *args, **kwargs):
     if session:
         query = session.query(model, *args).from_statement(text(sql))
     else:
-        with _session_for_read() as session:
-            query = session.query(model, *args).from_statement(text(sql))
+        _context = eventlet.greenthread.getcurrent()
+        if hasattr(_context, '_db_session') and _context._db_session is not None:
+            session = _context._db_session
+        else:
+            session_context = _session_for_read()
+            session = session_context.__enter__()
+            _context._db_session = session
+            # Need to store the session context to call __exit__ method later
+            _context._db_session_context = session_context
+        query = session.query(model, *args).from_statement(text(sql))
 
     return query
 
@@ -1194,6 +1251,7 @@ def add_deviceimage_filter(query, value):
         return add_identity_filter(query, value, use_name=True)
 
 
+@db_session_cleanup
 class Connection(api.Connection):
     """SqlAlchemy connection."""
 
@@ -1471,22 +1529,22 @@ class Connection(api.Connection):
             #     server_id = server
 
             # cascade delete to leafs
-            model_query(models.icpu, read_deleted="no").\
+            model_query(models.icpu, session=session, read_deleted="no").\
                 filter_by(forihostid=server_id).\
                 delete()
-            model_query(models.imemory, read_deleted="no").\
+            model_query(models.imemory, session=session, read_deleted="no").\
                 filter_by(forihostid=server_id).\
                 delete()
-            model_query(models.idisk, read_deleted="no").\
+            model_query(models.idisk, session=session, read_deleted="no").\
                 filter_by(forihostid=server_id).\
                 delete()
-            model_query(models.inode, read_deleted="no").\
+            model_query(models.inode, session=session, read_deleted="no").\
                 filter_by(forihostid=server_id).\
                 delete()
-            model_query(models.SensorGroups, read_deleted="no").\
+            model_query(models.SensorGroups, session=session, read_deleted="no").\
                 filter_by(host_id=server_id).\
                 delete()
-            model_query(models.Sensors, read_deleted="no").\
+            model_query(models.Sensors, session=session, read_deleted="no").\
                 filter_by(host_id=server_id).\
                 delete()
 
@@ -1568,7 +1626,8 @@ class Connection(api.Connection):
                     filter_by(uuid=inode_id).\
                     delete()
             else:
-                model_query(models.inode, read_deleted="no").\
+                model_query(models.inode, read_deleted="no",
+                            session=session).\
                     filter_by(id=inode_id).\
                     delete()
 
@@ -1694,7 +1753,8 @@ class Connection(api.Connection):
                             filter_by(uuid=cpu_id).\
                             delete()
             else:
-                model_query(models.icpu, read_deleted="no").\
+                model_query(models.icpu, read_deleted="no",
+                            session=session).\
                             filter_by(id=cpu_id).\
                             delete()
 
@@ -2279,11 +2339,14 @@ class Connection(api.Connection):
     @db_objects.objectify(objects.interface)
     def iinterface_get_list(self, limit=None, marker=None,
                       sort_key=None, sort_dir=None):
-
-        entity = with_polymorphic(models.Interfaces, '*')
-        query = model_query(entity)
-        return _paginate_query(models.Interfaces, limit, marker,
-                               sort_key, sort_dir, query)
+        # A combination of with_polymorphic and _paginate_query can lead to
+        # sessions stuck in "idle in transaction", so we explicicly define
+        # the session here
+        with _session_for_read() as session:
+            entity = with_polymorphic(models.Interfaces, '*')
+            query = model_query(entity, session=session)
+            return _paginate_query(models.Interfaces, limit, marker,
+                                   sort_key, sort_dir, query)
 
     def iinterface_get_by_ihost(self, ihost, expunge=False,
                                 limit=None, marker=None,
@@ -2467,7 +2530,7 @@ class Connection(api.Connection):
     def _interface_update(self, cls, interface_id, values):
         with _session_for_write() as session:
             entity = with_polymorphic(models.Interfaces, '*')
-            query = model_query(entity)
+            query = model_query(entity, session=session)
             # query = model_query(cls, read_deleted="no")
             try:
                 query = add_interface_filter(query, interface_id)
@@ -2534,7 +2597,8 @@ class Connection(api.Connection):
                     filter_by(uuid=interface_id).\
                     delete()
             else:
-                model_query(cls, read_deleted="no").\
+                model_query(cls, read_deleted="no",
+                            session=session).\
                     filter_by(id=interface_id).\
                     delete()
 
@@ -2961,8 +3025,8 @@ class Connection(api.Connection):
 
     @db_objects.objectify(objects.partition)
     def partition_update(self, partition_id, values, forihostid=None):
-        with _session_for_write():
-            query = model_query(models.partition, read_deleted="no")
+        with _session_for_write() as session:
+            query = model_query(models.partition, session=session, read_deleted="no")
             if forihostid:
                 query = query.filter_by(forihostid=forihostid)
 
@@ -2974,14 +3038,14 @@ class Connection(api.Connection):
             return query.one()
 
     def partition_destroy(self, partition_id):
-        with _session_for_write():
+        with _session_for_write() as session:
             # Delete physically since it has unique columns
             if uuidutils.is_uuid_like(partition_id):
-                model_query(models.partition, read_deleted="no"). \
+                model_query(models.partition, session=session, read_deleted="no"). \
                     filter_by(uuid=partition_id). \
                     delete()
             else:
-                model_query(models.partition, read_deleted="no"). \
+                model_query(models.partition, session=session, read_deleted="no"). \
                     filter_by(id=partition_id). \
                     delete()
 
@@ -3335,7 +3399,8 @@ class Connection(api.Connection):
                     filter_by(uuid=ilvg_id).\
                     delete()
             else:
-                model_query(models.ilvg, read_deleted="no").\
+                model_query(models.ilvg, read_deleted="no",
+                            session=session).\
                     filter_by(id=ilvg_id).\
                     delete()
 
@@ -4448,14 +4513,15 @@ class Connection(api.Connection):
         return storage_tier_list
 
     def storage_tier_destroy(self, storage_tier_uuid):
-        query = model_query(models.StorageTier)
-        query = add_identity_filter(query, storage_tier_uuid)
-        try:
-            query.one()
-        except NoResultFound:
-            raise exception.StorageTierNotFound(
-                storage_tier_uuid=storage_tier_uuid)
-        query.delete()
+        with _session_for_write() as session:
+            query = model_query(models.StorageTier, session=session)
+            query = add_identity_filter(query, storage_tier_uuid)
+            try:
+                query.one()
+            except NoResultFound:
+                raise exception.StorageTierNotFound(
+                    storage_tier_uuid=storage_tier_uuid)
+            query.delete()
 
     @db_objects.objectify(objects.storage_backend)
     def storage_backend_create(self, values):
@@ -4555,31 +4621,37 @@ class Connection(api.Connection):
     @db_objects.objectify(objects.storage_backend)
     def storage_backend_get_list(self, limit=None, marker=None,
                                  sort_key=None, sort_dir=None):
+        # A combination of with_polymorphic and _paginate_query can lead to
+        # sessions stuck in "idle in transaction", so we explicicly define
+        # the session here
+        with _session_for_read() as session:
+            entity = with_polymorphic(models.StorageBackend, '*')
+            query = model_query(entity, session=session)
+            try:
+                result = _paginate_query(models.StorageBackend, limit, marker,
+                                        sort_key, sort_dir, query)
+            except (db_exc.InvalidSortKey, ValueError):
+                result = []
 
-        entity = with_polymorphic(models.StorageBackend, '*')
-        query = model_query(entity)
-        try:
-            result = _paginate_query(models.StorageBackend, limit, marker,
-                                     sort_key, sort_dir, query)
-        except (db_exc.InvalidSortKey, ValueError):
-            result = []
-
-        return result
+            return result
 
     @db_objects.objectify(objects.storage_backend)
     def storage_backend_get_list_by_state(self, backend_state, limit=None,
                                           marker=None, sort_key=None,
                                           sort_dir=None):
+        # A combination of with_polymorphic and _paginate_query can lead to
+        # sessions stuck in "idle in transaction", so we explicicly define
+        # the session here
+        with _session_for_read() as session:
+            entity = with_polymorphic(models.StorageBackend, '*')
+            query = model_query(entity, session=session).filter_by(state=backend_state)
+            try:
+                result = _paginate_query(models.StorageBackend, limit, marker,
+                                        sort_key, sort_dir, query)
+            except (db_exc.InvalidSortKey, ValueError):
+                result = []
 
-        entity = with_polymorphic(models.StorageBackend, '*')
-        query = model_query(entity).filter_by(state=backend_state)
-        try:
-            result = _paginate_query(models.StorageBackend, limit, marker,
-                                     sort_key, sort_dir, query)
-        except (db_exc.InvalidSortKey, ValueError):
-            result = []
-
-        return result
+            return result
 
     @db_objects.objectify(objects.storage_backend)
     def storage_backend_get_list_by_type(self, backend_type=None, limit=None,
@@ -4604,9 +4676,13 @@ class Connection(api.Connection):
         elif backend_type == constants.SB_TYPE_LVM:
             return self._storage_backend_get_list(models.StorageLvm, limit,
                                                   marker, sort_key, sort_dir)
-        else:
+
+        # A combination of with_polymorphic and _paginate_query can lead to
+        # sessions stuck in "idle in transaction", so we explicicly define
+        # the session here
+        with _session_for_read() as session:
             entity = with_polymorphic(models.StorageBackend, '*')
-            query = model_query(entity)
+            query = model_query(entity, session=session)
             try:
                 result = _paginate_query(models.StorageBackend, limit, marker,
                                      sort_key, sort_dir, query)
@@ -4623,17 +4699,21 @@ class Connection(api.Connection):
     def storage_backend_get_by_isystem(self, isystem_id, limit=None,
                                        marker=None, sort_key=None,
                                        sort_dir=None):
+        # A combination of with_polymorphic and _paginate_query can lead to
+        # sessions stuck in "idle in transaction", so we explicicly define
+        # the session here
         isystem_obj = self.isystem_get(isystem_id)
-        entity = with_polymorphic(models.StorageBackend, '*')
-        query = model_query(entity)
-        query = query.filter_by(forisystemid=isystem_obj.id)
-        return _paginate_query(models.StorageBackend, limit, marker,
-                               sort_key, sort_dir, query)
+        with _session_for_read() as session:
+            entity = with_polymorphic(models.StorageBackend, '*')
+            query = model_query(entity, session=session)
+            query = query.filter_by(forisystemid=isystem_obj.id)
+            return _paginate_query(models.StorageBackend, limit, marker,
+                                sort_key, sort_dir, query)
 
     @db_objects.objectify(objects.storage_backend)
     def storage_backend_update(self, storage_backend_id, values):
-        with _session_for_write():
-            query = model_query(models.StorageBackend, read_deleted="no")
+        with _session_for_write() as session:
+            query = model_query(models.StorageBackend, read_deleted="no", session=session)
             query = add_storage_backend_filter(query, storage_backend_id)
             try:
                 result = query.one()
@@ -4662,7 +4742,7 @@ class Connection(api.Connection):
     def _storage_backend_update(self, cls, storage_backend_id, values):
         with _session_for_write() as session:
             entity = with_polymorphic(models.StorageBackend, '*')
-            query = model_query(entity)
+            query = model_query(entity, session=session)
             # query = model_query(cls, read_deleted="no")
             try:
                 query = add_storage_backend_filter(query, storage_backend_id)
@@ -4692,14 +4772,14 @@ class Connection(api.Connection):
         return self._storage_backend_destroy(models.StorageBackend, storage_backend_id)
 
     def _storage_backend_destroy(self, cls, storage_backend_id):
-        with _session_for_write():
+        with _session_for_write() as session:
             # Delete storage_backend which should cascade to delete derived backends
             if uuidutils.is_uuid_like(storage_backend_id):
-                model_query(cls, read_deleted="no").\
+                model_query(cls, session=session, read_deleted="no").\
                     filter_by(uuid=storage_backend_id).\
                     delete()
             else:
-                model_query(cls, read_deleted="no").\
+                model_query(cls, session=session, read_deleted="no").\
                     filter_by(id=storage_backend_id).\
                     delete()
 
@@ -5293,13 +5373,14 @@ class Connection(api.Connection):
         return self._network_addrpool_get(network_addrpool_uuid)
 
     def network_addrpool_destroy(self, network_addrpool_uuid):
-        query = model_query(models.NetworkAddressPools)
-        query = add_identity_filter(query, network_addrpool_uuid)
-        try:
-            query.one()
-        except NoResultFound:
-            raise exception.NetworkAddrpoolNotFound(network_addrpool_uuid=network_addrpool_uuid)
-        query.delete()
+        with _session_for_write() as session:
+            query = model_query(models.NetworkAddressPools, session=session)
+            query = add_identity_filter(query, network_addrpool_uuid)
+            try:
+                query.one()
+            except NoResultFound:
+                raise exception.NetworkAddrpoolNotFound(network_addrpool_uuid=network_addrpool_uuid)
+            query.delete()
 
     def _interface_network_get(self, uuid):
         query = model_query(models.InterfaceNetworks)
@@ -5422,13 +5503,14 @@ class Connection(api.Connection):
                                sort_key, sort_dir, query)
 
     def interface_network_destroy(self, uuid):
-        query = model_query(models.InterfaceNetworks)
-        query = add_identity_filter(query, uuid)
-        try:
-            query.one()
-        except NoResultFound:
-            raise exception.InterfaceNetworkNotFound(uuid=uuid)
-        query.delete()
+        with _session_for_write() as session:
+            query = model_query(models.InterfaceNetworks, session=session)
+            query = add_identity_filter(query, uuid)
+            try:
+                query.one()
+            except NoResultFound:
+                raise exception.InterfaceNetworkNotFound(uuid=uuid)
+            query.delete()
 
     @db_objects.objectify(objects.interface_network)
     def interface_network_query(self, values):
@@ -5625,48 +5707,53 @@ class Connection(api.Connection):
         return result
 
     def address_destroy(self, address_uuid):
-        query = model_query(models.Addresses)
-        query = add_identity_filter(query, address_uuid)
-        try:
-            query.one()
-        except NoResultFound:
-            raise exception.AddressNotFound(address_uuid=address_uuid)
-        query.delete()
+        with _session_for_write() as session:
+            query = model_query(models.Addresses, session=session)
+            query = add_identity_filter(query, address_uuid)
+            try:
+                query.one()
+            except NoResultFound:
+                raise exception.AddressNotFound(address_uuid=address_uuid)
+            query.delete()
 
     def address_destroy_by_id(self, address_id):
-        query = model_query(models.Addresses)
-        query = add_identity_filter(query, address_id)
-        try:
-            query.one()
-        except NoResultFound:
-            raise exception.AddressNotFoundById(address_id=address_id)
-        query.delete()
+        with _session_for_write() as session:
+            query = model_query(models.Addresses, session=session)
+            query = add_identity_filter(query, address_id)
+            try:
+                query.one()
+            except NoResultFound:
+                raise exception.AddressNotFoundById(address_id=address_id)
+            query.delete()
 
     def address_remove_interface(self, address_uuid):
-        query = model_query(models.Addresses)
-        query = add_identity_filter(query, address_uuid)
-        try:
-            query.one()
-        except NoResultFound:
-            raise exception.AddressNotFound(address_uuid=address_uuid)
-        query.update({models.Addresses.interface_id: None},
-                     synchronize_session='fetch')
+        with _session_for_write() as session:
+            query = model_query(models.Addresses, session=session)
+            query = add_identity_filter(query, address_uuid)
+            try:
+                query.one()
+            except NoResultFound:
+                raise exception.AddressNotFound(address_uuid=address_uuid)
+            query.update({models.Addresses.interface_id: None},
+                         synchronize_session='fetch')
 
     def addresses_destroy_by_interface(self, interface_id, family=None):
-        query = model_query(models.Addresses)
-        query = query.filter(models.Addresses.interface_id == interface_id)
-        if family:
-            query = query.filter(models.Addresses.family == family)
-        query.delete()
+        with _session_for_write() as session:
+            query = model_query(models.Addresses, session=session)
+            query = query.filter(models.Addresses.interface_id == interface_id)
+            if family:
+                query = query.filter(models.Addresses.family == family)
+            query.delete()
 
     def addresses_remove_interface_by_interface(self, interface_id,
                                                 family=None):
-        query = model_query(models.Addresses)
-        query = query.filter(models.Addresses.interface_id == interface_id)
-        if family:
-            query = query.filter(models.Addresses.family == family)
-        query.update({models.Addresses.interface_id: None},
-                     synchronize_session='fetch')
+        with _session_for_write() as session:
+            query = model_query(models.Addresses, session=session)
+            query = query.filter(models.Addresses.interface_id == interface_id)
+            if family:
+                query = query.filter(models.Addresses.family == family)
+            query.update({models.Addresses.interface_id: None},
+                         synchronize_session='fetch')
 
     def _route_get(self, route_uuid):
         query = model_query(models.Routes)
@@ -5812,20 +5899,22 @@ class Connection(api.Connection):
                                sort_key, sort_dir, query)
 
     def route_destroy(self, route_uuid):
-        query = model_query(models.Routes)
-        query = add_identity_filter(query, route_uuid)
-        try:
-            query.one()
-        except NoResultFound:
-            raise exception.RouteNotFound(route_uuid=route_uuid)
-        query.delete()
+        with _session_for_write() as session:
+            query = model_query(models.Routes, session=session)
+            query = add_identity_filter(query, route_uuid)
+            try:
+                query.one()
+            except NoResultFound:
+                raise exception.RouteNotFound(route_uuid=route_uuid)
+            query.delete()
 
     def routes_destroy_by_interface(self, interface_id, family=None):
-        query = model_query(models.Routes)
-        query = query.filter(models.Routes.interface_id == interface_id)
-        if family:
-            query = query.filter(models.Routes.family == family)
-        query.delete()
+        with _session_for_write() as session:
+            query = model_query(models.Routes, session=session)
+            query = query.filter(models.Routes.interface_id == interface_id)
+            if family:
+                query = query.filter(models.Routes.family == family)
+            query.delete()
 
     def _address_mode_query(self, interface_id, family, session=None):
         query = model_query(models.AddressModes, session=session)
@@ -5910,20 +5999,22 @@ class Connection(api.Connection):
                 return self._address_mode_get(values['uuid'])
 
     def address_mode_destroy(self, mode_uuid):
-        query = model_query(models.AddressModes)
-        query = add_identity_filter(query, mode_uuid)
-        try:
-            query.one()
-        except NoResultFound:
-            raise exception.AddressModeNotFound(mode_uuid=mode_uuid)
-        query.delete()
+        with _session_for_write() as session:
+            query = model_query(models.AddressModes, session=session)
+            query = add_identity_filter(query, mode_uuid)
+            try:
+                query.one()
+            except NoResultFound:
+                raise exception.AddressModeNotFound(mode_uuid=mode_uuid)
+            query.delete()
 
     def address_modes_destroy_by_interface(self, interface_id, family=None):
-        query = model_query(models.AddressModes)
-        query = query.filter(models.AddressModes.interface_id == interface_id)
-        if family:
-            query = query.filter(models.AddressModes.family == family)
-        query.delete()
+        with _session_for_write() as session:
+            query = model_query(models.AddressModes, session=session)
+            query = query.filter(models.AddressModes.interface_id == interface_id)
+            if family:
+                query = query.filter(models.AddressModes.family == family)
+            query.delete()
 
     def _address_pool_get(self, address_pool_uuid, session=None):
         if utils.is_int_like(address_pool_uuid):
@@ -6184,9 +6275,9 @@ class Connection(api.Connection):
                                sort_key, sort_dir, query)
 
     def _sensor_analog_update(self, sensorid, values, hostid=None):
-        with _session_for_write():
+        with _session_for_write() as session:
             # May need to reserve in multi controller system; ref sysinv
-            query = model_query(models.SensorsAnalog, read_deleted="no")
+            query = model_query(models.SensorsAnalog, session=session, read_deleted="no")
 
             if hostid:
                 query = query.filter_by(host_id=hostid)
@@ -6206,14 +6297,14 @@ class Connection(api.Connection):
             return query.one()
 
     def _sensor_analog_destroy(self, sensorid):
-        with _session_for_write():
+        with _session_for_write() as session:
             # Delete port which should cascade to delete SensorsAnalog
             if uuidutils.is_uuid_like(sensorid):
-                model_query(models.Sensors, read_deleted="no").\
+                model_query(models.Sensors, session=session, read_deleted="no").\
                             filter_by(uuid=sensorid).\
                             delete()
             else:
-                model_query(models.Sensors, read_deleted="no").\
+                model_query(models.Sensors, session=session, read_deleted="no").\
                             filter_by(id=sensorid).\
                             delete()
 
@@ -6344,9 +6435,9 @@ class Connection(api.Connection):
                                sort_key, sort_dir, query)
 
     def _sensor_discrete_update(self, sensorid, values, hostid=None):
-        with _session_for_write():
+        with _session_for_write() as session:
             # May need to reserve in multi controller system; ref sysinv
-            query = model_query(models.SensorsDiscrete, read_deleted="no")
+            query = model_query(models.SensorsDiscrete, session=session, read_deleted="no")
 
             if hostid:
                 query = query.filter_by(host_id=hostid)
@@ -6366,14 +6457,14 @@ class Connection(api.Connection):
             return query.one()
 
     def _sensor_discrete_destroy(self, sensorid):
-        with _session_for_write():
+        with _session_for_write() as session:
             # Delete port which should cascade to delete SensorsDiscrete
             if uuidutils.is_uuid_like(sensorid):
-                model_query(models.Sensors, read_deleted="no").\
+                model_query(models.Sensors, session=session, read_deleted="no").\
                             filter_by(uuid=sensorid).\
                             delete()
             else:
-                model_query(models.Sensors, read_deleted="no").\
+                model_query(models.Sensors, session=session, read_deleted="no").\
                             filter_by(id=sensorid).\
                             delete()
 
@@ -6540,8 +6631,8 @@ class Connection(api.Connection):
                                sort_key, sort_dir, query)
 
     def _isensor_update(self, cls, sensor_id, values):
-        with _session_for_write():
-            query = model_query(models.Sensors)
+        with _session_for_write() as session:
+            query = model_query(models.Sensors, session=session)
             query = add_sensor_filter(query, sensor_id)
             try:
                 result = query.one()
@@ -6561,8 +6652,8 @@ class Connection(api.Connection):
 
     @db_objects.objectify(objects.sensor)
     def isensor_update(self, isensor_id, values):
-        with _session_for_write():
-            query = model_query(models.Sensors, read_deleted="no")
+        with _session_for_write() as session:
+            query = model_query(models.Sensors, session=session, read_deleted="no")
             query = add_sensor_filter(query, isensor_id)
             try:
                 result = query.one()
@@ -6584,14 +6675,14 @@ class Connection(api.Connection):
                                             isensor_id, values)
 
     def _isensor_destroy(self, cls, sensor_id):
-        with _session_for_write():
+        with _session_for_write() as session:
             # Delete sensor which should cascade to delete derived sensors
             if uuidutils.is_uuid_like(sensor_id):
-                model_query(cls, read_deleted="no").\
+                model_query(cls, session=session, read_deleted="no").\
                     filter_by(uuid=sensor_id).\
                     delete()
             else:
-                model_query(cls, read_deleted="no").\
+                model_query(cls, session=session, read_deleted="no").\
                     filter_by(id=sensor_id).\
                     delete()
 
@@ -6673,8 +6764,8 @@ class Connection(api.Connection):
 
     @db_objects.objectify(objects.sensorgroup)
     def isensorgroup_update(self, isensorgroup_id, values):
-        with _session_for_write():
-            query = model_query(models.SensorGroups, read_deleted="no")
+        with _session_for_write() as session:
+            query = model_query(models.SensorGroups, session=session, read_deleted="no")
             query = add_sensorgroup_filter(query, isensorgroup_id)
             try:
                 result = query.one()
@@ -6773,7 +6864,7 @@ class Connection(api.Connection):
     def _isensorgroup_update(self, cls, sensorgroup_id, values):
         with _session_for_write() as session:
             # query = model_query(models.SensorGroups, read_deleted="no")
-            query = model_query(cls, read_deleted="no")
+            query = model_query(cls, read_deleted="no", session=session)
             try:
                 query = add_sensorgroup_filter(query, sensorgroup_id)
                 result = query.one()
@@ -6806,15 +6897,15 @@ class Connection(api.Connection):
             return query.one()
 
     def _isensorgroup_destroy(self, cls, sensorgroup_id):
-        with _session_for_write():
+        with _session_for_write() as session:
             # Delete sensorgroup which should cascade to
             # delete derived sensorgroups
             if uuidutils.is_uuid_like(sensorgroup_id):
-                model_query(cls, read_deleted="no").\
+                model_query(cls, session=session, read_deleted="no").\
                     filter_by(uuid=sensorgroup_id).\
                     delete()
             else:
-                model_query(cls, read_deleted="no").\
+                model_query(cls, session=session, read_deleted="no").\
                     filter_by(id=sensorgroup_id).\
                     delete()
 
@@ -6967,9 +7058,8 @@ class Connection(api.Connection):
             query.delete()
 
     def set_upgrade_loads_state(self, upgrade, to_state, from_state):
-        with _session_for_write():
-            self.load_update(upgrade.from_load, {'state': from_state})
-            self.load_update(upgrade.to_load, {'state': to_state})
+        self.load_update(upgrade.from_load, {'state': from_state})
+        self.load_update(upgrade.to_load, {'state': to_state})
 
     def _software_upgrade_get(self, id):
         query = model_query(models.SoftwareUpgrade)
@@ -7334,14 +7424,15 @@ class Connection(api.Connection):
         return cluster_list
 
     def cluster_destroy(self, cluster_uuid):
-        query = model_query(models.Clusters)
-        query = add_identity_filter(query, cluster_uuid)
-        try:
-            query.one()
-        except NoResultFound:
-            raise exception.ClusterNotFound(
-                cluster_uuid=cluster_uuid)
-        query.delete()
+        with _session_for_write() as session:
+            query = model_query(models.Clusters, session=session)
+            query = add_identity_filter(query, cluster_uuid)
+            try:
+                query.one()
+            except NoResultFound:
+                raise exception.ClusterNotFound(
+                    cluster_uuid=cluster_uuid)
+            query.delete()
 
     def _peer_get(self, peer_uuid, session=None):
         query = model_query(models.Peers, session=session)
@@ -7478,8 +7569,8 @@ class Connection(api.Connection):
 
     @db_objects.objectify(objects.lldp_agent)
     def lldp_agent_update(self, uuid, values):
-        with _session_for_write():
-            query = model_query(models.LldpAgents, read_deleted="no")
+        with _session_for_write() as session:
+            query = model_query(models.LldpAgents, session=session, read_deleted="no")
 
             try:
                 query = add_lldp_filter_by_agent(query, uuid)
@@ -7496,8 +7587,8 @@ class Connection(api.Connection):
 
     def lldp_agent_destroy(self, agentid):
 
-        with _session_for_write():
-            query = model_query(models.LldpAgents, read_deleted="no")
+        with _session_for_write() as session:
+            query = model_query(models.LldpAgents, session=session, read_deleted="no")
             query = add_lldp_filter_by_agent(query, agentid)
 
             try:
@@ -7618,8 +7709,8 @@ class Connection(api.Connection):
 
     @db_objects.objectify(objects.lldp_neighbour)
     def lldp_neighbour_update(self, uuid, values):
-        with _session_for_write():
-            query = model_query(models.LldpNeighbours, read_deleted="no")
+        with _session_for_write() as session:
+            query = model_query(models.LldpNeighbours, session=session, read_deleted="no")
 
             try:
                 query = add_lldp_filter_by_neighbour(query, uuid)
@@ -7635,8 +7726,8 @@ class Connection(api.Connection):
                     err="Multiple entries found for uuid %s" % uuid)
 
     def lldp_neighbour_destroy(self, neighbourid):
-        with _session_for_write():
-            query = model_query(models.LldpNeighbours, read_deleted="no")
+        with _session_for_write() as session:
+            query = model_query(models.LldpNeighbours, session=session, read_deleted="no")
             query = add_lldp_filter_by_neighbour(query, neighbourid)
             try:
                 query.delete()
@@ -7825,8 +7916,8 @@ class Connection(api.Connection):
                 raise exception.InvalidParameterValue(
                     err="agent id and neighbour id not specified")
 
-        with _session_for_write():
-            query = model_query(models.LldpTlvs, read_deleted="no")
+        with _session_for_write() as session:
+            query = model_query(models.LldpTlvs, session=session, read_deleted="no")
 
             if agentid:
                 query = add_lldp_tlv_filter_by_agent(query, agentid)
@@ -7884,8 +7975,8 @@ class Connection(api.Connection):
         return results
 
     def lldp_tlv_destroy(self, id):
-        with _session_for_write():
-            model_query(models.LldpTlvs, read_deleted="no").\
+        with _session_for_write() as session:
+            model_query(models.LldpTlvs, session=session, read_deleted="no").\
                 filter_by(id=id).\
                 delete()
 
@@ -8618,14 +8709,16 @@ class Connection(api.Connection):
     @db_objects.objectify(objects.datanetwork)
     def datanetworks_get_all(self, filters=None, limit=None, marker=None,
                              sort_key=None, sort_dir=None):
-
+        # A combination of with_polymorphic and _paginate_query can lead to
+        # sessions stuck in "idle in transaction", so we explicicly define
+        # the session here
         with _session_for_read() as session:
             datanetworks = with_polymorphic(models.DataNetworks, '*')
             query = model_query(datanetworks, session=session)
             query = self._add_datanetworks_filters(query, filters)
 
-        return _paginate_query(models.DataNetworks, limit, marker,
-                               sort_key, sort_dir, query)
+            return _paginate_query(models.DataNetworks, limit, marker,
+                                sort_key, sort_dir, query)
 
     @db_objects.objectify(objects.datanetwork)
     def datanetwork_update(self, datanetwork_uuid, values):
@@ -8640,14 +8733,15 @@ class Connection(api.Connection):
             return query.one()
 
     def datanetwork_destroy(self, datanetwork_uuid):
-        query = model_query(models.DataNetworks)
-        query = add_identity_filter(query, datanetwork_uuid)
-        try:
-            query.one()
-        except NoResultFound:
-            raise exception.DataNetworkNotFound(
-                datanetwork_uuid=datanetwork_uuid)
-        query.delete()
+        with _session_for_write() as session:
+            query = model_query(models.DataNetworks, session=session)
+            query = add_identity_filter(query, datanetwork_uuid)
+            try:
+                query.one()
+            except NoResultFound:
+                raise exception.DataNetworkNotFound(
+                    datanetwork_uuid=datanetwork_uuid)
+            query.delete()
 
     def _interface_datanetwork_get(self, uuid, session=None):
         query = model_query(models.InterfaceDataNetworks, session=session)
@@ -8765,13 +8859,14 @@ class Connection(api.Connection):
             datanetwork_id, limit, marker, sort_key, sort_dir)
 
     def interface_datanetwork_destroy(self, uuid):
-        query = model_query(models.InterfaceDataNetworks)
-        query = add_identity_filter(query, uuid)
-        try:
-            query.one()
-        except NoResultFound:
-            raise exception.InterfaceDataNetworkNotFound(uuid=uuid)
-        query.delete()
+        with _session_for_write() as session:
+            query = model_query(models.InterfaceDataNetworks, session=session)
+            query = add_identity_filter(query, uuid)
+            try:
+                query.one()
+            except NoResultFound:
+                raise exception.InterfaceDataNetworkNotFound(uuid=uuid)
+            query.delete()
 
     @db_objects.objectify(objects.interface_datanetwork)
     def interface_datanetwork_query(self, values):
@@ -8865,7 +8960,8 @@ class Connection(api.Connection):
                     filter_by(uuid=fs_id).\
                     delete()
             else:
-                model_query(models.HostFs, read_deleted="no").\
+                model_query(models.HostFs, read_deleted="no",
+                            session=session).\
                     filter_by(id=fs_id).\
                     delete()
 
@@ -8966,8 +9062,9 @@ class Connection(api.Connection):
                             read_deleted="no", session=session).filter_by(
                     uuid=host_upgrade_id).delete()
             else:
-                model_query(models.KubeHostUpgrade, read_deleted="no").\
-                    filter_by(id=host_upgrade_id).delete()
+                model_query(models.KubeHostUpgrade,
+                            read_deleted="no", session=session).filter_by(
+                    id=host_upgrade_id).delete()
 
     def _kube_upgrade_get(self, upgrade_id):
         query = model_query(models.KubeUpgrade)
@@ -9143,8 +9240,8 @@ class Connection(api.Connection):
             query = model_query(deviceimages, session=session)
             query = self._add_deviceimage_filters(query, filters)
 
-        return _paginate_query(models.DeviceImage, limit, marker,
-                               sort_key, sort_dir, query)
+            return _paginate_query(models.DeviceImage, limit, marker,
+                                   sort_key, sort_dir, query)
 
     @db_objects.objectify(objects.device_image)
     def deviceimage_update(self, deviceimage_uuid, values):
@@ -9159,14 +9256,15 @@ class Connection(api.Connection):
             return query.one()
 
     def deviceimage_destroy(self, deviceimage_uuid):
-        query = model_query(models.DeviceImage)
-        query = add_identity_filter(query, deviceimage_uuid)
-        try:
-            query.one()
-        except NoResultFound:
-            raise exception.DeviceImageNotFound(
-                deviceimage_uuid=deviceimage_uuid)
-        query.delete()
+        with _session_for_write() as session:
+            query = model_query(models.DeviceImage, session=session)
+            query = add_identity_filter(query, deviceimage_uuid)
+            try:
+                query.one()
+            except NoResultFound:
+                raise exception.DeviceImageNotFound(
+                    deviceimage_uuid=deviceimage_uuid)
+            query.delete()
 
     def _device_label_get(self, device_label_id):
         query = model_query(models.DeviceLabel)
@@ -9608,8 +9706,9 @@ class Connection(api.Connection):
                             read_deleted="no", session=session).filter_by(
                     uuid=rootca_host_update_id).delete()
             else:
-                model_query(models.KubeRootCAHostUpdate, read_deleted="no").\
-                    filter_by(id=rootca_host_update_id).delete()
+                model_query(models.KubeRootCAHostUpdate,
+                            read_deleted="no", session=session).filter_by(
+                    id=rootca_host_update_id).delete()
 
     def kube_rootca_host_update_destroy_all(self):
         with _session_for_write() as session:
