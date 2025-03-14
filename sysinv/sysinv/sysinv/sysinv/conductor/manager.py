@@ -359,7 +359,9 @@ class ConductorManager(service.PeriodicService):
         self._upgrade_manifest_start_time = None
 
         self.rlock_runtime_config = threading.RLock()
+
         # track deferred runtime config which need to be applied
+        # TODO(jkraitbe): Make deferred runtime configs persistent across sysinv-conductor restarts
         self._host_deferred_runtime_config = []
 
         # track whether runtime class apply may be in progress
@@ -7683,7 +7685,10 @@ class ConductorManager(service.PeriodicService):
                              f"(availability={host.availability}). Skipping configuration update.")
                     continue
 
-                rc = self.dbapi.runtime_config_get(config_uuid, host_id=host_id)
+                try:
+                    rc = self.dbapi.runtime_config_get(config_uuid, host_id=host_id)
+                except exception.NotFound:
+                    rc = self.dbapi.runtime_config_get(config_uuid, host_id=None)
                 config_dict = json.loads(rc.config_dict)
                 config_dict.update({"host_uuids": [host.uuid]})
                 config_type = config_dict["config_type"]
@@ -7698,6 +7703,13 @@ class ConductorManager(service.PeriodicService):
                     force)
             except exception.NodeNotFound as e:
                 LOG.warn("Host not found: %s" % e)
+            except exception.NotFound:
+                for config in self._host_deferred_runtime_config:
+                    if config["config_uuid"] == config_uuid:
+                        LOG.info("Config has been deferred for %s: %s" % (host.hostname, config_uuid))
+                        break
+                else:
+                    LOG.error("Deferred config has been irrecoverably lost for %s: %s" % (host.hostname, config_uuid))
             except Exception as e:
                 LOG.warn("Unable to reapply target config %s to host %s, host may require "
                          "manual lock/unlock to recover: %s" % (config_uuid, host.hostname, e))
