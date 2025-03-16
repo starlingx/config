@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2021 Wind River Systems, Inc.
+# Copyright (c) 2013-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -21,7 +21,7 @@ def _print_iinterface_show(cc, iinterface):
               'uuid', 'ihost_uuid',
               'vlan_id', 'uses', 'used_by',
               'created_at', 'updated_at', 'sriov_numvfs',
-              'sriov_vf_driver', 'max_tx_rate']
+              'sriov_vf_driver', 'max_tx_rate', 'max_rx_rate']
     optional_fields = ['ipv4_mode', 'ipv6_mode', 'ipv4_pool', 'ipv6_pool']
     rename_fields = [{'field': 'dpdksupport', 'label': 'accelerated'}]
     data = [(f, getattr(iinterface, f, '')) for f in fields]
@@ -90,6 +90,8 @@ def do_host_if_list(cc, args):
                 attr_str = "%s,accelerated=True" % attr_str
         if i.max_tx_rate:
             attr_str = "%s,max_tx_rate=%s" % (attr_str, i.max_tx_rate)
+        if i.max_rx_rate:
+            attr_str = "%s,max_rx_rate=%s" % (attr_str, i.max_rx_rate)
         setattr(i, 'attrs', attr_str)
 
     field_labels = ['uuid', 'name', 'class', 'type', 'vlan id', 'ports',
@@ -175,10 +177,14 @@ def do_host_if_delete(cc, args):
            metavar='<ptp role>',
            choices=['master', 'slave', 'none'],
            help='The PTP role for this interface')
-@utils.arg('-r', '--max-tx-rate',
+@utils.arg('-t', '--max-tx-rate',
            dest='max_tx_rate',
            metavar='<max_tx_rate>',
-           help='The max tx rate (Mb/s) of the SR-IOV VF interface')
+           help='The max tx rate (Mb/s) of the Platform/SR-IOV_VF interface')
+@utils.arg('-r', '--max-rx-rate',
+           dest='max_rx_rate',
+           metavar='<max_rx_rate>',
+           help='The max rx rate (Mb/s) of the Platform interface')
 @utils.arg('--primary-reselect',
            dest='primary_reselect',
            metavar='<primary reselect>',
@@ -190,7 +196,7 @@ def do_host_if_add(cc, args):
     field_list = ['ifname', 'iftype', 'imtu', 'ifclass', 'aemode',
                   'txhashpolicy', 'vlan_id', 'ptp_role', 'primary_reselect',
                   'ipv4_mode', 'ipv6_mode', 'ipv4_pool', 'ipv6_pool',
-                  'sriov_numvfs', 'sriov_vf_driver', 'max_tx_rate']
+                  'sriov_numvfs', 'sriov_vf_driver', 'max_tx_rate', 'max_rx_rate']
 
     ihost = ihost_utils._find_ihost(cc, args.hostnameorid)
 
@@ -282,10 +288,14 @@ def do_host_if_add(cc, args):
            metavar='<ptp role>',
            choices=['master', 'slave', 'none'],
            help='The PTP role for this interface')
-@utils.arg('-r', '--max-tx-rate',
+@utils.arg('-t', '--max-tx-rate',
            dest='max_tx_rate',
            metavar='<max_tx_rate>',
-           help='The max tx rate (Mb/s) of the VF interface')
+           help='The max tx rate (Mb/s) of the Platform/VF interface')
+@utils.arg('-r', '--max-rx-rate',
+           dest='max_rx_rate',
+           metavar='<max_rx_rate>',
+           help='The max rx rate (Mb/s) of the Platform interface')
 @utils.arg('--primary-reselect',
            dest='primary_reselect',
            metavar='<primary reselect>',
@@ -297,7 +307,7 @@ def do_host_if_modify(cc, args):
     rwfields = ['iftype', 'ifname', 'imtu', 'aemode', 'txhashpolicy',
                 'ports', 'ifclass', 'ptp_role', 'primary_reselect',
                 'ipv4_mode', 'ipv6_mode', 'ipv4_pool', 'ipv6_pool',
-                'sriov_numvfs', 'sriov_vf_driver', 'max_tx_rate']
+                'sriov_numvfs', 'sriov_vf_driver', 'max_tx_rate', 'max_rx_rate']
 
     ihost = ihost_utils._find_ihost(cc, args.hostnameorid)
 
