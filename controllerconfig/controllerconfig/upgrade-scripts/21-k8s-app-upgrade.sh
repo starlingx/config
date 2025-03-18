@@ -47,7 +47,7 @@ COMMAND_RETRY_SLEEP=30
 COMMAND_RETRY_ATTEMPTS=10  # ~5 min to wait on a retried command.
 SOFTWARE_LOG_PATH='/var/log/software.log'
 CRITICAL_APPS='nginx-ingress-controller cert-manager platform-integ-apps'
-APPS_NOT_TO_UPDATE='deployment-manager'
+APPS_NOT_TO_UPDATE=''
 
 TEST_CERT_CM="
 ---
@@ -291,7 +291,7 @@ function update_in_series {
         sleep $UPDATE_RESULT_SLEEP
     done
 
-    if [ ! $UPDATED ] && [ $tries == $UPDATE_RESULT_ATTEMPTS ]; then
+    if [ $UPDATED == false ] && [ $tries == $UPDATE_RESULT_ATTEMPTS ]; then
         log "$NAME: ${UPGRADE_APP_NAME}, version ${UPGRADE_APP_VERSION}, was not updated in the alloted time. Exiting for manual intervention..."
         exit 1
     fi
