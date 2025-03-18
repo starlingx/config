@@ -1404,6 +1404,8 @@ def get_interface_network_config(context, iface, network=None, address=None):
     fill_interface_config_option_operation(config['options'], interface_op, accept_ra_off)
     accept_redir_off = 'echo 0 > /proc/sys/net/ipv6/conf/{}/accept_redirects'.format(os_ifname)
     fill_interface_config_option_operation(config['options'], interface_op, accept_redir_off)
+    keep_addr_on_down_on = 'echo 1 > /proc/sys/net/ipv6/conf/{}/keep_addr_on_down'.format(os_ifname)
+    fill_interface_config_option_operation(config['options'], interface_op, keep_addr_on_down_on)
 
     network_type = network.type if network else None
 

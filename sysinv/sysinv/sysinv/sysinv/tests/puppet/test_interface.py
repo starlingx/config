@@ -1312,12 +1312,14 @@ class InterfaceTestCase2(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
             ifname=interface.LOOPBACK_IFNAME, method=interface.LOOPBACK_METHOD)
         return interface.format_network_config(network_config)
 
-    def _get_ipv6_autoconf_off(self, os_ifname):
+    def _get_ipv6_conf_iface_options(self, os_ifname):
         autoconf_off = 'echo 0 > /proc/sys/net/ipv6/conf/{}/autoconf'.format(os_ifname)
         accept_ra_off = 'echo 0 > /proc/sys/net/ipv6/conf/{}/accept_ra'.format(os_ifname)
         accept_redir_off = 'echo 0 > /proc/sys/net/ipv6/conf/{}/accept_redirects'.format(os_ifname)
-        ipv6_autocnf_off = '{}; {}; {}'.format(autoconf_off, accept_ra_off, accept_redir_off)
-        return ipv6_autocnf_off
+        keep_addr_on_down = 'echo 1 > /proc/sys/net/ipv6/conf/{}/keep_addr_on_down'.format(os_ifname)
+        ipv6_conf_iface = '{}; {}; {}; {}'.format(autoconf_off, accept_ra_off, accept_redir_off,
+                                                  keep_addr_on_down)
+        return ipv6_conf_iface
 
     def _get_postup_mtu(self, os_ifname, mtu):
         set_mtu = '/usr/sbin/ip link set dev {} mtu {}'.format(os_ifname, mtu)
@@ -1342,9 +1344,9 @@ class InterfaceTestCase2(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         self._do_update_context()
         configs = interface.get_interface_network_configs(
             self.context, self.iface, network)
-        ipv6_autocnf_off = self._get_ipv6_autoconf_off(self.port['name'])
+        ipv6_conf_iface_opt = self._get_ipv6_conf_iface_options(self.port['name'])
         options = {'stx-description': 'ifname:mgmt0,net:oam',
-                   'post-up': '{}'.format(ipv6_autocnf_off),
+                   'post-up': '{}'.format(ipv6_conf_iface_opt),
                    'mtu': '1500',
                    'gateway': '10.10.10.1'}
         expected = self._get_static_network_config_ifupdown(
@@ -1360,8 +1362,8 @@ class InterfaceTestCase2(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         self._do_update_context()
         configs = interface.get_interface_network_configs(
             self.context, self.iface, network)
-        ipv6_autocnf_off = self._get_ipv6_autoconf_off(self.port['name'])
-        options = {'post-up': '%s' % ipv6_autocnf_off,
+        ipv6_conf_iface_opt = self._get_ipv6_conf_iface_options(self.port['name'])
+        options = {'post-up': '%s' % ipv6_conf_iface_opt,
                    'mtu': '1500',
                    'stx-description': 'ifname:mgmt0,net:mgmt',
                    'gateway': '192.168.204.1'}
@@ -1378,9 +1380,9 @@ class InterfaceTestCase2(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         self._do_update_context()
         configs = interface.get_interface_network_configs(
             self.context, self.iface, network)
-        ipv6_autocnf_off = self._get_ipv6_autoconf_off(self.port['name'])
+        ipv6_conf_iface_opt = self._get_ipv6_conf_iface_options(self.port['name'])
         options = {'stx-description': 'ifname:mgmt0,net:cluster-host',
-                   'post-up': '{}'.format(ipv6_autocnf_off),
+                   'post-up': '{}'.format(ipv6_conf_iface_opt),
                    'mtu': '1500'}
         expected = self._get_static_network_config_ifupdown(
             ipaddress='192.168.206.10',
@@ -1394,12 +1396,12 @@ class InterfaceTestCase2(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         iface = self.context['interfaces'][bond['uses'][0]]
         port = self.context['ports'][iface['id']]
         configs = interface.get_interface_network_configs(self.context, iface)
-        ipv6_autocnf_off = self._get_ipv6_autoconf_off(port['name'])
+        ipv6_conf_iface_opt = self._get_ipv6_conf_iface_options(port['name'])
         options = {'allow-bond0': port['name'],
                    'bond-master': 'bond0',
                    'stx-description': 'ifname:eth0,net:None',
                    'pre-up': '/usr/sbin/ip link set dev {} promisc on; {}'.format(port['name'],
-                                                                             ipv6_autocnf_off),
+                                                                             ipv6_conf_iface_opt),
                    'mtu': '1500'}
         expected = self._get_network_config_ifupdown(
             ifname=port['name'], method='manual', options=options)
@@ -1426,12 +1428,12 @@ class InterfaceTestCase2(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         configs = interface.get_interface_network_configs(self.context, iface)
         numvfs_path = '/sys/class/net/{}/device/sriov_numvfs'.format(port['name'])
         numvfs_cmd = 'echo 0 > {0}; echo 16 > {0}'.format(numvfs_path)
-        ipv6_autocnf_off = self._get_ipv6_autoconf_off(port['name'])
+        ipv6_conf_iface_opt = self._get_ipv6_conf_iface_options(port['name'])
         options = {'allow-bond0': port['name'],
                    'bond-master': 'bond0',
                    'stx-description': 'ifname:{},net:None'.format(iface.ifname),
                    'pre-up': '/usr/sbin/ip link set dev {} promisc on; {}; {}'.format(
-                       port['name'], numvfs_cmd, ipv6_autocnf_off),
+                       port['name'], numvfs_cmd, ipv6_conf_iface_opt),
                    'mtu': '1500'}
         expected = self._get_network_config_ifupdown(ifname=port['name'], method='manual',
                                                      options=options)
@@ -1442,12 +1444,12 @@ class InterfaceTestCase2(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         configs = interface.get_interface_network_configs(self.context, iface)
         numvfs_path = '/sys/class/net/{}/device/sriov_numvfs'.format(port['name'])
         numvfs_cmd = 'echo 0 > {0}; echo 16 > {0}'.format(numvfs_path)
-        ipv6_autocnf_off = self._get_ipv6_autoconf_off(port['name'])
+        ipv6_conf_iface_opt = self._get_ipv6_conf_iface_options(port['name'])
         options = {'allow-bond0': port['name'],
                    'bond-master': 'bond0',
                    'stx-description': 'ifname:{},net:None'.format(iface.ifname),
                    'pre-up': '/usr/sbin/ip link set dev {} promisc on; {}; {}'.format(
-                       port['name'], numvfs_cmd, ipv6_autocnf_off),
+                       port['name'], numvfs_cmd, ipv6_conf_iface_opt),
                    'mtu': '1500'}
         expected = self._get_network_config_ifupdown(ifname=port['name'], method='manual',
                                                      options=options)
@@ -1475,7 +1477,8 @@ class InterfaceTestCase2(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
                    'mtu': '1500',
                    'post-up': 'echo 0 > /proc/sys/net/ipv6/conf/bond0/autoconf; echo '
                               '0 > /proc/sys/net/ipv6/conf/bond0/accept_ra; echo 0 > '
-                              '/proc/sys/net/ipv6/conf/bond0/accept_redirects',
+                              '/proc/sys/net/ipv6/conf/bond0/accept_redirects; echo 1'
+                              ' > /proc/sys/net/ipv6/conf/bond0/keep_addr_on_down',
                    'up': 'sleep 10'}
         expected = self._get_static_network_config_ifupdown(
             ipaddress='192.168.204.10',
@@ -1506,7 +1509,8 @@ class InterfaceTestCase2(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
                    'post-up': '/usr/local/bin/tc_setup.sh bond0 mgmt 10000 > /dev/null; '
                               'echo 0 > /proc/sys/net/ipv6/conf/bond0/autoconf; echo '
                               '0 > /proc/sys/net/ipv6/conf/bond0/accept_ra; echo 0 > '
-                              '/proc/sys/net/ipv6/conf/bond0/accept_redirects',
+                              '/proc/sys/net/ipv6/conf/bond0/accept_redirects; echo 1'
+                              ' > /proc/sys/net/ipv6/conf/bond0/keep_addr_on_down',
                    'pre-up': '/sbin/modprobe bonding; grep bond0 '
                              '/sys/class/net/bonding_masters || echo +bond0 > '
                              '/sys/class/net/bonding_masters; sysctl -wq '
@@ -1528,7 +1532,8 @@ class InterfaceTestCase2(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
                    'mtu': '1500',
                    'post-up': 'echo 0 > /proc/sys/net/ipv6/conf/bond0/autoconf; echo '
                               '0 > /proc/sys/net/ipv6/conf/bond0/accept_ra; echo 0 > '
-                              '/proc/sys/net/ipv6/conf/bond0/accept_redirects',
+                              '/proc/sys/net/ipv6/conf/bond0/accept_redirects; echo 1'
+                              ' > /proc/sys/net/ipv6/conf/bond0/keep_addr_on_down',
                    'up': 'sleep 10'}
         expected = self._get_static_network_config_ifupdown(
             ipaddress='192.168.204.10',
@@ -1540,7 +1545,7 @@ class InterfaceTestCase2(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         bond = self._create_bond_test("bond0")
         self._do_update_context()
         configs = interface.get_interface_network_configs(self.context, bond)
-        ipv6_autocnf_off = self._get_ipv6_autoconf_off(bond['ifname'])
+        ipv6_conf_iface_opt = self._get_ipv6_conf_iface_options(bond['ifname'])
         options = {'bond-miimon': '100',
                   'bond-slaves': 'eth0 eth1 ',
                   'bond-mode': 'balance-xor',
@@ -1548,7 +1553,7 @@ class InterfaceTestCase2(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
                   'stx-description': 'ifname:bond0,net:None',
                   'hwaddress': bond['imac'],
                   'mtu': '1500',
-                  'post-up': '{}'.format(ipv6_autocnf_off),
+                  'post-up': '{}'.format(ipv6_conf_iface_opt),
                   'up': 'sleep 10'}
         expected = self._get_network_config_ifupdown(
             ifname=bond['ifname'], method='manual', options=options)
@@ -1559,7 +1564,7 @@ class InterfaceTestCase2(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         bond = self._create_bond_test("bond0", aemode='802.3ad')
         self._do_update_context()
         configs = interface.get_interface_network_configs(self.context, bond)
-        ipv6_autocnf_off = self._get_ipv6_autoconf_off(bond['ifname'])
+        ipv6_conf_iface_opt = self._get_ipv6_conf_iface_options(bond['ifname'])
         options = {'bond-lacp-rate': 'fast',
                    'bond-miimon': '100',
                    'bond-mode': '802.3ad',
@@ -1568,7 +1573,7 @@ class InterfaceTestCase2(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
                    'stx-description': 'ifname:bond0,net:None',
                    'hwaddress': bond['imac'],
                    'mtu': '1500',
-                   'post-up': '{}'.format(ipv6_autocnf_off),
+                   'post-up': '{}'.format(ipv6_conf_iface_opt),
                    'up': 'sleep 10'}
         expected = self._get_network_config_ifupdown(
             ifname=bond['ifname'], method='manual', options=options)
@@ -1582,7 +1587,7 @@ class InterfaceTestCase2(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
             primary_reselect=constants.PRIMARY_RESELECT_ALWAYS)
         self._do_update_context()
         configs = interface.get_interface_network_configs(self.context, bond)
-        ipv6_autocnf_off = self._get_ipv6_autoconf_off(bond['ifname'])
+        ipv6_conf_iface_opt = self._get_ipv6_conf_iface_options(bond['ifname'])
         options = {'bond-miimon': '100',
                    'bond-mode': 'active-backup',
                    'bond-slaves': 'eth0 eth1 ',
@@ -1591,7 +1596,7 @@ class InterfaceTestCase2(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
                    'stx-description': 'ifname:bond0,net:None',
                    'hwaddress': bond['imac'],
                    'mtu': '1500',
-                   'post-up': '{}'.format(ipv6_autocnf_off),
+                   'post-up': '{}'.format(ipv6_conf_iface_opt),
                    'up': 'sleep 10'}
         expected = self._get_network_config_ifupdown(
             ifname=bond['ifname'], method='manual', options=options)
@@ -1607,7 +1612,7 @@ class InterfaceTestCase2(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
             primary_reselect=constants.PRIMARY_RESELECT_BETTER)
         self._do_update_context()
         configs = interface.get_interface_network_configs(self.context, bond)
-        ipv6_autocnf_off = self._get_ipv6_autoconf_off(bond['ifname'])
+        ipv6_conf_iface_opt = self._get_ipv6_conf_iface_options(bond['ifname'])
         options = {'bond-miimon': '100',
                    'bond-mode': 'active-backup',
                    'bond-slaves': 'eth0 eth1 ',
@@ -1617,7 +1622,7 @@ class InterfaceTestCase2(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
                    'hwaddress': bond['imac'],
                    'mtu': '1500',
                    'post-up': '/usr/local/bin/tc_setup.sh bond0 mgmt 10000 > /dev/null; ' +
-                              '{}'.format(ipv6_autocnf_off),
+                              '{}'.format(ipv6_conf_iface_opt),
                    'up': 'sleep 10'}
         expected = self._get_network_config_ifupdown(
             ifname=bond['ifname'], method='manual', options=options)
@@ -1630,7 +1635,7 @@ class InterfaceTestCase2(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         vlan = self._create_vlan_test("vlan1", None, None, 1, self.iface)
         self._do_update_context()
         configs = interface.get_interface_network_configs(self.context, vlan)
-        ipv6_autocnf_off = self._get_ipv6_autoconf_off("vlan#1")
+        ipv6_conf_iface_opt = self._get_ipv6_conf_iface_options("vlan#1")
         mtu = '1500'
         set_mtu = self._get_postup_mtu("vlan#1", mtu)
         options = {'stx-description': 'ifname:vlan1,net:None',
@@ -1639,7 +1644,7 @@ class InterfaceTestCase2(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
                    'pre-up': '/sbin/modprobe -q 8021q; ip link add link '
                              '{} name vlan#1 type vlan id 1'.format(
                                  self.port['name']),
-                   'post-up': '{} {}'.format(set_mtu, ipv6_autocnf_off),
+                   'post-up': '{} {}'.format(set_mtu, ipv6_conf_iface_opt),
                    'vlan-raw-device': '{}'.format(self.port['name'])}
         expected = self._get_network_config_ifupdown(
             ifname="vlan#1", method='manual', options=options)
@@ -1652,7 +1657,7 @@ class InterfaceTestCase2(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         vlan = self._create_vlan_test("vlan.dot", None, None, 1, self.iface)
         self._do_update_context()
         configs = interface.get_interface_network_configs(self.context, vlan)
-        ipv6_autocnf_off = self._get_ipv6_autoconf_off("vlan.dot")
+        ipv6_conf_iface_opt = self._get_ipv6_conf_iface_options("vlan.dot")
         mtu = '1500'
         set_mtu = self._get_postup_mtu("vlan.dot", mtu)
         options = {'stx-description': 'ifname:vlan.dot,net:None',
@@ -1661,7 +1666,7 @@ class InterfaceTestCase2(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
                    'pre-up': '/sbin/modprobe -q 8021q; ip link add link '
                              '{} name vlan.dot type vlan id 1'.format(
                                  self.port['name']),
-                   'post-up': '{} {}'.format(set_mtu, ipv6_autocnf_off),
+                   'post-up': '{} {}'.format(set_mtu, ipv6_conf_iface_opt),
                    'vlan-raw-device': '{}'.format(self.port['name'])}
         expected = self._get_network_config_ifupdown(
             ifname="vlan.dot", method='manual', options=options)
@@ -1688,7 +1693,8 @@ class InterfaceTestCase2(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
                               '/usr/sbin/ip link set dev vlan100 mtu 1500; echo 0 > '
                               '/proc/sys/net/ipv6/conf/vlan100/autoconf; echo 0 '
                               '> /proc/sys/net/ipv6/conf/vlan100/accept_ra; echo 0 > '
-                              '/proc/sys/net/ipv6/conf/vlan100/accept_redirects',
+                              '/proc/sys/net/ipv6/conf/vlan100/accept_redirects; echo 1'
+                              ' > /proc/sys/net/ipv6/conf/vlan100/keep_addr_on_down',
                    'pre-up': '/sbin/modprobe -q 8021q; ip link add link '
                              '{} name vlan100 type vlan id 100; '.format(
                                  self.port['name']) +
@@ -1705,7 +1711,8 @@ class InterfaceTestCase2(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
                    'post-up': '/usr/sbin/ip link set dev vlan100 mtu 1500; echo 0 > '
                               '/proc/sys/net/ipv6/conf/vlan100/autoconf; echo 0 '
                               '> /proc/sys/net/ipv6/conf/vlan100/accept_ra; echo 0 > '
-                              '/proc/sys/net/ipv6/conf/vlan100/accept_redirects',
+                              '/proc/sys/net/ipv6/conf/vlan100/accept_redirects; echo'
+                              ' 1 > /proc/sys/net/ipv6/conf/vlan100/keep_addr_on_down',
                    'pre-up': '/sbin/modprobe -q 8021q',
                    'vlan-raw-device': '{}'.format(self.port['name'])}
         expected = self._get_static_network_config_ifupdown(
@@ -1776,9 +1783,9 @@ class InterfaceTestCase2(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
 
         configs = interface.get_interface_network_configs(
             self.context, self.iface)
-        ipv6_autocnf_off = self._get_ipv6_autoconf_off(self.port['name'])
+        ipv6_conf_iface_opt = self._get_ipv6_conf_iface_options(self.port['name'])
         options = {'post-up': '/usr/local/bin/tc_setup.sh eth0 mgmt 10000 > /dev/null; ' +
-                              '{}'.format(ipv6_autocnf_off),
+                              '{}'.format(ipv6_conf_iface_opt),
                    'pre-up': 'sysctl -wq net.ipv6.conf.{}.accept_dad=0'.format(self.port['name']),
                    'mtu': '1500',
                    'stx-description': 'ifname:mgmt0,net:None'}
@@ -1788,8 +1795,8 @@ class InterfaceTestCase2(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
 
         configs = interface.get_interface_network_configs(
             self.context, self.iface, network)
-        ipv6_autocnf_off = self._get_ipv6_autoconf_off(self.port['name'])
-        options = {'post-up': '%s' % ipv6_autocnf_off,
+        ipv6_conf_iface_opt = self._get_ipv6_conf_iface_options(self.port['name'])
+        options = {'post-up': '%s' % ipv6_conf_iface_opt,
                    'mtu': '1500',
                    'stx-description': 'ifname:mgmt0,net:mgmt',
                    'gateway': '192.168.204.1'}
@@ -1813,9 +1820,9 @@ class InterfaceTestCase2(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
 
         configs = interface.get_interface_network_configs(
             self.context, self.iface)
-        ipv6_autocnf_off = self._get_ipv6_autoconf_off(self.port['name'])
+        ipv6_conf_iface_opt = self._get_ipv6_conf_iface_options(self.port['name'])
         options = {'post-up': '/usr/local/bin/tc_setup.sh eth0 mgmt 10000 > /dev/null; ' +
-                              '{}'.format(ipv6_autocnf_off),
+                              '{}'.format(ipv6_conf_iface_opt),
                    'pre-up': 'sysctl -wq net.ipv6.conf.{}.accept_dad=0'.format(self.port['name']),
                    'mtu': '1500',
                    'stx-description': 'ifname:mgmt0,net:None'}
@@ -1825,8 +1832,8 @@ class InterfaceTestCase2(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
 
         configs = interface.get_interface_network_configs(
             self.context, self.iface, mgmt_network)
-        ipv6_autocnf_off = self._get_ipv6_autoconf_off(self.port['name'])
-        options = {'post-up': '%s' % ipv6_autocnf_off,
+        ipv6_conf_iface_opt = self._get_ipv6_conf_iface_options(self.port['name'])
+        options = {'post-up': '%s' % ipv6_conf_iface_opt,
                    'mtu': '1500',
                    'stx-description': 'ifname:mgmt0,net:mgmt',
                    'gateway': '192.168.204.1'}
@@ -1837,8 +1844,8 @@ class InterfaceTestCase2(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
 
         configs = interface.get_interface_network_configs(
             self.context, self.iface, clhost_network)
-        ipv6_autocnf_off = self._get_ipv6_autoconf_off(self.port['name'])
-        options = {'post-up': '%s' % ipv6_autocnf_off,
+        ipv6_conf_iface_opt = self._get_ipv6_conf_iface_options(self.port['name'])
+        options = {'post-up': '%s' % ipv6_conf_iface_opt,
                    'mtu': '1500',
                    'stx-description': 'ifname:mgmt0,net:cluster-host'}
         expected = self._get_static_network_config_ifupdown(
@@ -1852,7 +1859,7 @@ class InterfaceTestCase2(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         vlan = self._create_vlan_test("vlan1", None, None, 1, bond)
         self._do_update_context()
         configs = interface.get_interface_network_configs(self.context, vlan)
-        ipv6_autocnf_off = self._get_ipv6_autoconf_off("vlan#1")
+        ipv6_conf_iface_opt = self._get_ipv6_conf_iface_options("vlan#1")
         mtu = '1500'
         set_mtu = self._get_postup_mtu("vlan#1", mtu)
         options = {'stx-description': 'ifname:vlan1,net:None',
@@ -1861,7 +1868,7 @@ class InterfaceTestCase2(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
                    'pre-up': '/sbin/modprobe -q 8021q; ip link add link '
                              '{} name vlan#1 type vlan id 1'.format(
                                  bond['ifname']),
-                   'post-up': '{} {}'.format(set_mtu, ipv6_autocnf_off),
+                   'post-up': '{} {}'.format(set_mtu, ipv6_conf_iface_opt),
                    'vlan-raw-device': '{}'.format(bond['ifname'])}
         expected = self._get_network_config_ifupdown(
             ifname="vlan#1", method='manual', options=options)
@@ -1876,11 +1883,11 @@ class InterfaceTestCase2(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         self._do_update_context()
         configs = interface.get_interface_network_configs(
             self.context, self.iface, network)
-        ipv6_autocnf_off = self._get_ipv6_autoconf_off(self.port['name'])
+        ipv6_conf_iface_opt = self._get_ipv6_conf_iface_options(self.port['name'])
         options = {'stx-description': 'ifname:mgmt0,net:mgmt',
                    'mtu': '1500',
                    'gateway': '192.168.204.2',
-                   'post-up': '{}'.format(ipv6_autocnf_off)}
+                   'post-up': '{}'.format(ipv6_conf_iface_opt)}
         expected = self._get_static_network_config_ifupdown(
             ipaddress='192.168.204.10',
             ifname=f"{self.port['name']}:{network.id}-{address.id}", options=options)
@@ -1895,10 +1902,10 @@ class InterfaceTestCase2(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         self._do_update_context()
         configs = interface.get_interface_network_configs(
             self.context, self.iface, network)
-        ipv6_autocnf_off = self._get_ipv6_autoconf_off(self.port['name'])
+        ipv6_conf_iface_opt = self._get_ipv6_conf_iface_options(self.port['name'])
         options = {'stx-description': 'ifname:mgmt0,net:cluster-host',
                    'mtu': '1500',
-                   'post-up': '{}'.format(ipv6_autocnf_off)}
+                   'post-up': '{}'.format(ipv6_conf_iface_opt)}
         expected = self._get_static_network_config_ifupdown(
             ipaddress='192.168.206.10',
             ifname=f"{self.port['name']}:{network.id}-{address.id}", options=options)
@@ -1912,13 +1919,13 @@ class InterfaceTestCase2(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         self._do_update_context()
         configs = interface.get_interface_network_configs(
             self.context, self.iface)
-        ipv6_autocnf_off = self._get_ipv6_autoconf_off(self.port['name'])
+        ipv6_conf_iface_opt = self._get_ipv6_conf_iface_options(self.port['name'])
         options = {'stx-description': 'ifname:mgmt0,net:None',
                    'mtu': '1500',
                    'pre-up': 'echo 0 > /sys/class/net/{}/device/sriov_numvfs;'
                              ' echo 0 > /sys/class/net/{}/device/sriov_numvfs'.format(
                                  self.port['name'], self.port['name']),
-                   'post-up': '{}'.format(ipv6_autocnf_off)}
+                   'post-up': '{}'.format(ipv6_conf_iface_opt)}
         expected = self._get_network_config_ifupdown(
             ifname=self.port['name'], method='manual', options=options)
         self.assertEqual(expected, configs[0])
@@ -1931,14 +1938,14 @@ class InterfaceTestCase2(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         self._do_update_context()
         configs = interface.get_interface_network_configs(
             self.context, self.iface)
-        ipv6_autocnf_off = self._get_ipv6_autoconf_off(self.port['name'])
+        ipv6_conf_iface_opt = self._get_ipv6_conf_iface_options(self.port['name'])
         options = {'stx-description': 'ifname:mgmt0,net:None',
                    'mtu': '1500',
                    'pre-up':
                       'if [ -f  /sys/class/net/{}/device/sriov_numvfs ];'
                         ' then echo 0 > /sys/class/net/{}/device/sriov_numvfs; fi'.format(
                             self.port['name'], self.port['name']),
-                   'post-up': '{}'.format(ipv6_autocnf_off)}
+                   'post-up': '{}'.format(ipv6_conf_iface_opt)}
         expected = self._get_network_config_ifupdown(
             ifname=self.port['name'], method='manual', options=options)
         self.assertEqual(expected, configs[0])
@@ -3634,7 +3641,7 @@ POST_UP = 'post-up'         # Option 'post-up' operation, should be a list of co
 DOWN = 'down'               # Option 'down' operation, should be a list of command mnemonics
 PRE_DOWN = 'pre-down'       # Option 'pre-down' operation, should be a list of command mnemonics
 POST_DOWN = 'post-down'     # Option 'post-down' operation, should be a list of command mnemonics
-IPV6_CFG = 'ipv6-cfg'       # Operation command to set IPv6 autoconf, accept_ra and accept_redirects
+IPV6_CFG = 'ipv6-cfg'       # Operation command to set IPv6 conf params like autoconf and accept_ra
 SET_MTU = 'set-mtu'         # Operation command to set MTU
 SET_TC = 'set-tc'           # Operation command to configure traffic classifier
 VLAN_MOD = 'vlan-mod'       # Operation command to add vlan kernel module
@@ -3872,10 +3879,11 @@ class InterfaceConfigTestMixin(InterfaceTestCaseMixin):
             return [cmd]
         return []
 
-    def _get_cmd_ipv6_autoconf_off(self, os_ifname):
+    def _get_cmd_ipv6_conf_iface_options(self, os_ifname):
         return ['echo 0 > /proc/sys/net/ipv6/conf/{}/autoconf'.format(os_ifname),
                 'echo 0 > /proc/sys/net/ipv6/conf/{}/accept_ra'.format(os_ifname),
-                'echo 0 > /proc/sys/net/ipv6/conf/{}/accept_redirects'.format(os_ifname)]
+                'echo 0 > /proc/sys/net/ipv6/conf/{}/accept_redirects'.format(os_ifname),
+                'echo 1 > /proc/sys/net/ipv6/conf/{}/keep_addr_on_down'.format(os_ifname)]
 
     def _get_cmd_postup_mtu(self, os_ifname, mtu):
         return ['/usr/sbin/ip link set dev {} mtu {}'.format(os_ifname, mtu)]
@@ -3926,7 +3934,7 @@ class InterfaceConfigTestMixin(InterfaceTestCaseMixin):
         operation_list = []
         for command in commands:
             if command == IPV6_CFG:
-                operation_list.extend(self._get_cmd_ipv6_autoconf_off(kernel_name))
+                operation_list.extend(self._get_cmd_ipv6_conf_iface_options(kernel_name))
             elif command == SET_MTU:
                 operation_list.extend(self._get_cmd_postup_mtu(kernel_name, iface.imtu))
             elif command == SET_TC:
