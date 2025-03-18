@@ -6917,14 +6917,28 @@ class ConductorManager(service.PeriodicService):
             return
 
         config_dict = imsg_dict.get('config_dict')
+        threads = []
+        thread_pool = greenpool.GreenPool()
         if config_dict:
             status = imsg_dict.get('status')
             error = imsg_dict.get('error')
-            self.report_config_status(context, config_dict, status, error)
+            threads.append(thread_pool.spawn(self.report_config_status,
+                                             context,
+                                             config_dict,
+                                             status,
+                                             error))
 
         config_uuid = imsg_dict['config_applied']
-        self._update_host_config_applied(context, ihost, config_uuid)
-        self._update_runtime_config_status(ihost, config_uuid, imsg_dict.get('status'))
+        threads.append(thread_pool.spawn(self._update_host_config_applied,
+                                         context,
+                                         ihost,
+                                         config_uuid))
+        threads.append(thread_pool.spawn(self._update_runtime_config_status,
+                                         ihost,
+                                         config_uuid,
+                                         imsg_dict.get('status')))
+        for thread in threads:
+            thread.wait()
 
     def initial_inventory_completed(self, context, host_uuid):
         host_uuid.strip()
@@ -9899,9 +9913,10 @@ class ConductorManager(service.PeriodicService):
         config_dict = {
             "personalities": personalities,
             "classes": ['platform::haproxy::runtime',
-                        'openstack::keystone::endpoint::runtime',
                         'openstack::horizon::runtime',
-                        'platform::firewall::runtime']
+                        'platform::firewall::runtime'],
+            puppet_common.REPORT_STATUS_CFG:
+                puppet_common.REPORT_OPENSTACK_ENDPOINTS_CONFIG_REQUESTED
         }
 
         config_uuid = self._config_update_hosts(context, personalities)
@@ -10011,9 +10026,10 @@ class ConductorManager(service.PeriodicService):
                             'platform::haproxy::runtime',
                             'platform::dns',
                             'platform::ntp::server',
-                            'openstack::keystone::endpoint::runtime::post',
                             'platform::dockerdistribution::config',
-                            'platform::dockerdistribution::runtime']
+                            'platform::dockerdistribution::runtime'],
+                puppet_common.REPORT_STATUS_CFG:
+                    puppet_common.REPORT_OPENSTACK_ENDPOINTS_CONFIG_REQUESTED
             }
         else:
             # update kube-apiserver cert's SANs at runtime
@@ -10948,12 +10964,12 @@ class ConductorManager(service.PeriodicService):
                 self._audit_deferred_runtime_config(context)
             else:
                 # Config out of date alarm will be raised
-                LOG.info("Config manifest failed for host: %s" % host_uuid)
+                LOG.error("Config manifest failed for host: %s" % host_uuid)
         elif reported_cfg == puppet_common.REPORT_UPGRADE_ACTIONS:
             if status == puppet_common.REPORT_SUCCESS:
                 success = True
             else:
-                LOG.info("Upgrade manifest failed for host: %s" % host_uuid)
+                LOG.error("Upgrade manifest failed for host: %s" % host_uuid)
                 self.report_upgrade_config_failure()
         elif reported_cfg == puppet_common.REPORT_DISK_PARTITON_CONFIG:
             partition_uuid = iconfig['partition_uuid']
@@ -10970,6 +10986,28 @@ class ConductorManager(service.PeriodicService):
                 self.report_lvm_cinder_config_success, [context, host_uuid],
                 self.report_lvm_cinder_config_failure, [host_uuid, error]
             )
+        elif reported_cfg == puppet_common.REPORT_OPENSTACK_ENDPOINTS_CONFIG_REQUESTED:
+            if status == puppet_common.REPORT_SUCCESS:
+                success = True
+                self._clear_runtime_class_apply_in_progress(
+                    classes_list=iconfig.get('classes'),
+                    host_uuids=host_uuid
+                )
+                # Endpoints are only expected to be updated the on the active
+                # controller
+                if host_uuid == self.host_uuid:
+                    try:
+                        ihost = self.dbapi.ihost_get(host_uuid)
+                    except exception.ServerNotFound:
+                        LOG.exception("Invalid host_uuid %s" % host_uuid)
+                        return
+                    LOG.info("call back reconfiguring services endpoints after "
+                             "applying runtime classes %s host_uuids=%s" %
+                             (iconfig.get('classes'), host_uuid))
+                    self.reconfigure_service_endpoints(context, ihost)
+            else:
+                # Config out of date alarm will be raised
+                LOG.error("Config manifest failed for host: %s" % host_uuid)
         elif reported_cfg == puppet_common.REPORT_CEPH_BACKEND_CONFIG:
             success = _process_config_report(
                 self.report_ceph_config_success, [context, host_uuid],
@@ -17744,9 +17782,14 @@ class ConductorManager(service.PeriodicService):
         return self._app.perform_app_delete(rpc_app, lifecycle_hook_info_app_delete)
 
     def reconfigure_service_endpoints(self, context, host):
-        """Reconfigure the service endpoints upon the creation of initial
-        controller host and management/oam network change during bootstrap
-        playbook play and replay, or at the end of upgrade activation.
+        """Reconfigure the service endpoints
+
+        upon the the following conditions:
+        1. creation of initial controller host and management/admin/oam network
+        changes during bootstrap playbook play and replay.
+        2. On an active controller when the service endpoints are expected to
+        be updated. Note: cannot update the admin endpoints using this method
+        as requesting Keystone authentication against admin endpoints.
 
         :param context: request context.
         :param host: an ihost object
@@ -17775,16 +17818,15 @@ class ConductorManager(service.PeriodicService):
             else:
                 LOG.error("Unable to reconfigure service endpoints. Timed out "
                           "waiting for inventory to complete.")
-        elif self._is_upgrade_in_progress():
-            if constants.CONTROLLER_HOSTNAME not in host.hostname:
-                LOG.error("Endpoints should be reconfigured from a controller."
-                          " Received request for host: %s." % host.hostname)
+        else:
+            if self.host_uuid != host.uuid:
+                LOG.warning("Host: %s is not an active controller. Ignore service "
+                            "endpoints update request." % host.hostname)
                 return
+
             openstack_config_endpoints.run_endpoint_config(self._puppet,
                                                            self._openstack)
-        else:
-            LOG.error("Received a request to reconfigure service endpoints "
-                      "for host %s under the wrong condition." % host.hostname)
+            LOG.info("Platform Service endpoints reconfiguration complete")
 
     def mgmt_mac_set_by_ihost(self, context, host, mgmt_mac):
         """Update the management mac address upon management interface

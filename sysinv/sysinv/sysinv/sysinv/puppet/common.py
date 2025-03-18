@@ -56,6 +56,7 @@ REPORT_KUBE_CERT_UPDATE_PODS_TRUSTNEWCA = \
 REPORT_KUBE_UPDATE_KUBELET_PARAMS = 'update_kubelet_params'
 REPORT_HTTP_CONFIG = 'http_config'
 REPORT_KERNEL_CONFIG = 'host_kernel_config'
+REPORT_OPENSTACK_ENDPOINTS_CONFIG_REQUESTED = "openstack_endpoint_config_requested"
 REPORT_UPGRADE_ABORT = 'upgrade_abort'
 REPORT_APPARMOR_CONFIG = 'host_apparmor_config'
 REPORT_UPGRADE_CONTROL_PLANE = 'upgrade_control_plane'
