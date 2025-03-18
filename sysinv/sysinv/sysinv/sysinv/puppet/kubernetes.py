@@ -901,7 +901,7 @@ class KubernetesPuppet(base.BasePuppet):
 
                 device = d.get('sriov_vf_pdevice_id', None)
                 if not device:
-                    LOG.error("Failed to get device id for pci device %s",
+                    LOG.debug("Device id is not present for pci device %s",
                               d['pciaddr'])
                     continue
 
