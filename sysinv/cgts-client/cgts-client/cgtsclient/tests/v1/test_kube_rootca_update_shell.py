@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2021 Wind River Systems, Inc.
+# Copyright (c) 2021,2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -118,7 +118,7 @@ class KubeRootCAUpdateTest(test_shell.ShellTest):
         mock_host_update.return_value = KubeRootCAUpdate(None, self.fake_kube_rootca_host_update, True)
 
         self.make_env()
-        results = self.shell("kube-rootca-host-update --phase=trust-both-cas fake-hostname")
+        results = self.shell("kube-rootca-host-update --phase=trust-both-cas fake-hostname --yes")
         self._check_rootca_host_update(self.fake_kube_rootca_host_update, results)
 
     @mock.patch('cgtsclient.v1.kube_rootca_update.KubeRootCAUpdateManager.create')
