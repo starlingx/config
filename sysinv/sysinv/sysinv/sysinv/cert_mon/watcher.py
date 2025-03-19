@@ -1,4 +1,4 @@
-# Copyright (c) 2020-2024 Wind River Systems, Inc.
+# Copyright (c) 2020-2025 Wind River Systems, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,8 +17,6 @@
 
 import hashlib
 import json
-import os
-import re
 
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
@@ -29,6 +27,7 @@ from kubernetes import config
 from kubernetes import watch
 from kubernetes.client import Configuration
 from kubernetes.client.rest import ApiException
+from oslo_concurrency import lockutils
 from oslo_config import cfg
 from oslo_log import log
 from oslo_serialization import base64
@@ -55,11 +54,10 @@ CONF = cfg.CONF
 class MonitorContext(object):
     """Context data for watches"""
     def __init__(self):
-        self.dc_role = None
         self.kubernetes_namespace = None
 
     def initialize(self):
-        self.dc_role = utils.get_dc_role()
+        pass
 
     # Reuse cached tokens across all contexts
     # (i.e. all watches reuse these caches)
@@ -68,11 +66,6 @@ class MonitorContext(object):
     def get_token():
         """Uses the cached local access token"""
         return utils.get_cached_token()
-
-    @staticmethod
-    def get_dc_token():
-        """Uses the cached DC token for subcloud"""
-        return utils.get_cached_dc_token()
 
 
 class CertUpdateEventData(object):
@@ -368,33 +361,6 @@ class CertWatcher(object):
             raise
 
 
-class DC_CertWatcher(CertWatcher):
-    def __init__(self):
-        super(DC_CertWatcher, self).__init__()
-
-    def initialize(self, audit_subcloud, invalid_deploy_states):
-        self.context.initialize()
-        dc_role = self.context.dc_role
-        LOG.info('DC role: %s' % dc_role)
-
-        if dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
-            ns = utils.CERT_NAMESPACE_SUBCLOUD_CONTROLLER
-        elif dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
-            ns = utils.CERT_NAMESPACE_SYS_CONTROLLER
-        else:
-            ns = ''
-        self.namespace = ns
-        self.context.kubernetes_namespace = ns
-        self.register_listener(AdminEndpointRenew(self.context))
-        if dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
-            self.register_listener(
-                DCIntermediateCertRenew(
-                    self.context, audit_subcloud, invalid_deploy_states
-                )
-            )
-            self.register_listener(RootCARenew(self.context))
-
-
 class SystemLocalCACert_CertWatcher(CertWatcher):
     def __init__(self):
         super(SystemLocalCACert_CertWatcher, self).__init__()
@@ -505,223 +471,6 @@ class CertificateRenew(CertWatcherListener):
             self.update_certificate(event_data)
 
 
-class AdminEndpointRenew(CertificateRenew):
-    def __init__(self, context):
-        super(AdminEndpointRenew, self).__init__(context)
-        role = self.context.dc_role
-        if role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
-            self.secret_name = constants.DC_ADMIN_ENDPOINT_SECRET_NAME
-        elif role == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
-            self.secret_name = constants.SC_ADMIN_ENDPOINT_SECRET_NAME
-        else:
-            self.secret_name = None
-
-    def check_filter(self, event_data):
-        if self.secret_name == event_data.secret_name:
-            return self.certificate_is_ready(event_data)
-        else:
-            return False
-
-    def update_certificate(self, event_data):
-        token = self.context.get_token()
-
-        role = self.context.dc_role
-        utils.update_admin_ep_cert(token, event_data.ca_crt, event_data.tls_crt,
-                                   event_data.tls_key)
-
-        # In subclouds, it was observed that sometimes old ICA was used
-        # to sign adminep-cert. Here we run a verification to confirm that
-        # the chain is valid & delete secret if chain fails
-        if role == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
-            utils.verify_adminep_cert_chain()
-
-
-class DCIntermediateCertRenew(CertificateRenew):
-    def __init__(self, context, audit_subcloud, invalid_deploy_states):
-        super(DCIntermediateCertRenew, self).__init__(context)
-        self.invalid_deploy_states = invalid_deploy_states
-        self.secret_pattern = re.compile('-adminep-ca-certificate$')
-        self.audit_subcloud = audit_subcloud
-
-    def check_filter(self, event_data):
-        search_result = self.secret_pattern.search(event_data.secret_name)
-        if search_result and search_result.start() > 0:
-            # Ensure subcloud is in a valid deploy-status and online (watch
-            # events can fire for secrets before the subcloud first comes online)
-            subcloud_name = self._get_subcloud_name(event_data)
-            try:
-                (
-                    subcloud_valid_state,
-                    availability_status,
-                    deploy_status,
-                ) = utils.query_subcloud_online_with_deploy_state(
-                    subcloud_name,
-                    invalid_deploy_states=self.invalid_deploy_states,
-                    token=self.context.get_token(),
-                )
-                if not subcloud_valid_state:
-                    LOG.info(
-                        "%s check_filter: subcloud %s is ignored, "
-                        "availability=%s, deploy_status: %s",
-                        self.__class__.__name__,
-                        subcloud_name,
-                        availability_status,
-                        deploy_status,
-                    )
-                    return False
-            except Exception:
-                LOG.exception(
-                    "Failed to check subcloud availability: %s" % subcloud_name
-                )
-                return False
-            return self.certificate_is_ready(event_data)
-        else:
-            return False
-
-    def _get_subcloud_name(self, event_data):
-        m = self.secret_pattern.search(event_data.secret_name)
-        return event_data.secret_name[0:m.start()]
-
-    def update_certificate(self, event_data):
-        subcloud_name = self._get_subcloud_name(event_data)
-        LOG.info('update_certificate: subcloud %s %s', subcloud_name,
-                 event_data)
-
-        token = self.context.get_dc_token()
-
-        subcloud_sysinv_url = utils.SubcloudSysinvEndpointCache.get_endpoint(
-            subcloud_name, token
-        )
-
-        utils.update_subcloud_ca_cert(token,
-                                      subcloud_name,
-                                      subcloud_sysinv_url,
-                                      event_data.ca_crt,
-                                      event_data.tls_crt,
-                                      event_data.tls_key)
-
-        self.audit_subcloud(subcloud_name)
-
-    def action_failed(self, event_data):
-        sc_name = self._get_subcloud_name(event_data)
-        LOG.info('Attempt to update intermediate CA cert for %s has failed' %
-                 sc_name)
-
-        # verify subcloud is under managed and online
-        token = self.context.get_token()
-        sc = utils.get_subcloud(token, sc_name)
-        if not sc:
-            LOG.error('Cannot find subcloud %s' % sc_name)
-        else:
-            LOG.info('%s is %s %s. Software version %s' %
-                     (sc_name,
-                      sc['management-state'],
-                      sc['availability-status'],
-                      sc['software-version']))
-
-            if sc['management-state'] == utils.MANAGEMENT_MANAGED:
-                # don't do anything until subcloud managed
-                for status in sc['endpoint_sync_status']:
-                    if status['endpoint_type'] == utils.ENDPOINT_TYPE_DC_CERT and \
-                            status['sync_status'] != utils.SYNC_STATUS_OUT_OF_SYNC:
-                        LOG.info('Updating %s intermediate CA has failed. Mark %s '
-                                 'as dc-cert %s' % (sc_name, sc_name,
-                                                    utils.SYNC_STATUS_OUT_OF_SYNC))
-                        # update subcloud to dc-cert out-of-sync b/c last intermediate
-                        # CA cert was not updated successfully
-                        # an audit (default within 24 hours) will pick up and reattempt
-                        dc_token = self.context.get_dc_token()
-                        utils.update_subcloud_status(dc_token, sc_name,
-                                                     utils.SYNC_STATUS_OUT_OF_SYNC)
-                        break
-
-
-class RootCARenew(CertificateRenew):
-    def __init__(self, context):
-        super(RootCARenew, self).__init__(context)
-        self.secrets_to_recreate = []
-
-    def notify_changed(self, event_data):
-        if self.check_filter(event_data):
-            self.do_action(event_data)
-        else:
-            return False
-
-    def check_filter(self, event_data):
-        if self.context.dc_role != \
-            constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER or \
-                event_data.secret_name != constants.DC_ADMIN_ROOT_CA_SECRET_NAME or \
-                not self.certificate_is_ready(event_data):
-            return False
-
-        # check against current root CA cert to see if it is updated
-        if not os.path.isfile(constants.DC_ROOT_CA_CERT_PATH):
-            return True
-
-        with open(constants.DC_ROOT_CA_CERT_PATH, 'r') as f:
-            crt = f.read()
-
-        m = hashlib.md5()
-        m.update(encodeutils.safe_encode(event_data.ca_crt))
-        md5sum = m.hexdigest()
-
-        if crt.strip() != event_data.ca_crt:
-            LOG.info('%s check_filter[%s]: root ca certificate has changed. md5sum %s'
-                     % (self.__class__.__name__, event_data.secret_name, md5sum))
-            # a root CA update, all required secrets needs to be recreated
-            self.secrets_to_recreate = []
-            return True
-        else:
-            LOG.info('%s check_filter[%s]: root ca certificate remains the same. md5sum %s'
-                     % (self.__class__.__name__, event_data.secret_name, md5sum))
-            return False
-
-    def do_action(self, event_data):
-        LOG.info('%s do_action: %s' % (self.__class__.__name__, event_data))
-        if len(self.secrets_to_recreate) == 0:
-            self.update_certificate(event_data)
-
-        self.recreate_secrets()
-
-    def action_failed(self, event_data):
-        LOG.Error('Updating root CA certificate has failed.')
-        if len(self.secrets_to_recreate) > 0:
-            LOG.Error('%s are not refreshed' % self.secrets_to_recreate)
-            self.secrets_to_recreate = []
-
-    def update_certificate(self, event_data):
-        # currently the root CA cert renewal does not replace private key
-        # This is not ideal it is caused by a cert-manager issue.
-        # The root CA cert is to be updated by when the admin endpoint
-        # certification is updated
-        # https://github.com/jetstack/cert-manager/issues/2978
-        self.secrets_to_recreate = self.get_secrets_to_recreate()
-        LOG.info('Secrets to be recreated %s' % self.secrets_to_recreate)
-
-    @staticmethod
-    def get_secrets_to_recreate():
-        secret_names = list(utils.get_subcloud_secrets().values())
-        secret_names.insert(0, constants.DC_ADMIN_ENDPOINT_SECRET_NAME)
-        return secret_names
-
-    def recreate_secrets(self):
-        kube_op = sys_kube.KubeOperator()
-        secret_list = self.secrets_to_recreate[:]
-        for secret in secret_list:
-            try:
-                LOG.info('Recreate %s:%s' % (utils.CERT_NAMESPACE_SYS_CONTROLLER, secret))
-                kube_op.kube_delete_secret(secret, utils.CERT_NAMESPACE_SYS_CONTROLLER)
-            except Exception as e:
-                LOG.error('Deleting secret %s:%s. Error %s' %
-                          (utils.CERT_NAMESPACE_SYS_CONTROLLER, secret, e))
-            else:
-                self.secrets_to_recreate.remove(secret)
-
-        if len(self.secrets_to_recreate) > 0:
-            # raise exception to keep reattempting
-            raise Exception('Some secrets were not recreated successfully')
-
-
 class TrustedCARenew(CertificateRenew):
     """Handles a renew event for a certificate that must be installed as a trusted platform cert.
     """
@@ -800,7 +549,7 @@ class PlatformCertRenew(CertificateRenew):
         else:
             return False
 
-    @utils.lockutils.synchronized(utils.CERT_INSTALL_LOCK_NAME)
+    @lockutils.synchronized(utils.CERT_INSTALL_LOCK_NAME)
     def update_platform_certificate(self, event_data, cert_type, force=False):
         """Update a platform certificate
 
