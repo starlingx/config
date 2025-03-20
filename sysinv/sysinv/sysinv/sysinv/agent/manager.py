@@ -2122,11 +2122,6 @@ class AgentManager(service.PeriodicService):
                 # Set ready flag for maintenance to proceed with the unlock of
                 # the initial controller.
                 utils.touch(constants.UNLOCK_READY_FLAG)
-            elif (os.path.isfile(tsc.MGMT_NETWORK_RECONFIGURATION_UNLOCK) and
-                    applied_classes == ['openstack::keystone::endpoint::reconfig']):
-                # Set ready flag for maintenance to proceed with the unlock
-                # after mgmt ip reconfiguration
-                utils.touch(constants.UNLOCK_READY_FLAG)
         except Exception:
             LOG.exception("failed to apply runtime manifest")
             raise

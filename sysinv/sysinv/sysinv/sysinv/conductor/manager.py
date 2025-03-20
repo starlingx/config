@@ -2512,32 +2512,9 @@ class ConductorManager(service.PeriodicService):
             self._puppet.update_host_config(host, config_uuid)
 
         elif os.path.isfile(tsc.MGMT_NETWORK_RECONFIGURATION_UNLOCK):
-            # Remove unlock ready flag to prevent maintenance rebooting the
-            # node until the runtime manifest is finished.
-            try:
-                if os.path.isfile(constants.UNLOCK_READY_FLAG):
-                    os.remove(constants.UNLOCK_READY_FLAG)
-            except OSError:
-                LOG.exception("Failed to remove unlock ready flag: %s" %
-                              constants.UNLOCK_READY_FLAG)
-
-            personalities = [constants.CONTROLLER]
             # Update sysinv and keystone endpoints before the reboot
-            config_uuid = self._config_update_hosts(context, personalities,
-                                                    host_uuids=[host.uuid])
-            config_dict = {
-                "personalities": personalities,
-                "host_uuids": [host.uuid],
-                "classes": ['openstack::keystone::endpoint::reconfig']
-            }
-            self._config_apply_runtime_manifest(
-                context, config_uuid, config_dict, force=True)
-
-            # Regenerate config target uuid, node is going for reboot!
-            config_uuid = self._config_update_hosts(context, personalities)
-            if utils.config_is_reboot_required(host.config_target):
-                config_uuid = self._config_set_reboot_required(config_uuid)
-            self._puppet.update_host_config(host, config_uuid)
+            openstack_config_endpoints.run_endpoint_config(self._puppet,
+                                                           self._openstack)
 
     def _ceph_mon_create(self, host):
         if not StorageBackendConfig.has_backend(
