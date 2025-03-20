@@ -887,7 +887,6 @@ SM_MULTICAST_MGMT_IP_NAME = "sm-mgmt-ip"
 MTCE_MULTICAST_MGMT_IP_NAME = "mtce-mgmt-ip"
 PATCH_CONTROLLER_MULTICAST_MGMT_IP_NAME = "patch-controller-mgmt-ip"
 PATCH_AGENT_MULTICAST_MGMT_IP_NAME = "patch-agent-mgmt-ip"
-SYSTEM_CONTROLLER_GATEWAY_IP_NAME = "system-controller-gateway-ip"
 
 ADDRESS_FORMAT_ARGS = (CONTROLLER_HOSTNAME,
                        NETWORK_TYPE_MGMT)

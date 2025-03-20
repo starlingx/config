@@ -769,13 +769,9 @@ class AddressPoolController(rest.RestController):
                          caddress_pool.CONTROLLER1_ADDRESS: constants.CONTROLLER_1_HOSTNAME,
                          caddress_pool.FLOATING_ADDRESS: constants.CONTROLLER_HOSTNAME}
 
-    def _get_address_hostname(self, field, network_type, dc_role):
+    def _get_address_hostname(self, field):
         if field == 'gateway_address':
-            if network_type != constants.NETWORK_TYPE_OAM and \
-                    dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
-                return constants.SYSTEM_CONTROLLER_GATEWAY_IP_NAME
-            else:
-                return constants.CONTROLLER_GATEWAY
+            return constants.CONTROLLER_GATEWAY
         return self.FIELD_TO_HOSTNAME[field]
 
     def _process_address_create_cmds(self, addrpool, updates, create_index, field_updates,
@@ -789,15 +785,13 @@ class AddressPoolController(rest.RestController):
                          'enable_dad': constants.IP_DAD_STATES[addrpool.family]}
 
         network_type = next(iter(network_types)) if len(network_types) == 1 else None
-        if network_type:
-            dc_role = utils.get_distributed_cloud_role()
 
         for addr_field, values in create_index.items():
             addr_id_field = ADDRESS_TO_ID_FIELD_INDEX[addr_field]
             params = create_params.copy()
             params.update(values)
             if network_type:
-                hostname = self._get_address_hostname(addr_field, network_type, dc_role)
+                hostname = self._get_address_hostname(addr_field)
                 params['name'] = cutils.format_address_name(hostname, network_type)
             else:
                 params['name'] = '{}-{}'.format(addrpool.name, addr_field)

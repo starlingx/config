@@ -46,8 +46,7 @@ ID_TO_ADDRESS_FIELD_INDEX = {FLOATING_ADDRESS_ID: FLOATING_ADDRESS,
 HOSTNAME_ADDRESS_ID_FIELDS = {constants.CONTROLLER_HOSTNAME: FLOATING_ADDRESS_ID,
                               constants.CONTROLLER_0_HOSTNAME: CONTROLLER0_ADDRESS_ID,
                               constants.CONTROLLER_1_HOSTNAME: CONTROLLER1_ADDRESS_ID,
-                              constants.CONTROLLER_GATEWAY: GATEWAY_ADDRESS_ID,
-                              constants.SYSTEM_CONTROLLER_GATEWAY_IP_NAME: GATEWAY_ADDRESS_ID}
+                              constants.CONTROLLER_GATEWAY: GATEWAY_ADDRESS_ID}
 
 ADDRESS_FIELD_HOSTNAMES = {FLOATING_ADDRESS: constants.CONTROLLER_HOSTNAME,
                            CONTROLLER0_ADDRESS: constants.CONTROLLER_0_HOSTNAME,
@@ -220,12 +219,6 @@ def _get_hostname_field_index(network_type, dbapi=None):
     req_addresses = REQUIRED_ADDRESS_SET_INDEX.get(network_type, {})
 
     entries = {hostname: (field, False) for hostname, field in HOSTNAME_ADDRESS_ID_FIELDS.items()}
-
-    if network_type in {constants.NETWORK_TYPE_MGMT, constants.NETWORK_TYPE_ADMIN} and \
-            _get_distributed_cloud_role(dbapi) == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
-        del entries[constants.CONTROLLER_GATEWAY]
-    else:
-        del entries[constants.SYSTEM_CONTROLLER_GATEWAY_IP_NAME]
 
     for hostname, field in req_addresses.items():
         entries[hostname] = (field, True)

@@ -1450,20 +1450,19 @@ class ConductorManager(service.PeriodicService):
                 if (hostname == 'controller-platform-nfs'):
                     continue
 
-                if (hostname != constants.SYSTEM_CONTROLLER_GATEWAY_IP_NAME):
-                    controller_alias = [constants.CONTROLLER_HOSTNAME,
-                                        constants.DOCKER_REGISTRY_HOST,
-                                        "controller-platform-nfs"]
+                controller_alias = [constants.CONTROLLER_HOSTNAME,
+                                    constants.DOCKER_REGISTRY_HOST,
+                                    "controller-platform-nfs"]
 
-                    if hostname == constants.CONTROLLER_HOSTNAME:
-                        addn_line_internal = self._dnsmasq_addn_host_entry_to_string(
-                                address.address, constants.CONTROLLER_FQDN, controller_alias)
-                    else:
-                        hostname_internal = hostname + "." + constants.INTERNAL_DOMAIN
-                        hostname_alias = [hostname]
-                        addn_line_internal = self._dnsmasq_addn_host_entry_to_string(
-                                address.address, hostname_internal, hostname_alias)
-                    f_out_addn.write(addn_line_internal)
+                if hostname == constants.CONTROLLER_HOSTNAME:
+                    addn_line_internal = self._dnsmasq_addn_host_entry_to_string(
+                            address.address, constants.CONTROLLER_FQDN, controller_alias)
+                else:
+                    hostname_internal = hostname + "." + constants.INTERNAL_DOMAIN
+                    hostname_alias = [hostname]
+                    addn_line_internal = self._dnsmasq_addn_host_entry_to_string(
+                            address.address, hostname_internal, hostname_alias)
+                f_out_addn.write(addn_line_internal)
 
             # Add pxecontroller to dnsmasq.hosts file
             pxeboot_network = self.dbapi.network_get_by_type(
