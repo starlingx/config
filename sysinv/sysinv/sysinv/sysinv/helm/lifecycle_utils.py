@@ -8,6 +8,8 @@
 
 import time
 
+import kubernetes
+
 from oslo_log import log as logging
 from oslo_serialization import base64
 from sysinv.common import constants
@@ -85,6 +87,12 @@ def create_rbd_provisioner_secrets(app_op, app, hook_info):
                 app_op._kube.kube_create_namespace(ns)
             app_op._kube.kube_copy_secret(
                 pool_secret, common.HELM_NS_RBD_PROVISIONER, ns)
+        except kubernetes.client.exceptions.ApiException as e:
+            if e.status == 404:
+                raise exception.SysinvException(f"Failed to copy RDB secret {pool_secret} "
+                                                f"from namespace {common.HELM_NS_RBD_PROVISIONER} "
+                                                f"to namespace {ns}. Secret not found.")
+            raise
         except Exception as e:
             LOG.error(e)
             raise
