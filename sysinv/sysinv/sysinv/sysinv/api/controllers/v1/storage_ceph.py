@@ -1397,10 +1397,12 @@ def _patch(storceph_uuid, patch):
     if object_gateway_install:
         _check_object_gateway_install(pecan.request.dbapi)
 
+    delta_fields = {}
     for field in objects.storage_ceph.fields:
         if (field in storceph_config.as_dict() and
                 rpc_storceph[field] != storceph_config.as_dict()[field]):
             rpc_storceph[field] = storceph_config.as_dict()[field]
+            delta_fields[field] = storceph_config.as_dict()[field]
 
     LOG.info("SYS_I new     storage_ceph: %s " % rpc_storceph.as_dict())
     try:
@@ -1417,6 +1419,11 @@ def _patch(storceph_uuid, patch):
             # Enable the backend changes:
             _apply_backend_changes(constants.SB_API_OP_MODIFY,
                                    rpc_storceph)
+
+        pecan.request.rpcapi.evaluate_apps_reapply(
+            pecan.request.context,
+            trigger={'type': constants.APP_EVALUATE_REAPPLY_TYPE_SB_MODIFY,
+                     'delta_fields': delta_fields})
 
         return StorageCeph.convert_with_links(rpc_storceph)
 
