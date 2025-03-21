@@ -251,8 +251,24 @@ class FluxCDKustomizeOperator(object):
                 common_utils.replace_helmrepo_url_with_floating_address(
                     dbapi.get_instance(), helmrepo_url)
 
-        with open(self.helmrepo_path, "w") as f:
-            yaml.dump(helmrepo_yaml, f, default_flow_style=False)
+        with tempfile.TemporaryDirectory(dir=constants.APP_FLUXCD_BASE_PATH) as temp_dirname:
+            temp_helmrepo_path = os.path.join(temp_dirname, constants.APP_HELMREPOSITORY_FILE)
+
+            with open(temp_helmrepo_path, 'w') as f:
+                try:
+                    yaml.dump(helmrepo_yaml, f, default_flow_style=False)
+                    LOG.debug(f"Temporary Helm repository file {temp_helmrepo_path} generated")
+                except Exception as e:
+                    LOG.error("Failed to generate temporary Helm repository file "
+                              f"{temp_helmrepo_path}: {e}")
+
+            # Atomic operation to update the Helm repository file
+            try:
+                os.rename(temp_helmrepo_path, self.helmrepo_path)
+                LOG.debug(f"Updated Helm repository file {self.helmrepo_path} generated")
+            except OSError as e:
+                LOG.error("Failed to generate updated Helm repository file "
+                          f"{self.helmrepo_path}: {e}")
 
     def _delete_kustomization_file(self):
         """ Remove any previously written top level kustomization file
