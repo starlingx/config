@@ -278,8 +278,13 @@ class AddressController(rest.RestController):
         result = self._query_address(address)
         if not result:
             return
-        raise exception.AddressAlreadyExists(address=address['address'],
-                                             prefix=address['prefix'])
+        elif result.interface_id is None and result.pool_id is None \
+                and result.name is None:
+            # this entry can be reused
+            return
+        else:
+            raise exception.AddressAlreadyExists(address=address['address'],
+                                                 prefix=address['prefix'])
 
     def _is_same_subnet(self, a, b):
         if a['prefix'] != b['prefix']:
@@ -408,8 +413,20 @@ class AddressController(rest.RestController):
         self._check_dad_state(address_dict)
         self._check_managed_addr(host_id, interface_id)
         address_dict['interface_id'] = interface_id
-        # Attempt to create the new address record
-        return pecan.request.dbapi.address_create(address_dict)
+        try:
+            address = pecan.request.dbapi.address_get_by_address(address_dict['address'])
+            if address.interface_id is None \
+                    and address.pool_id is None \
+                    and address.name is None:
+                # we can reuse this entry, delete and create to have an updated creation time
+                LOG.info(f"address db entry for {address_dict['address']} is unused, update with new db entry")
+                pecan.request.dbapi.address_destroy(address.uuid)
+                address = pecan.request.dbapi.address_create(address_dict)
+        except exception.AddressNotFoundByAddress:
+            # Attempt to create the new address record
+            address = pecan.request.dbapi.address_create(address_dict)
+
+        return address
 
     def _create_pool_addr(self, pool_id, address_dict):
         self._check_duplicate_address(address_dict)
