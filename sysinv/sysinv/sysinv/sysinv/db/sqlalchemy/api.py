@@ -8119,6 +8119,14 @@ class Connection(api.Connection):
         return query.all()
 
     @db_objects.objectify(objects.label)
+    def label_get_all_like(self, pattern, hostid=None):
+        query = model_query(models.Label, read_deleted="no")
+        if hostid:
+            query = query.filter_by(host_id=hostid)
+        query = query.filter(models.Label.label_key.like(pattern))
+        return query.all()
+
+    @db_objects.objectify(objects.label)
     def label_update(self, uuid, values):
         with _session_for_write() as session:
             query = model_query(models.Label, session=session)

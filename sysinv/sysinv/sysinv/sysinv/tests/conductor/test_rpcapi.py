@@ -116,3 +116,8 @@ class RPCAPITestCase(base.DbTestCase):
                           'cast',
                           ihost_uuid=self.fake_ihost['uuid'],
                           kernel_running=constants.KERNEL_LOWLATENCY)
+
+    def test_configure_stalld(self):
+        self._test_rpcapi('configure_stalld',
+                          'call',
+                          host_uuid=self.fake_ihost['uuid'])

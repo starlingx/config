@@ -20024,6 +20024,40 @@ class ConductorManager(service.PeriodicService):
         """
         return cutils.get_secrets_info()
 
+    def configure_stalld(self, context, host_uuid):
+        """ Configure and restart the stalld daemon
+
+        :param context: admin context
+        :param ihost_uuid: host uuid
+        """
+        host_uuid = host_uuid.strip()
+        try:
+            host = self.dbapi.ihost_get(host_uuid)
+        except exception.ServerNotFound:
+            LOG.info(f'Host not found {host_uuid}')
+            return None
+
+        hostname = host['hostname']
+        LOG.info(f'Attempting to configure stalld for host={hostname}')
+
+        personalities = [host['personality']]
+        host_uuids = [host['uuid']]
+        config_uuid = self._config_update_hosts(
+            context=context,
+            personalities=personalities,
+            host_uuids=host_uuids,
+            reboot=False)
+        config_dict = {
+            "personalities": personalities,
+            "host_uuids": host_uuids,
+            "classes": [
+                'platform::stalld::runtime'
+            ],
+        }
+        self._config_apply_runtime_manifest(context,
+                                            config_uuid,
+                                            config_dict)
+
 
 def device_image_state_sort_key(dev_img_state):
     if dev_img_state.bitstream_type == dconstants.BITSTREAM_TYPE_ROOT_KEY:

@@ -2809,3 +2809,40 @@ DEPLOYED = "deployed"
 DEPLOYING = "deploying"
 REMOVING = "removing"
 UNAVAILABLE = "unavailable"
+
+# stalld labels
+LABEL_STALLD = 'starlingx.io/stalld'
+LABEL_VALUE_STALLD_ENABLED = 'enabled'
+LABEL_VALUE_STALLD_DISABLED = 'disabled'
+# Default is 'disabled'
+VALID_STALLD_VALUES = [
+        LABEL_VALUE_STALLD_DISABLED,
+        LABEL_VALUE_STALLD_ENABLED
+]
+
+# stalld cpu functions values
+LABEL_STALLD_CPU_FUNCTIONS = 'starlingx.io/stalld_cpu_functions'
+LABEL_VALUE_CPU_ALL = 'all'
+LABEL_VALUE_CPU_APPLICATION = 'application'
+LABEL_VALUE_CPU_APPLICATION_ISOLATED = 'application-isolated'
+# Default is 'application'
+LABEL_VALUE_CPU_DEFAULT = LABEL_VALUE_CPU_APPLICATION
+VALID_STALLD_CPU_FUNCTION_VALUES = [
+        LABEL_VALUE_CPU_APPLICATION,
+        LABEL_VALUE_CPU_APPLICATION_ISOLATED,
+        LABEL_VALUE_CPU_ALL
+]
+
+SUPPORTED_STALLD_LABELS = [
+    LABEL_STALLD,
+    LABEL_STALLD_CPU_FUNCTIONS
+]
+
+# Custom arguments follow starlingx.io/stalld.xxxx pattern
+# Examples
+# 'starlingx.io/stalld.boost_period'
+# 'starlingx.io/stalld.boost_runtime'
+# 'starlingx.io/stalld.boost_duration'
+# 'starlingx.io/stalld.starving_threshold'
+REGEX_STALLD_CUSTOM_LABEL = r"starlingx\.io\/stalld\.(\w+)"
+CUSTOM_STALLD_LABEL_STRING = "starlingx.io/stalld."

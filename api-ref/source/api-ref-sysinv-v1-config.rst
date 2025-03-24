@@ -6931,6 +6931,146 @@ Deletes a device label
 
 This operation does not accept a request body.
 
+--------------
+Host labels
+--------------
+
+************************
+List all the host labels
+************************
+
+.. rest_method:: GET /v1/ihosts/{ihost_uuid}/labels
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+computeFault (400, 500, ...), serviceUnavailable (503), badRequest (400),
+unauthorized (401), forbidden (403), badMethod (405), overLimit (413),
+itemNotFound (404)
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "labels ", "plain", "xsd:list", "The list of host labels."
+   "uuid ", "plain", "csapi:UUID", "The universally unique identifier for this object."
+   "label_key ", "plain", "xsd:string", "The key of the device label."
+   "label_value ", "plain", "xsd:string", "The value of the device label."
+   "host_uuid ", "plain", "csapi:UUID", "The universally unique identifier for the host object."
+
+::
+
+   {
+      "labels": [
+         {
+            "uuid": "71caa220-390f-4403-86a3-8061dba35d06",
+            "label_key": "key1",
+            "label_value": "value1",
+            "host_uuid": "960c759f-fc00-42a1-b67e-a796bf709258"
+         },
+         {
+            "uuid": "4512b32f-943a-48d0-9449-9119205302c2",
+            "label_key": "key5",
+            "label_value": "value5",
+            "host_uuid": "960c759f-fc00-42a1-b67e-a796bf709258"
+         }
+      ]
+   }
+
+******************************
+Assign host labels to a host
+******************************
+
+.. rest_method:: POST /v1/labels/{ihost_uuid}?overwrite={overwrite_parameter}
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+computeFault (400, 500, ...), serviceUnavailable (503), badRequest (400),
+unauthorized (401), forbidden (403), badMethod (405), overLimit (413),
+itemNotFound (404)
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "ihost_uuid ", "plain", "csapi:UUID", "The universally unique identifier for the host object."
+   "overwrite_parameter (Optional)", "plain", "xsd:boolean", "Overwrite label if it already exists."
+   "host_labels", "URI", "xsd:list", "List of key-value paired of device labels."
+
+::
+
+   {
+      "key1": "value1",
+      "key2": "value2",
+      "key3": "value3"
+   }
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "labels ", "plain", "xsd:list", "The list of host labels."
+   "uuid ", "plain", "csapi:UUID", "The universally unique identifier for this object."
+   "label_key ", "plain", "xsd:string", "The key of the device label."
+   "label_value ", "plain", "xsd:string", "The value of the device label."
+   "host_uuid ", "plain", "csapi:UUID", "The universally unique identifier for the host object."
+
+::
+
+   {
+      "labels": [
+         {
+            "uuid": "bfb37f67-d231-4bf2-836b-677c9cd04dd6",
+            "label_key": "key1",
+            "label_value": "value1",
+            "host_uuid": "960c759f-fc00-42a1-b67e-a796bf709258"
+         },
+         {
+            "uuid": "85acec16-a163-4ed3-9e24-005602979cd6",
+            "label_key": "key2",
+            "label_value": "value2",
+            "host_uuid": "960c759f-fc00-42a1-b67e-a796bf709258"
+         },
+         {
+            "uuid": "45fb9fff-5b32-4088-ad65-acc191fcd8b2",
+            "label_key": "key3",
+            "label_value": "value3",
+            "host_uuid": "960c759f-fc00-42a1-b67e-a796bf709258"
+         }
+      ]
+   }
+
+************************
+Delete a host label
+************************
+
+.. rest_method:: DELETE /v1/labels/{host_label_uuid}
+
+**Normal response codes**
+
+204
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "host_label_uuid", "URI", "csapi:UUID", "The unique identifier of the host label."
+
 ------------------
 Service Parameter
 ------------------

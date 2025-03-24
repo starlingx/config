@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2024 Wind River Systems, Inc.
+# Copyright (c) 2013-2025 Wind River Systems, Inc.
 #
 
 """
@@ -2309,3 +2309,13 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         :param context: request context.
         """
         return self.call(context, self.make_msg('get_all_k8s_certs'))
+
+    def configure_stalld(self, context, host_uuid):
+        """Synchronously, have the conductor reconfigure stalld
+           for the specified host.
+
+        :param context: request context
+        :param host_uuid: the uuid of the host
+        """
+        return self.call(context, self.make_msg('configure_stalld',
+                                                host_uuid=host_uuid))
