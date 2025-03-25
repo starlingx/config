@@ -9821,6 +9821,27 @@ class ConductorManager(service.PeriodicService):
         self._config_apply_runtime_manifest(
             context, config_uuid, config_dict, force=True)
 
+    def update_platform_ratelimit_config(self, context, host_uuid):
+        """update rate limit configuration of platform interfaces
+
+        :param context: an admin context
+        :param host_uuid: the host uuid
+        """
+        # update manifest files and notify agent to apply them
+        personalities = [constants.CONTROLLER,
+                            constants.WORKER]
+        config_uuid = self._config_update_hosts(context, personalities,
+                                                host_uuids=[host_uuid])
+
+        config_dict = {
+            "personalities": personalities,
+            'host_uuids': [host_uuid],
+            "classes": ['platform::network::interfaces::rate_limit::runtime']
+        }
+
+        self._config_apply_runtime_manifest(
+            context, config_uuid, config_dict, force=True)
+
     def request_firewall_runtime_update(self, context, host_uuid):
         """Update the system firewall configuration.
 

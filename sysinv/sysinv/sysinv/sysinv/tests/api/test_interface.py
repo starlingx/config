@@ -450,7 +450,7 @@ class InterfaceTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
     def _create_vf(self, ifname, ifclass=None,
                    lower_iface=None, sriov_numvfs=None,
                    sriov_vf_driver=None, datanetworks=None, host=None,
-                   expect_errors=False, max_tx_rate=None,
+                   expect_errors=False, max_tx_rate=None, max_rx_rate=None,
                    error_message=None):
         if not host:
             host = self.controller
@@ -472,7 +472,8 @@ class InterfaceTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
             forihostid=host.id, ihost_uuid=host.uuid,
             sriov_numvfs=sriov_numvfs,
             sriov_vf_driver=sriov_vf_driver,
-            max_tx_rate=max_tx_rate)
+            max_tx_rate=max_tx_rate,
+            max_rx_rate=max_rx_rate)
 
         if expect_errors and not error_message:
             raise ValueError("If 'expect_errors' is True, 'error_message' "
@@ -573,6 +574,10 @@ class InterfaceTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
         self.controller = None
         self.worker = None
         self._setup_configuration()
+
+    def _set_dc_role(self, dc_role):
+        system = self.dbapi.isystem_get_one()
+        self.dbapi.isystem_update(system.uuid, {'distributed_cloud_role': dc_role})
 
 
 # Test that the unsupported config is rejected
@@ -2056,6 +2061,193 @@ class TestPostMixin(object):
         self.assertEqual('application/json', patch_result.content_type)
         self.assertEqual(http_client.OK, patch_result.status_code)
         self.assertEqual(0, patch_result.json['max_tx_rate'])
+
+    def test_interface_vf_ratelimit_modify_max_rx_rate_invalid(self):
+        self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT,
+                              host=self.worker)
+        port, lower_iface = self._create_sriov(
+            'sriov', host=self.worker, sriov_numvfs=4)
+        vf = self._create_vf('vf1', lower_iface=lower_iface,
+            host=self.worker, sriov_numvfs=3,
+            expect_errors=False)
+
+        response = self.patch_dict_json(
+            '%s' % self._get_path(vf['uuid']),
+            max_rx_rate=1000,
+            expect_errors=True)
+
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(http_client.BAD_REQUEST, response.status_code)
+        self.assertIn("max_rx_rate is not applicable for VF interfaces",
+                        response.json['error_message'])
+
+    def test_interface_modify_adjust_ratelimit_invalid(self):
+        _, iface = self._create_ethernet('oam0', constants.NETWORK_TYPE_OAM,
+                    ifclass=constants.INTERFACE_CLASS_PLATFORM,
+                    host=self.controller)
+
+        uuid = iface['uuid']
+        response = self.patch_dict_json(
+            '%s' % self._get_path(uuid),
+            max_rx_rate=-1,
+            expect_errors=True)
+
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(http_client.BAD_REQUEST, response.status_code)
+        self.assertIn("max_rx_rate must be an non-negative integer value.",
+                        response.json['error_message'])
+
+        response = self.patch_dict_json(
+            '%s' % self._get_path(uuid),
+            max_tx_rate=-1,
+            expect_errors=True)
+
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(http_client.BAD_REQUEST, response.status_code)
+        self.assertIn("max_tx_rate must be an non-negative integer value.",
+                        response.json['error_message'])
+
+    def test_interface_modify_adjust_ratelimit_invalid_class(self):
+        _, iface = self._create_ethernet('oam0', constants.NETWORK_TYPE_OAM,
+                        ifclass=constants.INTERFACE_CLASS_NONE, host=self.controller)
+
+        uuid = iface['uuid']
+        response = self.patch_dict_json(
+            '%s' % self._get_path(uuid),
+            max_rx_rate=30, max_tx_rate=30,
+            expect_errors=True)
+
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(http_client.BAD_REQUEST, response.status_code)
+        self.assertIn("max_tx_rate/max_rx_rate modification not allowed "
+                "for the provided interface class None and interface type "
+                "ethernet", response.json['error_message'])
+
+    def test_interface_modify_adjust_ratelimit_invalid_type(self):
+        _, iface = self._create_ethernet('eth1',
+                                         ifclass=constants.INTERFACE_CLASS_PLATFORM)
+
+        uuid = iface['uuid']
+        response = self.patch_dict_json(
+            '%s' % self._get_path(uuid), iftype=constants.INTERFACE_TYPE_VIRTUAL,
+            max_rx_rate=30, max_tx_rate=30,
+            expect_errors=True)
+
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(http_client.BAD_REQUEST, response.status_code)
+        self.assertIn("max_tx_rate/max_rx_rate modification not allowed "
+                "for the provided interface class platform and interface type "
+                "virtual", response.json['error_message'])
+
+    def test_interface_modify_adjust_ethernet_ratelimit(self):
+        _, iface = self._create_ethernet('oam0', constants.NETWORK_TYPE_OAM,
+                        ifclass=constants.INTERFACE_CLASS_PLATFORM, host=self.controller)
+        uuid = iface['uuid']
+        response = self.patch_dict_json(
+            '%s' % self._get_path(uuid),
+            max_rx_rate=30, max_tx_rate=20,
+            expect_errors=False)
+
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(http_client.OK, response.status_code)
+        self.assertEqual(20, response.json['max_tx_rate'])
+        self.assertEqual(30, response.json['max_rx_rate'])
+
+    def test_interface_modify_clear_ethernet_ratelimit(self):
+        _, iface = self._create_ethernet('oam0', constants.NETWORK_TYPE_OAM,
+                        ifclass=constants.INTERFACE_CLASS_PLATFORM, host=self.controller)\
+
+        uuid = iface['uuid']
+        response = self.patch_dict_json(
+            '%s' % self._get_path(uuid),
+            max_rx_rate=0, max_tx_rate=0,
+            expect_errors=False)
+
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(http_client.OK, response.status_code)
+        self.assertEqual(0, response.json['max_tx_rate'])
+        self.assertEqual(0, response.json['max_rx_rate'])
+
+    def test_interface_modify_adjust_vlan_ratelimit_non_dc(self):
+        iface = self._create_vlan('mgmt', constants.NETWORK_TYPE_MGMT,
+                          constants.INTERFACE_CLASS_PLATFORM, 2)
+
+        uuid = iface['uuid']
+        response = self.patch_dict_json(
+            '%s' % self._get_path(uuid),
+            max_rx_rate=30, max_tx_rate=20,
+            expect_errors=True)
+
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(http_client.BAD_REQUEST, response.status_code)
+        self.assertIn("Rate limit for mgmt interfaces is only allowed for DC setups",
+                      response.json['error_message'])
+
+    def test_interface_modify_adjust_vlan_ratelimit_dc(self):
+        iface = self._create_vlan('mgmt', constants.NETWORK_TYPE_MGMT,
+                          constants.INTERFACE_CLASS_PLATFORM, 2)
+        self._set_dc_role(constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD)
+        uuid = iface['uuid']
+        response = self.patch_dict_json(
+            '%s' % self._get_path(uuid),
+            max_rx_rate=30, max_tx_rate=20,
+            expect_errors=False)
+
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(http_client.OK, response.status_code)
+        self.assertEqual(20, response.json['max_tx_rate'])
+        self.assertEqual(30, response.json['max_rx_rate'])
+
+    def test_interface_modify_adjust_vlan_ratelimit_cluster_host(self):
+        iface = self._create_vlan('cluster0', constants.NETWORK_TYPE_CLUSTER_HOST,
+                          constants.INTERFACE_CLASS_PLATFORM, 2)
+
+        uuid = iface['uuid']
+        response = self.patch_dict_json(
+            '%s' % self._get_path(uuid),
+            max_rx_rate=30, max_tx_rate=20,
+            expect_errors=True)
+
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(http_client.BAD_REQUEST, response.status_code)
+        self.assertIn("Rate limit is not allowed for internal network types",
+                      response.json['error_message'])
+
+    def test_interface_modify_adjust_ae_ratelimit(self):
+        bond0 = self._create_bond('bond0',
+                                  networktype=constants.NETWORK_TYPE_ADMIN,
+                                  ifclass=constants.INTERFACE_CLASS_PLATFORM,
+                                  host=self.worker,
+                                  aemode=constants.AE_MODE_ACTIVE_STANDBY)
+
+        uuid = bond0['uuid']
+        response = self.patch_dict_json(
+            '%s' % self._get_path(uuid),
+            max_rx_rate=30, max_tx_rate=20,
+            expect_errors=False)
+
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(http_client.OK, response.status_code)
+        self.assertEqual("ae", response.json['iftype'])
+        self.assertEqual(20, response.json['max_tx_rate'])
+        self.assertEqual(30, response.json['max_rx_rate'])
+
+    def test_interface_modify_ae_ratelimit_no_networktype(self):
+        bond0 = self._create_bond('bond0',
+                                  ifclass=constants.INTERFACE_CLASS_PLATFORM,
+                                  host=self.worker,
+                                  aemode=constants.AE_MODE_ACTIVE_STANDBY)
+
+        uuid = bond0['uuid']
+        response = self.patch_dict_json(
+            '%s' % self._get_path(uuid),
+            max_rx_rate=20, max_tx_rate=20,
+            expect_errors=True)
+
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(http_client.BAD_REQUEST, response.status_code)
+        self.assertIn("No network type for the interface bond0, cannot modify Rate limit",
+                      response.json['error_message'])
 
     def test_modify_sriov_restricted_port(self):
         pvendor = constants.PVENDOR_CAVIUM

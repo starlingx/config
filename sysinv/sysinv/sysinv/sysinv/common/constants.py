@@ -848,6 +848,11 @@ PLATFORM_NETWORK_TYPES = [NETWORK_TYPE_PXEBOOT,
                           NETWORK_TYPE_STORAGE,
                           NETWORK_TYPE_ADMIN]
 
+INTERNAL_NETWORK_TYPES = [NETWORK_TYPE_PXEBOOT,
+                          NETWORK_TYPE_CLUSTER_HOST,
+                          NETWORK_TYPE_CLUSTER_POD,
+                          NETWORK_TYPE_CLUSTER_SERVICE]
+
 PCI_NETWORK_TYPES = [NETWORK_TYPE_PCI_PASSTHROUGH,
                      NETWORK_TYPE_PCI_SRIOV]
 
@@ -910,6 +915,9 @@ LINK_SPEED_25G = 25000
 
 # VF rate limit
 VF_TOTAL_RATE_RATIO = 0.9
+
+# Platform interface rate limit
+PLATFORM_RATELIMIT_LOWER_CUTOFF = 0
 
 # DRBD engineering limits.
 # Link Util values are in Percentage.
