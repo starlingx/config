@@ -135,6 +135,10 @@
 # of default WARNING level). (boolean value)
 #debug=false
 
+# Print performance / execution time of functions with
+# @measure_execution_time decorator. (boolean value)
+#performance=false
+
 # Log output to standard error (boolean value)
 #use_stderr=true
 

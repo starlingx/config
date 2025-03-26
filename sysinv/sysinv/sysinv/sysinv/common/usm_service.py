@@ -15,6 +15,8 @@ from six.moves.urllib.error import URLError
 
 from sysinv.common import exception
 from sysinv.common import constants
+from sysinv.common.helper import measure_performance
+from sysinv.common.helper import ttl_cache
 from sysinv.common.rest_api import get_token
 from sysinv.common.rest_api import rest_api_request
 from sysinv.common.rest_api import rest_api_request_raise
@@ -128,6 +130,7 @@ def is_deploy_in_progress(region_name, timeout=10):
     return False
 
 
+@ttl_cache(cache_expiry=30)
 def get_software_upgrade(region_name, timeout=10):
     token = _get_token(region_name)
     endpoint = get_usm_endpoint(token)
@@ -187,6 +190,7 @@ def is_usm_authapi_ready():
     return os.path.exists(tsc.VOLATILE_CONTROLLER_CONFIG_COMPLETE)
 
 
+@measure_performance()
 def get_platform_upgrade(dbapi, timeout=10):
     """
     Get upgrade object from USM service.
