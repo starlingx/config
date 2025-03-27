@@ -2,7 +2,7 @@
 # -*- encoding: utf-8 -*-
 #
 #
-# Copyright (c) 2017-2024 Wind River Systems, Inc.
+# Copyright (c) 2017-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -1556,7 +1556,7 @@ class StorageCephRookTestCases(base.FunctionalTest):
     def test_post_and_confirm_modify_with_svc_with_params(self):
         vals = {
             'backend': constants.SB_TYPE_CEPH_ROOK,
-            'capabilities': {'test_bparam3': 'foo'},
+            'capabilities': {constants.CEPH_BACKEND_REPLICATION_CAP: '3'},
             'confirmed': True
         }
         default_services = f'{constants.SB_SVC_CEPH_ROOK_BLOCK},{constants.SB_SVC_CEPH_ROOK_FILESYSTEM}'
@@ -1569,7 +1569,8 @@ class StorageCephRookTestCases(base.FunctionalTest):
         patch_response = self.patch_dict_json('/storage_ceph_rook/%s' % response.json['uuid'],
                                               headers={'User-Agent': 'sysinv'},
                                               services='%s,%s' % (default_services, constants.SB_SVC_CEPH_ROOK_OBJECT),
-                                              capabilities=jsonutils.dumps({'test_sparam1': 'bar'}),
+                                              capabilities=jsonutils.dumps({
+                                                  constants.CEPH_BACKEND_REPLICATION_CAP: '2'}),
                                               expect_errors=False)
         self.assertEqual(http_client.OK, patch_response.status_int)
         self.assertIn(constants.SB_SVC_CEPH_ROOK_OBJECT,  # Expected
@@ -1578,9 +1579,8 @@ class StorageCephRookTestCases(base.FunctionalTest):
         self.assertEqual({constants.CEPH_ROOK_BACKEND_DEPLOYMENT_CAP: constants.CEPH_ROOK_DEPLOYMENT_CONTROLLER,
                           constants.CEPH_BACKEND_REPLICATION_CAP:
                             constants.CEPH_BACKEND_CAP_DEFAULT[constants.CEPH_BACKEND_REPLICATION_CAP],
-                          constants.CEPH_BACKEND_MIN_REPLICATION_CAP:
-                            constants.CEPH_BACKEND_CAP_DEFAULT[constants.CEPH_BACKEND_MIN_REPLICATION_CAP],
-                          'test_sparam1': 'bar'},  # Expected
+                          constants.CEPH_BACKEND_MIN_REPLICATION_CAP: '1',
+                          constants.CEPH_BACKEND_REPLICATION_CAP: '2'},  # Expected
                          self.get_json('/storage_ceph_rook/%s/' %
                                        response.json['uuid'])['capabilities'])  # Result
 
@@ -1626,30 +1626,7 @@ class StorageCephRookTestCases(base.FunctionalTest):
         self.assertEqual(http_client.BAD_REQUEST, patch_response.status_int)
         self.assertEqual('application/json', patch_response.content_type)
         self.assertTrue(patch_response.json['error_message'])
-        self.assertIn('Deployment_model invalid_deployment_model is not supported',
-                      patch_response.json['error_message'])
-
-    def test_post_and_confirm_modify_with_unsupported_deployment_model(self):
-        vals = {
-            'backend': constants.SB_TYPE_CEPH_ROOK,
-            'confirmed': True
-        }
-        response = self.post_json('/storage_ceph_rook', vals, expect_errors=False)
-        self.assertEqual(http_client.OK, response.status_int)
-        self.assertEqual(constants.SB_TYPE_CEPH_ROOK,  # Expected
-                         self.get_json('/storage_ceph_rook/%s/' %
-                                       response.json['uuid'])['backend'])  # Result
-
-        patch_response = self.patch_dict_json('/storage_ceph_rook/%s' % response.json['uuid'],
-                                              headers={'User-Agent': 'sysinv'},
-                                              capabilities=jsonutils.dumps({
-                                                  constants.CEPH_ROOK_BACKEND_DEPLOYMENT_CAP:
-                                                  constants.CEPH_ROOK_DEPLOYMENT_DEDICATED}),
-                                              expect_errors=True)
-        self.assertEqual(http_client.BAD_REQUEST, patch_response.status_int)
-        self.assertEqual('application/json', patch_response.content_type)
-        self.assertTrue(patch_response.json['error_message'])
-        self.assertIn('Change deployment model controller<->dedicated is not supported.',
+        self.assertIn('Deployment model invalid_deployment_model is not supported',
                       patch_response.json['error_message'])
 
     def test_post_and_list(self):
