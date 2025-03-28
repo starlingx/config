@@ -48,6 +48,7 @@ from sysinv._i18n import _
 from sysinv.api.controllers.v1 import kube_app
 from sysinv.common import app_metadata
 from sysinv.common import constants
+from sysinv.common import app_dependents
 from sysinv.common import exception
 from sysinv.common import kubernetes
 from sysinv.common.retrying import retry
@@ -2172,9 +2173,38 @@ class AppOperator(object):
                 self._utils._patch_report_app_dependencies(
                     app.name + '-' + app.version, app.patch_dependencies)
             self._create_app_releases_version(app.name, app.charts)
-            self._update_app_status(app, constants.APP_UPLOAD_SUCCESS,
-                                    constants.APP_PROGRESS_COMPLETED)
-            LOG.info("Application %s (%s) upload completed." % (app.name, app.version))
+
+            # Retrieve the application metadata from the metadata file
+            metadata_file = self.retrieve_application_metadata_from_file(app.sync_metadata_file)
+
+            # Check if the application has dependent apps missing
+            dependent_apps_missing_list = app_dependents.get_dependent_apps_missing(metadata_file, self._dbapi)
+
+            if dependent_apps_missing_list:
+                # Update the application status to APP_UPLOAD_SUCCESS with a message
+                # indicating that the application has dependent apps missing.
+                missing_apps = ', '.join(
+                    [f"{app['name']} (version: {app['version']})"
+                     for app in dependent_apps_missing_list]
+                )
+
+                LOG.warning(
+                    f"Application {app.name} ({app.version}) upload completed. "
+                    f"This app has dependent apps missing: {missing_apps}. "
+                    "Please install the missing apps first before starting the apply process."
+                )
+
+                # Merge the progress message with the dependent apps missing message
+                progress_msg = (
+                    f"{constants.APP_PROGRESS_COMPLETED} - "
+                    f"this app depends on the following missing apps: {missing_apps}"
+                )
+                self._update_app_status(app, constants.APP_UPLOAD_SUCCESS, progress_msg)
+            else:
+                self._update_app_status(app, constants.APP_UPLOAD_SUCCESS,
+                                        constants.APP_PROGRESS_COMPLETED)
+                LOG.info("Application %s (%s) upload completed." % (app.name, app.version))
+
             return app
         except exception.KubeAppUploadFailure as e:
             LOG.exception(e)
@@ -2524,6 +2554,9 @@ class AppOperator(object):
                          "".format(app_name))
 
                 # Recompute app reapply order
+                # TODO(dbarbosa): recompute_app_evaluation_order should now take into
+                # account the order present in "dependent_apps" and no longer the "after"
+                # key of behavior
                 AppOperator.recompute_app_evaluation_order(apps_metadata_dict)
 
             # Remember the desired state the app should achieve
@@ -2532,6 +2565,13 @@ class AppOperator(object):
                     constants.APP_METADATA_DESIRED_STATES][app_name] = desired_state
                 LOG.info("App {} requested to achieve {} state"
                          "".format(app_name, desired_state))
+
+        dependent_apps = metadata.get(constants.APP_METADATA_DEPENDENT_APPS, None)
+        if dependent_apps is not None:
+            apps_metadata_dict[constants.APP_METADATA_APPS][app_name][
+                constants.APP_METADATA_DEPENDENT_APPS] = dependent_apps
+            LOG.info("App {} has dependent apps: {}"
+                     "".format(app_name, dependent_apps))
 
     def load_application_metadata_from_database(self, rpc_app):
         """ Load the application metadata from the database
@@ -2718,8 +2758,35 @@ class AppOperator(object):
         LOG.info("Application %s (%s) apply started." % (app.name, app.version))
 
         ready = True
+
+        # Retrieve the application metadata from the metadata file
+        app_metadata = self.retrieve_application_metadata_from_file(app.sync_metadata_file)
+        # Check if the application has dependent apps missing
+        dependent_apps_missing_list = app_dependents.get_dependent_apps_missing(app_metadata, self._dbapi)
+
         try:
-            # Helm Applciation overrides must be generated first so that any
+            # Check if the application has dependent apps missing of action type 'APPLY'
+            dependent_apps_error_type = app_dependents.get_dependent_apps_by_action(
+                dependent_apps_missing_list, constants.APP_METADATA_DEPENDENT_APPS_ACTION_ERROR)
+
+            if dependent_apps_error_type:
+                # Update the application status to APP_APPLY_FAILURE with a message
+                # indicating that the application has dependent apps missing of
+                # action type 'error'.
+                progress_msg = (
+                    "This app depends on the following missing apps: "
+                    f"{dependent_apps_error_type}. Please install them and try to apply again."
+                )
+                self._update_app_status(
+                    app, constants.APP_APPLY_FAILURE, progress_msg
+                )
+                LOG.error(
+                    f"Application {app.name} ({app.version}) apply failed "
+                    f"with dependent apps missing: {dependent_apps_error_type}."
+                )
+                return False
+
+            # Helm Application overrides must be generated first so that any
             # helm overrides, such as enabling a chart will be added to the app
             # object.
             LOG.info("Generating application overrides...")
@@ -2813,14 +2880,37 @@ class AppOperator(object):
                     return True
 
                 if self._make_app_request(app, constants.APP_APPLY_OP, is_reapply_process, caller):
+                    # Check if the application has dependent apps missing of action type 'warn'
+                    dependent_apps_warn_type = app_dependents.get_dependent_apps_by_action(
+                        dependent_apps_missing_list,
+                        constants.APP_METADATA_DEPENDENT_APPS_ACTION_WARN
+                    )
+
+                    progress_msg = constants.APP_PROGRESS_COMPLETED
+                    if dependent_apps_warn_type:
+                        # Update the application status to APP_APPLY_SUCCESS with a message
+                        # indicating that the application has dependent apps missing of
+                        # action type 'warn'.
+                        progress_msg = (
+                            f"{constants.APP_PROGRESS_COMPLETED} - check /var/log/sysinv.log to "
+                            "verify missing dependencies."
+                        )
+
                     self._update_app_releases_version(app.name)
                     self._update_app_status(app,
                                             constants.APP_APPLY_SUCCESS,
-                                            constants.APP_PROGRESS_COMPLETED)
+                                            progress_msg)
                     app.update_active(True)
                     if not caller:
                         self._clear_app_alarm(app.name)
-                    LOG.info("Application %s (%s) apply completed." % (app.name, app.version))
+
+                    if dependent_apps_missing_list and dependent_apps_warn_type:
+                        LOG.warning(
+                            f"Application {app.name} ({app.version}) apply completed "
+                            f"with dependent apps missing: {dependent_apps_warn_type}."
+                        )
+                    else:
+                        LOG.info(f"Application {app.name} ({app.version}) apply completed.")
 
                     # Perform post apply manifest actions
                     lifecycle_hook_info_app_apply.relative_timing = \

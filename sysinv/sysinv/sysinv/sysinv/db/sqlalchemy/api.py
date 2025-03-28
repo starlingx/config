@@ -8490,6 +8490,13 @@ class Connection(api.Connection):
         return query.all()
 
     @db_objects.objectify(objects.kube_app)
+    def kube_app_get_all_by_status(self, status):
+        query = model_query(models.KubeApp)
+        query = query.filter(
+            models.KubeApp.status == status)
+        return query.all()
+
+    @db_objects.objectify(objects.kube_app)
     def kube_app_get(self, name):
         return self._kube_app_get(name)
 
