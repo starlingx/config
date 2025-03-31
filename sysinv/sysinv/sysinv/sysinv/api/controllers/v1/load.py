@@ -18,7 +18,6 @@
 # Copyright (c) 2015-2021 Wind River Systems, Inc.
 #
 
-import json
 
 import os
 import pecan
@@ -26,7 +25,6 @@ from pecan import rest
 import psutil
 import six
 import shutil
-import socket
 import wsme
 from wsme import types as wtypes
 import wsmeext.pecan as wsme_pecan
@@ -34,19 +32,14 @@ import wsmeext.pecan as wsme_pecan
 from eventlet.green import subprocess
 from oslo_log import log
 from pecan import expose
-from pecan import request
 from sysinv._i18n import _
 from sysinv.api.controllers.v1 import base
 from sysinv.api.controllers.v1 import collection
 from sysinv.api.controllers.v1 import link
 from sysinv.api.controllers.v1 import types
-from sysinv.api.controllers.v1 import utils
 from sysinv.common import constants
-from sysinv.common import exception
 from sysinv.common import utils as cutils
 from sysinv import objects
-from sysinv.openstack.common import rpc
-from sysinv.openstack.common.rpc import common
 
 LOG = log.getLogger(__name__)
 
@@ -154,29 +147,6 @@ class LoadController(rest.RestController):
     def __init__(self):
         self._api_token = None
 
-    def _get_loads_collection(self, marker, limit, sort_key, sort_dir,
-                              expand=False, resource_url=None):
-
-        limit = utils.validate_limit(limit)
-        sort_dir = utils.validate_sort_dir(sort_dir)
-
-        marker_obj = None
-        if marker:
-            marker_obj = objects.load.get_by_uuid(
-                pecan.request.context,
-                marker)
-
-        loads = pecan.request.dbapi.load_get_list(
-            limit, marker_obj,
-            sort_key=sort_key,
-            sort_dir=sort_dir)
-
-        return LoadCollection.convert_with_links(loads, limit,
-                                                 url=resource_url,
-                                                 expand=expand,
-                                                 sort_key=sort_key,
-                                                 sort_dir=sort_dir)
-
     @wsme_pecan.wsexpose(LoadCollection, types.uuid, int, wtypes.text,
                          wtypes.text)
     def get_all(self, marker=None, limit=None, sort_key='id', sort_dir='asc'):
@@ -204,45 +174,6 @@ class LoadController(rest.RestController):
         if load['state']:
             raise wsme.exc.ClientSideError(
                 _("Can not set state during create"))
-
-    @cutils.synchronized(LOCK_NAME)
-    @wsme_pecan.wsexpose(Load, body=Load)
-    def post(self, load):
-        """Create a new Load."""
-        # This method is only used to populate the inital load for the system
-        # This is invoked during config_controller
-        # Loads after the first are added via import
-        # TODO(ShawnLi): This will be removed when we remove the Load table
-        loads = pecan.request.dbapi.load_get_list()
-
-        if loads:
-            raise wsme.exc.ClientSideError(_("Aborting. Active load exits."))
-
-        patch = load.as_dict()
-        self._new_load_semantic_checks(patch)
-        patch['state'] = constants.ACTIVE_LOAD_STATE
-
-        try:
-            new_load = pecan.request.dbapi.load_create(patch)
-
-            # Controller-0 is added to the database before we add this load
-            # so we must add a host_upgrade entry for (at least) controller-0
-            hosts = pecan.request.dbapi.ihost_get_list()
-
-            for host in hosts:
-                values = dict()
-                values['forihostid'] = host.id
-                values['software_load'] = new_load.id
-                values['target_load'] = new_load.id
-                pecan.request.dbapi.host_upgrade_create(host.id,
-                                                        new_load.software_version,
-                                                        values)
-
-        except exception.SysinvException as e:
-            LOG.exception(e)
-            raise wsme.exc.ClientSideError(_("Invalid data"))
-
-        return load.convert_with_links(new_load)
 
     @staticmethod
     def _upload_file(file_item):
@@ -304,121 +235,7 @@ class LoadController(rest.RestController):
         raise NotImplementedError("This API is deprecated.")
 
     def _import_load(self):
-        """Create a new load from iso/sig files"""
-
-        LOG.info("Load import request received.")
-
-        # Only import loads on controller-0. This is required because the load
-        # is only installed locally and we will be booting controller-1 from
-        # this load during the upgrade.
-        if socket.gethostname() != constants.CONTROLLER_0_HOSTNAME:
-            raise wsme.exc.ClientSideError(_("A load can only be imported when"
-                                             " %s is active.")
-                                             % constants.CONTROLLER_0_HOSTNAME)
-
-        req_content = dict()
-        load_files = dict()
-        is_multiform_req = True
-        import_type = None
-
-        # Request coming from dc-api-proxy is not multiform, file transfer is handled
-        # by dc-api-proxy, the request contains only the vault file location
-        if request.content_type == "application/json":
-            req_content = dict(json.loads(request.body))
-            is_multiform_req = False
-        else:
-            req_content = dict(request.POST.items())
-
-        if not req_content:
-            raise wsme.exc.ClientSideError(_("Empty request."))
-
-        active = req_content.get('active')
-        inactive = req_content.get('inactive')
-
-        if active == 'true' and inactive == 'true':
-            raise wsme.exc.ClientSideError(_("Invalid use of --active and"
-                                             " --inactive arguments at"
-                                             " the same time."))
-
-        if active == 'true' or inactive == 'true':
-            isystem = pecan.request.dbapi.isystem_get_one()
-
-            if isystem.distributed_cloud_role == \
-                    constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
-                LOG.info("System Controller allow start import_load")
-
-                if active == 'true':
-                    import_type = constants.ACTIVE_LOAD_IMPORT
-                elif inactive == 'true':
-                    import_type = constants.INACTIVE_LOAD_IMPORT
-
-        self._check_existing_loads(import_type=import_type)
-
-        try:
-            for file in constants.IMPORT_LOAD_FILES:
-                if file not in req_content:
-                    raise wsme.exc.ClientSideError(_("Missing required file for %s")
-                                                % file)
-
-                if not is_multiform_req:
-                    load_files.update({file: req_content[file]})
-                else:
-                    if file not in request.POST:
-                        raise wsme.exc.ClientSideError(_("Missing required file for %s")
-                                                        % file)
-
-                    file_item = request.POST[file]
-                    if not file_item.filename:
-                        raise wsme.exc.ClientSideError(_("No %s file uploaded") % file)
-
-                    file_location = self._upload_file(file_item)
-                    if file_location:
-                        load_files.update({file: file_location})
-        except subprocess.CalledProcessError as ex:
-            raise wsme.exc.ClientSideError(str(ex))
-        except Exception as ex:
-            raise wsme.exc.ClientSideError(_("Failed to save file %s to disk. Error: %s"
-                                             " Please check sysinv logs for"
-                                             " details." % (file_item.filename, str(ex))))
-
-        LOG.info("Load files: %s saved to disk." % load_files)
-
-        exception_occured = False
-        try:
-            new_load = pecan.request.rpcapi.start_import_load(
-                pecan.request.context,
-                load_files[constants.LOAD_ISO],
-                load_files[constants.LOAD_SIGNATURE],
-                import_type,
-            )
-
-            if new_load is None:
-                raise wsme.exc.ClientSideError(_("Error importing load. Load not found"))
-
-            if import_type != constants.ACTIVE_LOAD_IMPORT:
-                # Signature and upgrade path checks have passed, make rpc call
-                # to the conductor to run import script in the background.
-                pecan.request.rpcapi.import_load(
-                    pecan.request.context,
-                    load_files[constants.LOAD_ISO],
-                    new_load,
-                    import_type,
-                )
-        except (rpc.common.Timeout, common.RemoteError) as e:
-            exception_occured = True
-            error = e.value if hasattr(e, 'value') else str(e)
-            raise wsme.exc.ClientSideError(error)
-        except Exception:
-            exception_occured = True
-            raise
-        finally:
-            if exception_occured and os.path.isdir(constants.LOAD_FILES_STAGING_DIR):
-                shutil.rmtree(constants.LOAD_FILES_STAGING_DIR)
-
-        load_data = new_load.as_dict()
-        LOG.info("Load import request validated, returning new load data: %s"
-                 % load_data)
-        return load_data
+        raise NotImplementedError("This API is deprecated.")
 
     @cutils.synchronized(LOCK_NAME)
     @wsme_pecan.wsexpose(Load, body=Load)
@@ -426,51 +243,6 @@ class LoadController(rest.RestController):
         """Import a new load using only the metadata. Only available to SX subcoulds."""
 
         raise NotImplementedError("This API is deprecated.")
-
-    def _check_existing_loads(self, import_type=None):
-        # Only are allowed at one time:
-        # - the active load
-        # - an imported load regardless of its current state
-        # - an inactive load.
-
-        loads = pecan.request.dbapi.load_get_list()
-
-        if len(loads) <= constants.IMPORTED_LOAD_MAX_COUNT:
-            return
-
-        for load in loads:
-            if load.state == constants.ACTIVE_LOAD_STATE:
-                continue
-
-            load_state = load.state
-
-            if load_state == constants.ERROR_LOAD_STATE:
-                err_msg = _("Please remove the load in error state "
-                            "before importing a new one.")
-
-            elif load_state == constants.DELETING_LOAD_STATE:
-                err_msg = _("Please wait for the current load delete "
-                            "to complete before importing a new one.")
-
-            elif load_state == constants.INACTIVE_LOAD_STATE:
-                if import_type != constants.INACTIVE_LOAD_IMPORT:
-                    continue
-
-                err_msg = _("An inactived load already exists. "
-                        "Please, remove the inactive load "
-                        "before trying to import a new one.")
-
-            elif import_type == constants.ACTIVE_LOAD_IMPORT or \
-                    import_type == constants.INACTIVE_LOAD_IMPORT:
-                continue
-
-            elif not err_msg:
-                # Already imported or being imported
-                err_msg = _("Max number of loads (2) reached. Please "
-                            "remove the old or unused load before "
-                            "importing a new one.")
-
-            raise wsme.exc.ClientSideError(err_msg)
 
     @cutils.synchronized(LOCK_NAME)
     @wsme.validate(six.text_type, [LoadPatchType])

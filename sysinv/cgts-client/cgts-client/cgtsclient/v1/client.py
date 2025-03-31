@@ -65,7 +65,6 @@ from cgtsclient.v1 import label
 from cgtsclient.v1 import license
 from cgtsclient.v1 import lldp_agent
 from cgtsclient.v1 import lldp_neighbour
-from cgtsclient.v1 import load
 from cgtsclient.v1 import network
 from cgtsclient.v1 import network_addrpool
 from cgtsclient.v1 import partition
@@ -145,7 +144,6 @@ class Client(object):
         self.isensor = isensor.isensorManager(self.http_client)
         self.isensorgroup = isensorgroup.isensorgroupManager(self.http_client)
         self.pci_device = pci_device.PciDeviceManager(self.http_client)
-        self.load = load.LoadManager(self.http_client)
         self.upgrade = upgrade.UpgradeManager(self.http_client)
         self.network = network.NetworkManager(self.http_client)
         self.network_addrpool = network_addrpool.NetworkAddrPoolManager(self.http_client)

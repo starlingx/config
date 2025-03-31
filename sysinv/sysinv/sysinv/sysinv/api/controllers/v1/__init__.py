@@ -55,7 +55,6 @@ from sysinv.api.controllers.v1 import interface_network
 from sysinv.api.controllers.v1 import link
 from sysinv.api.controllers.v1 import lldp_agent
 from sysinv.api.controllers.v1 import lldp_neighbour
-from sysinv.api.controllers.v1 import load
 from sysinv.api.controllers.v1 import lvg
 from sysinv.api.controllers.v1 import license
 from sysinv.api.controllers.v1 import memory
@@ -656,12 +655,6 @@ class V1(base.APIBase):
                                                 bookmark=True)
                             ]
 
-        v1.loads = [link.Link.make_link('self', pecan.request.host_url,
-                                        'loads', ''),
-                    link.Link.make_link('bookmark', pecan.request.host_url,
-                                        'loads', '', bookmark=True)
-                    ]
-
         v1.pci_devices = [link.Link.make_link('self',
                                               pecan.request.host_url,
                                               'pci_devices', ''),
@@ -1003,7 +996,6 @@ class Controller(rest.RestController):
     certificate = certificate.CertificateController()
     isensors = sensor.SensorController()
     isensorgroups = sensorgroup.SensorGroupController()
-    loads = load.LoadController()
     pci_devices = pci_device.PCIDeviceController()
     upgrade = upgrade.UpgradeController()
     networks = network.NetworkController()

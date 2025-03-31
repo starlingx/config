@@ -26,7 +26,6 @@ class TestUSMService(TestCase):
                 "2.0")
         mock_get_software_upgrade.return_value = usm_deploy
         mock_dbapi = mock.Mock()
-        mock_dbapi.software_upgrade_get_one.return_value = None
 
         result = get_platform_upgrade(mock_dbapi)
 

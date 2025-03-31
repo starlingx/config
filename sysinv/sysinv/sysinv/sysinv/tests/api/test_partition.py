@@ -82,7 +82,6 @@ class TestPartition(base.FunctionalTest):
                           "sdn_enabled": False,
                           "shared_services": "[]"}
         )
-        self.load = dbutils.create_test_load()
         # Create controller-0
         self.ihost = self._create_controller_0()
         self.disk = self._create_disk(self.ihost.id)

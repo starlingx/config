@@ -38,7 +38,6 @@ class InterfaceDataNetworkTestCase(base.FunctionalTest):
         self.addCleanup(p.stop)
 
         self.system = dbutils.create_test_isystem()
-        self.load = dbutils.create_test_load()
         self.controller = dbutils.create_test_ihost(
             id='1',
             uuid=None,

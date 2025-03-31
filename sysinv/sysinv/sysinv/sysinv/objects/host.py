@@ -13,16 +13,6 @@ from sysinv.objects import base
 from sysinv.objects import utils
 
 
-def _get_software_load(field, db_object):
-    if db_object.host_upgrade:
-        return db_object.host_upgrade.load_software.software_version
-
-
-def _get_target_load(field, db_object):
-    if db_object.host_upgrade:
-        return db_object.host_upgrade.load_target.software_version
-
-
 def _get_ptp_instance_names(field, db_object):
     instances = db_object['ptp_instances']
     names = []
@@ -103,8 +93,6 @@ class Host(base.SysinvObject):
             'tboot': utils.str_or_none,
             'vsc_controllers': utils.str_or_none,
             'ttys_dcd': utils.bool_or_none,
-            'software_load': utils.str_or_none,
-            'target_load': utils.str_or_none,
             'install_state': utils.str_or_none,
             'install_state_info': utils.str_or_none,
             'iscsi_initiator_name': utils.str_or_none,
@@ -119,9 +107,7 @@ class Host(base.SysinvObject):
              }
 
     _foreign_fields = {
-        'isystem_uuid': 'system:uuid',
-        'software_load': _get_software_load,
-        'target_load': _get_target_load
+        'isystem_uuid': 'system:uuid'
     }
 
     _optional_fields = {

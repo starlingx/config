@@ -397,7 +397,7 @@ class PlatformPuppet(base.BasePuppet):
         # required parameters
         config = {
             'platform::params::hostname': host.hostname,
-            'platform::params::software_version': self.quoted_str(host.software_load),
+            'platform::params::software_version': self.quoted_str(host.sw_version),
             'platform::params::apparmor': host.apparmor,
         }
 

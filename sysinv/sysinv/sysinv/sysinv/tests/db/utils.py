@@ -245,50 +245,6 @@ def update_test_isystem(system_dict):
     return dbapi.isystem_update(system_dict['uuid'], system_dict)
 
 
-def get_test_load(**kw):
-    load = {
-        "software_version": kw.get("software_version", SW_VERSION),
-        "compatible_version": kw.get("compatible_version", "N/A"),
-        "required_patches": "N/A",
-        "state": kw.get("state", constants.ACTIVE_LOAD_STATE),
-    }
-    return load
-
-
-def create_test_load(**kw):
-    load = get_test_load(**kw)
-    dbapi = db_api.get_instance()
-    return dbapi.load_create(load)
-
-
-def get_test_load_values(**kw):
-    values = {}
-
-    for key, value in kw.items():
-        values[key] = value
-
-    return values
-
-
-def update_test_load(load_id, **kw):
-    values = get_test_load_values(**kw)
-    dbapi = db_api.get_instance()
-    return dbapi.load_update(load_id, values)
-
-
-def get_test_upgrade(**kw):
-    upgrade = {'from_load': kw.get('from_load', 1),
-               'to_load': kw.get('to_load', 2),
-               'state': kw.get('state', constants.UPGRADE_STARTING)}
-    return upgrade
-
-
-def create_test_upgrade(**kw):
-    upgrade = get_test_upgrade(**kw)
-    dbapi = db_api.get_instance()
-    return dbapi.software_upgrade_create(upgrade)
-
-
 def post_get_test_kube_upgrade(**kw):
     upgrade = get_test_kube_upgrade(**kw)
     del upgrade['id']

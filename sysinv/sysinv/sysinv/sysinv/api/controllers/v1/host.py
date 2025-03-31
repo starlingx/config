@@ -41,7 +41,6 @@ import wsmeext.pecan as wsme_pecan
 
 from wsme import types as wtypes
 from fm_api import constants as fm_constants
-from fm_api import fm_api
 from pecan import expose
 from pecan import rest
 
@@ -551,12 +550,6 @@ class Host(base.APIBase):
     apparmor = wtypes.text
     "Enable/Disable apparmor state"
 
-    software_load = wtypes.text
-    "The current load software version"
-
-    target_load = wtypes.text
-    "The target load software version"
-
     install_state = wtypes.text
     "Represent the install state"
 
@@ -615,7 +608,7 @@ class Host(base.APIBase):
                           'created_at', 'updated_at', 'boot_device',
                           'rootfs_device', 'hw_settle', 'install_output',
                           'console', 'tboot', 'vsc_controllers', 'ttys_dcd',
-                          'software_load', 'target_load', 'peers', 'peer_id',
+                          'peers', 'peer_id',
                           'install_state', 'install_state_info',
                           'iscsi_initiator_name', 'device_image_update',
                           'reboot_needed', 'inv_state', 'clock_synchronization',
@@ -2829,16 +2822,11 @@ class HostController(rest.RestController):
         except exception.NotFound:
             return
 
-        loads = pecan.request.dbapi.load_get_list()
-        target_load = cutils.get_imported_load(loads)
-
         if personality == constants.STORAGE:
             if hostname == constants.STORAGE_0_HOSTNAME:
                 LOG.warn("Allow storage-0 add during upgrade")
             else:
                 LOG.info("Adding storage, ensure controllers upgraded")
-                self._check_personality_load(constants.CONTROLLER,
-                                             target_load)
 
     @cutils.synchronized(LOCK_NAME)
     @wsme_pecan.wsexpose(Host, six.text_type, body=six.text_type)
@@ -2867,19 +2855,6 @@ class HostController(rest.RestController):
                 raise wsme.exc.ClientSideError(
                     _("All worker and storage hosts not running a Ceph monitor "
                       "must be locked and offline before this operation can proceed"))
-
-    # TODO(heitormatsui): used only by legacy upgrade endpoint, remove
-    def _check_personality_load(self, personality, load):
-        hosts = pecan.request.dbapi.ihost_get_by_personality(personality)
-        for host in hosts:
-            host_upgrade = objects.host_upgrade.get_by_host_id(
-                pecan.request.context, host.id)
-            if host_upgrade.target_load != load.id or \
-                    host_upgrade.software_load != load.id:
-                raise wsme.exc.ClientSideError(
-                    _("All %s hosts must be using load %s before this "
-                      "operation can proceed")
-                    % (personality, load.software_version))
 
     def _check_max_cpu_mhz_configured(self, host):
         cpu_utils.check_power_manager(host.ihost_patch.get('uuid'))
@@ -2922,105 +2897,6 @@ class HostController(rest.RestController):
         else:
             raise wsme.exc.ClientSideError(
                 _("Host does not support configuration of Max CPU Frequency."))
-
-    # TODO(heitormatsui): used only by legacy upgrade endpoint, remove
-    def _check_host_load(self, hostname, load):
-        host = pecan.request.dbapi.ihost_get_by_hostname(hostname)
-        host_upgrade = objects.host_upgrade.get_by_host_id(
-            pecan.request.context, host.id)
-        if host_upgrade.target_load != load.id or \
-                host_upgrade.software_load != load.id:
-            raise wsme.exc.ClientSideError(
-                _("%s must be using load %s before this operation can proceed")
-                % (hostname, load.software_version))
-
-    # TODO(heitormatsui): used only by legacy upgrade endpoint, remove
-    def _check_storage_downgrade(self, load):
-        hosts = pecan.request.dbapi.ihost_get_by_personality(constants.STORAGE)
-        # Ensure all storage nodes are downgraded before storage-0
-        for host in hosts:
-            if host.hostname != constants.STORAGE_0_HOSTNAME:
-                host_upgrade = objects.host_upgrade.get_by_host_id(
-                    pecan.request.context, host.id)
-                if host_upgrade.target_load != load.id or \
-                        host_upgrade.software_load != load.id:
-                    raise wsme.exc.ClientSideError(
-                        _("All other %s hosts must be using load %s before "
-                          "this operation can proceed")
-                        % (constants.STORAGE, load.software_version))
-
-    # TODO(heitormatsui): used only by legacy upgrade endpoint, remove
-    def _update_load(self, uuid, body, new_target_load):
-        force = body.get('force', False) is True
-
-        rpc_ihost = objects.host.get_by_uuid(pecan.request.context, uuid)
-
-        host_upgrade = objects.host_upgrade.get_by_host_id(
-            pecan.request.context, rpc_ihost.id)
-
-        if host_upgrade.target_load == new_target_load.id:
-            raise wsme.exc.ClientSideError(
-                _("%s already targeted to install load %s") %
-                (rpc_ihost.hostname, new_target_load.software_version))
-
-        if rpc_ihost.administrative != constants.ADMIN_LOCKED:
-            raise wsme.exc.ClientSideError(
-                _("The host must be locked before performing this operation"))
-        elif rpc_ihost.invprovision not in [constants.UPGRADING, constants.PROVISIONED]:
-            raise wsme.exc.ClientSideError(_("The host must be provisioned "
-                                             "before performing this operation"))
-        elif not force and rpc_ihost.availability != "online":
-            raise wsme.exc.ClientSideError(
-                _("The host must be online to perform this operation"))
-
-        if rpc_ihost.personality == constants.STORAGE:
-            istors = pecan.request.dbapi.istor_get_by_ihost(rpc_ihost.id)
-            for stor in istors:
-                istor_obj = objects.storage.get_by_uuid(pecan.request.context,
-                                                        stor.uuid)
-                self._ceph.remove_osd_key(istor_obj['osdid'])
-        if utils.get_system_mode() != constants.SYSTEM_MODE_SIMPLEX:
-            pecan.request.rpcapi.upgrade_ihost(pecan.request.context,
-                                               rpc_ihost,
-                                               new_target_load)
-        host_upgrade.target_load = new_target_load.id
-        host_upgrade.save()
-
-        # There may be alarms, clear them
-        entity_instance_id = "%s=%s" % (fm_constants.FM_ENTITY_TYPE_HOST,
-                                        rpc_ihost.hostname)
-
-        fm_api_obj = fm_api.FaultAPIs()
-        fm_api_obj.clear_fault(
-            fm_constants.FM_ALARM_ID_HOST_VERSION_MISMATCH,
-            entity_instance_id)
-
-        pecan.request.dbapi.ihost_update(
-            rpc_ihost.uuid, {'inv_state': constants.INV_STATE_REINSTALLING})
-
-        if rpc_ihost.availability == "online":
-            new_ihost_mtc = rpc_ihost.as_dict()
-            new_ihost_mtc.update({'operation': 'modify'})
-            new_ihost_mtc.update({'action': constants.REINSTALL_ACTION})
-            new_ihost_mtc = cutils.removekeys_nonmtce(new_ihost_mtc)
-            new_ihost_mtc['mgmt_ip'] = utils.get_mgmt_ip(rpc_ihost.hostname)
-
-            mtc_response = mtce_api.host_modify(
-                self._api_token, self._mtc_address, self._mtc_port,
-                new_ihost_mtc, constants.MTC_ADD_TIMEOUT_IN_SECS)
-
-            if mtc_response is None:
-                mtc_response = {'status': 'fail',
-                                'reason': 'no response',
-                                'action': 'retry'}
-
-            if mtc_response['status'] != 'pass':
-                # Report mtc error
-                raise wsme.exc.ClientSideError(_("Maintenance has returned with "
-                                                 "a status of %s, reason: %s, recommended action: %s") % (
-                                               mtc_response.get('status'),
-                                               mtc_response.get('reason'),
-                                               mtc_response.get('action')))
 
     @staticmethod
     def _validate_ip_in_mgmt_network(ip):

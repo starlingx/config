@@ -378,10 +378,6 @@ class TestPostKubeUpgrade(TestKubeUpgrade,
                                 "0.0",
                                 "0.0")
         mock_get_platform_upgrade.return_value = usm_deploy
-        dbutils.create_test_load(software_version=dbutils.SW_VERSION_NEW,
-                                 compatible_version=dbutils.SW_VERSION,
-                                 state=constants.IMPORTED_LOAD_STATE)
-        dbutils.create_test_upgrade()
 
         create_dict = dbutils.post_get_test_kube_upgrade(to_version='v1.43.2')
         result = self.post_json('/kube_upgrade', create_dict,

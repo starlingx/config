@@ -21,11 +21,9 @@ from sysinv.api.controllers.v1 import base
 from sysinv.api.controllers.v1 import collection
 from sysinv.api.controllers.v1 import link
 from sysinv.api.controllers.v1 import types
-from sysinv.api.controllers.v1 import utils
 from sysinv.common import exception
 from sysinv.common import utils as cutils
 from sysinv.common import constants
-from sysinv import objects
 
 LOG = log.getLogger(__name__)
 
@@ -69,7 +67,7 @@ class Upgrade(base.APIBase):
     "The load version that software upgrading to"
 
     def __init__(self, **kwargs):
-        self.fields = list(objects.software_upgrade.fields.keys())
+        self.fields = list()
         for k in self.fields:
             if not hasattr(self, k):
                 continue
@@ -127,24 +125,6 @@ class UpgradeController(rest.RestController):
 
     def __init__(self, parent=None, **kwargs):
         self._parent = parent
-
-    def _get_upgrade_collection(self, marker=None, limit=None,
-                                sort_key=None, sort_dir=None,
-                                expand=False, resource_url=None):
-        limit = utils.validate_limit(limit)
-        sort_dir = utils.validate_sort_dir(sort_dir)
-        marker_obj = None
-        if marker:
-            marker_obj = objects.software_upgrade.get_by_uuid(
-                pecan.request.context, marker)
-
-        upgrades = pecan.request.dbapi.software_upgrade_get_list(
-                limit=limit, marker=marker_obj,
-                sort_key=sort_key, sort_dir=sort_dir)
-
-        return UpgradeCollection.convert_with_links(
-            upgrades, limit, url=resource_url, expand=expand,
-            sort_key=sort_key, sort_dir=sort_dir)
 
     @staticmethod
     def check_restore_in_progress():

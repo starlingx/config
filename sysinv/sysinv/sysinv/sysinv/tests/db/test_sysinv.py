@@ -23,7 +23,6 @@ class DbNodeTestCase(base.DbTestCase):
         super(DbNodeTestCase, self).setUp()
         self.dbapi = dbapi.get_instance()
         self.system = utils.create_test_isystem()
-        self.load = utils.create_test_load()
 
     def _create_test_ihost(self, **kwargs):
         # ensure the system ID for proper association
