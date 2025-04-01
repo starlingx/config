@@ -221,6 +221,7 @@ class SssdPuppet(base.BasePuppet):
             'ldap_uri': ldap_uri,
             'ldap_tls_cacert': '/etc/ssl/certs/ca-certificates.crt',
             'fallback_homedir': '/home/%u',
+            'timeout': '20',
         }
 
         # bind to 'CN=ldapadmin,DC=cgcs,DC=local' using password if
@@ -259,6 +260,7 @@ class SssdPuppet(base.BasePuppet):
             'fallback_homedir': '/home/%d/%u',
             'use_fully_qualified_names': 'true',
             'ldap_tls_cacert': '/etc/ssl/certs/ca-certificates.crt',
+            'timeout': '20',
         }
 
         # add mandatory parameters
