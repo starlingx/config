@@ -8,7 +8,7 @@
 # Needs to run at the end of the upgrade activation, to reduce the
 # stabilization time after upgrade is concluded (less reconfigurations).
 
-import logging as LOG
+import logging
 import socket
 import sys
 from time import sleep
@@ -18,6 +18,9 @@ from oslo_context import context as mycontext
 from six.moves import configparser
 from sysinv.conductor import rpcapiproxy as conductor_rpcapi
 
+from controllerconfig.common.usm_log import configure_logging
+
+LOG = logging.getLogger('main_logger')
 CONF = cfg.CONF
 SYSINV_CONFIG_FILE = '/etc/sysinv/sysinv.conf'
 
@@ -55,10 +58,7 @@ def main():
             return 1
         arg += 1
 
-    log_format = ('%(asctime)s: ' + '[%(process)s]: '
-                  '%(filename)s(%(lineno)s): %(levelname)s: %(message)s')
-    LOG.basicConfig(filename="/var/log/software.log",
-                    format=log_format, level=LOG.INFO, datefmt="%FT%T")
+    configure_logging()
 
     # Activate
     if action == 'activate':

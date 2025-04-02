@@ -1,9 +1,10 @@
 #!/usr/bin/env python
-# Copyright (c) 2024 Wind River Systems, Inc.
+# Copyright (c) 2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
-import logging as LOG
+
+import logging
 from oslo_config import cfg
 import os
 from six.moves import configparser
@@ -11,8 +12,11 @@ import sys
 import subprocess
 
 from cgtsclient import client as cgts_client
+from controllerconfig.common.usm_log import configure_logging
 
 CONF = cfg.CONF
+
+LOG = logging.getLogger('main_logger')
 
 
 class CgtsClient(object):
@@ -54,10 +58,7 @@ def main():
             return 1
         arg += 1
 
-    log_format = ('%(asctime)s: ' + '[%(process)s]: '
-                  '%(filename)s(%(lineno)s): %(levelname)s: %(message)s')
-    LOG.basicConfig(filename="/var/log/software.log",
-                    format=log_format, level=LOG.INFO, datefmt="%FT%T")
+    configure_logging()
     LOG.info("%s invoked from_release = %s to_release = %s action = %s"
              % (sys.argv[0], from_release, to_release, action))
     res = 0

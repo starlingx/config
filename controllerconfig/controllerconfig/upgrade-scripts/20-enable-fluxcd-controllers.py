@@ -1,5 +1,5 @@
 #!/usr/bin/python
-# Copyright (c) 2022-2024 Wind River Systems, Inc.
+# Copyright (c) 2022-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -7,13 +7,18 @@
 # in kubernetes
 #
 # This script can be removed in the release that follows stx7
-import logging as LOG
+
+import logging
 import subprocess
 import sys
 
 from sysinv.common import exception
 from sysinv.common.retrying import retry
 from sysinv.common.kubernetes import test_k8s_health
+
+from controllerconfig.common.usm_log import configure_logging
+
+LOG = logging.getLogger('main_logger')
 
 
 def main():
@@ -35,10 +40,7 @@ def main():
             print("Invalid option %s." % sys.argv[arg])
             return 1
         arg += 1
-    log_format = ('%(asctime)s: ' + '[%(process)s]: '
-                  '%(filename)s(%(lineno)s): %(levelname)s: %(message)s')
-    LOG.basicConfig(filename="/var/log/software.log",
-                    format=log_format, level=LOG.INFO, datefmt="%FT%T")
+    configure_logging()
 
     if action == 'activate' and from_release >= '21.12':
         LOG.info("%s invoked with from_release = %s to_release = %s "
