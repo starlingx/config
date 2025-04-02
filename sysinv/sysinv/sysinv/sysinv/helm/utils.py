@@ -341,14 +341,14 @@ def index_repo(repo_path):
         timer.start()
         _, err = process.communicate()
 
-        if process.returncode == 0 and err:
+        if process.returncode is None or (process.returncode < 0 and not err):
+            err_msg = "Timeout while indexing repository {}".format(repo_path)
+            raise exception.HelmFailure(reason=err_msg)
+        elif process.returncode == 0 and err:
             LOG.warning("Command: %s; %s" % (' '.join(helm_cmd), err))
         elif err:
             LOG.error("Failed to index repository {}".format(repo_path))
             raise exception.HelmFailure(reason=err)
-        else:
-            err_msg = "Timeout while indexing repository {}".format(repo_path)
-            raise exception.HelmFailure(reason=err_msg)
     except Exception as e:
         err_msg = "Failed to execute Helm command: {}".format(e)
         LOG.error(err_msg)
