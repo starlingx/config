@@ -902,7 +902,7 @@ class ConductorManager(service.PeriodicService):
          'value': constants.SERVICE_PARAM_PLATFORM_SCTP_AUTOLOAD_ENABLED,
          },
         {'service': constants.SERVICE_TYPE_PLATFORM,
-         'section': constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG,
+         'section': constants.SERVICE_PARAM_SECTION_PLATFORM_CLIENT,
          'name': constants.SERVICE_PARAM_NAME_PLATFORM_CLI_CONFIRMATIONS,
          'value': constants.SERVICE_PARAM_DISABLED,
          },
@@ -12575,11 +12575,19 @@ class ConductorManager(service.PeriodicService):
                 }
 
                 self._config_apply_runtime_manifest(context, config_uuid, config_dict)
-            elif section == constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG and \
+            elif section == constants.SERVICE_PARAM_SECTION_PLATFORM_CLIENT and \
                     name == constants.SERVICE_PARAM_NAME_PLATFORM_CLI_CONFIRMATIONS:
-                # Do nothing. Does not need to update target config of any hosts
-                personalities = None
+                personalities = [constants.CONTROLLER,
+                                 constants.WORKER,
+                                 constants.STORAGE]
                 reboot = False
+                config_uuid = self._config_update_hosts(context, personalities, reboot=reboot)
+                config_dict = {
+                    'personalities': personalities,
+                    "classes": ['platform::client::cliconfirmations::runtime']
+                }
+                self._config_apply_runtime_manifest(context, config_uuid,
+                       config_dict)
 
         elif service == constants.SERVICE_TYPE_IDENTITY:
             remote_ldap_domains = [constants.SERVICE_PARAM_SECTION_IDENTITY_LDAP_DOMAIN1,
