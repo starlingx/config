@@ -9859,13 +9859,14 @@ class ConductorManager(service.PeriodicService):
                             'platform::sm::update_oam_config::runtime',
                             'platform::nfv::webserver::runtime',
                             'platform::haproxy::runtime',
-                            'platform::dns',
                             'platform::ntp::server',
                             'platform::dockerdistribution::config',
                             'platform::dockerdistribution::runtime'],
                 puppet_common.REPORT_STATUS_CFG:
                     puppet_common.REPORT_OPENSTACK_ENDPOINTS_CONFIG_REQUESTED
             }
+            if not os.path.isfile(tsc.MGMT_NETWORK_RECONFIGURATION_ONGOING):
+                config_dict["classes"].append('platform::dns')
         else:
             # update kube-apiserver cert's SANs at runtime
             config_dict = {
@@ -9876,7 +9877,9 @@ class ConductorManager(service.PeriodicService):
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
         # there is still pending reboot required config to apply if not AIO-SX
-        if not is_aio_simplex_system:
+        # If mgmt reconfig is in progress, set reboot required for this config.
+        if not is_aio_simplex_system or \
+                os.path.isfile(tsc.MGMT_NETWORK_RECONFIGURATION_ONGOING):
             self._config_update_hosts(context, [constants.CONTROLLER], reboot=True)
 
         extoam = self.dbapi.iextoam_get_one()
