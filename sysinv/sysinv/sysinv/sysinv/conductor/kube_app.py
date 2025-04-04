@@ -1987,11 +1987,21 @@ class AppOperator(object):
 
             lifecycle_hook_info_app_recover.lifecycle_type = \
                 LifecycleConstants.APP_LIFECYCLE_TYPE_RBD
-            self.app_lifecycle_actions(None, None, rpc_app, lifecycle_hook_info_app_recover)
+            self.app_lifecycle_actions(
+                None,
+                None,
+                old_app._kube_app,
+                lifecycle_hook_info_app_recover
+            )
 
             lifecycle_hook_info_app_recover.lifecycle_type = \
                 LifecycleConstants.APP_LIFECYCLE_TYPE_RESOURCE
-            self.app_lifecycle_actions(None, None, rpc_app, lifecycle_hook_info_app_recover)
+            self.app_lifecycle_actions(
+                None,
+                None,
+                old_app._kube_app,
+                lifecycle_hook_info_app_recover
+            )
 
             LOG.info("Recovering helm charts for Application %s (%s)..."
                      % (old_app.name, old_app.version))
