@@ -53,6 +53,7 @@ import pyudev
 import pwd
 import random
 import re
+import threading
 import rfc3986
 import shutil
 import signal
@@ -4341,3 +4342,66 @@ def delete_certificate_request(name):
         LOG.error(f"Error trying to delete CertificateRequest resource, reason: {e}")
 
     return False
+
+
+def truncate_message(message, max_length=255):
+    """Truncate a progress message to fit within the database field limit.
+
+    :param message: The progress message to truncate.
+    :param max_length: The maximum allowed length for the message (default is 255).
+    :returns: The truncated message.
+    """
+    if not isinstance(message, str):
+        raise ValueError("Message must be a string.")
+    if max_length <= 0:
+        raise ValueError("Maximum length must be a positive integer.")
+    return (message[:max_length - 3] + '...') if len(message) > max_length else message
+
+
+def update_app_status(rpc_app, new_status=None, new_progress=None):
+    """Update the status and progress of an application in the database.
+
+    :param rpc_app: The application object to update.
+    :param new_status: The new status to set for the application.
+    :param new_progress: The new progress message to set for the application.
+    """
+    if new_status is not None:
+        rpc_app.status = new_status
+
+    # Define a persistent lock object at the module level
+    rpc_app_lock = threading.Lock()
+
+    # New progress info can contain large messages from exceptions raised.
+    # It may need to be truncated to fit the corresponding database field.
+    if new_progress is not None:
+        new_progress = truncate_message(new_progress)
+        rpc_app.progress = new_progress
+
+    with rpc_app_lock:
+        rpc_app.save()
+
+
+def get_app_metadata_from_tarfile(absolute_tarball_path):
+    """Extract metadata from a tar file.
+
+    :params app_name: application name
+    :params tarball_name: absolute path of app tarfile
+    :returns: metadata dictionary
+    """
+    metadata = {}
+    with TempDirectory() as app_path:
+        if not extract_tarfile(app_path, absolute_tarball_path):
+            LOG.error("Failed to extract tar file {}.".format(
+                os.path.basename(absolute_tarball_path)))
+            return None
+        metadata_file = os.path.join(app_path,
+                                     constants.APP_METADATA_FILE)
+
+        if os.path.exists(metadata_file):
+            with io.open(metadata_file, 'r', encoding='utf-8') as f:
+                # The RoundTripLoader removes the superfluous quotes by default.
+                # Set preserve_quotes=True to preserve all the quotes.
+                # The assumption here: there is just one yaml section
+                metadata = yaml.safe_load(f)
+
+    return metadata

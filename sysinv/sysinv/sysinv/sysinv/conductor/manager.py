@@ -54,6 +54,8 @@ import traceback
 import uuid
 import copy
 import xml.etree.ElementTree as ElementTree
+from concurrent.futures import as_completed
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from datetime import datetime
 from datetime import timedelta
@@ -97,6 +99,7 @@ from sysinv.api.controllers.v1 import kube_app as kube_api
 from sysinv.api.controllers.v1 import mtce_api
 from sysinv.api.controllers.v1 import utils
 from sysinv.api.controllers.v1 import vim_api
+from sysinv.common import app_dependents
 from sysinv.common import app_metadata
 from sysinv.common import barbican_config
 from sysinv.common import fpga_constants
@@ -8108,6 +8111,8 @@ class ConductorManager(service.PeriodicService):
         :param async_update: Update asynchronously if True. Update synchronously if False.
         :return: True if the update successfully started when running asynchronously.
                  True if the app was successfully updated when running synchronously.
+                 True if the app is a dependent application of any currently applied
+                 applications.
                  False if an error has occurred.
                  None if there is not an updated version available for the given app.
         """
@@ -8116,6 +8121,11 @@ class ConductorManager(service.PeriodicService):
         except exception.KubeAppNotFound as e:
             LOG.exception(e)
             return False
+
+        if (app_dependents.is_dependent_app(
+                app.name, app.app_version, self.dbapi)):
+            LOG.info(f"Auto-update skipped for dependent application: {app.name}")
+            return True
 
         if app.status != constants.APP_APPLY_SUCCESS:
             # In case the previous re-apply fails
@@ -16685,6 +16695,251 @@ class ConductorManager(service.PeriodicService):
             LOG.exception(ex)
             return (False, None)
 
+    def upload_dependent_app(self, context, dependent_app_apply_type):
+        """ Uploads a dependent application to the system.
+
+        This method checks if the dependent application is already uploaded or applied
+        with the same version. If the application is not found, it creates a new app
+        entry in the database and initiates the upload process.
+        Args:
+            context (object): The request context.
+            dependent_app_apply_type (dict): A dictionary containing the dependent app's
+                details, including:
+                - 'name' (str): The name of the dependent app.
+                - 'version' (str): The version of the dependent app.
+        Returns:
+            bool: True if the dependent app is successfully uploaded or already exists
+                  with the same version and status. False otherwise.
+        """
+
+        # Check if the dependent app is already uploaded
+        # and has the same version
+        app_name = dependent_app_apply_type['name']
+        app_version = dependent_app_apply_type['version']
+        try:
+            app = kubeapp_obj.get_by_name(context, app_name)
+
+            if (app.app_version == app_version and
+                    app.status == constants.APP_UPLOAD_SUCCESS):
+                LOG.info(f"Dependent app {app_name} is already uploaded. "
+                            f"Skipping upload.")
+                return True
+            elif (app.app_version == app_version and
+                    app.status == constants.APP_APPLY_SUCCESS):
+                LOG.info(f"Dependent app {app_name} is already applied. "
+                            f"Skipping upload.")
+                return True
+            elif (app.app_version != app_version):
+                LOG.error(f"Dependent app {app_name} version mismatch. "
+                            f"Expected version: {app_version}, "
+                            f"found version: {app.app_version}.")
+                return False
+            else:
+                LOG.error(f"Dependent app {app_name} is in an invalid state. "
+                            f"Current status: {app.status}.")
+                return False
+        except exception.KubeAppNotFound:
+            LOG.info(f"Dependent app {app_name} not found. Creating a new app.")
+
+        app_data = {'name': app_name,
+                    'app_version': app_version,
+                    'manifest_name': constants.APP_MANIFEST_NAME_PLACEHOLDER,
+                    'manifest_file': constants.APP_TARFILE_NAME_PLACEHOLDER,
+                    'status': constants.APP_UPLOAD_IN_PROGRESS}
+        try:
+            LOG.info(
+                "Starting upload process for dependent app: "
+                f"{app_name}, version: {app_version}"
+            )
+
+            # Check if tarball for app_name and app_version exists
+            app_bundle = self.dbapi.kube_app_bundle_get(
+                name=app_name,
+                version=app_version)
+            # Create the app in the database
+            self.dbapi.kube_app_create(app_data)
+            # Get the app object from the database
+            app = kubeapp_obj.get_by_name(context, app_name)
+
+            # check if the tarball is valid
+            tarball = self._check_tarfile(app_name, app_bundle.file_path)
+            if ((tarball.manifest_name is None) or
+                    (tarball.manifest_file is None)):
+                cutils.update_app_status(app, constants.APP_UPLOAD_FAILURE)
+                return False
+
+            app.name = tarball.app_name
+            app.app_version = tarball.app_version
+            app.manifest_name = tarball.manifest_name
+            app.manifest_file = os.path.basename(tarball.manifest_file)
+            app.save()
+
+            hook_info = LifecycleHookInfo()
+            hook_info.mode = LifecycleConstants.APP_LIFECYCLE_MODE_MANUAL
+
+            self.perform_app_upload(context, app, tarball.tarball_name, hook_info)
+
+        except exception.KubeAppBundleNotFound as e:
+            LOG.error(e)
+            return False
+        except Exception as e:
+            LOG.error(
+                f"Failed to upload tarball for dependent app {app_name} "
+                f"(path: {app_bundle.file_path}). Error: {e}")
+
+            if app:
+                cutils.update_app_status(app, constants.APP_UPLOAD_FAILURE)
+            return False
+
+        return True
+
+    def apply_dependent_apps(self, context, upload_apps_succeeded_list):
+        """
+        Apply dependent applications based on a list of successfully uploaded apps.
+
+        This method attempts to apply a list of dependent applications that have
+        been successfully uploaded. It performs lifecycle semantic checks, updates
+        application statuses, and handles errors during the application process.
+
+        Args:
+            context (object): The request context.
+            upload_apps_succeeded_list (list): A list of dictionaries representing
+                successfully uploaded applications. Each dictionary contains at
+                least the 'name' key.
+
+        Returns:
+            tuple: A tuple containing two lists:
+                - apply_apps_succeeded_list (list): A list of applications that
+                  were successfully applied.
+                - apply_apps_failed_list (list): A list of applications that
+                  failed to be applied.
+        """
+
+        apply_apps_succeeded_list = []
+        apply_apps_failed_list = []
+
+        LOG.info("Starting apply of dependent app")
+        for dependent_app in upload_apps_succeeded_list:
+            app_name = dependent_app['name']
+            try:
+                app = kubeapp_obj.get_by_name(context, app_name)
+            except exception.KubeAppNotFound as e:
+                LOG.exception(e)
+                apply_apps_failed_list.append(dependent_app)
+
+            hook_info = LifecycleHookInfo()
+            hook_info.init(LifecycleConstants.APP_LIFECYCLE_MODE_MANUAL,
+                        LifecycleConstants.APP_LIFECYCLE_TYPE_SEMANTIC_CHECK,
+                        LifecycleConstants.APP_LIFECYCLE_TIMING_PRE,
+                        constants.APP_APPLY_OP)
+            try:
+                self.app_lifecycle_actions(context, app, hook_info)
+            except exception.LifecycleSemanticCheckException as e:
+                LOG.info(f"Auto-apply failed prerequisites for {app.name}: {e}")
+                apply_apps_failed_list.append(dependent_app)
+            except exception.SysinvException:
+                LOG.exception(f"Internal sysinv error while auto applying {app.name}")
+                apply_apps_failed_list.append(dependent_app)
+            except Exception as e:
+                LOG.exception(f"Automatic operation:{hook_info} "
+                              f"for app {app.name} failed with: {e}")
+                apply_apps_failed_list.append(dependent_app)
+
+            if self._patching_operation_is_occurring():
+                apply_apps_failed_list.append(dependent_app)
+
+            # Update the app status to in progress
+            cutils.update_app_status(app, constants.APP_APPLY_IN_PROGRESS)
+
+            app_applied = self.perform_app_apply(context, app, app.mode, hook_info)
+
+            if app_applied:
+                apply_apps_succeeded_list.append(dependent_app)
+            else:
+                apply_apps_failed_list.append(dependent_app)
+
+        return apply_apps_succeeded_list, apply_apps_failed_list
+
+    def perform_upload_apply_dependent_apps(self, context, rpc_app, dependent_apps_apply_type):
+        """Upload and apply dependent applications.
+
+        This method handles the upload and application of dependent applications
+        that are required for the main application to function correctly.
+
+        Args:
+            context (object): The request context.
+            rpc_app (object): The main application object.
+            dependent_apps_apply_type (list): A list of dictionaries representing
+                              dependent applications with action
+                              type 'APPLY'. Each dictionary contains
+                              at least the 'name' and 'version' keys.
+
+        Returns:
+            bool: True if all dependent applications were successfully uploaded
+              and applied, False otherwise.
+        """
+
+        upload_apps_succeeded_list = []
+        upload_apps_failed_list = []
+        apply_apps_succeeded_list = []
+        apply_apps_failed_list = []
+
+        # Launch a thread for each update candidate, then wait for all applications
+        # to finish updating.
+        with ThreadPoolExecutor(max_workers=len(dependent_apps_apply_type)) as executor:
+            futures = {
+                executor.submit(self.upload_dependent_app, context, dependent_app): dependent_app
+                for dependent_app in dependent_apps_apply_type
+            }
+
+            # Wait for all uploads to complete
+            for future in as_completed(futures):
+                dependent_app = futures[future]
+                try:
+                    result = future.result()
+                    if result:
+                        LOG.info(f"Successfully uploaded dependent app {dependent_app['name']}.")
+                        upload_apps_succeeded_list.append(dependent_app)
+                    else:
+                        LOG.error(f"Failed to upload dependent app {dependent_app['name']}.")
+                        upload_apps_failed_list.append(dependent_app)
+                except Exception as e:
+                    LOG.error(f"Error uploading dependent app {dependent_app['name']}: {e}")
+                    upload_apps_failed_list.append(dependent_app)
+
+        # Check for circular dependencies. If circular dependencies are found,
+        # log an error and return False. The application will not be applied.
+        if app_dependents.has_circular_dependency(rpc_app,
+                                                  upload_apps_succeeded_list,
+                                                  self.dbapi):
+            LOG.error(
+                f"Circular dependency detected: {dependent_apps_apply_type}. "
+                f"Application {rpc_app.name} - {rpc_app.app_version} cannot be applied."
+            )
+            return False
+
+        # Only apply dependent applications if the upload was successful.
+        if upload_apps_succeeded_list:
+            apply_apps_succeeded_list, apply_apps_failed_list = self.apply_dependent_apps(
+                context, upload_apps_succeeded_list
+            )
+
+        if apply_apps_failed_list or upload_apps_failed_list:
+            LOG.error(
+                "Failed to upload or apply dependent applications. "
+                f"Upload failed: {upload_apps_failed_list}, "
+                f"Apply failed: {apply_apps_failed_list}. "
+                "Please check /var/logs/sysinv.log for more details."
+            )
+            return False
+
+        # If there are no failed uploads or applies, return True
+        LOG.info(
+            f"Successfully uploaded and applied dependent applications. "
+            f"Apply succeeded: {apply_apps_succeeded_list}."
+        )
+        return True
+
     def perform_app_upload(self, context, rpc_app, tarfile,
                            lifecycle_hook_info_app_upload, images=False):
         """Handling of application upload request (via AppOperator)
@@ -16738,6 +16993,36 @@ class ConductorManager(service.PeriodicService):
         except Exception as e:
             LOG.error("Error performing app_lifecycle_actions %s" % str(e))
 
+        # Check if the application has dependent apps missing
+        dependent_apps_missing_list = app_dependents.get_dependent_apps_missing(
+            rpc_app.app_metadata, self.dbapi)
+
+        # Check if the application has dependent apps missing of action type 'APPLY'
+        dependent_apps_apply_type = app_dependents.get_dependent_apps_by_action(
+            dependent_apps_missing_list, constants.APP_METADATA_DEPENDENT_APPS_ACTION_APPLY)
+
+        # If dependent apps are missing with action type 'APPLY', install them
+        # before applying the main application
+        if dependent_apps_apply_type:
+            cutils.update_app_status(rpc_app,
+                                     constants.APP_APPLY_IN_PROGRESS,
+                                     "Installing dependent applications")
+
+            result = self.perform_upload_apply_dependent_apps(
+                context, rpc_app, dependent_apps_apply_type)
+
+            if not result:
+                progress_msg = ("Failed to apply dependent apps. "
+                                "Check sysinv logs for details.")
+                cutils.update_app_status(rpc_app,
+                                         constants.APP_APPLY_FAILURE,
+                                         progress_msg)
+                raise exception.KubeAppApplyFailure(
+                    name=rpc_app.name,
+                    version=rpc_app.app_version,
+                    reason="Failed to apply dependent applications."
+                )
+
         # TODO pass context and move hooks inside?
         app_applied = self._app.perform_app_apply(rpc_app, mode,
                                                   lifecycle_hook_info_app_apply,
@@ -16777,6 +17062,54 @@ class ConductorManager(service.PeriodicService):
 
         """
         lifecycle_hook_info_app_update.operation = constants.APP_UPDATE_OP
+
+        # get the app metadata from the tarfile
+        to_app_metadata = cutils.get_app_metadata_from_tarfile(tarfile)
+        # Check if the application has dependent apps missing
+        dependent_apps_missing_list = app_dependents.get_dependent_apps_missing(
+            to_app_metadata, self.dbapi)
+
+        # Check if the application has dependent apps missing of action type 'APPLY'
+        dependent_apps_apply_type = app_dependents.get_dependent_apps_by_action(
+            dependent_apps_missing_list, constants.APP_METADATA_DEPENDENT_APPS_ACTION_APPLY)
+
+        # If dependent apps are missing with action type 'APPLY', install them
+        # before applying the main application
+        if dependent_apps_apply_type:
+            cutils.update_app_status(to_rpc_app,
+                                     constants.APP_UPDATE_IN_PROGRESS,
+                                     "Installing dependent applications")
+
+            result = self.perform_upload_apply_dependent_apps(
+                context, to_rpc_app, dependent_apps_apply_type)
+
+            if not result:
+                # If the dependent apps failed to apply, perform recovery manually.
+                # In this point the new charts was not applied yet.
+                progress_msg = ("Failed to apply dependent apps. "
+                                "Check sysinv logs for details.")
+
+                cutils.update_app_status(
+                    from_rpc_app, constants.APP_APPLY_SUCCESS,
+                    constants.APP_PROGRESS_UPDATE_ABORTED.format(
+                        from_rpc_app.app_version, to_rpc_app.app_version) +
+                    constants.APP_PROGRESS_RECOVER_COMPLETED.format(
+                        from_rpc_app.app_version) + progress_msg)
+
+                # Set the status for the new app to inactive
+                cutils.update_app_status(to_rpc_app,
+                                        constants.APP_INACTIVE_STATE)
+
+                # Destroy the new app
+                self.dbapi.kube_app_destroy(to_rpc_app.name,
+                                            version=to_rpc_app.app_version,
+                                            inactive=True)
+
+                raise exception.KubeAppApplyFailure(
+                    name=to_rpc_app.name,
+                    version=to_rpc_app.app_version,
+                    reason="Failed to apply dependent applications."
+                )
 
         return self._app.perform_app_update(from_rpc_app,
                                             to_rpc_app,

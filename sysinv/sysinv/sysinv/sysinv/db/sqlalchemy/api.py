@@ -9694,6 +9694,19 @@ class Connection(api.Connection):
         return _paginate_query(models.KubeAppBundle, limit, marker,
                                sort_key, sort_dir, query)
 
+    @db_objects.objectify(objects.kube_app_bundle)
+    def kube_app_bundle_get(self, name, version):
+        query = model_query(models.KubeAppBundle)
+        query = query.filter(
+            models.KubeAppBundle.name == name,
+            models.KubeAppBundle.version == version,
+        )
+        try:
+            result = query.one()
+        except NoResultFound:
+            raise exception.KubeAppBundleNotFound(name=name, version=version)
+        return result
+
     def kube_app_bundle_destroy_all(self, file_path=None):
         with _session_for_write() as session:
             query = model_query(models.KubeAppBundle, session=session)
