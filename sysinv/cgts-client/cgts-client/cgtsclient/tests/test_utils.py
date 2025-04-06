@@ -17,9 +17,12 @@
 import sys
 
 from cgtsclient.common import utils
+from cgtsclient.common.utils import _is_service_impacting_command
+from cgtsclient.common.utils import prompt_cli_confirmation
 from cgtsclient import exc
 from cgtsclient.tests import utils as test_utils
 from six.moves import cStringIO as StringIO
+from unittest import mock
 
 
 class UtilsTest(test_utils.BaseTestCase):
@@ -90,3 +93,56 @@ class UtilsTest(test_utils.BaseTestCase):
                                           my_args['attributes'])
         self.assertEqual(patch, [{'op': 'remove', 'path': '/foo'},
                                  {'op': 'remove', 'path': '/extra/bar'}])
+
+
+@prompt_cli_confirmation
+def risky_func(*args, **kwargs):
+    return "executed"
+
+
+class TestPromptCLIConfirmation(test_utils.BaseTestCase):
+
+    @mock.patch("cgtsclient.common.utils.input", return_value="yes")
+    @mock.patch("cgtsclient.common.utils._is_cliconfirmation_param_enabled", return_value=True)
+    @mock.patch("cgtsclient.common.utils.signal.alarm")
+    @mock.patch("cgtsclient.common.utils.signal.signal")
+    def test_user_accepts_prompt(self, mock_signal, mock_alarm, mock_flag, mock_input):
+        result = risky_func("arg1", mock.Mock(yes=False))
+        self.assertEqual(result, "executed")
+
+    @mock.patch("cgtsclient.common.utils.input", return_value="no")
+    @mock.patch("cgtsclient.common.utils._is_cliconfirmation_param_enabled", return_value=True)
+    @mock.patch("cgtsclient.common.utils.signal.alarm")
+    @mock.patch("cgtsclient.common.utils.signal.signal")
+    def test_user_rejects_prompt(self, mock_signal, mock_alarm, mock_flag, mock_input):
+        self.assertRaises(SystemExit, risky_func, "arg1", mock.Mock(yes=False))
+
+    @mock.patch("cgtsclient.common.utils.input", side_effect=TimeoutError)
+    @mock.patch("cgtsclient.common.utils._is_cliconfirmation_param_enabled", return_value=True)
+    @mock.patch("cgtsclient.common.utils.signal.alarm")
+    @mock.patch("cgtsclient.common.utils.signal.signal")
+    def test_user_timeout(self, mock_signal, mock_alarm, mock_flag, mock_input):
+        self.assertRaises(SystemExit, risky_func, "arg1", mock.Mock(yes=False))
+
+    def test_yes_flag_skips_prompt(self):
+        result = risky_func("arg1", mock.Mock(yes=True))
+        self.assertEqual(result, "executed")
+
+    @mock.patch("cgtsclient.common.utils._is_cliconfirmation_param_enabled", return_value=False)
+    def test_confirmation_feature_disabled(self, mock_flag):
+        result = risky_func("arg1", mock.Mock(yes=False))
+        self.assertEqual(result, "executed")
+
+    def test_command_contains_delete(self):
+        self.assertTrue(_is_service_impacting_command("system host-delete"))
+        self.assertTrue(_is_service_impacting_command("volume-delete"))
+        self.assertTrue(_is_service_impacting_command("delete-tenant"))
+
+    def test_command_contains_remove(self):
+        self.assertTrue(_is_service_impacting_command("remove-node"))
+        self.assertTrue(_is_service_impacting_command("system remove-host"))
+
+    def test_safe_commands(self):
+        self.assertFalse(_is_service_impacting_command("host-unlock"))
+        self.assertFalse(_is_service_impacting_command("list-hosts"))
+        self.assertFalse(_is_service_impacting_command("show-platform"))

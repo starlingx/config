@@ -31,7 +31,6 @@ import prettytable
 import re
 import signal
 import six
-import subprocess
 import sys
 import textwrap
 import uuid
@@ -52,6 +51,8 @@ from cgtsclient.common import wrapping_formatters
 from six.moves import input
 from six.moves import map
 from six.moves import zip
+
+CONFIRMATION_YES = "yes"
 
 
 class HelpFormatter(argparse.HelpFormatter):
@@ -876,13 +877,15 @@ def prompt_cli_confirmation(func, timeout=10):
             return func(*args, **kwargs)
 
         confirmation = input_with_timeout(
-            f"{BOLD}{YELLOW}WARNING: This is a high-risk operation that may cause a service interruption or remove critical resources {RESET}\n"
-            f"{BOLD}{YELLOW}Do you want to continue? (yes/No): {RESET}", timeout
+            f"{BOLD}{YELLOW}WARNING: This is a high-risk operation that may cause a "
+            f"service interruption or remove critical resources {RESET}\n"
+            f"{BOLD}{YELLOW}Do you want to continue? ({CONFIRMATION_YES}/No): {RESET}",
+            timeout,
         )
         if confirmation is None:
             print("\nError: No response received within the time limit.")
             return
-        elif confirmation.lower() != 'yes':
+        elif confirmation.lower() != CONFIRMATION_YES:
             print("Operation cancelled by the user.")
             sys.exit(1)
         return func(*args, **kwargs)
@@ -906,41 +909,12 @@ def _is_service_impacting_command(command):
         "kube-rootca-host-update"
     ]
 
-    return command in service_impacting_system_commands or 'delete' in command or 'remove' in command
+    return (
+        command in service_impacting_system_commands or
+        'delete' in command or
+        'remove' in command
+    )
 
 
 def _is_cliconfirmation_param_enabled():
-    try:
-        # Fetch only the relevant row using grep
-        cmd = "source /etc/platform/openrc && system service-parameter-list | grep cli_confirmations"
-
-        svc_param_list = subprocess.check_output(
-            ["bash", "-c", cmd],
-            stderr=subprocess.PIPE,
-            universal_newlines=True
-        ).strip()
-
-        parts = [p.strip() for p in svc_param_list.split("|")]
-
-        if len(parts) < 2:
-            print(f"[ERROR] Unexpected command output format: {svc_param_list}")
-            return False
-
-        if "cli_confirmations" in parts:
-            index = parts.index("cli_confirmations")
-
-            if index + 1 < len(parts):
-                return parts[index + 1] == "enabled"
-        return False
-
-    except subprocess.CalledProcessError as e:
-        if e.returncode == 1:
-            # grep exits with 1 when it finds nothing; we treat it as "not enabled"
-            print("[INFO] 'cli_confirmations' not found in service parameters, treating as disabled.")
-            return False
-        print(f"[ERROR] {e.__class__.__name__}: Command failed with exit code {e.returncode}")
-        print(e.stderr.strip())
-        return False
-    except Exception as e:
-        print(f"[ERROR] {e.__class__.__name__}: {e}")
-        return False
+    return env("CLI_CONFIRMATIONS", default="disabled") == "enabled"
