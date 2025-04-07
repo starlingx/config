@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2023 Wind River Systems, Inc.
+# Copyright (c) 2013-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -400,6 +400,12 @@ def get_kube_versions():
          },
         {'version': 'v1.31.5',
          'upgrade_from': ['v1.30.6'],
+         'downgrade_to': [],
+         'applied_patches': [],
+         'available_patches': [],
+         },
+        {'version': 'v1.32.2',
+         'upgrade_from': ['v1.31.5'],
          'downgrade_to': [],
          'applied_patches': [],
          'available_patches': [],
