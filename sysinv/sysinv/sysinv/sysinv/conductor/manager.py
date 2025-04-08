@@ -10702,19 +10702,43 @@ class ConductorManager(service.PeriodicService):
            wait_fixed=1000)
     def handle_k8s_upgrade_control_plane_success(self, context, kube_upgrade_obj, host_uuid,
                                           new_state, fail_state):
+        def check_alarm_status(host_name, kube_host_upgrade_obj, kube_upgrade_obj):
+            # Monitor the alarm status in a separate thread and update the
+            # control plane status if no alarm is detected.
+            check_alarm_count = 5
+            while check_alarm_count > 0:
+                try:
+                    alarms = self.fm_api.get_faults_by_id(
+                        fm_constants.FM_ALARM_ID_SYSCONFIG_OUT_OF_DATE)
+                    time.sleep(5)
+                    check_alarm_count -= 1
+                    if not alarms:
+                        # The control plane update was successful
+                        LOG.info("Control plane was updated for host %s" % host_name)
+                        kube_host_upgrade_obj.status = None
+                        kube_host_upgrade_obj.save()
+                        kube_upgrade_obj.state = new_state
+                        kube_upgrade_obj.save()
+                        return
+                except Exception:
+                    LOG.error("Error checking alarm status for host %s:" % host_name)
+                    kube_host_upgrade_obj.status = \
+                        kubernetes.KUBE_HOST_UPGRADING_CONTROL_PLANE_FAILED
+                    kube_host_upgrade_obj.save()
+                    kube_upgrade_obj.state = fail_state
+                    kube_upgrade_obj.save()
+                    return
+
         host_obj = objects.host.get_by_uuid(context, host_uuid)
         host_name = host_obj.hostname
         kube_host_upgrade_obj = objects.kube_host_upgrade.get_by_host_id(
             context, host_obj.id)
         target_version = kube_host_upgrade_obj.target_version
         kube_operator = kubernetes.KubeOperator()
-
         cp_versions = kube_operator.kube_get_control_plane_versions()
-
         LOG.info("Checking control plane update on host %s, "
                 "cp_versions = %s, target_version = %s" %
                 (host_name, cp_versions, target_version))
-
         if cp_versions.get(host_name, None) != target_version:
             LOG.warning("Control plane upgrade failed for host %s" %
                         host_name)
@@ -10725,12 +10749,7 @@ class ConductorManager(service.PeriodicService):
             kube_upgrade_obj.save()
             return False
 
-        # The control plane update was successful
-        LOG.info("Control plane was updated for host %s" % host_name)
-        kube_host_upgrade_obj.status = None
-        kube_host_upgrade_obj.save()
-        kube_upgrade_obj.state = new_state
-        kube_upgrade_obj.save()
+        greenthread.spawn(check_alarm_status, host_name, kube_host_upgrade_obj, kube_upgrade_obj)
         return True
 
     def report_config_status(self, context, iconfig, status, error=None):

@@ -1860,7 +1860,8 @@ class ManagerTestCase(base.DbTestCase):
         mock_config_apply_runtime_manifest.assert_called_with(mock.ANY, '273cfafd-886d-43ec-9478-8328727b34cc',
                                                                 config_dict)
 
-    def test_handle_k8s_upgrade_control_plane_success_first_master(self):
+    @mock.patch('eventlet.greenthread.spawn')
+    def test_handle_k8s_upgrade_control_plane_success_first_master(self, mock_spawn):
         # Create controller-0
         config_uuid = str(uuid.uuid4())
         c0 = self._create_test_ihost(
@@ -1891,10 +1892,55 @@ class ManagerTestCase(base.DbTestCase):
         fail_state = kubernetes.KUBE_UPGRADING_FIRST_MASTER_FAILED
 
         kube_upgrade_obj = objects.kube_upgrade.get_one(context)
+        self.service.fm_api.get_faults_by_id.return_value = ['250.001']
+        p = mock.patch('time.sleep')
+        p.start().return_value = None
+        self.addCleanup(p.stop)
+        mock_spawn.side_effect = lambda func, *args, **kwargs: func(*args, **kwargs)
         self.service.handle_k8s_upgrade_control_plane_success(self.context,
                                         kube_upgrade_obj, c0.uuid, new_state, fail_state)
         self.assertEqual(kube_upgrade_obj.state,
                          new_state)
+
+    @mock.patch('eventlet.greenthread.spawn')
+    def test_handle_k8s_upgrade_control_plane_success_alarm_exception(self, mock_spawn):
+        # Create controller-0
+        config_uuid = str(uuid.uuid4())
+        c0 = self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname='controller-0',
+            uuid=str(uuid.uuid4()),
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+        )
+        # Set the target version for controller-0
+        self.dbapi.kube_host_upgrade_update(1, {'target_version': 'v1.42.2'})
+
+        utils.create_test_kube_upgrade(
+            from_version='v1.42.1',
+            to_version='v1.42.2',
+            state=kubernetes.KUBE_UPGRADED_FIRST_MASTER,
+        )
+
+        self.kube_get_control_plane_versions_result = {
+            'controller-0': 'v1.42.2'}
+        new_state = kubernetes.KUBE_UPGRADED_FIRST_MASTER
+        fail_state = kubernetes.KUBE_UPGRADING_FIRST_MASTER_FAILED
+        # Speed up the test
+        kubernetes.MANIFEST_APPLY_INTERVAL = 1
+        self.service.fm_api.get_faults_by_id.side_effect = Exception("API failure")
+        mock_spawn.side_effect = lambda func, *args, **kwargs: func(*args, **kwargs)
+
+        kube_upgrade_obj = objects.kube_upgrade.get_one(context)
+        self.service.handle_k8s_upgrade_control_plane_success(self.context, kube_upgrade_obj,
+                                                              c0.uuid, new_state, fail_state)
+        self.assertEqual(kube_upgrade_obj.state,
+                         fail_state)
 
     @mock.patch("time.sleep", return_value=None)  # Skip actual wait
     @mock.patch('sysinv.objects.host.get_by_uuid')
@@ -2006,7 +2052,8 @@ class ManagerTestCase(base.DbTestCase):
         mock_config_apply_runtime_manifest.assert_called_with(mock.ANY, '273cfafd-886d-43ec-9478-8328727b34cc',
                                                                 config_dict)
 
-    def test_handle_k8s_upgrade_control_plane_success_second_master(self):
+    @mock.patch('eventlet.greenthread.spawn')
+    def test_handle_k8s_upgrade_control_plane_success_second_master(self, mock_spawn):
         # Create controller-0
         config_uuid = str(uuid.uuid4())
         self._create_test_ihost(
@@ -2056,6 +2103,11 @@ class ManagerTestCase(base.DbTestCase):
         fail_state = kubernetes.KUBE_UPGRADING_SECOND_MASTER_FAILED
 
         kube_upgrade_obj = objects.kube_upgrade.get_one(context)
+        self.service.fm_api.get_faults_by_id.return_value = ['250.001']
+        p = mock.patch('time.sleep')
+        p.start().return_value = None
+        self.addCleanup(p.stop)
+        mock_spawn.side_effect = lambda func, *args, **kwargs: func(*args, **kwargs)
         self.service.handle_k8s_upgrade_control_plane_success(self.context,
                                         kube_upgrade_obj, c1.uuid, new_state, fail_state)
         self.assertEqual(kube_upgrade_obj.state,
