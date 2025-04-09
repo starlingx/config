@@ -164,7 +164,7 @@ class ContextHook(hooks.PecanHook):
             'project_name': project_name,
             'roles': roles
         }
-        is_admin = policy.authorize(base_policy.ADMIN_IN_SYSTEM_PROJECTS, {},
+        is_admin = policy.authorize(base_policy.ADMIN_OR_CONFIGURATOR, {},
             credentials, do_raise=False)
 
         utils.safe_rstrip(state.request.path, '/')
@@ -209,12 +209,12 @@ class AccessPolicyHook(hooks.PecanHook):
                 if method == 'GET':
                     role = "reader or operator"
                     has_api_access = policy.authorize(
-                        base_policy.READER_OR_OPERATOR_IN_SYSTEM_PROJECTS, {},
+                        base_policy.READER_OR_OPERATOR_OR_CONFIGURATOR, {},
                         context.to_dict(), do_raise=False)
                 else:
                     role = "admin"
                     has_api_access = policy.authorize(
-                        base_policy.ADMIN_IN_SYSTEM_PROJECTS, {},
+                        base_policy.ADMIN_OR_CONFIGURATOR, {},
                         context.to_dict(), do_raise=False)
                 if not has_api_access:
                     raise exc.HTTPForbidden("Not allowed/Role " + role + " is needed")

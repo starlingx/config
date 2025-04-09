@@ -1,23 +1,80 @@
----
-# The commented lines below contains the default values for presented rules.
+# admin role of admin,services projects
+# "admin": "role:admin and (project_name:admin or project_name:services)"
 
-# admin_in_system_projects: role:admin and (project_name:admin or project_name:services)
-# reader_or_operator_in_system_projects: (role:reader or role:operator) and
-#  (project_name:admin or project_name:services)
-# admin_or_operator_in_system_projects: (role:admin or role:operator) and
-#  (project_name:admin or project_name:services)
+# admin,configurator roles of admin,services projects
+# "admin_or_configurator": "(role:admin or role:configurator) and
+# (project_name:admin or project_name:services)"
 
-# config_api:service_parameter:add: rule:admin_in_system_projects
-# config_api:service_parameter:apply: rule:admin_in_system_projects
-# config_api:service_parameter:delete: rule:admin_in_system_projects
-# config_api:service_parameter:get: rule:reader_or_operator_in_system_projects
-# config_api:service_parameter:modify: rule:admin_or_operator_in_system_projects
+# admin,operator,configurator roles of admin,services projects
+# "admin_or_operator_or_configurator": "(role:admin or role:operator or
+# role:configurator) and (project_name:admin or project_name:services)"
 
-# config_api:ihosts:add: rule:admin_in_system_projects
-# config_api:ihosts:delete: rule:admin_in_system_projects
-# config_api:ihosts:get: rule:reader_or_operator_in_system_projects
-# config_api:ihosts:modify: rule:admin_or_operator_in_system_projects
+# reader,operator,configurator roles of admin,services projects
+# "reader_or_operator_or_configurator": "(role:reader or role:operator or
+# role:configurator) and (project_name:admin or project_name:services)"
 
-# config_api:registry_image:add: rule:admin_or_operator_in_system_projects
-# config_api:registry_image:delete: rule:admin_in_system_projects
-# config_api:registry_image:get: "rule:reader_or_operator_in_system_projects
+# Add a Service Parameter.
+# POST  /v1/service_parameter
+# "config_api:service_parameter:add": "rule:admin_or_configurator"
+
+# Apply Service Parameters.
+# POST  /v1/service_parameter/apply
+# "config_api:service_parameter:apply": "rule:admin_or_configurator"
+
+# Delete a Service Parameter.
+# DELETE  /v1/service_parameter/{parameter_id}
+# "config_api:service_parameter:delete": "rule:admin_or_configurator"
+
+# Get Service Parameters.
+# GET  /v1/service_parameter
+# GET  /v1/service_parameter/{parameter_id}
+# "config_api:service_parameter:get": "rule:reader_or_operator_or_configurator"
+
+# Modify Service Parameter value.
+# PATCH  /v1/service_parameter/{parameter_id}
+# "config_api:service_parameter:modify": "rule:admin_or_configurator"
+
+# Add a host Parameter.
+# POST  /v1/ihosts
+# "config_api:ihosts:post": "rule:admin_or_configurator"
+
+# Delete a host Parameter.
+# DELETE  /v1/ihosts/{parameter_id}
+# "config_api:ihosts:delete": "rule:admin_or_configurator"
+
+# Get host Parameters.
+# GET  /v1/ihosts
+# GET  /v1/ihosts/{parameter_id}
+# "config_api:ihosts:get": "rule:reader_or_operator_or_configurator"
+
+# Modify host value.
+# PATCH  /v1/ihosts/{parameter_id}
+# "config_api:ihosts:patch": "rule:admin_or_operator_or_configurator"
+
+# Run registry garbage collect.
+# POST  /v1/registry_image
+# "config_api:registry_image:add": "rule:admin_or_operator_or_configurator"
+
+# Delete a registry image.
+# DELETE  /v1/registry_image
+# "config_api:registry_image:delete": "rule:admin_or_configurator"
+
+# Get registry images list.
+# GET  /v1/registry_image
+# "config_api:registry_image:get": "rule:reader_or_operator_or_configurator"
+
+# Get certificate
+# GET  /v1/certificate
+# GET  /v1/certificate/{parameter_id}
+# GET  /v1/certificate/get_all_certs
+# GET  /v1/certificate/get_all_k8s_certs
+# "config_api:certificate:get": "rule:reader_or_operator_or_configurator"
+
+# Delete certificate
+# DELETE  /v1/certificate/{parameter_id}
+# "config_api:certificate:delete": "rule:admin"
+
+# install/renew certificate
+# POST  /v1/certificate/certificate_install
+# POST  /v1/certificate/certificate_renew
+# "config_api:certificate:post": "rule:admin"
