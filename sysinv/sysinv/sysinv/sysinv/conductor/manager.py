@@ -7926,7 +7926,11 @@ class ConductorManager(service.PeriodicService):
         if self._patching_operation_is_occurring():
             return
 
-        self._inner_sync_auto_apply(context, app_name)
+        self._inner_sync_auto_apply(
+            context,
+            app_name,
+            status_constraints=(constants.APP_UPLOAD_SUCCESS,)
+        )
 
     def update_apps_based_on_k8s_version(self, context, k8s_version, k8s_upgrade_timing):
         """ Update applications based on a given Kubernetes version (blocking).
@@ -8831,7 +8835,11 @@ class ConductorManager(service.PeriodicService):
                      "retry on next audit", app_name)
             return
 
-        self._inner_sync_auto_apply(context, app_name, status_constraints=[constants.APP_APPLY_SUCCESS])
+        self._inner_sync_auto_apply(
+            context,
+            app_name,
+            status_constraints=(constants.APP_APPLY_SUCCESS,)
+        )
 
     @cutils.synchronized(LOCK_APP_AUTO_MANAGE)
     def _inner_sync_auto_apply(self, context, app_name, status_constraints=None):
