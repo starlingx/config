@@ -3082,6 +3082,12 @@ class AppOperator(object):
 
                 self._update_app_status(to_app, constants.APP_UPDATE_IN_PROGRESS)
 
+                lifecycle_hook_info.relative_timing = \
+                   LifecycleConstants.APP_LIFECYCLE_TIMING_PRE
+                lifecycle_hook_info.lifecycle_type = \
+                    LifecycleConstants.APP_LIFECYCLE_TYPE_RESOURCE
+                self.app_lifecycle_actions(None, None, to_rpc_app, lifecycle_hook_info)
+
                 reuse_overrides = \
                     self._get_metadata_value(to_app,
                                                 constants.APP_METADATA_MAINTAIN_USER_OVERRIDES,
