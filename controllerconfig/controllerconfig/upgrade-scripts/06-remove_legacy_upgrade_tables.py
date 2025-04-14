@@ -7,13 +7,17 @@
 # database table
 #
 
-import logging as LOG
+import logging
 import sys
 
 from packaging import version
 import psycopg2
 
+from controllerconfig.common.usm_log import configure_logging
+
 DEFAULT_POSTGRES_PORT = 5432
+
+LOG = logging.getLogger('main_logger')
 
 
 def main():
@@ -36,10 +40,7 @@ def main():
             print("Invalid option %s." % sys.argv[arg])
             return 1
         arg += 1
-    log_format = ('%(asctime)s: ' + '[%(process)s]: '
-                  '%(filename)s(%(lineno)s): %(levelname)s: %(message)s')
-    LOG.basicConfig(filename="/var/log/software.log",
-                    format=log_format, level=LOG.INFO, datefmt="%FT%T")
+    configure_logging()
     LOG.info(
         "%s invoked from_release = %s to_release = %s action = %s"
         % (sys.argv[0], from_release, to_release, action)

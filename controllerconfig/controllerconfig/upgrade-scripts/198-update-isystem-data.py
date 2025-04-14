@@ -1,5 +1,5 @@
 #!/usr/bin/python
-# Copyright (c) 2024 Wind River Systems, Inc.
+# Copyright (c) 2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -7,10 +7,13 @@
 # in i_system table during the USM upgrade
 
 
-import logging as LOG
+import logging
 import psycopg2
 import sys
 
+from controllerconfig.common.usm_log import configure_logging
+
+LOG = logging.getLogger('main_logger')
 
 DEFAULT_POSTGRES_PORT = 5432
 
@@ -37,10 +40,7 @@ def main():
             return 1
         arg += 1
 
-    log_format = ('%(asctime)s: ' + '[%(process)s]: '
-                  '%(filename)s(%(lineno)s): %(levelname)s: %(message)s')
-    LOG.basicConfig(filename="/var/log/software.log",
-                    format=log_format, level=LOG.INFO, datefmt="%FT%T")
+    configure_logging()
 
     if action in ["activate", "activate-rollback"]:
         try:
