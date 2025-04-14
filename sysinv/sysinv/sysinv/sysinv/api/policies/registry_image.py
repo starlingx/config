@@ -23,7 +23,7 @@ POLICY_ROOT = 'config_api:registry_image:%s'
 registry_image_rules = [
     policy.DocumentedRuleDefault(
         name=POLICY_ROOT % 'add',
-        check_str='rule:' + base.ADMIN_OR_OPERATOR_IN_SYSTEM_PROJECTS,
+        check_str='rule:' + base.ADMIN_OR_OPERATOR_OR_CONFIGURATOR,
         description="Run registry garbage collect.",
         operations=[
             {
@@ -34,7 +34,7 @@ registry_image_rules = [
     ),
     policy.DocumentedRuleDefault(
         name=POLICY_ROOT % 'delete',
-        check_str='rule:' + base.ADMIN_IN_SYSTEM_PROJECTS,
+        check_str='rule:' + base.ADMIN_OR_CONFIGURATOR,
         description="Delete a registry image.",
         operations=[
             {
@@ -45,7 +45,7 @@ registry_image_rules = [
     ),
     policy.DocumentedRuleDefault(
         name=POLICY_ROOT % 'get',
-        check_str='rule:' + base.READER_OR_OPERATOR_IN_SYSTEM_PROJECTS,
+        check_str='rule:' + base.READER_OR_OPERATOR_OR_CONFIGURATOR,
         description="Get registry images list.",
         operations=[
             {

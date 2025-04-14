@@ -57,6 +57,9 @@ def _install_cert(cc, certificate_file, data):
 
     try:
         response = cc.certificate.certificate_install(sec_file, data=data)
+        err_msg = response.get('error_message')
+        if err_msg:
+            raise exc.HTTPForbidden(err_msg)
     except exc.HTTPNotFound:
         raise exc.CommandError('Certificate not installed %s. No response.' %
                                certificate_file)
