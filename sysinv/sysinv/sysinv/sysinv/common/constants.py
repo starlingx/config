@@ -2282,6 +2282,12 @@ VOLATILE_FIRST_BOOT_FLAG = os.path.join(tsc.VOLATILE_PATH, ".first_boot")
 ANSIBLE_BOOTSTRAP_FLAG = os.path.join(tsc.VOLATILE_PATH, ".ansible_bootstrap")
 ANSIBLE_BOOTSTRAP_COMPLETED_FLAG = os.path.join(tsc.PLATFORM_CONF_PATH,
                                                 ".bootstrap_completed")
+
+# Ansible enrollment
+ANSIBLE_ENROLLMENT_FLAG = os.path.join(tsc.VOLATILE_PATH, ".enrollment_in_progress")
+ANSIBLE_ENROLLMENT_COMPLETED_FLAG = \
+    os.path.join(tsc.VOLATILE_PATH, ".subcloud_enrollment_completed")
+
 # just used for upgrade purposes
 OLD_ANSIBLE_BOOTSTRAP_COMPLETED_FLAG = os.path.join(tsc.CONFIG_PATH,
                                                     ".bootstrap_completed")
