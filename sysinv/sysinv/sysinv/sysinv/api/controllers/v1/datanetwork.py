@@ -15,7 +15,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2019 Wind River Systems, Inc.
+# Copyright (c) 2019-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -23,6 +23,7 @@
 import jsonpatch
 import pecan
 from pecan import rest
+import re
 import six
 import wsme
 from wsme import types as wtypes
@@ -199,6 +200,10 @@ class DataNetworkController(rest.RestController):
         name = datanetwork['name']
         if name.lower() == constants.DATANETWORK_TYPE_NONE:
             raise ValueError(_("DataNetwork name '%s' is not allowed") % name)
+        elif not re.match(r'^[\w\.\-]+$', name):
+            raise ValueError(_("DataNetwork name '%s' is not allowed: "
+                               "name may only contain letters, numbers, "
+                               "underscores, periods and hyphens.") % name)
 
     @staticmethod
     def _check_new_datanetwork_mtu_or_set_default(datanetwork):
