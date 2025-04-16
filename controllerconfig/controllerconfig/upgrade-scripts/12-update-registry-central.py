@@ -3,15 +3,18 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-import os
-import sys
-import subprocess
 import logging as LOG
+import os
 import psycopg2
+import subprocess
+import sys
+import uuid
+from cgtsclient import client as cgts_client
 from netaddr import valid_ipv4
 from netaddr import valid_ipv6
-from cgtsclient import client as cgts_client
 from sysinv.common import constants as sysinv_constants
+from wsme import types as wtypes
+
 
 DEFAULT_POSTGRES_PORT = 5432
 LOG_FILE = "/var/log/software.log"
@@ -91,34 +94,36 @@ def main():
     LOG.info("%s invoked from_release = %s to_release = %s action = %s"
              % (sys.argv[0], from_release, to_release, action))
 
-    if action == "activate" and from_release == "24.09":
-        LOG.info("Create service parameter dns host record "
-                 "for registry.central")
+    if action == "migrate" and from_release == "24.09":
+        LOG.info("Create service parameter dns host record for "
+                 "registry.central")
 
+        conn = None
         try:
             client = CgtsClient()
             virtual_system = check_virtual_system(client)
 
+            conn = psycopg2.connect(
+                "dbname=sysinv user=postgres port=%s" % postgres_port)
+
             floating_address_id = get_floating_sc_address_id(
-                postgres_port, virtual_system
-            )
+                conn, virtual_system)
             if not floating_address_id:
                 LOG.info("System controller address ID not found, exiting.")
                 return 0
 
-            registry_central_ip = get_address_by_id(
-                postgres_port, floating_address_id
-            )
+            registry_central_ip = get_address_by_id(conn, floating_address_id)
             if not registry_central_ip:
                 LOG.info("System controller address not found, exiting.")
                 return 0
 
             if virtual_system:
-                registry_local_ip = get_controller_mgmt_address(postgres_port)
+                registry_local_ip = get_controller_mgmt_address(conn)
                 update_dns_registry(
-                    client, registry_central_ip, registry_local_ip)
+                    conn, registry_central_ip, registry_local_ip, to_release)
             else:
-                update_dns_registry(client, registry_central_ip)
+                update_dns_registry(conn, registry_central_ip, None,
+                                    to_release)
 
             if not check_dns_resolution(registry_central_ip):
                 return 1
@@ -128,41 +133,113 @@ def main():
             print(ex)
             return 1
 
+        finally:
+            if conn:
+                conn.close()
+
     return 0
 
 
-def update_dns_registry(client, registry_central_ip, registry_local_ip=None):
+def update_dns_registry(conn, registry_central_ip,
+                        registry_local_ip=None, to_release=None):
     try:
-        parameters = client.sysinv.service_parameter.list()
-        for param in parameters:
-            if param.name in ['registry.central', 'registry.local']:
-                client.sysinv.service_parameter.delete(param.uuid)
-                LOG.info("Deleted existing DNS host record: %s" % param.name)
+        delete_query = (
+            "DELETE FROM service_parameter "
+            "WHERE service='dns' AND section='host-record' "
+            "AND name IN ('registry.central', 'registry.local');"
+        )
+        db_execute(conn, delete_query)
 
-        values = {
-            'service': sysinv_constants.SERVICE_TYPE_DNS,
-            'section': (
-                sysinv_constants.SERVICE_PARAM_SECTION_DNS_HOST_RECORD
-            ),
-            'personality': None,
-            'resource': None,
-            'parameters': {
-                'registry.central':
-                    "registry.central,%s" % registry_central_ip
-            }
-        }
+        created_at = wtypes.datetime.datetime
+        central_uuid = str(uuid.uuid4())
+
+        insert_central_query = (
+            "INSERT INTO service_parameter "
+            "(uuid, service, section, name, value, personality, "
+            "resource, created_at) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s);"
+        )
+        central_values = (
+            central_uuid, 'dns', 'host-record', 'registry.central',
+            f"registry.central,{registry_central_ip}",
+            None, None, created_at.utcnow()
+        )
+        db_execute(conn, insert_central_query, central_values)
 
         if registry_local_ip:
-            values['parameters']['registry.local'] = (
-                "registry.local,%s" % registry_local_ip
+            local_uuid = str(uuid.uuid4())
+            insert_local_query = (
+                "INSERT INTO service_parameter "
+                "(uuid, service, section, name, value, personality, "
+                "resource, created_at) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s);"
+            )
+            local_values = (
+                local_uuid, 'dns', 'host-record', 'registry.local',
+                f"registry.local,{registry_local_ip}",
+                None, None, created_at.utcnow()
+            )
+            db_execute(conn, insert_local_query, local_values)
+
+        LOG.info("DNS host records for registry inserted successfully.")
+
+        config_dir = f"/opt/platform/config/{to_release}"
+        config_file = os.path.join(config_dir, "dnsmasq.addn_conf")
+
+        os.makedirs(config_dir, exist_ok=True)
+        LOG.info("Created config directory: %s" % config_dir)
+
+        existing_lines = []
+        if os.path.exists(config_file):
+            with open(config_file, "r") as f:
+                existing_lines = f.readlines()
+
+        updated_lines = []
+        for line in existing_lines:
+            if not line.startswith("host-record=registry.central,") and \
+               not line.startswith("host-record=registry.local,"):
+                updated_lines.append(line.strip())
+
+        updated_lines.append(
+            f"host-record=registry.central,{registry_central_ip}"
+        )
+        if registry_local_ip:
+            updated_lines.append(
+                f"host-record=registry.local,{registry_local_ip}"
             )
 
-        client.sysinv.service_parameter.create(**values)
-        LOG.info("DNS host records for registry created successfully.")
+        with open(config_file, "w") as f:
+            for line in updated_lines:
+                f.write(line + "\n")
+                LOG.info("Updated entry in %s: %s" % (config_file, line))
 
     except Exception as e:
-        LOG.exception(
-            "Failed to update DNS records via sysinv client: %s" % e)
+        LOG.exception("Failed to update DNS records: %s" % e)
+        raise
+
+
+def db_execute(conn, query, params=None):
+    try:
+        with conn.cursor() as cursor:
+            if params:
+                cursor.execute(query, params)
+            else:
+                cursor.execute(query)
+            conn.commit()
+    except Exception as e:
+        conn.rollback()
+        LOG.exception("Error executing query: %s" % e)
+        raise
+
+
+def db_query(conn, query):
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute(query)
+            result = cursor.fetchone()
+            return result[0] if result else None
+    except Exception as e:
+        LOG.exception("Error executing query: %s" % e)
         raise
 
 
@@ -177,105 +254,32 @@ def check_virtual_system(client):
     return False
 
 
-def get_floating_sc_address_id(postgres_port, virtual_system):
+def get_floating_sc_address_id(conn, virtual_system):
     if virtual_system:
         query = (
-            "SELECT floating_address_id "
-            "FROM address_pools "
+            "SELECT floating_address_id FROM address_pools "
             "WHERE name = 'system-controller-subnet';"
         )
     else:
         query = (
-            "SELECT floating_address_id "
-            "FROM address_pools "
+            "SELECT floating_address_id FROM address_pools "
             "WHERE name = 'system-controller-oam-subnet';"
         )
 
-    try:
-        res = db_query(postgres_port, query)
-        if res:
-            return res
-        else:
-            return None
-    except Exception as e:
-        LOG.exception("Failed to get floating_address_id: %s" % e)
-        raise
+    return db_query(conn, query)
 
 
-def get_controller_mgmt_address(postgres_port):
+def get_controller_mgmt_address(conn):
     query = "SELECT address FROM addresses WHERE name = 'controller-mgmt';"
-    try:
-        res = db_query(postgres_port, query)
-        if res:
-            return res
-        else:
-            return None
-    except Exception as e:
-        LOG.exception("Failed to fetch controller-mgmt address: %s" % e)
-        raise
+    return db_query(conn, query)
 
 
-def get_address_by_id(postgres_port, floating_address_id):
+def get_address_by_id(conn, floating_address_id):
     query = (
-        "SELECT address FROM addresses WHERE id = %s;" %
-        floating_address_id
+        "SELECT address FROM addresses WHERE id = %s;"
+        % floating_address_id
     )
-    try:
-        res = db_query(postgres_port, query)
-        if res:
-            return res
-        else:
-            return None
-    except Exception as e:
-        LOG.exception("Failed to fetch address: %s" % e)
-        raise
-
-
-def get_db_credentials():
-    import re
-    import configparser
-
-    configparser = configparser.ConfigParser()
-    configparser.read('/etc/sysinv/sysinv.conf')
-    conn_string = configparser['database']['connection']
-    match = re.match(r'postgresql\+psycopg2://([^:]+):([^@]+)@', conn_string)
-    if match:
-        username = match.group(1)
-        password = match.group(2)
-        return username, password
-
-    LOG.error("Failed to get database credentials from sysinv.conf")
-    return None, None
-
-
-def db_query(postgres_port, query):
-    username, password = get_db_credentials()
-
-    try:
-        conn = psycopg2.connect(
-            dbname="sysinv",
-            user=username,
-            password=password,
-            host="localhost",
-            port=postgres_port
-        )
-    except Exception as e:
-        LOG.exception("Failed to connect to the database: %s" % e)
-        raise
-
-    try:
-        with conn.cursor() as cursor:
-            cursor.execute(query)
-            result = cursor.fetchone()
-            if result:
-                return result[0]
-            else:
-                return None
-    except Exception as e:
-        LOG.exception("Error executing query: %s" % e)
-        raise
-    finally:
-        conn.close()
+    return db_query(conn, query)
 
 
 def check_dns_resolution(ip_address):
