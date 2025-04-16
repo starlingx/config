@@ -1594,7 +1594,7 @@ def process_interface_labels(config, context):
     # 2) if the interface have more that one label
     #   - if the family is inet
     #       - just keep the labeling
-    #       - DHCPv4 can use a labeled interface (pxebbot for now is only IPv4),
+    #       - DHCPv4 can use a labeled interface (pxeboot for now is only IPv4),
     #         that was not the case when using CentOS
     #   - if the family is inet6
     #       - interface needs to contain the static address that will be used as
@@ -1609,7 +1609,9 @@ def process_interface_labels(config, context):
     #                   - cluster-host
     #                   - pxeboot
     #                   - storage
-    #       - DHCPv6 cannot use label (pxebbot for now is only IPv4, so we don't
+    #               - if a vlan is shared by mgmt and another network,
+    #                 the mgmt interface will not have the address deprecated
+    #       - DHCPv6 cannot use label (pxeboot for now is only IPv4, so we don't
     #         have a use case for now for platform interfaces), move the label
     #         to interface
 
@@ -1636,11 +1638,20 @@ def process_interface_labels(config, context):
             if (intf_data['family'] == 'inet6') and (intf_data['method'] == 'static'):
                 name_net = intf_data['options']['stx-description'].split(',')
                 ifname = (name_net[0].split(":"))[1]
+                net = (name_net[1].split(":"))[1]
                 networktypelist = context['interfaces'][ifname].networktypelist
                 undeprecate = "ip -6 addr replace" + \
                                 f" {intf_data['ipaddress']}/{intf_data['netmask']}" + \
                                 f" dev {intf} preferred_lft forever"
-                if constants.NETWORK_TYPE_OAM in networktypelist:
+                if ('vlan' in label and len(networktypelist) > 1
+                        and constants.NETWORK_TYPE_MGMT in networktypelist):
+                    if net == constants.NETWORK_TYPE_MGMT:
+                        fill_interface_config_option_operation(intf_data['options'],
+                                                            IFACE_POST_UP_OP, undeprecate)
+                        break
+                    else:
+                        continue
+                elif constants.NETWORK_TYPE_OAM in networktypelist:
                     fill_interface_config_option_operation(intf_data['options'],
                                                             IFACE_POST_UP_OP, undeprecate)
                     break
