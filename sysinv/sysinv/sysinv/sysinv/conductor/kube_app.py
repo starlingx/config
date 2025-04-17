@@ -2086,7 +2086,7 @@ class AppOperator(object):
             LOG.error("Application %s recover to version %s aborted!"
                     % (old_app.name, old_app.version))
 
-    def perform_app_upload(self, rpc_app, tarfile, images=False):
+    def perform_app_upload(self, rpc_app, tarfile, images=False, transitory_state=None):
         """Process application upload request
 
         This method validates the application manifest. If Helm charts are
@@ -2190,6 +2190,9 @@ class AppOperator(object):
             # Check if the application has dependent apps missing
             dependent_apps_missing_list = app_dependents.get_dependent_apps_missing(metadata_file, self._dbapi)
 
+            operation_status = transitory_state if transitory_state \
+                else constants.APP_UPLOAD_SUCCESS
+
             if dependent_apps_missing_list:
                 # Update the application status to APP_UPLOAD_SUCCESS with a message
                 # indicating that the application has dependent apps missing.
@@ -2209,10 +2212,9 @@ class AppOperator(object):
                     f"{constants.APP_PROGRESS_COMPLETED} - "
                     f"this app depends on the following missing apps: {missing_apps}"
                 )
-                self._update_app_status(app, constants.APP_UPLOAD_SUCCESS, progress_msg)
+                self._update_app_status(app, operation_status, progress_msg)
             else:
-                self._update_app_status(app, constants.APP_UPLOAD_SUCCESS,
-                                        constants.APP_PROGRESS_COMPLETED)
+                self._update_app_status(app, operation_status, constants.APP_PROGRESS_COMPLETED)
                 LOG.info("Application %s (%s) upload completed." % (app.name, app.version))
 
             return app
@@ -3034,7 +3036,10 @@ class AppOperator(object):
             self._plugins.deactivate_plugins(from_app)
 
             to_app = self.perform_app_upload(
-                to_rpc_app, tarfile)
+                to_rpc_app,
+                tarfile,
+                transitory_state=constants.APP_UPDATE_STARTING
+            )
 
             lifecycle_hook_info_app_update.operation = constants.APP_UPDATE_OP
 

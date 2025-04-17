@@ -1991,6 +1991,7 @@ APP_INACTIVE_STATE = 'inactive'
 APP_UPDATE_IN_PROGRESS = 'updating'
 APP_RECOVER_IN_PROGRESS = 'recovering'
 APP_RESTORE_REQUESTED = 'restore-requested'
+APP_UPDATE_STARTING = 'update-starting'
 
 # Kubectl kustomize operations
 KUBECTL_KUSTOMIZE_APPLY = 'apply'
