@@ -300,8 +300,7 @@ class AppOperator(object):
         # New progress info can contain large messages from exceptions raised.
         # It may need to be truncated to fit the corresponding database field.
         if new_progress is not None:
-            new_progress = (new_progress[:252] + '...') if len(new_progress) > 255 \
-                else new_progress
+            new_progress = cutils.truncate_message(new_progress)
 
         with self._lock:
             app.update_status(new_status, new_progress)
@@ -2188,7 +2187,8 @@ class AppOperator(object):
             metadata_file = self.retrieve_application_metadata_from_file(app.sync_metadata_file)
 
             # Check if the application has dependent apps missing
-            dependent_apps_missing_list = app_dependents.get_dependent_apps_missing(metadata_file, self._dbapi)
+            dependent_apps_missing_list = app_dependents.get_dependent_apps_missing(
+                metadata_file, self._dbapi)
 
             operation_status = transitory_state if transitory_state \
                 else constants.APP_UPLOAD_SUCCESS
@@ -2774,7 +2774,8 @@ class AppOperator(object):
         # Retrieve the application metadata from the metadata file
         app_metadata = self.retrieve_application_metadata_from_file(app.sync_metadata_file)
         # Check if the application has dependent apps missing
-        dependent_apps_missing_list = app_dependents.get_dependent_apps_missing(app_metadata, self._dbapi)
+        dependent_apps_missing_list = app_dependents.get_dependent_apps_missing(
+            app_metadata, self._dbapi)
 
         try:
             # Check if the application has dependent apps missing of action type 'APPLY'

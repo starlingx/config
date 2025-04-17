@@ -1616,6 +1616,10 @@ class KubeAppBundleAlreadyExistsBulk(Conflict):
                 "'%(values)s' already exists.")
 
 
+class KubeAppBundleNotFound(NotFound):
+    message = _("No application bundle with name %(name)s and "
+                "version %(version)s found.")
+
 #
 # Kubernetes related exceptions
 #

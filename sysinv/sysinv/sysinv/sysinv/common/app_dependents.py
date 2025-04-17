@@ -80,3 +80,70 @@ def get_dependent_apps_by_action(dependent_apps_metadata_list, action_type):
             })
 
     return dependent_apps_list
+
+
+def has_circular_dependency(rpc_app, upload_apps_succeeded_list, dbapi):
+    """
+    Check for circular dependencies in the application metadata.
+
+    Args:
+        rpc_app: The application object being checked for circular dependencies.
+        upload_apps_succeeded_list (list): List of successfully uploaded applications.
+        dbapi: Database API object.
+
+    Returns:
+        bool: True if circular dependencies are found, False otherwise.
+    """
+    app_target = {
+        'name': rpc_app.name,
+        'version': rpc_app.app_version
+    }
+
+    # Initialize the variable
+    dependent_apps_apply_type = []
+
+    for dependent_app in upload_apps_succeeded_list:
+        db_app = dbapi.kube_app_get(dependent_app['name'])
+        app_metadata = db_app.app_metadata
+        if not app_metadata.get(constants.APP_METADATA_DEPENDENT_APPS, None):
+            continue
+
+        dependent_apps_missing_list = get_dependent_apps_missing(
+            db_app.app_metadata, dbapi)
+        if not dependent_apps_missing_list:
+            continue
+
+        dependent_apps_apply_type = get_dependent_apps_by_action(
+            dependent_apps_missing_list,
+            constants.APP_METADATA_DEPENDENT_APPS_ACTION_APPLY)
+
+    if any(dep == app_target for dep in dependent_apps_apply_type):
+        return True
+    return False
+
+
+def is_dependent_app(app_name, app_version, dbapi):
+    """
+    Determine if a given application is a dependent application of any
+    currently applied applications.
+
+    Args:
+        app_name (str): The name of the application to check.
+        app_version (str): The version of the application to check.
+        dbapi (object): Database API object used to query application data.
+    Returns:
+        bool: True if the specified application is a dependent application
+              of any currently applied applications, False otherwise.
+    """
+
+    # Get the list of apps that are already applied
+    applied_apps = dbapi.kube_app_get_all_by_status(constants.APP_APPLY_SUCCESS)
+
+    for app in applied_apps:
+        app_metadata = app.app_metadata
+        dependent_apps_metadata_list = app_metadata.get(constants.APP_METADATA_DEPENDENT_APPS, [])
+        if any(dependent_app.get('name') == app_name and
+               dependent_app.get('version') == app_version
+               for dependent_app in dependent_apps_metadata_list):
+            return True
+    return False
