@@ -2017,31 +2017,46 @@ class AppOperator(object):
                 # Ensure that the old app plugins are enabled prior to fluxcd process.
                 _activate_old_app_plugins(old_app)
 
-                if self._make_app_request(old_app, constants.APP_APPLY_OP):
-                    old_app_charts = [c.release for c in old_app.charts]
-                    deployed_releases = helm_utils.retrieve_helm_releases()
-                    for new_chart in new_app.charts:
-                        # Cleanup the releases in the new application version
-                        # but are not in the old application version
-                        if (new_chart.release not in old_app_charts and
-                                new_chart.release in deployed_releases):
+                helm_files = self._helm.generate_helm_application_overrides(
+                    old_app.sync_overrides_dir, old_app.name, old_app.mode, cnamespace=None,
+                    chart_info=old_app.charts, combined=True)
 
-                            # Deletes secrets that are not in the version N of the app
-                            self._fluxcd.run_kubectl_kustomize(constants.KUBECTL_KUSTOMIZE_DELETE,
-                                                               new_chart.chart_os_path)
+                if helm_files:
+                    LOG.info("Application overrides generated.")
+                    LOG.info("Writing fluxcd overrides...")
+                    # Put the helm_overrides in the chart's system-overrides.yaml
+                    self._write_fluxcd_overrides(old_app.charts, helm_files)
+                    LOG.info("Fluxcd overrides generated.")
 
-                            # Send delete request in FluxCD so it doesn't
-                            # recreate the helm release
-                            self._kube.delete_custom_resource(
-                                constants.FLUXCD_CRD_HELM_REL_GROUP,
-                                constants.FLUXCD_CRD_HELM_REL_VERSION,
-                                new_chart.namespace,
-                                constants.FLUXCD_CRD_HELM_REL_PLURAL,
-                                new_chart.metadata_name)
-                            # Use helm to immediately remove the release
-                            helm_utils.delete_helm_release(new_chart.release,
-                                                           new_chart.namespace)
+                    if self._make_app_request(old_app, constants.APP_APPLY_OP):
+                        old_app_charts = [c.release for c in old_app.charts]
+                        deployed_releases = helm_utils.retrieve_helm_releases()
+                        for new_chart in new_app.charts:
+                            # Cleanup the releases in the new application version
+                            # but are not in the old application version
+                            if (new_chart.release not in old_app_charts and
+                                    new_chart.release in deployed_releases):
+
+                                # Deletes secrets that are not in the version N of the app
+                                self._fluxcd.run_kubectl_kustomize(
+                                    constants.KUBECTL_KUSTOMIZE_DELETE,
+                                    new_chart.chart_os_path)
+
+                                # Send delete request in FluxCD so it doesn't
+                                # recreate the helm release
+                                self._kube.delete_custom_resource(
+                                    constants.FLUXCD_CRD_HELM_REL_GROUP,
+                                    constants.FLUXCD_CRD_HELM_REL_VERSION,
+                                    new_chart.namespace,
+                                    constants.FLUXCD_CRD_HELM_REL_PLURAL,
+                                    new_chart.metadata_name)
+                                # Use helm to immediately remove the release
+                                helm_utils.delete_helm_release(new_chart.release,
+                                                               new_chart.namespace)
+                    else:
+                        rc = False
                 else:
+                    LOG.error(f"No Helm charts found for application {old_app.name}.")
                     rc = False
 
             self._cleanup(new_app, app_dir=False)
