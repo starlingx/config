@@ -480,7 +480,7 @@ class StorageController(rest.RestController):
                                                 constants.SB_TYPE_CEPH_ROOK):
                 if osdid is not None:
                     rpc_stor['state'] = constants.SB_STATE_CONFIGURED
-                else:
+                elif rpc_stor['state'] != constants.SB_STATE_DELETING_WITH_APP:
                     rpc_stor['state'] = constants.SB_STATE_CONFIGURING_WITH_APP
             else:
                 if ihost['operational'] == constants.OPERATIONAL_ENABLED:
