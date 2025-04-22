@@ -168,10 +168,14 @@ class TestPatchMixin(object):
 
     def test_fail_invalid_subnet_size(self):
         addrpool = self.find_addrpool_by_networktype(constants.NETWORK_TYPE_OAM)
-        max_prefix = 29 if addrpool.family == constants.IPV4_FAMILY else 125
+        min_hosts = 4
+        subnet_size = min_hosts - 2
+        ipv4_min_prefix = 32 - min_hosts.bit_length() + 1
+        ipv6_min_prefix = 128 - min_hosts.bit_length() + 1
+        max_prefix = ipv4_min_prefix if addrpool.family == constants.IPV4_FAMILY else ipv6_min_prefix
         prefix = str(max_prefix + 1)
         response = self.patch_oam_fail(addrpool, http_client.BAD_REQUEST, prefix=prefix)
-        self.assertIn(f"Invalid subnet size 4 with {addrpool.network}/{prefix}. "
+        self.assertIn(f"Invalid subnet size {subnet_size} with {addrpool.network}/{prefix}. "
                       f"Please configure at least size /{max_prefix} subnet",
                       response.json['error_message'])
 
