@@ -778,7 +778,7 @@ class TestKubeOperator(base.TestCase):
                 kind='ClusterRole',
                 name='test_system:test_node'
             ),
-            subjects=[kubernetes.client.V1Subject(
+            subjects=[kubernetes.client.RbacV1Subject(
                 kind='User',
                 name='test_system:test_node:test_hostname',
                 api_group='rbac.authorization.k8s.io',
@@ -850,15 +850,6 @@ class TestKubeOperator(base.TestCase):
             mock_read_namespaced_secret)
         self.mocked_read_namespaced_secret.start()
 
-        self.list_pod_security_policy_result = None
-
-        def mock_list_pod_security_policy(obj):
-            return self.list_pod_security_policy_result
-        self.mocked_list_pod_security_policy = mock.patch(
-            'kubernetes.client.PolicyV1beta1Api.list_pod_security_policy',
-            mock_list_pod_security_policy)
-        self.mocked_list_pod_security_policy.start()
-
         def mock_read_clusterrolebinding(obj, name):
             return self.read_clusterrolebinding_result
         self.mocked_read_clusterrolebinding = mock.patch(
@@ -877,7 +868,6 @@ class TestKubeOperator(base.TestCase):
         self.mocked_read_namespaced_config_map.stop()
         self.mocked_read_namespaced_service_account.stop()
         self.mocked_read_namespaced_secret.stop()
-        self.mocked_list_pod_security_policy.stop()
         self.mocked_read_clusterrolebinding.stop()
 
     def test_kube_get_image_by_pod_name(self):
