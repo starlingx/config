@@ -81,7 +81,11 @@ def del_admin_node_addresses(conn):
     res1 = db_query(conn, query)
     LOG.info("Number of address_pools entries found: %s" % len(res1))
 
-    controller0_ids = ",".join([str(e[1]) for e in res1])
+    controller0_ids = ",".join([str(e[1]) for e in res1 if e[1]])
+    if not controller0_ids:
+        LOG.info("Nothing to change")
+        return
+
     query = (
         "SELECT interface_id "
         "FROM addresses "
