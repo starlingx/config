@@ -634,6 +634,9 @@ DRBD_CEPH = 'ceph-float'
 FILESYSTEM_CEPH_FUNCTION_MONITOR = 'monitor'
 FILESYSTEM_CEPH_FUNCTION_OSD = 'osd'
 
+# Maximum number of Ceph Monitors
+FILESYSTEM_CEPH_MONITOR_MAX = 5
+
 # File system names
 FILESYSTEM_NAME_BACKUP = 'backup'
 FILESYSTEM_NAME_PLATFORM = 'platform'
