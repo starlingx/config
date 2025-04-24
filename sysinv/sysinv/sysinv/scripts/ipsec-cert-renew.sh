@@ -22,10 +22,16 @@ ERR_CA=0
 ERR_CERT=0
 ERR_RENEW=0
 RENEWAL_REQUIRED=0
+RETRY_INTERVAL=15
 
 # Log info message to /var/log/cron.log
 function LOG_info {
     logger -p cron.info -t "${NAME}($$): " "${@}"
+}
+
+# Log warning message to /var/log/cron.log
+function LOG_warn {
+    logger -p cron.warn -t "${NAME}($$): " "${@}"
 }
 
 # Log error message to /var/log/cron.log
@@ -65,10 +71,20 @@ fi
 # Call ipsec-client to renew IPsec certificates if trusted CA and/or
 # IPsec cert renewal is required.
 if [ $RENEWAL_REQUIRED -eq 1 ]; then
-    ipsec-client -o 2 pxecontroller
-    if [ $? -ne 0 ]; then
+    # Try 3 times in case if fails
+    ERR_RENEW=1
+    for i in {1..3}; do
+        ipsec-client -o 2 pxecontroller
+        if [ $? -ne 0 ]; then
+            LOG_warn "ipsec-client renew cert try ${i} failed, retry in ${RETRY_INTERVAL} seconds ..."
+            sleep ${RETRY_INTERVAL}
+        else
+            ERR_RENEW=0
+            break
+        fi
+    done
+    if [ ${ERR_RENEW} -ne 0 ]; then
         LOG_error "ipsec-client failed to renew IPsec certificates."
-        ERR_RENEW=1
     else
         LOG_info "IPsec certificate successfully renewed."
     fi

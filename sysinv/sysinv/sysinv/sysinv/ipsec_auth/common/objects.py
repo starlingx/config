@@ -84,7 +84,7 @@ class State(enum.Enum):
 
 class Token(object):
     VERSION = int(1).to_bytes(1, 'little')
-    EXPIRY_TIME = 7000
+    EXPIRY_TIME = 30000
 
     def __init__(self):
         self.__nonce = secrets.token_bytes(16)  # 128-bit nonce
