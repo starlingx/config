@@ -653,7 +653,7 @@ class ManagerTestCase(base.DbTestCase):
                 kind='ClusterRole',
                 name='test_system:test_node'
             ),
-            subjects=[kubernetes.client.V1Subject(
+            subjects=[kubernetes.client.RbacV1Subject(
                 kind='User',
                 name='test_system:test_node:test_hostname',
                 api_group='rbac.authorization.k8s.io',
