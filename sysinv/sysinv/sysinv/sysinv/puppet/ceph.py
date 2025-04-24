@@ -77,22 +77,22 @@ class CephPuppet(openstack.OpenstackBasePuppet):
         else:
             mon_2_host = None
 
-        mon_0_ip = ceph_mon_ips[constants.CEPH_MON_0]
-        mon_1_ip = ceph_mon_ips[constants.CEPH_MON_1]
-        mon_2_ip = ceph_mon_ips.get(constants.CEPH_MON_2, None)
         floating_mon_ip = ceph_mon_ips[constants.CEPH_FLOATING_MON]
-
-        mon_0_addr = self._format_ceph_mon_address(mon_0_ip)
-        mon_1_addr = self._format_ceph_mon_address(mon_1_ip)
-        if mon_2_ip:
-            mon_2_addr = self._format_ceph_mon_address(mon_2_ip)
+        if utils.is_aio_simplex_system(self.dbapi):
+            mon_0_ip = floating_mon_ip
         else:
-            mon_2_addr = None
+            mon_0_ip = ceph_mon_ips.get(constants.CEPH_MON_0, None)
+        mon_1_ip = ceph_mon_ips.get(constants.CEPH_MON_1, None)
+        mon_2_ip = ceph_mon_ips.get(constants.CEPH_MON_2, None)
+
+        mon_0_addr = self._format_ceph_mon_address(mon_0_ip) if mon_0_ip else None
+        mon_1_addr = self._format_ceph_mon_address(mon_1_ip) if mon_1_ip else None
+        mon_2_addr = self._format_ceph_mon_address(mon_2_ip) if mon_2_ip else None
         floating_mon_addr = self._format_ceph_mon_address(floating_mon_ip)
 
         # ceph can not bind to multiple address families, so only enable IPv6
         # if the monitors are IPv6 addresses
-        ms_bind_ipv6 = (netaddr.IPAddress(mon_0_ip).version ==
+        ms_bind_ipv6 = (netaddr.IPAddress(floating_mon_ip).version ==
                         constants.IPV6_FAMILY)
 
         # If we have ipv6 enabled, we must turn off ipv4

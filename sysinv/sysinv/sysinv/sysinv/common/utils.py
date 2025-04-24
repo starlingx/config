@@ -3866,6 +3866,17 @@ def get_primary_address_by_name(dbapi, db_address_name, networktype, raise_exc=F
 
     :return: the address object if found, None otherwise
     """
+    if is_aio_simplex_system(dbapi) \
+            and db_address_name == f"{constants.CONTROLLER_0_HOSTNAME}-{networktype}":
+        db_address_name = f"{constants.CONTROLLER_HOSTNAME}-{networktype}"
+    else:
+        system = dbapi.isystem_get_one()
+        if (system.capabilities.get('simplex_to_duplex_migration') or
+                system.capabilities.get('simplex_to_duplex-direct_migration')) and \
+                db_address_name == f"{constants.CONTROLLER_0_HOSTNAME}-{networktype}":
+            if len(dbapi.address_get_by_name(db_address_name)) == 0:
+                db_address_name = f"{constants.CONTROLLER_HOSTNAME}-{networktype}"
+
     # first search directly by name
     address = dbapi.address_get_by_name(db_address_name)
     if len(address) == 0:
@@ -3925,6 +3936,17 @@ def get_secondary_address_by_name(dbapi, db_address_name, networktype, raise_exc
     if not db_address_name or not networktype:
         LOG.err(f"no db_address_name={db_address_name} or networktype={networktype} provided")
         return address
+
+    if is_aio_simplex_system(dbapi) \
+            and db_address_name == f"{constants.CONTROLLER_0_HOSTNAME}-{networktype}":
+        db_address_name = f"{constants.CONTROLLER_HOSTNAME}-{networktype}"
+    else:
+        system = dbapi.isystem_get_one()
+        if (system.capabilities.get('simplex_to_duplex_migration') or
+                system.capabilities.get('simplex_to_duplex-direct_migration')) and \
+                db_address_name == f"{constants.CONTROLLER_0_HOSTNAME}-{networktype}":
+            if len(dbapi.address_get_by_name(db_address_name)) == 0:
+                db_address_name = f"{constants.CONTROLLER_HOSTNAME}-{networktype}"
 
     try:
         networks = dbapi.networks_get_by_type(networktype)

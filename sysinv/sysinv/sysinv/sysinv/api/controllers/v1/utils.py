@@ -971,6 +971,10 @@ def get_primary_address_by_name(db_address_name, networktype, raise_exc=False):
 
     :return: the address object if found, None otherwise
     """
+    if get_system_mode() == constants.SYSTEM_MODE_SIMPLEX \
+            and db_address_name == f"{constants.CONTROLLER_0_HOSTNAME}-{networktype}":
+        db_address_name = f"{constants.CONTROLLER_HOSTNAME}-{networktype}"
+
     # first search directly by name
     address = pecan.request.dbapi.address_get_by_name(db_address_name)
     if len(address) == 0:

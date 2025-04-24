@@ -6,6 +6,7 @@
 
 import netaddr
 import glob
+import ipaddress
 
 from oslo_log import log
 
@@ -37,6 +38,7 @@ class NetworkingPuppet(base.BasePuppet):
 
         config.update(self._get_cluster_pod_config())
         config.update(self._get_cluster_service_config())
+        config.update(self._get_blackhole_address())
         return config
 
     def get_host_config(self, host):
@@ -184,6 +186,10 @@ class NetworkingPuppet(base.BasePuppet):
                 controller0_address = None
             configdata[family_name].update({'controller0_address': controller0_address})
 
+            if utils.is_aio_simplex_system(self.dbapi) and controller0_address is None \
+                    and networktype in [constants.NETWORK_TYPE_MGMT]:
+                configdata[family_name].update({'controller0_address': controller_address})
+
             try:
                 controller1_address = self._get_address_by_name_and_family(
                     constants.CONTROLLER_1_HOSTNAME, address_pool.family, networktype).address
@@ -320,6 +326,52 @@ class NetworkingPuppet(base.BasePuppet):
         else:
             LOG.error(f"Network {network.name}, type {network.type} does not have a valid"
                       f" primary pool address family: {network.primary_pool_family}.")
+
+        return config
+
+    def _get_blackhole_address(self):
+        """ returm the address to be added as a blackhole route to be used when an address
+            needs to be provided to the configuration but it is not used and traffic to be discarded
+        """
+        config = dict()
+
+        # RFC6666
+        config.update({'platform::network::blackhole::ipv6_subnet': "100::/64"})
+        config.update({'platform::network::blackhole::ipv6_host': "100::1"})
+
+        # there is no specification for IPv4, selecting a single host address, as more is not needed
+        # creating a list of possible candidates:
+        ipv4_blackhole_list = ["169.254.254.254/32",  # preferred option, non-routable address
+                               "169.254.127.254/32",  # non-routable address
+                               "169.254.64.254/32",   # non-routable address
+                               "192.168.254.254/32",  # address in the private network range
+                               "192.168.127.254/32",  # address in the private network range
+                               "192.168.64.254/32",  # address in the private network range
+                               "10.254.254.254/32",   # address in the private network range
+                               "10.254.127.254/32",   # address in the private network range
+                               "10.254.64.254/32",   # address in the private network range
+                               "172.16.254.254/32",   # address in the private network range
+                               "172.16.127.254/32",   # address in the private network range
+                               "172.16.64.254/32"]   # address in the private network range
+        addr_pool_list = self.dbapi.address_pools_get_all()
+        for subnet in ipv4_blackhole_list:
+            overlap = False
+            for pool in addr_pool_list:
+                try:
+                    blackhole_net = ipaddress.ip_network(subnet, strict=False)
+                    pool_net = ipaddress.ip_network(f"{pool.network}/{pool.prefix}", strict=False)
+                    if blackhole_net.overlaps(pool_net):
+                        overlap = True
+                except ValueError as e:
+                    LOG.info(f"Error: Invalid network address provided: {e}")
+                    overlap = False
+            if not overlap:
+                config.update({'platform::network::blackhole::ipv4_subnet': subnet})
+                config.update({'platform::network::blackhole::ipv4_host': subnet.split('/')[0]})
+                break
+
+        if 'platform::network::blackhole::ipv4_host' not in config.keys():
+            LOG.error("cannot select an IPv4 address from the blackhole candidate list")
 
         return config
 

@@ -389,6 +389,13 @@ class AddressPoolController(rest.RestController):
                             raise wsme.exc.ClientSideError(msg)
                     continue
 
+            if nw_type == constants.NETWORK_TYPE_MGMT:
+                if self._get_system_mode() == constants.SYSTEM_MODE_DUPLEX:
+                    system = pecan.request.dbapi.isystem_get_one()
+                    if (system.capabilities.get('simplex_to_duplex_migration') or
+                            system.capabilities.get('simplex_to_duplex-direct_migration')):
+                        continue
+
             # An addresspool except the admin and system controller's pools
             # are considered read-only after the initial configuration is
             # complete. During bootstrap it should be modifiable even though
@@ -529,15 +536,14 @@ class AddressPoolController(rest.RestController):
     ALL_CTL_ADDR_FIELDS = ['floating_address', 'controller0_address', 'controller1_address']
 
     def _get_required_address_fields(self, network_types):
-        if constants.NETWORK_TYPE_OAM in network_types:
+        sx_floating_only_networks = [constants.NETWORK_TYPE_OAM,
+                                     constants.NETWORK_TYPE_MGMT,
+                                     constants.NETWORK_TYPE_ADMIN]
+        if any(x in network_types for x in sx_floating_only_networks):
             if utils.get_system_mode() == constants.SYSTEM_MODE_SIMPLEX:
                 return self.FLOATING_ADDR_FIELD
             else:
                 return self.ALL_CTL_ADDR_FIELDS
-        if constants.NETWORK_TYPE_MGMT in network_types:
-            return self.ALL_CTL_ADDR_FIELDS
-        if constants.NETWORK_TYPE_ADMIN in network_types:
-            return self.ALL_CTL_ADDR_FIELDS
         return []
 
     def _check_required_addresses(self, updated_addrpool, network_types):
@@ -807,14 +813,22 @@ class AddressPoolController(rest.RestController):
     def _apply_network_specific_address_updates(self, addrpool, network_types, commands):
         if constants.NETWORK_TYPE_OAM in network_types:
             self._apply_oam_address_updates(addrpool, commands)
+        if constants.NETWORK_TYPE_MGMT in network_types:
+            self._apply_mgmt_address_updates(addrpool, commands)
 
     def _apply_oam_address_updates(self, addrpool, commands):
         system = pecan.request.dbapi.isystem_get_one()
         if system.capabilities.get('simplex_to_duplex_migration') or \
                 system.capabilities.get('simplex_to_duplex-direct_migration'):
-            self._aio_sx_to_dx_oam_migration(addrpool, commands)
+            self._aio_sx_to_dx_address_migration(addrpool, commands)
 
-    def _aio_sx_to_dx_oam_migration(self, addrpool, commands):
+    def _apply_mgmt_address_updates(self, addrpool, commands):
+        system = pecan.request.dbapi.isystem_get_one()
+        if system.capabilities.get('simplex_to_duplex_migration') or \
+                system.capabilities.get('simplex_to_duplex-direct_migration'):
+            self._aio_sx_to_dx_address_migration(addrpool, commands)
+
+    def _aio_sx_to_dx_address_migration(self, addrpool, commands):
         create_cmd = commands['create'].get('controller0_address', None)
         if not create_cmd:
             return
