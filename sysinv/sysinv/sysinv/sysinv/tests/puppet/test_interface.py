@@ -4402,6 +4402,56 @@ class InterfaceConfigTestMixin(InterfaceTestCaseMixin):
         }
         self._validate_config(expected)
 
+    def test_controller_shared_vlan_over_pxeboot(self):
+        self._create_host(constants.CONTROLLER)
+        pxe0 = self._add_bond('pxe0', constants.INTERFACE_CLASS_PLATFORM,
+                              constants.NETWORK_TYPE_PXEBOOT)
+        self._add_vlan(pxe0, 200, 'mgmt0', constants.INTERFACE_CLASS_PLATFORM,
+                       [constants.NETWORK_TYPE_MGMT, constants.NETWORK_TYPE_CLUSTER_HOST])
+        expected = {
+            'pxe0': [
+                {NET: constants.NETWORK_TYPE_PXEBOOT, FAMILY: INET, METHOD: STATIC,
+                    OPTIONS: {'bond-lacp-rate': 'fast', 'bond-miimon': '100',
+                              'bond-mode': '802.3ad', 'bond-slaves': True,
+                              'bond-xmit-hash-policy': 'layer2', 'hwaddress': True,
+                              POST_UP: [SET_TC, IPV6_CFG], UP: [SLEEP]}}],
+            'eth0': [
+                {NET: None, FAMILY: INET, METHOD: MANUAL,
+                    OPTIONS: {ALLOW: True, 'bond-master': True, PRE_UP: [PROMISC_ON, IPV6_CFG]}}],
+            'eth1': [
+                {NET: None, FAMILY: INET, METHOD: MANUAL,
+                    OPTIONS: {ALLOW: True, 'bond-master': True, PRE_UP: [PROMISC_ON, IPV6_CFG]}}],
+            'mgmt0': [
+                {NET: None, FAMILY: INET, METHOD: MANUAL,
+                    OPTIONS: {'vlan-raw-device': True, PRE_UP: [VLAN_MOD],
+                              POST_UP: [SET_TC, SET_MTU, IPV6_CFG]}},
+                {MODES: [SS_IPV4],
+                    NET: constants.NETWORK_TYPE_MGMT, FAMILY: INET, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, 'vlan-raw-device': True, PRE_UP: [VLAN_MOD],
+                              POST_UP: [SET_MTU, IPV6_CFG]}},
+                {MODES: [DS_IPV4, DS_IPV6],
+                    NET: constants.NETWORK_TYPE_MGMT, FAMILY: INET, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, 'vlan-raw-device': True, PRE_UP: [VLAN_MOD],
+                              POST_UP: [SET_MTU, IPV6_CFG]}},
+                {MODES: [SS_IPV6],
+                    NET: constants.NETWORK_TYPE_MGMT, FAMILY: INET6, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, 'vlan-raw-device': True, PRE_UP: [VLAN_MOD],
+                              POST_UP: [SET_MTU, IPV6_CFG, UNDEPR]}},
+                {MODES: [DS_IPV4, DS_IPV6],
+                    NET: constants.NETWORK_TYPE_MGMT, FAMILY: INET6, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, 'vlan-raw-device': True, PRE_UP: [VLAN_MOD],
+                              POST_UP: [SET_MTU, IPV6_CFG, UNDEPR]}},
+                {MODES: [SS_IPV4, DS_IPV4, DS_IPV6],
+                    NET: constants.NETWORK_TYPE_CLUSTER_HOST, FAMILY: INET, METHOD: STATIC,
+                    OPTIONS: {'vlan-raw-device': True, PRE_UP: [VLAN_MOD],
+                              POST_UP: [SET_MTU, IPV6_CFG]}},
+                {MODES: [SS_IPV6, DS_IPV4, DS_IPV6],
+                    NET: constants.NETWORK_TYPE_CLUSTER_HOST, FAMILY: INET6, METHOD: STATIC,
+                    OPTIONS: {'vlan-raw-device': True, PRE_UP: [VLAN_MOD],
+                              POST_UP: [SET_MTU, IPV6_CFG]}}],
+        }
+        self._validate_config(expected)
+
     def test_controller_duplex_direct_ethernet(self):
         self._create_host(constants.CONTROLLER)
         system_dict = self.system.as_dict()
