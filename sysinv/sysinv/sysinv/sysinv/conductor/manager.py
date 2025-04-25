@@ -1503,10 +1503,16 @@ class ConductorManager(service.PeriodicService):
                                 dnsmasq_addn_hosts_file)):
             os.rename(temp_dnsmasq_addn_hosts_file, dnsmasq_addn_hosts_file)
 
+        # Generate the dnsmasq addn_conf file
+        # Avoid duplicate service restart with 'False' flag
+        dnsmasq_addn_conf_file = config_dir + 'dnsmasq.addn_conf'
+        if not os.path.isfile(dnsmasq_addn_conf_file):
+            self._generate_dnsmasq_conf_file(False)
+
         LOG.info("{}: Restarting dnsmasq".format(func))
         os.system("pkill -HUP dnsmasq")
 
-    def _generate_dnsmasq_conf_file(self):
+    def _generate_dnsmasq_conf_file(self, service_restart=True):
         """Regenerates the dnsmasq addn_conf file from database."""
 
         if (self.topic == 'test-topic'):
@@ -1530,9 +1536,9 @@ class ConductorManager(service.PeriodicService):
                                 dnsmasq_addn_conf_file)):
             os.rename(temp_dnsmasq_addn_conf_file, dnsmasq_addn_conf_file)
 
-        LOG.info("_generate_dnsmasq_conf_file: sm-restart-safe dnsmasq")
-
-        os.system("sm-restart-safe service dnsmasq")
+        if service_restart:
+            LOG.info("_generate_dnsmasq_conf_file: sm-restart-safe dnsmasq")
+            os.system("sm-restart-safe service dnsmasq")
 
     def update_apparmor_config(self, context, ihost_uuid):
         """Update the GRUB CMDLINE to enable/disable apparmor"""
