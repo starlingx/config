@@ -5633,15 +5633,25 @@ class HostController(rest.RestController):
         LOG.info("%s ihost check_unlock_application" % hostupdate.displayid)
         apps = pecan.request.dbapi.kube_app_get_all()
 
+        blocked_app_statuses = [constants.APP_APPLY_IN_PROGRESS,
+                                constants.APP_UPDATE_IN_PROGRESS,
+                                constants.APP_RECOVER_IN_PROGRESS,
+                                constants.APP_REMOVE_IN_PROGRESS]
+
+        # Also prevent unlocking if any apps are uploading in simplex systems
+        additional_error_status = ""
+        if utils.get_system_mode() == constants.SYSTEM_MODE_SIMPLEX:
+            blocked_app_statuses.append(constants.APP_UPLOAD_IN_PROGRESS)
+            additional_error_status = "uploaded, "
+
         for app in apps:
-            if app.status in [constants.APP_APPLY_IN_PROGRESS,
-                              constants.APP_UPDATE_IN_PROGRESS,
-                              constants.APP_RECOVER_IN_PROGRESS]:
+            if app.status in blocked_app_statuses:
                 if not force_unlock:
                     raise wsme.exc.ClientSideError(
                         _("Rejected: Can not unlock host %s while an application is being "
-                          "applied, updated or recovered. Please try again later."
-                          % hostupdate.displayid))
+                          "%sapplied, updated, recovered or removed. "
+                          "Please try again later."
+                          % (hostupdate.displayid, additional_error_status)))
                 else:
                     LOG.warn("Allowing force-unlock of host %s while application "
                              "%s status = '%s'"
