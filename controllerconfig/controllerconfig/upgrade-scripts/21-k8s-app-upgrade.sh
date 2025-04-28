@@ -282,7 +282,7 @@ function update_in_series {
             ALARMS=$(fm alarm-list --nowrap --uuid --query "alarm_id=750.005;entity_type_id=k8s_application;entity_instance_id=${UPGRADE_APP_NAME}" | head -n-1 | tail -n+4 | awk '{print $2}')
             for alarm in ${ALARMS}; do
                 log "$NAME: [Warning] A stale 750.005 Application Update In Progress alarm was found for ${UPGRADE_APP_NAME}. Clearing it (UUID: ${alarm})."
-                fm alarm-delete $alarm
+                fm alarm-delete $alarm --yes
             done
             log "$NAME: ${UPGRADE_APP_NAME} has been updated to version ${UPGRADE_APP_VERSION} from version ${EXISTING_APP_VERSION}"
             UPDATED=true
@@ -357,7 +357,7 @@ function update_apps {
             uploaded)
                 check_k8s_health
                 log "Deleting ${EXISTING_APP_NAME}, version ${EXISTING_APP_VERSION}"
-                system application-delete ${EXISTING_APP_NAME}
+                system application-delete ${EXISTING_APP_NAME} --yes
 
                 # Wait on the delete, should be quick
                 for tries in $(seq 1 $DELETE_RESULT_ATTEMPTS); do
@@ -404,7 +404,7 @@ function update_apps {
             remove-failed)
                 check_k8s_health
                 log "${EXISTING_APP_NAME}, version ${EXISTING_APP_VERSION}, remove failed: ${EXISTING_APP_STATUS}. Retrying command..."
-                retry_command "application-remove" "${EXISTING_APP_NAME}"
+                retry_command "application-remove --yes" "${EXISTING_APP_NAME}"
                 ;;
 
             # States that are unexpected
