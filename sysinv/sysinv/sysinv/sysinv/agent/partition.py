@@ -11,7 +11,6 @@
 
 """ Inventory disk partition utilities and helper functions."""
 
-from eventlet.green import subprocess
 import pyudev
 import sys
 
@@ -46,15 +45,10 @@ class PartitionOperator(object):
         sfdisk_command = '{} {}'.format('/usr/bin/partition_info.sh',
                                         device_path)
 
-        try:
-            sfdisk_process = subprocess.Popen(sfdisk_command,
-                                              stdout=subprocess.PIPE,
-                                              shell=True,
-                                              universal_newlines=True)
-        except Exception as e:
-            self.handle_exception("Could not retrieve partition information: "
-                                  "%s" % e)
-        sfdisk_output = sfdisk_process.stdout.read()
+        sfdisk_stdout, sfdisk_stderr = utils.subprocess_open(command=sfdisk_command,
+                                                             timeout=10)
+
+        sfdisk_output = sfdisk_stdout.rstrip()
 
         rows = [row for row in sfdisk_output.split(';') if row.strip()]
 

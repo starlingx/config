@@ -11,10 +11,9 @@
 
 """ Inventory logical volume utilities and helper functions."""
 
-from eventlet.green import subprocess
-
 from oslo_log import log as logging
 from sysinv.common import constants
+from sysinv.common import utils
 
 LOG = logging.getLogger(__name__)
 
@@ -44,18 +43,12 @@ class LVOperator(object):
         lvdisplay_command = 'lvdisplay -C --separator=";" -o lv_full_name,lv_size'\
             ' --units B --nosuffix --noheadings'
 
-        try:
-            # Execute the lvdisplay command
-            lvdisplay_process = subprocess.Popen(lvdisplay_command,
-                                                 stdout=subprocess.PIPE,
-                                                 shell=True,
-                                                 universal_newlines=True)
-            lvdisplay_output = lvdisplay_process.stdout.read()
-        except Exception as e:
-            LOG.error("Could not retrieve lvdisplay information: %s" % e)
+        lvdisplay_stdout, lvdisplay_stderr = utils.subprocess_open(command=lvdisplay_command)
+
+        if not lvdisplay_stdout:
             return ilv
 
-        rows = [row for row in lvdisplay_output.split('\n') if row.strip()]
+        rows = [row for row in lvdisplay_stdout.split('\n') if row.strip()]
 
         for row in rows:
             values = row.split(';')

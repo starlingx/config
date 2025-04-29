@@ -186,6 +186,38 @@ def exception_msg(exception):
     return str(exception)
 
 
+def subprocess_open(command, timeout=5):
+    """
+    Helper method to execute a shell command, capture output,
+    and avoid zombie processes.
+
+    :param command: The shell command to execute.
+    :param timeout: Timeout in seconds for the command (default: 5).
+
+    :returns: a tuple: (stdout, stderr) from the command, or ("", "")
+    if an error occurs.
+    """
+    stdout, stderr = "", ""
+
+    try:
+        with subprocess.Popen(command,
+                             stdout=subprocess.PIPE,
+                             shell=True,
+                             universal_newlines=True) as process:
+            stdout, stderr = process.communicate(timeout=timeout)
+
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.communicate()  # Reap the process to avoid zombie
+        LOG.error("Command '%s' timed out", command)
+        return ("", "")
+    except Exception as e:
+        LOG.error("Could not execute command '%s': %s", command, e)
+        return ("", "")
+
+    return (stdout, stderr)
+
+
 def execute(*cmd, **kwargs):
     """Helper method to execute command with optional retry.
 
