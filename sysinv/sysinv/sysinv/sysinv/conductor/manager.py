@@ -395,6 +395,7 @@ class ConductorManager(service.PeriodicService):
             self._backup_action_map[action] = impl
 
         self._initialize_backup_actions_log()
+        self._app_alarm_audit_counter = 0  # Counter for alarm audit frequency
 
     def start(self):
         try:
@@ -8680,6 +8681,67 @@ class ConductorManager(service.PeriodicService):
 
             time.sleep(1)
 
+    def _audit_application_alarms(self):
+        """Audit and clear outdated alarms for application apply/update progress."""
+        # Check for reapply pending alarm to skip audit
+        reapply_pending_alarms = self.fm_api.get_faults_by_id(
+            fm_constants.FM_ALARM_ID_APPLICATION_REAPPLY_PENDING) or []
+        if reapply_pending_alarms:
+            return
+        target_alarms = [
+            fm_constants.FM_ALARM_ID_APPLICATION_APPLYING,
+            fm_constants.FM_ALARM_ID_APPLICATION_UPDATING
+        ]
+        alarm_description = f"for application alarms {', '.join(target_alarms)}"
+        LOG.info(f"Starting alarm audit {alarm_description}")
+
+        alarms = []
+        for alarm_id in target_alarms:
+            alarm_list = self.fm_api.get_faults_by_id(alarm_id)
+            if not alarm_list:
+                continue
+            alarms.extend(alarm_list)
+        if not alarms:
+            LOG.info(f"No alarms found {alarm_description}")
+        else:
+            # Fetch all applications
+            apps = self.dbapi.kube_app_get_all()
+
+            for alarm in alarms:
+                # Extract app name from entity_instance_id
+                # (e.g., k8s_application=platform-integ-apps -> platform-integ-apps)
+                entity_parts = alarm.entity_instance_id.split('=')
+                if (len(entity_parts) != 2 or
+                        entity_parts[0] != fm_constants.FM_ENTITY_TYPE_APPLICATION):
+                    LOG.warning(f"Invalid entity_instance_id format: {alarm.entity_instance_id}")
+                    continue
+                app_name = entity_parts[1]
+
+                # Find matching application (handle multiple or none)
+                matching_apps = [app for app in apps if app.name == app_name]
+                if not matching_apps:
+                    LOG.warning(f"No matching application found for alarm "
+                                f"{alarm.alarm_id} with entity {alarm.entity_instance_id}"
+                                )
+                    continue
+
+                for app in matching_apps:
+                    # Check if the application is uploaded/applied and progress is completed
+                    if app.status in [constants.APP_UPLOAD_SUCCESS, constants.APP_APPLY_SUCCESS]:
+                        try:
+                            self.fm_api.clear_fault(alarm.alarm_id, alarm.entity_instance_id)
+                            LOG.info(
+                                f"Cleared outdated alarm {alarm.alarm_id} for application {app_name}"
+                            )
+                        except Exception as e:
+                            LOG.error(
+                                f"Failed to clear alarm {alarm.alarm_id} for {app_name}: {str(e)}"
+                            )
+                    else:
+                        LOG.debug(f"Alarm {alarm.alarm_id} for {app_name} retained, status: "
+                                  f"{app.status}, progress: {app.progress}"
+                                  )
+
     @periodic_task.periodic_task(spacing=CONF.conductor_periodic_task_intervals.k8s_application,
                                  run_immediately=True)
     def _k8s_application_audit(self, context):
@@ -8820,6 +8882,12 @@ class ConductorManager(service.PeriodicService):
             if status == constants.APP_APPLY_SUCCESS:
                 self.check_pending_app_reapply(context)
                 self._auto_update_app(context, app_name)
+
+        # Run alarm audit every 5 iterations (5 minutes)
+        self._app_alarm_audit_counter += 1
+        if self._app_alarm_audit_counter >= 5:
+            self._audit_application_alarms()
+            self._app_alarm_audit_counter = 0
 
         LOG.debug("Periodic Task: _k8s_application_audit: Finished")
 
