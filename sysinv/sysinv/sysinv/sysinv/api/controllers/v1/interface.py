@@ -1949,6 +1949,7 @@ def _create(interface):
             raise e
 
     if (cutils.is_aio_simplex_system(pecan.request.dbapi)
+            and ihost['administrative'] != constants.ADMIN_LOCKED
             and new_interface['iftype'] == constants.INTERFACE_TYPE_VF):
         try:
             pecan.request.rpcapi.update_sriov_vf_config(
