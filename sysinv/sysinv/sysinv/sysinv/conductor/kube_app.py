@@ -1964,6 +1964,22 @@ class AppOperator(object):
         LOG.info("Starting recover Application %s from version: %s to version: %s" %
                  (old_app.name, new_app.version, old_app.version))
 
+        lifecycle_hook_info_app_recover = copy.deepcopy(lifecycle_hook_info_app)
+        lifecycle_hook_info_app_recover.operation = constants.APP_RECOVER_OP
+
+        for lifecycle_type in (
+            LifecycleConstants.APP_LIFECYCLE_TYPE_RBD,
+            LifecycleConstants.APP_LIFECYCLE_TYPE_RESOURCE
+        ):
+            try:
+                lifecycle_hook_info_app_recover.lifecycle_type = lifecycle_type
+                self.app_lifecycle_actions(None, None, rpc_app, lifecycle_hook_info_app_recover)
+            except Exception as e:
+                LOG.error(
+                    f"The lifecycle recover {lifecycle_type} failed with error: {e}"
+                    "The system will still attempt to run the recovery process"
+                )
+
         # Ensure that the the failed app plugins are disabled prior to cleanup
         self._plugins.deactivate_plugins(new_app)
 
@@ -1980,27 +1996,6 @@ class AppOperator(object):
             self._dbapi.kube_app_destroy(new_app.name,
                                          version=new_app.version,
                                          inactive=True)
-
-            lifecycle_hook_info_app_recover = copy.deepcopy(lifecycle_hook_info_app)
-            lifecycle_hook_info_app_recover.operation = constants.APP_RECOVER_OP
-
-            lifecycle_hook_info_app_recover.lifecycle_type = \
-                LifecycleConstants.APP_LIFECYCLE_TYPE_RBD
-            self.app_lifecycle_actions(
-                None,
-                None,
-                old_app._kube_app,
-                lifecycle_hook_info_app_recover
-            )
-
-            lifecycle_hook_info_app_recover.lifecycle_type = \
-                LifecycleConstants.APP_LIFECYCLE_TYPE_RESOURCE
-            self.app_lifecycle_actions(
-                None,
-                None,
-                old_app._kube_app,
-                lifecycle_hook_info_app_recover
-            )
 
             LOG.info("Recovering helm charts for Application %s (%s)..."
                      % (old_app.name, old_app.version))
