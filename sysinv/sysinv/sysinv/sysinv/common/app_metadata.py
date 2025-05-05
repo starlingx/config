@@ -1001,3 +1001,25 @@ def make_application_query(k8s_ver, include_path=False):
                 compatible_apps.append(app_name)
 
     return compatible_apps
+
+
+def has_after_key_in_apps_metadata(apps_metadata):
+    """
+    Checks if any item in the 'evaluate_reapply' section of the 'behavior'
+    metadata contains the key 'after'.
+    Args:
+        apps_metadata (dict): A dictionary containing application metadata.
+                              Expected to have a 'behavior' key, which may
+                              contain an 'evaluate_reapply' dictionary.
+    Returns:
+        bool: True if any item in the 'evaluate_reapply' dictionary contains
+              the key 'after', False otherwise.
+    """
+
+    return any(
+        constants.APP_METADATA_AFTER
+        in metadata.get(constants.APP_METADATA_BEHAVIOR, {}).get(
+            constants.APP_METADATA_EVALUATE_REAPPLY, {}
+        )
+        for metadata in apps_metadata.values()
+    )

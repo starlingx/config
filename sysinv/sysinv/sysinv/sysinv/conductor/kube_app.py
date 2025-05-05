@@ -2346,6 +2346,57 @@ class AppOperator(object):
 
     @staticmethod
     def recompute_app_evaluation_order(apps_metadata_dict):
+        """
+        Recomputes the evaluation order of applications based on their metadata
+        and categorizes them into dependent apps, class-based apps, and independent apps.
+        Args:
+            apps_metadata_dict (dict): A dictionary containing metadata about applications.
+                It must include the following keys:
+                - constants.APP_METADATA_PLATFORM_MANAGED_APPS: A list of platform-managed app names.
+                - constants.APP_METADATA_APPS: A dictionary where keys are app names and values
+                  are metadata dictionaries for each app.
+        Modifies:
+            apps_metadata_dict (dict): Adds a new key, constants.APP_METADATA_ORDERED_APPS,
+            which contains an ordered dictionary.
+        """
+
+        # Initialize the ordered_apps dictionary
+        ordered_apps = {
+            constants.APP_METADATA_DEPENDENT_APPS: [],
+            constants.APP_METADATA_CLASS: constants.APP_METADATA_CLASS_ORDERED_DICT,
+            constants.APP_METADATA_INDEPENDENT_APPS: []
+        }
+
+        # Iterate through the platform-managed apps
+        # and categorize them based on their metadata
+        for app_name in apps_metadata_dict[constants.APP_METADATA_PLATFORM_MANAGED_APPS]:
+
+            app_metadata = apps_metadata_dict[constants.APP_METADATA_APPS][app_name]
+            app_class = app_metadata.get(constants.APP_METADATA_CLASS, None)
+
+            if app_metadata.get(constants.APP_METADATA_DEPENDENT_APPS, None):
+                # This app has dependent apps
+                ordered_apps[constants.APP_METADATA_DEPENDENT_APPS].append(app_name)
+
+                # If the app has dependent apps, it should not be in the class-based apps
+                continue
+            elif app_class:
+                # This app has class
+                ordered_apps[constants.APP_METADATA_CLASS][app_class].append(app_name)
+            else:
+                # This app is independent
+                ordered_apps[constants.APP_METADATA_INDEPENDENT_APPS].append(app_name)
+
+        # Sort the dependent apps
+        ordered_apps[constants.APP_METADATA_DEPENDENT_APPS].sort()
+        # Sort the independent apps
+        ordered_apps[constants.APP_METADATA_INDEPENDENT_APPS].sort()
+
+        LOG.info("Applications reapply order dict: {}".format(ordered_apps))
+        apps_metadata_dict[constants.APP_METADATA_ORDERED_APPS] = ordered_apps
+
+    @staticmethod
+    def recompute_app_evaluation_order_by_after_key(apps_metadata_dict):
         """ Get the order of app reapplies based on dependencies
 
         The following algorithm uses these concepts:
@@ -2581,10 +2632,18 @@ class AppOperator(object):
                          "".format(app_name))
 
                 # Recompute app reapply order
-                # TODO(dbarbosa): recompute_app_evaluation_order should now take into
-                # account the order present in "dependent_apps" and no longer the "after"
-                # key of behavior
-                AppOperator.recompute_app_evaluation_order(apps_metadata_dict)
+
+                # TODO(dbarbosa): Use the has_after_key_in_apps_metadata function to
+                # identify the presence of the after key within the metadata.yaml of
+                # any tarball loaded by the platform. If the "after" key exists, use
+                # the recompute_app_evaluation_order_by_after_key function, otherwise
+                # use the recompute_app_evaluation_order function. Example:
+                # if app_metadata.has_after_key_in_apps_metadata(
+                #         apps_metadata_dict[constants.APP_METADATA_APPS]):
+                #     AppOperator.recompute_app_evaluation_order_by_after_key(apps_metadata_dict)
+                # else:
+                #     AppOperator.recompute_app_evaluation_order(apps_metadata_dict)
+                AppOperator.recompute_app_evaluation_order_by_after_key(apps_metadata_dict)
 
             # Remember the desired state the app should achieve
             if desired_state is not None:
