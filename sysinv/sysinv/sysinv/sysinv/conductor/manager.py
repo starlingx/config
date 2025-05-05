@@ -12669,6 +12669,17 @@ class ConductorManager(service.PeriodicService):
                 }
 
                 self._config_apply_runtime_manifest(context, config_uuid, config_dict, force=True)
+            elif section == constants.SERVICE_PARAM_SECTION_PLATFORM_FM:
+                personalities = [constants.CONTROLLER]
+
+                config_uuid = self._config_update_hosts(context, personalities)
+
+                config_dict = {
+                    'personalities': personalities,
+                    "classes": ['platform::fm::runtime']
+                }
+
+                self._config_apply_runtime_manifest(context, config_uuid, config_dict, force=True)
             elif section == constants.SERVICE_PARAM_SECTION_PLATFORM_DRBD:
                 personalities = [constants.CONTROLLER]
 
