@@ -8840,6 +8840,12 @@ class ConductorManager(service.PeriodicService):
                             app_name] in [constants.APP_UPLOAD_SUCCESS, constants.APP_APPLY_SUCCESS]:
                     self._auto_upload_managed_app(context, app_name)
 
+        # TODO(dbarbosa): Handle where there is no "after" key in the application
+        # metadata. In this case the determine_apps_reapply_order function instead
+        # of return a list will return a dictionary with 3 keys: dependent_apps,
+        # class and independent_apps. To identify if any app uses the key after,
+        # use the function app_metadata.has_after_key_in_apps_metadata.
+
         # Check the application state and take the appropriate action
         # App applies need to be done in a specific order
         for app_name in self.determine_apps_reapply_order(name_only=True, filter_active=False):
@@ -8914,6 +8920,12 @@ class ConductorManager(service.PeriodicService):
             LOG.info("Software update orchestration in progress. "
                      "Ignore app reapply checks.")
             return
+
+        # TODO(dbarbosa): Handle where there is no "after" key in the application
+        # metadata. In this case the determine_apps_reapply_order function instead
+        # of return a list will return a dictionary with 3 keys: dependent_apps,
+        # class and independent_apps. To identify if any app uses the key after,
+        # use the function app_metadata.has_after_key_in_apps_metadata.
 
         # Pick first app that needs to be re-applied
         for index, app_name in enumerate(
@@ -16464,8 +16476,12 @@ class ConductorManager(service.PeriodicService):
 
         metadata_map = constants.APP_EVALUATE_REAPPLY_TRIGGER_TO_METADATA_MAP
 
+        # TODO(dbarbosa): Handle where there is no "after" key in the application
+        # metadata. In this case the determine_apps_reapply_order function instead
+        # of return a list will return a dictionary with 3 keys: dependent_apps,
+        # class and independent_apps. To identify if any app uses the key after,
+        # use the function app_metadata.has_after_key_in_apps_metadata.
         for app in apps:
-
             # We need to get an updated app status before moving on. It may have
             # changed during the for loop execution. This avoids race conditions
             # during upgrade activation.
