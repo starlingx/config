@@ -323,6 +323,12 @@ def _validate_ksoftirqd_prio(name, value):
                     constants.SERVICE_PARAM_PLATFORM_KSOFTIRQD_PRIO_MAX)
 
 
+def _validate_irq_work_prio(name, value):
+    _validate_range(name, value,
+                    constants.SERVICE_PARAM_PLATFORM_KSOFTIRQD_PRIO_MIN,
+                    constants.SERVICE_PARAM_PLATFORM_KSOFTIRQD_PRIO_MAX)
+
+
 def _validate_hbs_failure_action(name, value):
     error = False
     try:
@@ -1073,6 +1079,7 @@ PLATFORM_KERNEL_PARAMETER_OPTIONAL = [
     constants.SERVICE_PARAM_NAME_PLATFORM_AUDITD,
     constants.SERVICE_PARAM_NAME_PLATFORM_OOT,
     constants.SERVICE_PARAM_PLATFORM_KSOFTIRQD_PRIO,
+    constants.SERVICE_PARAM_PLATFORM_IRQ_WORK_PRIO,
 ]
 
 PLATFORM_KEYSTONE_PARAMETER_OPTIONAL = [
@@ -1115,6 +1122,7 @@ PLATFORM_KERNEL_PARAMETER_VALIDATOR = {
     constants.SERVICE_PARAM_NAME_PLATFORM_AUDITD: _validate_kernel_audit,
     constants.SERVICE_PARAM_NAME_PLATFORM_OOT: _validate_oot,
     constants.SERVICE_PARAM_PLATFORM_KSOFTIRQD_PRIO: _validate_ksoftirqd_prio,
+    constants.SERVICE_PARAM_PLATFORM_IRQ_WORK_PRIO: _validate_irq_work_prio,
 }
 
 PLATFORM_KEYSTONE_PARAMETER_VALIDATOR = {
@@ -1177,6 +1185,8 @@ PLATFORM_KERNEL_PARAMETER_RESOURCE = {
         'platform::compute::grub::params::g_out_of_tree_drivers',
     constants.SERVICE_PARAM_PLATFORM_KSOFTIRQD_PRIO:
         'platform::params::ksoftirqd_priority',
+    constants.SERVICE_PARAM_PLATFORM_IRQ_WORK_PRIO:
+        'platform::params::irq_work_priority',
 }
 
 PLATFORM_KEYSTONE_PARAMETER_RESOURCE = {
