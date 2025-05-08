@@ -1685,22 +1685,6 @@ class KubeOperator(object):
 
         return 0
 
-    def get_psp_resource(self):
-        try:
-            # Create an API client
-            c = self._get_kubernetesclient_policy()
-
-            # Retrieve the resource items
-            api_response = c.list_pod_security_policy()
-            LOG.debug("Response: %s" % api_response)
-            items = api_response.items
-
-            # Return the items if present, or False if not found
-            return items if items else False
-        except Exception as e:
-            LOG.exception("Failed to fetch PodSecurityPolicies: %s" % e)
-            raise
-
     def kube_read_clusterrolebinding(self, name):
         """read a clusterrolebinding with data
 
