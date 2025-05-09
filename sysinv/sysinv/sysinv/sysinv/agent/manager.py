@@ -1179,13 +1179,15 @@ class AgentManager(service.PeriodicService):
                                                self._ihost_uuid)
             self._inventoried_initial = True
 
-    def _report_config_applied(self, context, config_dict=None, status=None, error=None):
+    def _report_config_applied(self, context, config_dict=None, status=None, error=None,
+                               config_uuid=None):
         """Report the latest configuration applied for this host to the
         conductor.
         :param context: an admin context
         :param config_dict: configuration applied
         :param status: config status
         :param error: config error
+        :param config_uuid: config uuid to report
         """
         if not context:
             # If context is None, it could indicate a rare issue where context
@@ -1202,7 +1204,8 @@ class AgentManager(service.PeriodicService):
         rpcapi = conductor_rpcapi.ConductorAPI(
             topic=conductor_rpcapi.MANAGER_TOPIC)
 
-        config_uuid = self.iconfig_read_config_applied()
+        if config_uuid is None:
+            config_uuid = self.iconfig_read_config_applied()
         if config_uuid != self._iconfig_read_config_reported:
             LOG.info("Agent config applied  %s" % config_uuid)
 
@@ -2066,9 +2069,10 @@ class AgentManager(service.PeriodicService):
             LOG.debug("config runtime details: %s." % config_dict)
 
             self._report_config_applied(
-                context, config_dict, status=puppet.REPORT_SUCCESS, error=None)
+                context, config_dict, status=puppet.REPORT_SUCCESS, error=None,
+                config_uuid=config_uuid)
         else:
-            self._report_config_applied(context)
+            self._report_config_applied(context, config_uuid=config_uuid)
 
     def _apply_runtime_manifest(self, config_dict, hieradata_path=PUPPET_HIERADATA_PATH):
 
