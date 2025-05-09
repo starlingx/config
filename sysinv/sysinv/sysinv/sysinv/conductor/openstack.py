@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2022 Wind River Systems, Inc.
+# Copyright (c) 2013-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -211,6 +211,7 @@ class OpenStackOperator(object):
         session = self._get_keystone_session(service_config)
 
         client = keystone_client.Client(session=session,
+                                        interface='internalURL',
                                         region_name=cfg.CONF[service_config].region_name)
         return client
 
