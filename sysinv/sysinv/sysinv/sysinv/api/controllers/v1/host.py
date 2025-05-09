@@ -22,6 +22,7 @@
 import ast
 import cgi
 import copy
+import datetime
 import json
 import math
 import os
@@ -5371,6 +5372,8 @@ class HostController(rest.RestController):
 
     def check_unlock_kernel_config_status(self, hostupdate, force_unlock):
         """ Check whether kernel configuration is in progress.
+            The time kernel config was initiated is stored in host db
+            If the time period hasn't expired we block unlock
             Force unlock will bypass check
         """
 
@@ -5379,12 +5382,28 @@ class HostController(rest.RestController):
 
         hostname = hostupdate.ihost_patch.get('hostname')
         subfunctions = hostupdate.ihost_patch.get('subfunctions')
-        kernel_config_status = hostupdate.ihost_patch.get('kernel_config_status')
+        kernel_config_time = hostupdate.ihost_patch.get('kernel_config_status')
 
         if constants.WORKER not in subfunctions:
             return
 
-        if kernel_config_status == constants.KERNEL_CONFIG_STATUS_PENDING:
+        try:
+            config_time = datetime.datetime.strptime(
+                kernel_config_time,
+                constants.KERNEL_CONFIG_STATUS_FORMAT
+            )
+        except ValueError:
+            # string is not a valid datetime - no kernel config in progress
+            return
+
+        current_time = datetime.datetime.now()
+        interval = current_time - config_time
+
+        if interval < datetime.timedelta():
+            # negative time should not happen unlock clock was tampered with
+            return
+
+        if interval < constants.KERNEL_CONFIG_STATUS_EXPIRY:
             msg = (f'Can not unlock {hostname} '
                     'kernel configuration in progress.')
             raise wsme.exc.ClientSideError(_(msg))

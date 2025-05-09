@@ -8,6 +8,7 @@
 # coding=utf-8
 #
 
+import datetime
 import os
 import tsconfig.tsconfig as tsc
 
@@ -132,7 +133,10 @@ KERNEL_STANDARD = 'standard'
 
 SUPPORTED_KERNELS = [KERNEL_LOWLATENCY, KERNEL_STANDARD]
 
-KERNEL_CONFIG_STATUS_PENDING = 'config_pending'
+# Kernel config is alloted 2 minutes for config to complete
+# host-unlock can be blocked upto a maximum of 2 minutes
+KERNEL_CONFIG_STATUS_EXPIRY = datetime.timedelta(minutes=2)
+KERNEL_CONFIG_STATUS_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 # CPU functions
 PLATFORM_FUNCTION = "Platform"
