@@ -10819,7 +10819,17 @@ class ConductorManager(service.PeriodicService):
            wait_fixed=1000)
     def handle_k8s_upgrade_control_plane_success(self, context, kube_upgrade_obj, host_uuid,
                                           new_state, fail_state):
-        def check_alarm_status(host_name, kube_host_upgrade_obj, kube_upgrade_obj):
+
+        def manifest_apply_failed_state(kube_host_upgrade_obj,
+                                        kube_upgrade_obj, fail_state):
+            kube_host_upgrade_obj.status = \
+                kubernetes.KUBE_HOST_UPGRADING_CONTROL_PLANE_FAILED
+            kube_host_upgrade_obj.save()
+            kube_upgrade_obj.state = fail_state
+            kube_upgrade_obj.save()
+
+        def check_alarm_status(host_name, kube_host_upgrade_obj, kube_upgrade_obj,
+                               new_state, fail_state):
             # Monitor the alarm status in a separate thread and update the
             # control plane status if no alarm is detected.
             check_alarm_count = 5
@@ -10827,8 +10837,6 @@ class ConductorManager(service.PeriodicService):
                 try:
                     alarms = self.fm_api.get_faults_by_id(
                         fm_constants.FM_ALARM_ID_SYSCONFIG_OUT_OF_DATE)
-                    time.sleep(5)
-                    check_alarm_count -= 1
                     if not alarms:
                         # The control plane update was successful
                         LOG.info("Control plane was updated for host %s" % host_name)
@@ -10839,12 +10847,18 @@ class ConductorManager(service.PeriodicService):
                         return
                 except Exception:
                     LOG.error("Error checking alarm status for host %s:" % host_name)
-                    kube_host_upgrade_obj.status = \
-                        kubernetes.KUBE_HOST_UPGRADING_CONTROL_PLANE_FAILED
-                    kube_host_upgrade_obj.save()
-                    kube_upgrade_obj.state = fail_state
-                    kube_upgrade_obj.save()
+                    manifest_apply_failed_state(kube_host_upgrade_obj,
+                                                kube_upgrade_obj, fail_state)
                     return
+                check_alarm_count -= 1
+                if check_alarm_count > 0:
+                    # Wait a few seconds for the alarm to clear
+                    time.sleep(3)
+            LOG.error("Failed to clear the %s alarm for host %s:"
+                      % (alarms, host_name))
+            manifest_apply_failed_state(kube_host_upgrade_obj,
+                                        kube_upgrade_obj, fail_state)
+            return
 
         host_obj = objects.host.get_by_uuid(context, host_uuid)
         host_name = host_obj.hostname
@@ -10859,14 +10873,12 @@ class ConductorManager(service.PeriodicService):
         if cp_versions.get(host_name, None) != target_version:
             LOG.warning("Control plane upgrade failed for host %s" %
                         host_name)
-            kube_host_upgrade_obj.status = \
-                kubernetes.KUBE_HOST_UPGRADING_CONTROL_PLANE_FAILED
-            kube_host_upgrade_obj.save()
-            kube_upgrade_obj.state = fail_state
-            kube_upgrade_obj.save()
+            manifest_apply_failed_state(kube_host_upgrade_obj,
+                                        kube_upgrade_obj, fail_state)
             return False
 
-        greenthread.spawn(check_alarm_status, host_name, kube_host_upgrade_obj, kube_upgrade_obj)
+        greenthread.spawn(check_alarm_status, host_name, kube_host_upgrade_obj, kube_upgrade_obj,
+                          new_state, fail_state)
         return True
 
     def report_config_status(self, context, iconfig, status, error=None):
