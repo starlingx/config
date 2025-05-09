@@ -4058,9 +4058,9 @@ class HostController(rest.RestController):
                       (hostname)))
 
             if len(patch_bm_password) > 20:
-                raise wsme.exc.ClientSideError(
-                    _("%s: Rejected: Board management controller password "
-                    "is not valid. Cannot be longer than 20 characters." %
+                LOG.warn(
+                    _("%s: Board management controller password is not valid. "
+                    "Cannot be longer than 20 characters." %
                     (hostname)))
 
             if re.search(r"\s", patch_bm_password):
