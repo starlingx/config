@@ -14,7 +14,7 @@ import re
 import wsme
 
 from oslo_log import log
-from six.moves.urllib.parse import urlparse
+from urllib.parse import urlparse
 from sysinv._i18n import _
 from sysinv.common import constants
 from sysinv.common import exception
@@ -173,15 +173,38 @@ def _validate_SAN_list(name, value):
                 % entry))
 
 
+def _validate_uri(name, parsed_value):
+    """Check if the uri is valid"""
+
+    if not parsed_value.netloc or not parsed_value.scheme:
+        raise wsme.exc.ClientSideError(_(
+            "Parameter '%s' must be a valid uri." % name))
+
+    if parsed_value.netloc and parsed_value.netloc != parsed_value.hostname:
+        try:
+            parsed_value.port
+        except ValueError as e:
+            raise wsme.exc.ClientSideError(_(
+                "Invalid port in uri: %s" % str(e)))
+        if parsed_value.netloc[-1] == ":" and parsed_value.port is None:
+            raise wsme.exc.ClientSideError(_(
+                "Port number is missing in uri"))
+
+    if parsed_value.hostname is None or not cutils.is_valid_domain_or_ip(parsed_value.netloc):
+        raise wsme.exc.ClientSideError(_(
+            "Parameter '%s' has invalid domain name or IP address." % name))
+
+    if parsed_value.path == "/":
+        raise wsme.exc.ClientSideError(_(
+            "Parameter '%s' has an empty path" % name))
+
+
 def _validate_oidc_issuer_url(name, value):
     """Check if oidc issuer address is valid"""
 
-    # is_valid_domain_or_ip does not work with entire urls
-    # for example, the 'https://' needs to be removed
+    _validate_not_empty(name, value)
     parsed_value = urlparse(value)
-    if not parsed_value.netloc or not cutils.is_valid_domain_or_ip(parsed_value.netloc):
-        raise wsme.exc.ClientSideError(_(
-            "Parameter '%s' must be a valid address or domain." % name))
+    _validate_uri(name, parsed_value)
 
 
 def _deprecated_oidc_params(name, value):
@@ -246,12 +269,12 @@ def _validate_ldap_uri(name, value):
 
     _validate_not_empty(name, value)
     parsed_value = urlparse(value)
-    if not parsed_value.netloc or parsed_value.scheme != "ldaps":
+
+    if parsed_value.scheme and parsed_value.scheme != "ldaps":
         raise wsme.exc.ClientSideError(_(
-            "Parameter '%s' must be a valid ldap uri." % name))
-    if not cutils.is_valid_domain_name(parsed_value.netloc):
-            raise wsme.exc.ClientSideError(_(
-                "Parameter '%s' has invalid domain name." % name))
+            "Parameter '%s' must be a valid ldap uri using ldaps protocol." % name))
+
+    _validate_uri(name, parsed_value)
 
 
 def _validate_ldap_dn(name, value):
