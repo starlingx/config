@@ -80,6 +80,7 @@ class SwanctlConf(object):
 
     def __init__(self):
         self.connections = {}
+        self.includes = []
 
     def add_connection(self, key, value):
         self.connections[key] = value
@@ -88,8 +89,16 @@ class SwanctlConf(object):
         if key in self.connections:
             self.connections[key] = value
 
+    def include_conf(self, path):
+        item = f'include {path}'
+        if item not in self.includes:
+            self.includes.append(item)
+
     def get_conf(self):
         return self.connections
+
+    def get_includes(self):
+        return "\n".join(self.includes)
 
 
 class StrongswanPuppet(object):
@@ -355,6 +364,14 @@ class StrongswanPuppet(object):
                 'platform::strongswan::params::is_active_controller':
                     has_floating_ip,
             })
+
+        # Include conf.d/*.conf files to import swanctl configs for Kubernetes
+        # services.
+        swanctl.include_conf('conf.d/*.conf')
+
+        config.update({
+            'platform::strongswan::params::includes': swanctl.get_includes()
+        })
 
         return config
 
