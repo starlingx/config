@@ -12649,7 +12649,10 @@ class ConductorManager(service.PeriodicService):
                 config_uuid = self._config_clear_reboot_required(config_uuid)
                 self._config_apply_runtime_manifest(context, config_uuid, config_dict, force=True)
             elif section == constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG and \
-                    name == constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_API_WORKERS:
+                    name in [constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_API_WORKERS,
+                    constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_POOL_SIZE,
+                    constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_POOL_TIMEOUT,
+                    constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_OVERFLOW_SIZE]:
                 reboot = True
                 personalities = [constants.CONTROLLER]
                 config_uuid = self._config_update_hosts(context, personalities, reboot=True)

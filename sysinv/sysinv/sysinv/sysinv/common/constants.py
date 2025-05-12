@@ -1490,6 +1490,11 @@ SERVICE_PARAM_PLATFORM_MAX_CPU_PERCENTAGE_DEFAULT = 80
 # The number of sysinv-api workers
 SERVICE_PARAM_NAME_PLATFORM_SYSINV_API_WORKERS = 'sysinv_api_workers'
 
+# Platform sysinv parameters for database connection
+SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_POOL_SIZE = 'database_max_pool_size'
+SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_POOL_TIMEOUT = 'database_max_pool_timeout'
+SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_OVERFLOW_SIZE = 'database_max_overflow_size'
+
 # SCTP Config parameters
 # enables/disables SCTP module load by default
 SERVICE_PARAM_NAME_PLATFORM_SCTP_AUTOLOAD = 'sctp_autoload'

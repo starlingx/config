@@ -595,6 +595,42 @@ class ApiServiceParameterTestCaseMixin(object):
             'name': constants.SERVICE_PARAM_NAME_FM_DATABASE_MAX_POOL_TIMEOUT,
             'value': '10'
         },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG,
+            'name': constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_OVERFLOW_SIZE,
+            'value': '1'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG,
+            'name': constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_OVERFLOW_SIZE,
+            'value': '10'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG,
+            'name': constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_POOL_SIZE,
+            'value': '1'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG,
+            'name': constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_POOL_SIZE,
+            'value': '10'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG,
+            'name': constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_POOL_TIMEOUT,
+            'value': '1'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG,
+            'name': constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_POOL_TIMEOUT,
+            'value': '10'
+        },
     ]
     service_parameter_wildcard = {
         'service': constants.SERVICE_TYPE_PTP,
