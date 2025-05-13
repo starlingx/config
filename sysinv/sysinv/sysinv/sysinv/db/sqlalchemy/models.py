@@ -15,7 +15,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2024 Wind River Systems, Inc.
+# Copyright (c) 2013-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -381,6 +381,8 @@ class Interfaces(Base):
     farend = Column(JSONEncodedDict)
     sriov_numvfs = Column(Integer)
     sriov_vf_driver = Column(String(255))
+    max_tx_rate = Column(Integer)
+    max_rx_rate = Column(Integer)
     ptp_role = Column(String(255), default='none')  # TODO: deprecate it
 
     used_by = relationship(
