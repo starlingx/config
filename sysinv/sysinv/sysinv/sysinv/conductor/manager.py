@@ -12617,16 +12617,22 @@ class ConductorManager(service.PeriodicService):
                 }
                 self._config_apply_runtime_manifest(context, config_uuid, config_dict)
             elif section == constants.SERVICE_PARAM_SECTION_PLATFORM_KERNEL:
-                reboot = True
                 personalities = [constants.CONTROLLER,
                                  constants.WORKER]
-                config_uuid = self._config_update_hosts(context, personalities, reboot=True)
+
+                if name == constants.SERVICE_PARAM_PLATFORM_KSOFTIRQD_PRIO:
+                    classes = ['platform::config::file::irq::runtime']
+                    reboot = False
+                else:
+                    classes = ['platform::compute::grub::runtime']
+                    reboot = True
 
                 config_dict = {
                     'personalities': personalities,
-                    "classes": ['platform::compute::grub::runtime']
+                    'classes': classes
                 }
 
+                config_uuid = self._config_update_hosts(context, personalities, reboot=reboot)
                 # Apply runtime config but keep reboot required flag set in
                 # _config_update_hosts() above. Node needs a reboot to clear it.
                 config_uuid = self._config_clear_reboot_required(config_uuid)
