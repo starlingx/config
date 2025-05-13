@@ -2068,7 +2068,10 @@ class ManagerTestCase(base.DbTestCase):
         self.assertEqual(kube_upgrade_obj.state,
                          new_state)
 
-    def test_kube_upgrade_kubelet_controller(self):
+    @mock.patch('os.path.isdir', return_value=True)
+    @mock.patch('shutil.copytree')
+    @mock.patch('sysinv.conductor.manager.tempfile.mkdtemp', return_value='/tmp/mock-temp-dir')
+    def test_kube_upgrade_kubelet_controller(self, mock_mkdtemp, mock_copytree, mock_isdir):
         # Create an upgrade
         utils.create_test_kube_upgrade(
             from_version='v1.42.1',
@@ -2922,7 +2925,10 @@ class ManagerTestCase(base.DbTestCase):
         return ihost
 
     @mock.patch('os.path.isfile', return_value=True)
-    def test_configure_out_of_date(self, _):
+    @mock.patch('os.path.isdir', return_value=True)
+    @mock.patch('shutil.copytree')
+    @mock.patch('sysinv.conductor.manager.tempfile.mkdtemp', return_value='/tmp/mock-temp-dir')
+    def test_configure_out_of_date(self, mock_mkdtemp, mock_copytree, mock_isdir, mock_isfile):
         cutils.is_aio_system = mock.Mock(return_value=True)
         ihost = self._create_test_controller_config_out_of_date('controller-0')
         self.service.configure_ihost(self.context, ihost)
@@ -2944,7 +2950,10 @@ class ManagerTestCase(base.DbTestCase):
         self.assertEqual(self.alarm_raised, True)
 
     @mock.patch('os.path.isfile', return_value=True)
-    def test_configure_out_of_date_upgrade(self, _):
+    @mock.patch('os.path.isdir', return_value=True)
+    @mock.patch('shutil.copytree')
+    @mock.patch('sysinv.conductor.manager.tempfile.mkdtemp', return_value='/tmp/mock-temp-dir')
+    def test_configure_out_of_date_upgrade(self, mock_mkdtemp, mock_copytree, mock_isdir, mock_isfile):
         cutils.is_aio_system = mock.Mock(return_value=True)
 
         # Check upgrade where the target sw_version does not match
@@ -2973,7 +2982,10 @@ class ManagerTestCase(base.DbTestCase):
     def fake_rename(self, old, new):
         self.executes.append(('mv', old, new))
 
-    def test_deferred_runtime_config_file(self):
+    @mock.patch('os.path.isdir', return_value=True)
+    @mock.patch('shutil.copytree')
+    @mock.patch('sysinv.conductor.manager.tempfile.mkdtemp', return_value='/tmp/mock-temp-dir')
+    def test_deferred_runtime_config_file(self, mock_mkdtemp, mock_copytree, mock_isdir):
 
         # Create controller-0
         config_uuid = str(uuid.uuid4())
@@ -3029,7 +3041,10 @@ class ManagerTestCase(base.DbTestCase):
                          chost_updated.config_applied)
         self.assertEqual(self.alarm_raised, False)
 
-    def test_deferred_runtime_config_manifest(self):
+    @mock.patch('os.path.isdir', return_value=True)
+    @mock.patch('shutil.copytree')
+    @mock.patch('sysinv.conductor.manager.tempfile.mkdtemp', return_value='/tmp/mock-temp-dir')
+    def test_deferred_runtime_config_manifest(self, mock_mkdtemp, mock_copytree, mock_isdir):
         # Create controller-0
         config_uuid = str(uuid.uuid4())
         chost = self._create_test_ihost(
@@ -3067,7 +3082,10 @@ class ManagerTestCase(base.DbTestCase):
                          chost_updated.config_applied)
         self.assertEqual(self.alarm_raised, False)
 
-    def test_deferred_multiple_runtime_config(self):
+    @mock.patch('os.path.isdir', return_value=True)
+    @mock.patch('shutil.copytree')
+    @mock.patch('sysinv.conductor.manager.tempfile.mkdtemp', return_value='/tmp/mock-temp-dir')
+    def test_deferred_multiple_runtime_config(self, mock_mkdtemp, mock_copytree, mock_isdir):
         # Create controller-0
         config_uuid = str(uuid.uuid4())
         chost = self._create_test_ihost(

@@ -1213,7 +1213,8 @@ class AgentManager(service.PeriodicService):
             if config_dict:
                 imsg_dict.update({'config_dict': config_dict,
                                   'status': status,
-                                  'error': error})
+                                  'error': error,
+                                  'puppet_path': config_dict.get('puppet_path')})
             rpcapi.iconfig_update_by_ihost(context,
                                            self._ihost_uuid,
                                            imsg_dict)
@@ -2021,21 +2022,23 @@ class AgentManager(service.PeriodicService):
             if not os.path.exists(tsc.PUPPET_PATH):
                 # we must be controller-standby or storage, mount /var/run/platform
                 LOG.info("controller-standby or storage, mount /var/run/platform")
-                remote_dir = "controller-platform-nfs:" + tsc.PLATFORM_PATH
                 local_dir = os.path.join(tsc.VOLATILE_PATH, 'platform')
                 # JK - could also consider mkstemp for atomicity
                 if not os.path.exists(local_dir):
                     LOG.info("create local dir '%s'" % local_dir)
                     os.makedirs(local_dir)
-                hieradata_path = os.path.join(
-                    tsc.PUPPET_PATH.replace(
-                        tsc.PLATFORM_PATH, local_dir),
-                    'hieradata')
-                with utils.mounted(remote_dir, local_dir):
+                remote_puppet_path = "controller-platform-nfs:" + config_dict.get('puppet_path')
+                temp_puppet_path = tempfile.mkdtemp(dir=local_dir, prefix="tmp_puppet_")
+                hieradata_path = os.path.join(temp_puppet_path, 'hieradata')
+                with utils.mounted(remote_puppet_path, temp_puppet_path):
                     self._apply_runtime_manifest(config_dict, hieradata_path=hieradata_path)
+                    LOG.info("Unmounting temporary hieradata directory %s" % temp_puppet_path)
+                shutil.rmtree(temp_puppet_path, ignore_errors=True)
             else:
                 LOG.info("controller-active")
-                self._apply_runtime_manifest(config_dict)
+                temp_puppet_path = config_dict.get('puppet_path')
+                hieradata_path = os.path.join(temp_puppet_path, 'hieradata')
+                self._apply_runtime_manifest(config_dict, hieradata_path=hieradata_path)
         except OSError:
             # race condition on the mount
             if not os.path.exists(local_dir):
