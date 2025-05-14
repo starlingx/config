@@ -12620,7 +12620,8 @@ class ConductorManager(service.PeriodicService):
                 personalities = [constants.CONTROLLER,
                                  constants.WORKER]
 
-                if name == constants.SERVICE_PARAM_PLATFORM_KSOFTIRQD_PRIO:
+                if name in [constants.SERVICE_PARAM_PLATFORM_KSOFTIRQD_PRIO,
+                            constants.SERVICE_PARAM_PLATFORM_IRQ_WORK_PRIO]:
                     classes = ['platform::config::file::irq::runtime']
                     reboot = False
                 else:
