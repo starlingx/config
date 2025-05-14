@@ -236,7 +236,7 @@ renew_cert_by_openssl() {
 # Get cluster host floating IP address
 get_cluster_host_floating_ip() {
     local floating_ip=""
-    floating_ip=$(cat /etc/kubernetes/admin.conf | grep "server:" | awk -F"//" '{print $2}' | tr -d "[]" | sed -e s/:6443//)
+    floating_ip=$(cat /etc/kubernetes/admin.conf | grep "server:" | awk -F"//" '{print $2}' | tr -d "[]" | sed -e s/:16443//)
     echo ${floating_ip}
 }
 
