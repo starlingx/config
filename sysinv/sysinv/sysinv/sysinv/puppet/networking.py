@@ -497,8 +497,10 @@ class NetworkingPuppet(base.BasePuppet):
                         temp_host = hostinterface.split('/')[0]
                         temp_interface = hostinterface.split('/')[1]
                         if host.hostname == temp_host:
-                            iinterface = self.dbapi.iinterface_get(
-                                temp_interface, host.uuid)
+                            iinterface = self.context['interfaces'].get(temp_interface)
+                            if (iinterface is None or iinterface.ihost_uuid != host.uuid):
+                                iinterface = self.dbapi.iinterface_get(
+                                    temp_interface, host.uuid)
                             if iinterface['iftype'] == constants.INTERFACE_TYPE_AE:
                                 if_devices = [temp_interface]
                             elif iinterface['iftype'] == constants.INTERFACE_TYPE_VLAN:
