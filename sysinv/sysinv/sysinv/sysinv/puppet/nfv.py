@@ -5,7 +5,6 @@
 #
 from sysinv.common import constants
 from sysinv.common import utils
-from sysinv.helm import helm
 
 from sysinv.puppet import openstack
 
@@ -137,11 +136,9 @@ class NfvPuppet(openstack.OpenstackBasePuppet):
                     config[key] = old_config.get(key)
 
             else:
-                helm_data = helm.HelmOperatorData(self.dbapi)
-
                 # The openstack services are authenticated with pod based
                 # keystone.
-                keystone_auth_data = helm_data.get_keystone_auth_data()
+                keystone_auth_data = self._helm_data.get_keystone_auth_data()
                 openstack_auth_config = {
                     'nfv::nfvi::openstack_username':
                         keystone_auth_data['admin_user_name'],
@@ -191,7 +188,7 @@ class NfvPuppet(openstack.OpenstackBasePuppet):
                 config.update(openstack_auth_config)
 
                 # Nova is running in a pod
-                nova_endpoint_data = helm_data.get_nova_endpoint_data()
+                nova_endpoint_data = self._helm_data.get_nova_endpoint_data()
                 nova_config = {
                     'nfv::nfvi::nova_endpoint_override':
                         nova_endpoint_data['endpoint_override'],
@@ -201,7 +198,7 @@ class NfvPuppet(openstack.OpenstackBasePuppet):
                 config.update(nova_config)
 
                 # Cinder is running in a pod
-                cinder_endpoint_data = helm_data.get_cinder_endpoint_data()
+                cinder_endpoint_data = self._helm_data.get_cinder_endpoint_data()
                 cinder_config = {
                     'nfv::nfvi::cinder_region_name':
                         cinder_endpoint_data['region_name'],
@@ -213,7 +210,7 @@ class NfvPuppet(openstack.OpenstackBasePuppet):
                 config.update(cinder_config)
 
                 # Glance is running in a pod
-                glance_endpoint_data = helm_data.get_glance_endpoint_data()
+                glance_endpoint_data = self._helm_data.get_glance_endpoint_data()
                 glance_config = {
                     'nfv::nfvi::glance_region_name':
                         glance_endpoint_data['region_name'],
@@ -225,7 +222,7 @@ class NfvPuppet(openstack.OpenstackBasePuppet):
                 config.update(glance_config)
 
                 # Neutron is running in a pod
-                neutron_endpoint_data = helm_data.get_neutron_endpoint_data()
+                neutron_endpoint_data = self._helm_data.get_neutron_endpoint_data()
                 neutron_config = {
                     'nfv::nfvi::neutron_region_name':
                         neutron_endpoint_data['region_name'],
@@ -233,7 +230,7 @@ class NfvPuppet(openstack.OpenstackBasePuppet):
                 config.update(neutron_config)
 
                 # Heat is running in a pod
-                heat_endpoint_data = helm_data.get_heat_endpoint_data()
+                heat_endpoint_data = self._helm_data.get_heat_endpoint_data()
                 heat_config = {
                     'nfv::nfvi::heat_region_name':
                         heat_endpoint_data['region_name'],
@@ -242,7 +239,7 @@ class NfvPuppet(openstack.OpenstackBasePuppet):
 
                 # Ceilometer is running in a pod
                 ceilometer_endpoint_data = \
-                    helm_data.get_ceilometer_endpoint_data()
+                    self._helm_data.get_ceilometer_endpoint_data()
                 ceilometer_config = {
                     'nfv::nfvi::ceilometer_region_name':
                         ceilometer_endpoint_data['region_name'],
@@ -251,7 +248,7 @@ class NfvPuppet(openstack.OpenstackBasePuppet):
 
                 # The openstack rabbitmq is running in a pod
                 nova_oslo_messaging_data = \
-                    helm_data.get_nova_oslo_messaging_data()
+                    self._helm_data.get_nova_oslo_messaging_data()
                 rabbit_config = {
                     'nfv::nfvi::rabbit_host':
                         nova_oslo_messaging_data['host'],

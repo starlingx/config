@@ -41,7 +41,8 @@ class PuppetOperator(object):
     """Class to encapsulate puppet operations for System Inventory"""
 
     def __init__(
-        self, dbapi=None, path=None, generate_optimized_hieradata=False
+        self, dbapi=None, path=None, generate_optimized_hieradata=False,
+            helm_operator=None
     ):
         if path is None:
             path = common.PUPPET_HIERADATA_PATH
@@ -50,6 +51,9 @@ class PuppetOperator(object):
         self.path = path
         # Set generate_optimized_hieradata to False by default
         self._generate_optimized_hieradata = generate_optimized_hieradata
+
+        # Set the helm operator for helm plugin based puppet value generation
+        self._helm_operator = helm_operator
 
         puppet_plugins = extension.ExtensionManager(
             namespace='systemconfig.puppet_plugins',
@@ -77,6 +81,14 @@ class PuppetOperator(object):
     @generate_optimized_hieradata.setter
     def generate_optimized_hieradata(self, value):
         self._generate_optimized_hieradata = value
+
+    @property
+    def helm_operator(self):
+        return self._helm_operator
+
+    @helm_operator.setter
+    def helm_operator(self, value):
+        self._helm_operator = value
 
     @puppet_context
     def create_static_config(self):

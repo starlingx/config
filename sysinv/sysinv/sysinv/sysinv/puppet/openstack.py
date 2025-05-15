@@ -10,10 +10,15 @@ import os
 from sysinv.common import constants
 from sysinv.common import utils as cutils
 from sysinv.helm import common
+from sysinv.helm import helm
 from sysinv.puppet import base
 
 
 class OpenstackBasePuppet(base.BasePuppet):
+
+    def __init__(self, *args, **kwargs):
+        super(OpenstackBasePuppet, self).__init__(*args, **kwargs)
+        self._helm_data = helm.HelmOperatorData(self.helm_operator)
 
     def _get_service_config(self, service):
         configs = self.context.setdefault('_service_configs', {})
