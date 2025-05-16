@@ -2359,7 +2359,13 @@ class AppOperator(object):
         # Initialize the ordered_apps dictionary
         ordered_apps = {
             constants.APP_METADATA_DEPENDENT_APPS: [],
-            constants.APP_METADATA_CLASS: constants.APP_METADATA_CLASS_ORDERED_DICT,
+            constants.APP_METADATA_CLASS: {
+                constants.APP_METADATA_CLASS_CRITICAL: [],
+                constants.APP_METADATA_CLASS_STORAGE: [],
+                constants.APP_METADATA_CLASS_DISCOVERY: [],
+                constants.APP_METADATA_CLASS_OPTIONAL: [],
+                constants.APP_METADATA_CLASS_REPORTING: []
+            },
             constants.APP_METADATA_INDEPENDENT_APPS: []
         }
 
@@ -2461,7 +2467,7 @@ class AppOperator(object):
 
         # Final result
         ordered_apps = []
-        apps_metadata_dict[constants.APP_METADATA_ORDERED_APPS] = ordered_apps
+        apps_metadata_dict[constants.APP_METADATA_ORDERED_APPS_BY_AFTER_KEY] = ordered_apps
 
         # Initialize structures
         for app_name in apps_metadata_dict[constants.APP_METADATA_PLATFORM_MANAGED_APPS]:
@@ -2582,7 +2588,7 @@ class AppOperator(object):
             ordered_apps.append(app_name)
 
         LOG.info("Applications reapply order: {}".format(ordered_apps))
-        apps_metadata_dict[constants.APP_METADATA_ORDERED_APPS] = ordered_apps
+        apps_metadata_dict[constants.APP_METADATA_ORDERED_APPS_BY_AFTER_KEY] = ordered_apps
 
     @staticmethod
     @cutils.synchronized(LOCK_NAME_PROCESS_APP_METADATA, external=False)
@@ -2628,18 +2634,13 @@ class AppOperator(object):
                          "".format(app_name))
 
                 # Recompute app reapply order
-
-                # TODO(dbarbosa): Use the has_after_key_in_apps_metadata function to
-                # identify the presence of the after key within the metadata.yaml of
-                # any tarball loaded by the platform. If the "after" key exists, use
-                # the recompute_app_evaluation_order_by_after_key function, otherwise
-                # use the recompute_app_evaluation_order function. Example:
-                # if app_metadata.has_after_key_in_apps_metadata(
-                #         apps_metadata_dict[constants.APP_METADATA_APPS]):
-                #     AppOperator.recompute_app_evaluation_order_by_after_key(apps_metadata_dict)
-                # else:
-                #     AppOperator.recompute_app_evaluation_order(apps_metadata_dict)
-                AppOperator.recompute_app_evaluation_order_by_after_key(apps_metadata_dict)
+                # TODO(dbarbosa): remove this after the previous release no longer use
+                # the after key in the metadata of the platform apps
+                if app_metadata.has_after_key_in_apps_metadata(
+                        apps_metadata_dict[constants.APP_METADATA_APPS]):
+                    AppOperator.recompute_app_evaluation_order_by_after_key(apps_metadata_dict)
+                else:
+                    AppOperator.recompute_app_evaluation_order(apps_metadata_dict)
 
             # Remember the desired state the app should achieve
             if desired_state is not None:
@@ -2781,8 +2782,33 @@ class AppOperator(object):
             del self._apps_metadata[constants.APP_METADATA_PLATFORM_MANAGED_APPS][app_name]
         if app_name in self._apps_metadata[constants.APP_METADATA_DESIRED_STATES]:
             del self._apps_metadata[constants.APP_METADATA_DESIRED_STATES][app_name]
-        if app_name in self._apps_metadata[constants.APP_METADATA_ORDERED_APPS]:
-            self._apps_metadata[constants.APP_METADATA_ORDERED_APPS].remove(app_name)
+        if app_metadata.has_after_key_in_apps_metadata(self._apps_metadata[
+                constants.APP_METADATA_APPS]):
+            if app_name in self._apps_metadata[constants.APP_METADATA_ORDERED_APPS]:
+                self._apps_metadata[
+                    constants.APP_METADATA_ORDERED_APPS_BY_AFTER_KEY].remove(app_name)
+        else:
+            # Remove from dependent_apps
+            if app_name in self._apps_metadata[constants.APP_METADATA_ORDERED_APPS][
+                    constants.APP_METADATA_DEPENDENT_APPS]:
+                self._apps_metadata[constants.APP_METADATA_ORDERED_APPS][
+                    constants.APP_METADATA_DEPENDENT_APPS].remove(app_name)
+
+            # Remove from class categories
+            for category in self._apps_metadata[constants.APP_METADATA_ORDERED_APPS][
+                    constants.APP_METADATA_CLASS]:
+                if app_name in self._apps_metadata[constants.APP_METADATA_ORDERED_APPS][
+                        constants.APP_METADATA_CLASS][category]:
+                    self._apps_metadata[constants.APP_METADATA_ORDERED_APPS][
+                        constants.APP_METADATA_CLASS][category].remove(app_name)
+
+            # Remove from independent_apps
+            if app_name in self._apps_metadata[constants.APP_METADATA_ORDERED_APPS][
+                    constants.APP_METADATA_INDEPENDENT_APPS]:
+                self._apps_metadata[constants.APP_METADATA_ORDERED_APPS][
+                    constants.APP_METADATA_INDEPENDENT_APPS].remove(app_name)
+
+        LOG.info(f"Removed app {app_name} from ordered_apps")
 
     def perform_app_apply(self, rpc_app, mode, lifecycle_hook_info_app_apply, caller=None,
                           is_reapply_process=False):
