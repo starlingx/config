@@ -36,6 +36,7 @@ import zipfile
 
 from collections import namedtuple
 from distutils.util import strtobool
+from distutils.version import LooseVersion
 from eventlet import greenpool
 from eventlet import queue
 from eventlet import Timeout
@@ -3098,6 +3099,18 @@ class AppOperator(object):
         try:
             self._update_app_status(
                 to_app, new_progress=constants.APP_PROGRESS_UPDATE_STARTING)
+
+            # Check if it's a downgrade operation. If true, create a lifecycle action.
+            if LooseVersion(from_app.version) > LooseVersion(to_app.version):
+                lifecycle_downgrade = copy.deepcopy(lifecycle_hook_info_app_update)
+                lifecycle_downgrade.operation = constants.APP_DOWNGRADE_OP
+                lifecycle_downgrade.relative_timing = LifecycleConstants.APP_LIFECYCLE_TIMING_PRE
+                lifecycle_downgrade.lifecycle_type = LifecycleConstants.APP_LIFECYCLE_TYPE_RESOURCE
+                lifecycle_downgrade[LifecycleConstants.EXTRA][
+                    LifecycleConstants.FROM_APP_VERSION] = from_app.version
+                lifecycle_downgrade[LifecycleConstants.EXTRA][
+                    LifecycleConstants.TO_APP_VERSION] = to_app.version
+                self.app_lifecycle_actions(None, None, from_rpc_app, lifecycle_downgrade)
 
             # Upload new app tarball. The upload will enable the new plugins to
             # generate overrides for images. Disable the plugins for the current
