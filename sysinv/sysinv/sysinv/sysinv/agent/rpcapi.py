@@ -267,3 +267,16 @@ class AgentAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.call(context,
                          self.make_msg("report_initial_inventory",
                                        host_uuid=host_uuid))
+
+    def pull_kubernetes_images(self, context, host_uuid, images):
+        """Asynchronously, pull kubernetes images
+
+        :param context: request context
+        :param host_uuid: the host uuid
+        :param images: list of images to be downloaded
+        :return:  none ... uses asynchronous cast().
+        """
+        return self.cast(context,
+                         self.make_msg("pull_kubernetes_images",
+                                       host_uuid=host_uuid,
+                                       images=images))

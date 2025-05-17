@@ -37,9 +37,9 @@ from six.moves import http_client as httplib
 from urllib3.exceptions import MaxRetryError
 
 from oslo_log import log as logging
-from sysinv.common import exception
 from sysinv.common import constants
 from sysinv.common import utils
+from sysinv.common import exception
 from sysinv.common.retrying import retry
 
 K8S_MODULE_MAJOR_VERSION = int(K8S_MODULE_VERSION.split('.')[0])
@@ -55,6 +55,7 @@ CERT_MANAGER_VERSION = 'v1'
 
 
 # Kubernetes Files
+KUBEADM_FLAGS_FILE = '/var/lib/kubelet/kubeadm-flags.env'
 KUBERNETES_ADMIN_CONF = '/etc/kubernetes/admin.conf'
 KUBERNETES_ROOTCA_CERT = '/etc/kubernetes/pki/ca.crt'
 KUBERNETES_NEW_ROOTCA_CERT = '/etc/kubernetes/pki/ca_new.crt'
@@ -62,6 +63,9 @@ KUBERNETES_APISERVER_CERT = '/etc/kubernetes/pki/apiserver.crt'
 
 # Kubernetes clusters
 KUBERNETES_CLUSTER_DEFAULT = "kubernetes"
+
+# Kubernetes symlinks paths
+KUBERNETES_VERSIONED_BINARIES_ROOT = '/usr/local/kubernetes/'
 
 # Kubernetes users
 KUBERNETES_ADMIN_USER = "kubernetes-admin"
@@ -80,6 +84,9 @@ NAMESPACE_DEPLOYMENT = 'deployment'
 KUBE_APISERVER = 'kube-apiserver'
 KUBE_CONTROLLER_MANAGER = 'kube-controller-manager'
 KUBE_SCHEDULER = 'kube-scheduler'
+
+# Kubernetes systemd service names
+KUBELET_SYSTEMD_SERVICE_NAME = 'kubelet'
 
 # Kubernetes upgrade states
 KUBE_UPGRADE_STARTED = 'upgrade-started'
@@ -398,6 +405,80 @@ def get_kube_versions():
     ]
 
 
+def get_all_supported_k8s_versions():
+    """Return all supported kubernetes versions for an STX release
+
+    This returns a list of all kubernetes versions supported for a particular
+    release by scanning /usr/local/kubernetes
+
+    :returns: List of strings in ascending order e.g. ['1.29.2', '1.30.6', '1.31.5', '1.32.2']
+    """
+    try:
+        k8s_versions = os.listdir(KUBERNETES_VERSIONED_BINARIES_ROOT)
+        LOG.info("Supported kubernetes versions: %s" % (k8s_versions))
+    except Exception as ex:
+        raise exception.SysinvException("Error retrieving supported kubernetes versions for the "
+                                        "release: %s" % (ex))
+    return k8s_versions
+
+
+def get_k8s_images(kube_version):
+    """Provides a list of images for a kubernetes version.
+
+    :param: kube_version: kubernetes version string.
+    :returns: nested dictionary component name as a key and upstream (public) image name:tag as
+              value.
+              e.g. {'kube-apiserver': 'registry.k8s.io/kube-apiserver:v1.29.2',
+                    'kube-controller-manager': 'registry.k8s.io/kube-controller-manager:v1.29.2',
+                    'kube-scheduler': 'registry.k8s.io/kube-scheduler:v1.29.2',
+                    'kube-proxy': 'registry.k8s.io/kube-proxy:v1.29.2',
+                    'coredns': 'registry.k8s.io/coredns/coredns:v1.11.1',
+                    'pause': 'registry.k8s.io/pause:3.9',
+                    'etcd': 'registry.k8s.io/etcd:3.5.10-0'}
+    """
+    try:
+        kubeadm_path = constants.KUBEADM_PATH_FORMAT_STR.format(kubeadm_ver=kube_version)
+        cmd = [kubeadm_path, 'config', 'images', 'list', '--kubernetes-version', kube_version]
+        stdout, _ = utils.execute(*cmd, check_exit_code=0)
+        images = stdout.split()
+        # It may be feasible to do below parsing wherever required but doing it once will
+        # make it easier and efficient to access using image name whenever required. So do
+        # just once here itstead of doing repetitively at different places.
+        image_dict = {}
+        for image in images:
+            key = image.split('/')[1].split(':')[0]
+            image_dict.update({key: image})
+        LOG.info("List of images for kubernetes version %s: %s" % (kube_version, image_dict))
+    except Exception as ex:
+        raise exception.SysinvException("Error getting all kubernetes images: %s" % (ex))
+    return image_dict
+
+
+def get_k8s_images_for_all_versions():
+    """Provides a list of images for supported kubernetes versions.
+
+    :returns: nested dictionary containing kubernetes version and component name
+              as a key and upstream (public) image name:tag as value.
+              e.g. {'1.29.2': {
+                    'kube-apiserver': 'registry.k8s.io/kube-apiserver:v1.29.2',
+                    'kube-controller-manager': 'registry.k8s.io/kube-controller-manager:v1.29.2',
+                    'kube-scheduler': 'registry.k8s.io/kube-scheduler:v1.29.2',
+                    'kube-proxy': 'registry.k8s.io/kube-proxy:v1.29.2',
+                    'coredns': 'registry.k8s.io/coredns/coredns:v1.11.1',
+                    'pause': 'registry.k8s.io/pause:3.9',
+                    'etcd': 'registry.k8s.io/etcd:3.5.10-0'}, '1.30.6': {...},}
+    """
+    try:
+        all_images = {}
+        k8s_versions = get_all_supported_k8s_versions()
+        for version in k8s_versions:
+            images_dict = get_k8s_images(version)
+            all_images.update({version: images_dict})
+    except Exception as ex:
+        raise exception.SysinvException("Error getting all kubernetes images: %s" % (ex))
+    return all_images
+
+
 def get_latest_supported_version():
     """Returns latest supported k8s version for the release """
     latest_version = get_kube_versions()[-1]['version']
@@ -483,6 +564,31 @@ def backup_kube_static_pods(backup_path):
     except Exception as e:
         LOG.error('Error copying kubernetes static pods manifests: %s' % e)
         raise
+
+
+def disable_kubelet_garbage_collection():
+    """ Disables kubelet garbage collection
+
+    This method virtually disables kubelet image garbage collection by setting
+    image garbage collection threshold to a high value(100) in the kubelet config.
+    Note that, this DOES NOT restart the kubelet after updating
+    the value and must be restarted explicitly to take effect.
+
+    :raises: SysinvException if an error is encountered
+    """
+    try:
+        stream = None
+        with open(KUBEADM_FLAGS_FILE, "r") as file:
+            stream = file.read()
+        if stream and "image-gc-high-threshold" not in stream:
+            line = stream.split('"')
+            flags = '--image-gc-high-threshold 100 ' + line[1]
+            newline = line[0] + '"' + flags + '"\n'
+            with open(KUBEADM_FLAGS_FILE, "w") as file:
+                file.write(newline)
+    except Exception as ex:
+        raise exception.SysinvException("Failed to disable kubelet garbage "
+                                        "collection. Error: [%s]" % (ex))
 
 
 # https://github.com/kubernetes-client/python/issues/895

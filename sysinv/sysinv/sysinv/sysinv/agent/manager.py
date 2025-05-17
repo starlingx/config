@@ -56,17 +56,19 @@ from oslo_log import log
 from oslo_service import periodic_task
 from oslo_utils import timeutils
 from sysinv.agent import disk
+from sysinv.agent import fpga
+from sysinv.agent import kube_host
 from sysinv.agent import partition
 from sysinv.agent import pv
 from sysinv.agent import lvg
 from sysinv.agent import lv
 from sysinv.agent import pci
 from sysinv.agent import node
-from sysinv.agent import fpga
 from sysinv.agent.lldp import plugin as lldp_plugin
 from sysinv.common import fpga_constants
 from sysinv.common import constants
 from sysinv.common import exception
+from sysinv.common import kubernetes
 from sysinv.common import service
 from sysinv.common import utils
 from sysinv.puppet import common as puppet
@@ -181,6 +183,7 @@ class AgentManager(service.PeriodicService):
         self._report_to_conductor_iplatform_avail_flag = False
         self._report_to_conductor_fpga_info = True
         self._report_to_conductor_cstate_info = True
+        self._containerd_operator = kube_host.ContainerdOperator()
         self._ipci_operator = pci.PCIOperator()
         self._inode_operator = node.NodeOperator()
         self._idisk_operator = disk.DiskOperator()
@@ -2328,3 +2331,36 @@ class AgentManager(service.PeriodicService):
             self._prev_fs = None
             self._inventoried_initial = False
             self._inventory_reported = set()
+
+    def pull_kubernetes_images(self, context, host_uuid, images):
+        """ Pull kubernetes control plane images to crictl
+
+        :param: context: context object.
+        :param: host_uuid: A host UUID string.
+        :param: images: List of images to be downloaded.
+
+        :returns: True if image download succeeds False otherwise
+        """
+        if self._ihost_uuid and self._ihost_uuid == host_uuid:
+            start = time.time()
+            try:
+                # To avoid undesirable removal of pulled images by GC before
+                # they are actually used during control-plane and kubelet upgrade,
+                # GC needs to be temporarily disabled. It is enabled back during
+                # kubelet upgrade. Kubelet needs to be restarted for configuration
+                # change to take effect.
+                kubernetes.disable_kubelet_garbage_collection()
+                utils.pmon_restart_service(kubernetes.KUBELET_SYSTEMD_SERVICE_NAME)
+            except exception.SysinvException as ex:
+                LOG.warning("Failed to disable garbage collection in kubelet with error: [%s] "
+                            "continuing anyway." % (ex))
+
+            result = self._containerd_operator.pull_images(images)
+            if result:
+                LOG.info("All required kubernetes images downloaded successfully in %s seconds"
+                         % (time.time() - start))
+            else:
+                LOG.error("Image download operation failed.")
+
+            rpcapi = conductor_rpcapi.ConductorAPI(topic=conductor_rpcapi.MANAGER_TOPIC)
+            rpcapi.report_download_images_result(context, result)

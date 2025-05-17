@@ -2366,8 +2366,6 @@ ANSIBLE_KUBE_NETWORKING_PLAYBOOK = \
     '/usr/share/ansible/stx-ansible/playbooks/upgrade-k8s-networking.yml'
 ANSIBLE_KUBE_STORAGE_PLAYBOOK = \
     '/usr/share/ansible/stx-ansible/playbooks/upgrade-k8s-storage.yml'
-ANSIBLE_KUBE_PUSH_IMAGES_PLAYBOOK = \
-    '/usr/share/ansible/stx-ansible/playbooks/push_k8s_images.yml'
 ANSIBLE_PLATFORM_BACKUP_PLAYBOOK = \
     '/usr/share/ansible/stx-ansible/playbooks/backup.yml'
 ANSIBLE_KUBE_STATIC_IMAGES_PLAYBOOK = \
@@ -2736,6 +2734,13 @@ RUNTIME_CONFIG_STATE_APPLIED = "applied"
 RUNTIME_CONFIG_STATE_FAILED = "failed"
 RUNTIME_CONFIG_STATE_RETRIED = "retried"
 
+# Hieradata
+TMP_HIERADATA_PATH = '/tmp/puppet/hieradata/'
+TMP_HIERADATA_SECURE_SYSTEM_YAML = os.path.join(TMP_HIERADATA_PATH, 'secure_system.yaml')
+
+# systemd related
+PMON_RESTART_FULL_PATH = '/usr/local/sbin/pmon-restart'
+
 # LUKS vault type
 LUKS_VAULT_TYPE_NAME = "luks_encrypted_vault"
 
@@ -2876,3 +2881,6 @@ SUPPORTED_STALLD_LABELS = [
 # 'starlingx.io/stalld.starving_threshold'
 REGEX_STALLD_CUSTOM_LABEL = r"starlingx\.io\/stalld\.(\w+)"
 CUSTOM_STALLD_LABEL_STRING = "starlingx.io/stalld."
+
+# Image download
+IMAGE_DOWNLOAD_TIMEOUT_IN_SECS = 600
