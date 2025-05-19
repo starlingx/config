@@ -6,7 +6,6 @@
 
 from sysinv.common import constants
 from sysinv.common import utils
-from sysinv.helm import helm
 from sysinv.puppet import openstack
 
 
@@ -86,11 +85,9 @@ class DCDBsyncPuppet(openstack.OpenstackBasePuppet):
                 for key in keys_to_copy:
                     config[key] = old_config.get(key)
             else:
-                helm_data = helm.HelmOperatorData(self.dbapi)
-
                 # The dcdbsync instance for openstack is authenticated with
                 # pod based keystone.
-                endpoints_data = helm_data.get_keystone_endpoint_data()
+                endpoints_data = self._helm_data.get_keystone_endpoint_data()
                 service_config = {
                     'dcdbsync::openstack_init::region_name':
                         endpoints_data['region_name'],
@@ -128,12 +125,10 @@ class DCDBsyncPuppet(openstack.OpenstackBasePuppet):
                 for key in keys_to_copy:
                     config[key] = old_config.get(key)
             else:
-                helm_data = helm.HelmOperatorData(self.dbapi)
-
                 # The dcdbsync instance for openstack is authenticated with
                 # pod based keystone.
-                endpoints_data = helm_data.get_dcdbsync_endpoint_data()
-                db_data = helm_data.get_keystone_oslo_db_data()
+                endpoints_data = self._helm_data.get_dcdbsync_endpoint_data()
+                db_data = self._helm_data.get_keystone_oslo_db_data()
 
                 service_auth_config = {
                     'dcdbsync::openstack_api::keystone_password':

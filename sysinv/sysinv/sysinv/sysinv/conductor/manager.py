@@ -438,7 +438,11 @@ class ConductorManager(service.PeriodicService):
 
         self._kube_app_bundle_storage = KubeAppBundleStorageFactory.createKubeAppBundleStorage()
         self._openstack = openstack.OpenStackOperator(self.dbapi)
-        self._puppet = puppet.PuppetOperator(self.dbapi)
+
+        # Make sure that any puppet plugins that need to access helm plugins to
+        # generate data uses the same operator as managed by the app framework
+        self._helm = helm.HelmOperator(self.dbapi)
+        self._puppet = puppet.PuppetOperator(self.dbapi, helm_operator=self._helm)
 
         # create /var/run/sysinv if required. On DOR, the manifests
         # may not run to create this volatile directory.
@@ -455,7 +459,6 @@ class ConductorManager(service.PeriodicService):
         # until host unlock and we need ceph-mon up in order to configure
         # ceph for the initial unlock.
         # kube_app operator will load app metadata from database
-        self._helm = helm.HelmOperator(self.dbapi)
         self._app = kube_app.AppOperator(self.dbapi, self._helm, self.apps_metadata)
         self._docker = kube_app.DockerHelper(self.dbapi)
         self._kube = kubernetes.KubeOperator()
