@@ -1,4 +1,4 @@
-# Copyright 2013-2023 Wind River, Inc.
+# Copyright 2013-2025 Wind River, Inc.
 # Copyright 2012 Openstack Foundation
 # All Rights Reserved.
 #
@@ -573,6 +573,12 @@ class HTTPClient(httplib2.Http):
 
         if self.auth_url is None:
             raise exceptions.HTTPUnauthorized("No auth_url provided")
+
+        if self.username is None:
+            raise exceptions.HTTPUnauthorized("No username provided")
+
+        if self.password is None:
+            raise exceptions.HTTPUnauthorized("No password provided")
 
         token_url = self.auth_url + "/tokens"
 
