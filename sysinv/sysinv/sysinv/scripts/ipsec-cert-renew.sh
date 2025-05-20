@@ -52,6 +52,16 @@ time_left_s_by_openssl() {
     echo $time_left_s
 }
 
+# Postpone random seconds within an hour, to avoid simultaneous cert renewal on all hosts.
+# The algorithm guarantees the random seconds is unique per host.
+seed=$(( $(hostname | cksum | awk '{print $1}') ^ $(date +%s) ))
+RANDOM=$seed
+
+delay=$(( RANDOM % 3600 ))
+
+LOG_info "Sleeping for ${delay} seconds to avoid simultaneous certificate renewal among hosts."
+sleep ${delay}
+
 # Check if it's time to renew IPsec certificate.
 if [ ${ERR_CERT} -eq 0 ]; then
     time_left_s=$(time_left_s_by_openssl "${IPSEC_CERT_PATH}")
