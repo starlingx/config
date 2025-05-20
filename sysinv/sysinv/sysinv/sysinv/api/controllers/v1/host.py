@@ -6440,6 +6440,21 @@ class HostController(rest.RestController):
                         % hostupdate.displayid)
                 raise wsme.exc.ClientSideError(msg)
 
+            # Check if there is an admin network configured
+            # Ensure there is an associated interface
+            networktype = constants.NETWORK_TYPE_ADMIN
+            pools = cutils.get_network_address_pools(pecan.request.dbapi, networktype, True)
+            admin_interface_configured = False
+            for iif in ihost_iinterfaces:
+                if (iif.networktypelist and networktype in iif.networktypelist):
+                    admin_interface_configured = True
+                    break
+            if pools and not admin_interface_configured:
+                msg = _("Cannot unlock host %s "
+                        "without assigning the admin network to an interface"
+                        % hostupdate.displayid)
+                raise wsme.exc.ClientSideError(msg)
+
             hostupdate.configure_required = True
 
         host_uuid = ihost['uuid']
