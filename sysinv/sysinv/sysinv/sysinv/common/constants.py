@@ -2362,8 +2362,7 @@ EXTENDED_RPCAPI_TIMEOUT_IN_SECS = 90
 ANSIBLE_RESTORE_ROOK_FLAG = os.path.join(tsc.VOLATILE_PATH, ".ansible_restore_rook")
 
 # Ansible playbooks
-ANSIBLE_KUBE_NETWORKING_PLAYBOOK = \
-    '/usr/share/ansible/stx-ansible/playbooks/upgrade-k8s-networking.yml'
+ANSIBLE_PLAYBOOKS_ROOT = "/usr/share/ansible/stx-ansible/playbooks"
 ANSIBLE_KUBE_STORAGE_PLAYBOOK = \
     '/usr/share/ansible/stx-ansible/playbooks/upgrade-k8s-storage.yml'
 ANSIBLE_PLATFORM_BACKUP_PLAYBOOK = \
@@ -2377,6 +2376,14 @@ ANSIBLE_KUBE_SYSTEM_IMAGES_PLAYBOOK_ROOT = \
 
 # Kubeadm path
 KUBEADM_PATH_FORMAT_STR = "/usr/local/kubernetes/{kubeadm_ver}/stage1/usr/bin/kubeadm"
+
+# Container networking related
+KUBELET_CNI_BIN_DIR = "/var/opt/cni/bin"
+CALICO_CHAIN_INSERT_MODE = "Append"
+
+# K8s n/w upgrade related
+SYSINV_UTILS_PATH = '/usr/bin/sysinv-utils'
+CREATE_HOST_OVERRIDES_COMMAND = 'create-host-overrides'
 
 # Clock synchronization types
 NTP = 'ntp'

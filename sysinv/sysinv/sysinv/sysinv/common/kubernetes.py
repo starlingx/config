@@ -56,10 +56,15 @@ CERT_MANAGER_VERSION = 'v1'
 
 # Kubernetes Files
 KUBEADM_FLAGS_FILE = '/var/lib/kubelet/kubeadm-flags.env'
-KUBERNETES_ADMIN_CONF = '/etc/kubernetes/admin.conf'
-KUBERNETES_ROOTCA_CERT = '/etc/kubernetes/pki/ca.crt'
-KUBERNETES_NEW_ROOTCA_CERT = '/etc/kubernetes/pki/ca_new.crt'
-KUBERNETES_APISERVER_CERT = '/etc/kubernetes/pki/apiserver.crt'
+KUBERNETES_CONF_DIR = '/etc/kubernetes/'
+KUBERNETES_ADMIN_CONF = os.path.join(KUBERNETES_CONF_DIR, 'admin.conf')
+KUBERNETES_KUBELET_CONF = os.path.join(KUBERNETES_CONF_DIR, 'kubelet.conf')
+KUBERNETES_SUPER_ADMIN_CONF = os.path.join(KUBERNETES_CONF_DIR, 'super-admin.conf')
+KUBERNETES_CONF_CERTS = os.path.join(KUBERNETES_CONF_DIR, 'pki')
+KUBERNETES_ROOTCA_CERT = os.path.join(KUBERNETES_CONF_CERTS, 'ca.crt')
+KUBERNETES_NEW_ROOTCA_CERT = os.path.join(KUBERNETES_CONF_CERTS, 'ca_new.crt')
+KUBERNETES_APISERVER_CERT = os.path.join(KUBERNETES_CONF_CERTS, 'apiserver.crt')
+KUBE_CONTROL_PLANE_MANIFESTS_PATH = os.path.join(KUBERNETES_CONF_DIR, 'manifests')
 
 # Kubernetes clusters
 KUBERNETES_CLUSTER_DEFAULT = "kubernetes"
@@ -550,6 +555,32 @@ def create_configmap_obj(namespace, name, filename, **kwargs):
     except Exception as e:
         LOG.error("Kubernetes exception in create_configmap_obj: %s" % e)
         raise
+
+
+def kubectl_apply(manifests_path, timeout=60):
+    """Helper function to apply kubernetes manifests
+
+    This method runs kubectl apply for manifest(s) at path "manifests_path"
+
+    :param: manifest_path: Full path to a manifest yaml file or dir containing
+                           one or multiple yaml manifests
+    :param: timeout: Request timeout in seconds. Integer/String. Default value: 60
+
+    :raises: Raises SysinvException upon failure
+    """
+    try:
+        str_timeout = str(timeout)
+    except Exception:
+        LOG.warning("Invalid input for kubectl apply timeout. Ignoring and using default 60s.")
+        str_timeout = '60'
+    try:
+        request_timeout_str = f"--request-timeout={str_timeout}s"
+        cmd = ["kubectl", f"--kubeconfig={KUBERNETES_ADMIN_CONF}", "apply",
+               "-f", manifests_path, request_timeout_str]
+        utils.execute(*cmd, attempts=5, delay_on_retry=3, check_exit_code=0)
+    except exception.ProcessExecutionError as e:
+        raise exception.SysinvException("Failed to apply kubernetes manifest(s) at: [%s] "
+                                          "with error: [%s]" % (manifests_path, e))
 
 
 def backup_kube_static_pods(backup_path):
