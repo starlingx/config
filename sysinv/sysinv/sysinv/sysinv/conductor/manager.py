@@ -17857,29 +17857,28 @@ class ConductorManager(service.PeriodicService):
             # convert what we can.
             rc = 0
 
+            # FUTURE USE: keep framework, k8s version specific, uncomment as needed
             # The bootstrap config file is used by backup/restore.
-            if self.sanitize_feature_gates_bootstrap_config_file(target_version) == 1:
-                LOG.error("Problem sanitizing bootstrap config file.")
-                rc = 1
+            # if self.sanitize_feature_gates_bootstrap_config_file(target_version) == 1:
+            #   LOG.error("Problem sanitizing bootstrap config file.")
+            #   rc = 1
 
+            # FUTURE USE: keep framework, k8s version specific, uncomment as needed
             # The service parameters are used by backup/restore and the custom
             # K8s configuration functionality.
-            if self.sanitize_feature_gates_service_parameters(target_version) == 1:
-                LOG.error("Problem sanitizing feature gates service parameter.")
-                rc = 1
+            # if self.sanitize_feature_gates_service_parameters(target_version) == 1:
+            #    LOG.error("Problem sanitizing feature gates service parameter.")
+            #    rc = 1
 
             if self.sanitize_kubeadm_configmap(target_version) == 1:
                 LOG.error("Problem sanitizing kubeadm configmap feature gates.")
                 rc = 1
 
-            if self.sanitize_image_repository_kubeadm_configmap(target_version) == 1:
-                LOG.error("Problem updating kubeadm configmap image repository.")
-                rc = 1
-
+            # FUTURE USE: keep framework, k8s version specific, uncomment as needed
             # The kubelet configmap is used by the K8s upgrade itself.
-            if self.sanitize_feature_gates_kubelet_configmap(target_version) == 1:
-                LOG.error("Problem sanitizing kubelet configmap feature gates.")
-                rc = 1
+            # if self.sanitize_feature_gates_kubelet_configmap(target_version) == 1:
+            #    LOG.error("Problem sanitizing kubelet configmap feature gates.")
+            #    rc = 1
 
             # Work around upstream kubeadm configmap parsing issue.
             if self._kube.kubeadm_configmap_reformat(target_version) == 1:
@@ -19636,41 +19635,43 @@ class ConductorManager(service.PeriodicService):
                 del endpoints[1:]
                 LOG.info('sanitized etcd endpoints %r in Kubeadm_config.' % endpoints)
 
-            for component in ['apiServer', 'controllerManager', 'scheduler']:
-                k8s_component = kubeadm_config.get(component, {})
-                extra_args = k8s_component.get('extraArgs', {})
+            # FUTURE USE: keep framework, k8s version specific, uncomment as needed
+            # for component in ['apiServer', 'controllerManager', 'scheduler']:
+            #     k8s_component = kubeadm_config.get(component, {})
+            #     extra_args = k8s_component.get('extraArgs', {})
+            #
+            #     # Remove the deprecated pod-eviction-timeout args from the
+            #     # controller-manager for the K8s v1.27.5
+            #     if component == 'controllerManager':
+            #         pod_eviction_timeout = extra_args.get('pod-eviction-timeout', None)
+            #         if pod_eviction_timeout and target_version == 'v1.27.5':
+            #             extra_args.pop('pod-eviction-timeout')
+            #
+            #     # Parse the configmap to get the feature gates
+            #     feature_gates = extra_args.get('feature-gates', None)
+            #     if not feature_gates:
+            #         continue
+            #
+            #     try:
+            #         if target_version == 'v1.25.3':
+            #             feature_gates = sanitize_feature_gates(feature_gates,
+            #                         'TTLAfterFinished=true')
+            #         if not feature_gates:
+            #             # No feature gates left, so delete the entry
+            #             LOG.info('Deleting %s feature gates in Kubeadm_config.'
+            #                         % extra_args)
+            #             extra_args.pop('feature-gates')
+            #         else:
+            #             # Update the feature gates with the new value
+            #             LOG.info('Modifying %s feature gates in Kubeadm_config.'
+            #                         % extra_args)
+            #             extra_args['feature-gates'] = feature_gates
+            #     except Exception as ex:
+            #         LOG.error("Problem sanitizing %s feature Kubeadm_config."
+            #                     % extra_args)
+            #         LOG.error(str(ex))
+            #         raise
 
-                # Remove the deprecated pod-eviction-timeout args from the
-                # controller-manager for the K8s v1.27.5
-                if component == 'controllerManager':
-                    pod_eviction_timeout = extra_args.get('pod-eviction-timeout', None)
-                    if pod_eviction_timeout and target_version == 'v1.27.5':
-                        extra_args.pop('pod-eviction-timeout')
-
-                # Parse the configmap to get the feature gates
-                feature_gates = extra_args.get('feature-gates', None)
-                if not feature_gates:
-                    continue
-
-                try:
-                    if target_version == 'v1.25.3':
-                        feature_gates = sanitize_feature_gates(feature_gates,
-                                    'TTLAfterFinished=true')
-                    if not feature_gates:
-                        # No feature gates left, so delete the entry
-                        LOG.info('Deleting %s feature gates in Kubeadm_config.'
-                                    % extra_args)
-                        extra_args.pop('feature-gates')
-                    else:
-                        # Update the feature gates with the new value
-                        LOG.info('Modifying %s feature gates in Kubeadm_config.'
-                                    % extra_args)
-                        extra_args['feature-gates'] = feature_gates
-                except Exception as ex:
-                    LOG.error("Problem sanitizing %s feature Kubeadm_config."
-                                % extra_args)
-                    LOG.error(str(ex))
-                    raise
             outstream = StringIO()
             yaml.dump(kubeadm_config, outstream)
             configmap = {'data': {'ClusterConfiguration': outstream.getvalue()}}
