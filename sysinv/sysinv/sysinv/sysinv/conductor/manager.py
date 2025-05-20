@@ -17757,7 +17757,7 @@ class ConductorManager(service.PeriodicService):
         if system.system_mode == constants.SYSTEM_MODE_SIMPLEX:
             cordon_cmd = ['kubectl', '--kubeconfig=%s' % kubernetes.KUBERNETES_ADMIN_CONF,
                           'drain', host_name, '--ignore-daemonsets', '--delete-emptydir-data',
-                          '--delete-local-data', '--force', '--skip-wait-for-delete-timeout=1',
+                          '--force', '--skip-wait-for-delete-timeout=1',
                           '--timeout=150s']
 
             proc = subprocess.Popen(cordon_cmd, stdout=subprocess.PIPE,
