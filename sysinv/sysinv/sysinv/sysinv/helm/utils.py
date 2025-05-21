@@ -434,3 +434,51 @@ def call_fluxcd_reconciliation(helmrelease, namespace):
     except Exception as e:
         raise exception.SysinvException(f"Error trying to force reconciliation via \
                                         {cmd}, reason: {e}")
+
+
+@retry(retry_on_exception=lambda x: isinstance(x, exception.SysinvException),
+       stop_max_attempt_number=3)
+def call_fluxcd_repository_reconciliation(helm_repos):
+    """ Force Flux's repository reconciliation
+
+    The purpose of this function is to force a reconciliation of FluxCD's internal
+    repositories. The HelmRepository object is annotated to trigger the reconciliation
+    outside the specified interval window.
+
+    param: helm_repos: list of yaml formatted HelmRepository objects
+    """
+
+    timestamp = int(time.time())
+    env = os.environ.copy()
+    env['KUBECONFIG'] = kubernetes.KUBERNETES_ADMIN_CONF
+
+    for helmrepo in helm_repos:
+        name = helmrepo['metadata']['name']
+        try:
+            namespace = helmrepo['metadata']['namespace']
+        except KeyError:
+            namespace = "default"
+
+        cmd = [
+            "kubectl",
+            "annotate",
+            "--field-manager=flux-client-side-apply",
+            "-n", f"{namespace}",
+            "--overwrite",
+            f"helmrepository/{name}",
+            f"reconcile.fluxcd.io/requestedAt=\"{timestamp}\"",
+            "--request-timeout=5s"
+        ]
+
+        LOG.info(f"Requesting reconciliation for {namespace}/{name} repository")
+        try:
+            process = subprocess.Popen(cmd, env=env, stdout=subprocess.PIPE,
+                                    stderr=subprocess.PIPE, universal_newlines=True)
+            _, stderr = process.communicate()
+
+            if process.returncode != 0:
+                raise exception.SysinvException(f"Error executing kubectl annotate: {stderr}")
+
+        except Exception as e:
+            raise exception.SysinvException(f"Error trying to force repository reconciliation \
+                                            via {cmd}, reason: {e}")

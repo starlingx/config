@@ -4235,6 +4235,18 @@ def get_resources_list_via_kubectl_kustomize(manifest_dir):
     return resources_list
 
 
+def filter_helm_objects(resources, kind):
+    """
+    Filters the resources to include only those with the parameterized kind".
+
+    param: resources: The list of dictionaries representing the KRM resources.
+
+    Returns: List of dictionaries containing the requested kind.
+    """
+
+    return [resource for resource in resources if resource.get('kind') == kind]
+
+
 def filter_helm_releases(resources):
     """
     Filters the resources to include only those with kind 'HelmRelease'.
@@ -4244,7 +4256,19 @@ def filter_helm_releases(resources):
     Returns: List of dictionaries with kind 'HelmRelease'.
     """
 
-    return [resource for resource in resources if resource.get('kind') == 'HelmRelease']
+    return filter_helm_objects(resources, 'HelmRelease')
+
+
+def filter_helm_repositories(resources):
+    """
+    Filters the resources to include only those with kind 'HelmRepository'.
+
+    param: resources: The list of dictionaries representing the KRM resources.
+
+    Returns: List of dictionaries with kind 'HelmRepository'.
+    """
+
+    return filter_helm_objects(resources, 'HelmRepository')
 
 
 def is_certificate_request_created(name):

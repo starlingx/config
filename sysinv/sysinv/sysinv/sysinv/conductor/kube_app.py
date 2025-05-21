@@ -3124,6 +3124,12 @@ class AppOperator(object):
                 transitory_state=constants.APP_UPDATE_STARTING
             )
 
+            # Reconcile existing FluxCD's Helm repositories
+            resources_list = \
+                cutils.get_resources_list_via_kubectl_kustomize(from_app.sync_fluxcd_manifest)
+            helm_repos = cutils.filter_helm_repositories(resources_list)
+            helm_utils.call_fluxcd_repository_reconciliation(helm_repos)
+
             lifecycle_hook_info_app_update.operation = constants.APP_UPDATE_OP
 
             # Get the skip_recovery flag from app metadata
