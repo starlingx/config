@@ -9776,9 +9776,11 @@ class ConductorManager(service.PeriodicService):
             puppet_common.REPORT_INVENTORY_UPDATE:
                 puppet_common.REPORT_PCI_SRIOV_CONFIG,
         }
+        skip_deferred_manifests = os.path.isfile(constants.ANSIBLE_ENROLLMENT_COMPLETED_FLAG)
 
         self._config_apply_runtime_manifest(
-            context, config_uuid, config_dict, force=True)
+            context, config_uuid, config_dict, force=True,
+            skip_deferred_manifests=skip_deferred_manifests)
 
     def update_sriov_vf_config(self, context, host_uuid):
         """update sriov vf configuration for a host
@@ -14349,7 +14351,8 @@ class ConductorManager(service.PeriodicService):
                                        force=False,
                                        filter_classes=None,
                                        skip_update_config=False,
-                                       timestamp=None):
+                                       timestamp=None,
+                                       skip_deferred_manifests=False):
         """Apply manifests on all hosts affected by the supplied personalities.
            If host_uuids is set in config_dict, only update hiera data and apply
            manifests for these hosts.
@@ -14432,7 +14435,7 @@ class ConductorManager(service.PeriodicService):
         # make this one a deferred config as well.
         # This will prevent newer configs from being applied
         # before older deferred configs.
-        elif deferred_config is None and self._host_deferred_runtime_config:
+        elif deferred_config is None and self._host_deferred_runtime_config and not skip_deferred_manifests:
             self._update_host_deferred_runtime_config(
                 CONFIG_APPLY_RUNTIME_MANIFEST,
                 config_uuid,
