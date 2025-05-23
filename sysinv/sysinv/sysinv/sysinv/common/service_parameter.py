@@ -916,7 +916,10 @@ PLATFORM_CONFIG_PARAMETER_OPTIONAL = [
     constants.SERVICE_PARAM_NAME_PLATFORM_MAX_CPU_PERCENTAGE,
     constants.SERVICE_PARAM_NAME_PLAT_CONFIG_INTEL_PSTATE,
     constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_API_WORKERS,
-    constants.SERVICE_PARAM_NAME_PLATFORM_SCTP_AUTOLOAD
+    constants.SERVICE_PARAM_NAME_PLATFORM_SCTP_AUTOLOAD,
+    constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_POOL_SIZE,
+    constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_POOL_TIMEOUT,
+    constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_OVERFLOW_SIZE
 ]
 
 PLATFORM_CONFIG_PARAMETER_READONLY = [
@@ -934,6 +937,12 @@ PLATFORM_CONFIG_PARAMETER_VALIDATOR = {
         _validate_sysinv_api_workers,
     constants.SERVICE_PARAM_NAME_PLATFORM_SCTP_AUTOLOAD:
         _validate_sctp_autoload,
+    constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_POOL_SIZE:
+        _validate_postgres_pool_configuration,
+    constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_POOL_TIMEOUT:
+        _validate_postgres_pool_configuration,
+    constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_OVERFLOW_SIZE:
+        _validate_postgres_pool_configuration,
 }
 
 PLATFORM_CONFIG_PARAMETER_RESOURCE = {
@@ -945,6 +954,12 @@ PLATFORM_CONFIG_PARAMETER_RESOURCE = {
         'platform::sysinv::params::sysinv_api_workers',
     constants.SERVICE_PARAM_NAME_PLATFORM_SCTP_AUTOLOAD:
         'platform::params::sctp_autoload',
+    constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_POOL_SIZE:
+        'platform::sysinv::custom::params::db_pool_size',
+    constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_POOL_TIMEOUT:
+        'platform::sysinv::custom::params::db_idle_timeout',
+    constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_OVERFLOW_SIZE:
+        'platform::sysinv::custom::params::db_over_size',
 }
 
 IDENTITY_LDAP_PARAMETER_OPTIONAL = [
