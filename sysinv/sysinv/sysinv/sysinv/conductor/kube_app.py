@@ -2807,22 +2807,28 @@ class AppOperator(object):
                     constants.APP_METADATA_ORDERED_APPS_BY_AFTER_KEY].remove(app_name)
         else:
             # Remove from dependent_apps
-            if app_name in self._apps_metadata[constants.APP_METADATA_ORDERED_APPS][
-                    constants.APP_METADATA_DEPENDENT_APPS]:
+            if app_name in (
+                self._apps_metadata[constants.APP_METADATA_ORDERED_APPS]
+                .get(constants.APP_METADATA_DEPENDENT_APPS, {})
+            ):
                 self._apps_metadata[constants.APP_METADATA_ORDERED_APPS][
                     constants.APP_METADATA_DEPENDENT_APPS].remove(app_name)
 
             # Remove from class categories
-            for category in self._apps_metadata[constants.APP_METADATA_ORDERED_APPS][
-                    constants.APP_METADATA_CLASS]:
+            for category in (
+                self._apps_metadata[constants.APP_METADATA_ORDERED_APPS]
+                .get(constants.APP_METADATA_CLASS, {})
+            ):
                 if app_name in self._apps_metadata[constants.APP_METADATA_ORDERED_APPS][
                         constants.APP_METADATA_CLASS][category]:
                     self._apps_metadata[constants.APP_METADATA_ORDERED_APPS][
                         constants.APP_METADATA_CLASS][category].remove(app_name)
 
             # Remove from independent_apps
-            if app_name in self._apps_metadata[constants.APP_METADATA_ORDERED_APPS][
-                    constants.APP_METADATA_INDEPENDENT_APPS]:
+            if app_name in (
+                self._apps_metadata[constants.APP_METADATA_ORDERED_APPS]
+                .get(constants.APP_METADATA_INDEPENDENT_APPS, {})
+            ):
                 self._apps_metadata[constants.APP_METADATA_ORDERED_APPS][
                     constants.APP_METADATA_INDEPENDENT_APPS].remove(app_name)
 

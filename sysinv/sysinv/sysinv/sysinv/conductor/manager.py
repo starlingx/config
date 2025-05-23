@@ -101,6 +101,7 @@ from sysinv.api.controllers.v1 import utils
 from sysinv.api.controllers.v1 import vim_api
 from sysinv.common import app_dependents
 from sysinv.common import app_metadata
+from sysinv.common import app_update_manager
 from sysinv.common import barbican_config
 from sysinv.common import fpga_constants
 from sysinv.common import constants
@@ -7806,7 +7807,8 @@ class ConductorManager(service.PeriodicService):
                                  app_name,
                                  k8s_version=None,
                                  k8s_upgrade_timing=None,
-                                 async_upload=True):
+                                 async_upload=True,
+                                 skip_validations=False):
         """ Automatically upload managed applications.
 
         :param context: Context of the request.
@@ -7820,7 +7822,7 @@ class ConductorManager(service.PeriodicService):
                  None if there is not an upload version available for the given app.
         """
 
-        if self._patching_operation_is_occurring():
+        if not skip_validations and self._patching_operation_is_occurring():
             return False
 
         # Delete current uploaded version if a newer one is available
@@ -7896,6 +7898,7 @@ class ConductorManager(service.PeriodicService):
                                         app,
                                         tarball.tarball_name,
                                         hook_info)
+                return True
         except exception.KubeAppAlreadyExists as e:
             LOG.exception(e)
             return False
@@ -7921,7 +7924,7 @@ class ConductorManager(service.PeriodicService):
             app = kubeapp_obj.get_by_name(context, app_name)
         except exception.KubeAppNotFound as e:
             LOG.exception(e)
-            return
+            return False
 
         hook_info = LifecycleHookInfo()
         hook_info.init(LifecycleConstants.APP_LIFECYCLE_MODE_AUTO,
@@ -7932,22 +7935,22 @@ class ConductorManager(service.PeriodicService):
             self.app_lifecycle_actions(context, app, hook_info)
         except exception.LifecycleSemanticCheckException as e:
             LOG.info("Auto-apply failed prerequisites for {}: {}".format(app.name, e))
-            return
+            return False
         except exception.SysinvException:
             LOG.exception("Internal sysinv error while auto applying {}"
                           .format(app.name))
-            return
+            return False
         except Exception as e:
             LOG.exception("Automatic operation:{} "
                           "for app {} failed with: {}".format(hook_info,
                                                               app.name,
                                                               e))
-            return
+            return False
 
         if self._patching_operation_is_occurring():
             return
 
-        self._inner_sync_auto_apply(
+        self._inner_sync_auto_apply_with_lock(
             context,
             app_name,
             status_constraints=(constants.APP_UPLOAD_SUCCESS,)
@@ -8123,7 +8126,9 @@ class ConductorManager(service.PeriodicService):
                          app_name,
                          k8s_version=None,
                          k8s_upgrade_timing=None,
-                         async_update=True):
+                         async_update=True,
+                         skip_validations=False,
+                         ignore_locks=False):
         """Auto update applications
 
         :param context: Context of the request.
@@ -8174,8 +8179,9 @@ class ConductorManager(service.PeriodicService):
                                                               e))
             return False
 
-        if self._patching_operation_is_occurring():
+        if not skip_validations and self._patching_operation_is_occurring():
             return False
+
         LOG.debug("Application %s: Checking "
                   "for update ..." % app_name)
         app_bundle = self._get_app_bundle_for_update(app, k8s_version, k8s_upgrade_timing)
@@ -8185,11 +8191,13 @@ class ConductorManager(service.PeriodicService):
             return
 
         # get the list of dependent parent app that list the current application as a dependency
-        blocking_parent_list = \
-            app_dependents.get_blocking_parent_dependencies(app.name,
-                                                            app.app_version,
-                                                            app_bundle.version,
-                                                            self.dbapi)
+        blocking_parent_list = None
+        if not skip_validations:
+            blocking_parent_list = \
+                app_dependents.get_blocking_parent_dependencies(app.name,
+                                                                app.app_version,
+                                                                app_bundle.version,
+                                                                self.dbapi)
 
         LOG.info("Found new tarfile version for %s: %s"
                  % (app.name, app_bundle.file_path))
@@ -8202,7 +8210,7 @@ class ConductorManager(service.PeriodicService):
             # Skip if tarball check fails
             return False
 
-        if blocking_parent_list:
+        if not skip_validations and blocking_parent_list:
             # get dependent_parent_exceptions declared in metadata.yaml of the current app
             dependent_parent_exceptions = tarball.metadata.get(
                     constants.APP_METADATA_DEPENDENT_PARENT_EXCEPTIONS, {})
@@ -8223,11 +8231,11 @@ class ConductorManager(service.PeriodicService):
                 LOG.info(skip_auto_update_msg)
                 return True
 
-        if app_bundle.version in \
+        if not skip_validations and (app_bundle.version in
             app.app_metadata.get(
                 constants.APP_METADATA_UPGRADES, {}).get(
-                constants.APP_METADATA_FAILED_VERSIONS, []) and \
-                    k8s_version is None:
+                constants.APP_METADATA_FAILED_VERSIONS, []) and
+                    k8s_version is None):
             # Skip if this version was previously failed to
             # be updated. Allow retrying only if a Kubernetes version is
             # defined, meaning that Kubernetes upgrade is in progress.
@@ -8236,15 +8244,42 @@ class ConductorManager(service.PeriodicService):
                       % (app.name, tarball.app_version, app.app_version))
             return False
 
-        return self._inner_sync_auto_update(context, app, tarball, k8s_version, async_update)
+        if ignore_locks:
+            return self._inner_sync_auto_update(context, app, tarball, k8s_version, async_update)
+
+        return self._inner_sync_auto_update_with_lock(
+            context,
+            app,
+            tarball,
+            k8s_version,
+            async_update
+        )
 
     @cutils.synchronized(LOCK_APP_AUTO_MANAGE)
-    def _inner_sync_auto_update(self,
-                                context,
-                                applied_app,
-                                tarball,
-                                k8s_version=None,
-                                async_update=True):
+    def _inner_sync_auto_update_with_lock(
+        self,
+        context,
+        applied_app,
+        tarball,
+        k8s_version=None,
+        async_update=True
+    ):
+        return self._inner_sync_auto_update(
+            context,
+            applied_app,
+            tarball,
+            k8s_version,
+            async_update
+        )
+
+    def _inner_sync_auto_update(
+        self,
+        context,
+        applied_app,
+        tarball,
+        k8s_version=None,
+        async_update=True
+    ):
         """
         Synchronize and auto-update a application.
 
@@ -8939,13 +8974,16 @@ class ConductorManager(service.PeriodicService):
                 self.check_pending_app_reapply(context)
                 apps_to_update.append(app_name)
 
-        if not self.perform_automatic_operation_in_parallel(context,
+        operation_result, _ = self.perform_automatic_operation_in_parallel(context,
                                                             apps_to_apply,
-                                                            constants.APP_APPLY_OP):
+                                                            constants.APP_APPLY_OP)
+        if not operation_result:
             LOG.error("Error while auto applying one or more apps")
-        if not self.perform_automatic_operation_in_parallel(context,
+
+        operation_result, _ = self.perform_automatic_operation_in_parallel(context,
                                                             apps_to_update,
-                                                            constants.APP_UPDATE_OP):
+                                                            constants.APP_UPDATE_OP)
+        if not operation_result:
             LOG.error("Error while auto updating one or more apps")
 
         # Run alarm audit every 5 iterations (5 minutes)
@@ -8956,7 +8994,22 @@ class ConductorManager(service.PeriodicService):
 
         LOG.debug("Periodic Task: _k8s_application_audit: Finished")
 
-    def perform_automatic_operation_in_parallel(self, context, apps, op):
+    def recover_and_update_apply_failed_app(self, context, app_name):
+        try:
+            self._inner_sync_auto_apply(context, app_name, async_apply=False)
+            self._auto_update_app(
+                context,
+                app_name,
+                async_update=False,
+                skip_validations=True,
+                ignore_locks=True
+            )
+        except Exception as e:
+            LOG.error(e)
+            return False
+        return True
+
+    def perform_automatic_operation_in_parallel(self, context, apps, op, **kwargs):
         """
         Perform an automatic operation on a list of applications using a thread pool.
         This method executes the specified operation (`op`) on the provided list of
@@ -8970,36 +9023,50 @@ class ConductorManager(service.PeriodicService):
                 - constants.APP_REAPPLY_OP: Automatically reapply managed applications.
                 - constants.APP_UPDATE_OP: Automatically update applications.
         Returns:
-            bool: True if all operations are completed successfully, False if any
-            operation fails.
+            tuple: returns a tuple with two values (bool, list) - if all operations are completed
+            successfully, the boolean value is returned as True and the list is returned as an
+            empty list. Otherwise the boolean value is returned as False and the list is returned
+            with apps names that the operation failed.
         """
         # Get the number of platform CPU cores
         core_count = cutils.get_platform_core_count(self.dbapi)
 
+        operation_func = {
+            constants.APP_APPLY_OP: self._auto_apply_managed_app,
+            constants.APP_REAPPLY_OP: self._auto_apply_managed_app,
+            constants.APP_UPDATE_OP: self._auto_update_app,
+            constants.APP_UPLOAD_OP: self._auto_upload_managed_app,
+            constants.APP_RECOVER_UPDATE_OP: self.recover_and_update_apply_failed_app
+        }
+
         result = True
+        failed_executions = []
+
         LOG.info(f"Initiating automatic operation '{op}' on {len(apps)} applications: "
                  f"{', '.join(apps)} using a thread pool with {core_count} workers.")
 
         with ThreadPoolExecutor(max_workers=core_count) as executor:
-            futures = []
-            if op in {constants.APP_APPLY_OP, constants.APP_REAPPLY_OP}:
-                futures = [
-                    executor.submit(self._auto_apply_managed_app, context, app)
-                    for app in apps
-                ]
-            elif op == constants.APP_UPDATE_OP:
-                futures = [
-                    executor.submit(self._auto_update_app, context, app)
-                    for app in apps
-                ]
+            futures = {
+                executor.submit(operation_func[op], context, app, **kwargs): app
+                for app in apps
+            }
+
             for future in as_completed(futures):
+                app_name = futures[future]
                 try:
-                    future.result()
-                    LOG.info(f"Automatic operation '{op}' completed successfully.")
+                    response = future.result()
+                    if response is False:
+                        failed_executions.append(app_name)
+                        result = False
+                        continue
+                    LOG.info(
+                        f"Automatic operation '{op}' to the app {app_name} completed successfully."
+                    )
                 except Exception as e:
-                    LOG.error(f"Error occurred while processing app: {e}")
+                    LOG.error(f"Error occurred while processing the app {app_name}: {e}")
+                    failed_executions.append(app_name)
                     result = False
-        return result
+        return result, failed_executions
 
     def check_pending_app_reapply(self, context):
         if self._verify_restore_in_progress():
@@ -9042,14 +9109,17 @@ class ConductorManager(service.PeriodicService):
                      "retry on next audit", app_name)
             return
 
-        self._inner_sync_auto_apply(
+        self._inner_sync_auto_apply_with_lock(
             context,
             app_name,
             status_constraints=(constants.APP_APPLY_SUCCESS,)
         )
 
     @cutils.synchronized(LOCK_APP_AUTO_MANAGE)
-    def _inner_sync_auto_apply(self, context, app_name, status_constraints=None):
+    def _inner_sync_auto_apply_with_lock(self, context, app_name, status_constraints=None):
+        self._inner_sync_auto_apply(context, app_name, status_constraints)
+
+    def _inner_sync_auto_apply(self, context, app_name, status_constraints=None, async_apply=True):
         """
         Synchronizes and triggers the automatic apply/re-apply of a Kubernetes app
         based on its presence and status constraints.
@@ -9083,8 +9153,12 @@ class ConductorManager(service.PeriodicService):
 
         lifecycle_hook_info = LifecycleHookInfo()
         lifecycle_hook_info.mode = LifecycleConstants.APP_LIFECYCLE_MODE_AUTO
-        greenthread.spawn(self.perform_app_apply, context,
+
+        if async_apply:
+            greenthread.spawn(self.perform_app_apply, context,
                           app, app.mode, lifecycle_hook_info)
+        else:
+            self.perform_app_apply(context, app, app.mode, lifecycle_hook_info)
 
     @retry(retry_on_result=lambda x: x is False,
            wait_fixed=(CONF.conductor.kube_upgrade_downgrade_retry_interval * 1000))
@@ -17728,6 +17802,28 @@ class ConductorManager(service.PeriodicService):
             LOG.error("Error performing app_lifecycle_actions %s" % str(e))
 
         return self._app.perform_app_delete(rpc_app, lifecycle_hook_info_app_delete)
+
+    def perform_update_in_all_apps(self, context):
+        """
+            Runs the update process for all applications based on their current status:
+                - Uploading apps with uploaded status
+                - Recovering apps that failed to apply
+                - Updating already applied apps
+            The update logic is handled by an AppUpdateManager instance.
+            :param context: request context.
+        """
+
+        LOG.info("Starting the apps update process.")
+        self._apps_update_operation = app_update_manager.AppUpdateManager(
+            self.dbapi,
+            self.perform_automatic_operation_in_parallel
+        )
+        self._apps_update_operation.update_apps(context)
+
+    def get_apps_update_status(self, context):
+        if self._apps_update_operation:
+            return self._apps_update_operation.status
+        return
 
     def reconfigure_service_endpoints(self, context, host):
         """Reconfigure the service endpoints

@@ -2329,19 +2329,15 @@ def verify_checksum(path):
     rc = True
     for f in os.listdir(path):
         if f.endswith('.md5'):
-            cwd = os.getcwd()
-            os.chdir(path)
             with open(os.devnull, "w") as fnull:
                 try:
                     subprocess.check_call(['md5sum', '-c', f],  # pylint: disable=not-callable
-                                          stdout=fnull, stderr=fnull)
+                                          cwd=path, stdout=fnull, stderr=fnull)
                     LOG.info("Checksum file is included and validated.")
+                    return rc
                 except Exception as e:
                     LOG.exception(e)
                     rc = False
-                finally:
-                    os.chdir(cwd)
-                    return rc
     LOG.info("Checksum file is not included, skipping validation.")
     return rc
 

@@ -1869,6 +1869,20 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                        rpc_app=rpc_app,
                                        lifecycle_hook_info_app_delete=lifecycle_hook_info))
 
+    def perform_update_in_all_apps(self, context):
+        """
+            Asynchronously triggers the update procedure for all applications.
+            :param context: request context.
+        """
+        return self.cast(context, self.make_msg('perform_update_in_all_apps'))
+
+    def get_apps_update_status(self, context):
+        """
+            Synchronously returns the update applications status.
+            :param context: request context.
+        """
+        return self.call(context, self.make_msg('get_apps_update_status'))
+
     def reconfigure_service_endpoints(self, context, host):
         """Synchronously, reconfigure service endpoints upon the creation of
         initial controller host and management/oam network change during

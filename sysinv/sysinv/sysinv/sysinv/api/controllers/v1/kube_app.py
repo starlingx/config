@@ -89,6 +89,12 @@ class KubeApp(base.APIBase):
         return app
 
 
+class AppsUpdateStatus(wtypes.Base):
+    status = wtypes.text
+    updated_apps = wtypes.wsattr([wtypes.text], default=[])
+    failed_apps = wtypes.wsattr([wtypes.text], default=[])
+
+
 class KubeAppCollection(collection.Collection):
     """API representation of a collection of Helm applications."""
 
@@ -114,6 +120,8 @@ class KubeAppController(rest.RestController):
 
     _custom_actions = {
         'update': ['POST'],
+        'update_all': ['POST'],
+        'get_apps_update_status': ['GET']
     }
 
     def __init__(self, parent=None, **kwargs):
@@ -605,6 +613,20 @@ class KubeAppController(rest.RestController):
         if response:
             raise wsme.exc.ClientSideError(_(
                 "%s." % response))
+
+    @cutils.synchronized(LOCK_NAME)
+    @wsme_pecan.wsexpose(None)
+    def update_all(self):
+        self._check_k8s_health(constants.APP_UPDATE_OP)
+        pecan.request.rpcapi.perform_update_in_all_apps(pecan.request.context)
+        return
+
+    @cutils.synchronized(LOCK_NAME)
+    @wsme_pecan.wsexpose(AppsUpdateStatus)
+    def get_apps_update_status(self):
+        response = pecan.request.rpcapi.get_apps_update_status(pecan.request.context)
+        if response:
+            return AppsUpdateStatus(**response)
 
 
 class KubeAppHelper(object):
