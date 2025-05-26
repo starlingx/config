@@ -1889,8 +1889,6 @@ class PlatformFirewallTestCaseControllerDcSysCtrl_Setup01(PlatformFirewallTestCa
         self._check_tcp_port(hiera_data['platform::firewall::calico::oam::config'],
                              constants.PLATFORM_DCORCH_PARAMS_SYSINV_API_PROXY_PORT)
         self._check_tcp_port(hiera_data['platform::firewall::calico::oam::config'],
-                             constants.PLATFORM_DCORCH_PARAMS_PATCH_API_PROXY_PORT)
-        self._check_tcp_port(hiera_data['platform::firewall::calico::oam::config'],
                              constants.PLATFORM_DCORCH_PARAMS_USM_API_PROXY_PORT)
         self._check_tcp_port(hiera_data['platform::firewall::calico::oam::config'],
                              constants.PLATFORM_DCORCH_PARAMS_IDENTITY_API_PROXY_PORT)
@@ -2107,8 +2105,6 @@ class PlatformFirewallTestCaseControllerDcSysCtrl_Setup02(PlatformFirewallTestCa
                              constants.PLATFORM_DCMANAGER_PARAMS_API_PORT)
         self._check_tcp_port(hiera_data['platform::firewall::calico::oam::config'],
                              constants.PLATFORM_DCORCH_PARAMS_SYSINV_API_PROXY_PORT)
-        self._check_tcp_port(hiera_data['platform::firewall::calico::oam::config'],
-                             constants.PLATFORM_DCORCH_PARAMS_PATCH_API_PROXY_PORT)
         self._check_tcp_port(hiera_data['platform::firewall::calico::oam::config'],
                              constants.PLATFORM_DCORCH_PARAMS_IDENTITY_API_PROXY_PORT)
 
@@ -2403,8 +2399,6 @@ class PlatformFirewallTestCaseControllerDcSysCtrl_Setup03(PlatformFirewallTestCa
                              constants.PLATFORM_DCMANAGER_PARAMS_API_PORT)
         self._check_tcp_port(hiera_data['platform::firewall::calico::oam::config'],
                              constants.PLATFORM_DCORCH_PARAMS_SYSINV_API_PROXY_PORT)
-        self._check_tcp_port(hiera_data['platform::firewall::calico::oam::config'],
-                             constants.PLATFORM_DCORCH_PARAMS_PATCH_API_PROXY_PORT)
         self._check_tcp_port(hiera_data['platform::firewall::calico::oam::config'],
                              constants.PLATFORM_DCORCH_PARAMS_USM_API_PROXY_PORT)
         self._check_tcp_port(hiera_data['platform::firewall::calico::oam::config'],
@@ -3343,7 +3337,7 @@ class PlatformFirewallTestCaseSystemConfig(PlatformFirewallTestCaseMixin,
         with open(config_filename, 'r') as config_file:
             hiera_data = yaml.safe_load(config_file)
 
-        self.assertEqual(len(hiera_data), 15)
+        self.assertEqual(len(hiera_data), 14)
         self.assertEqual(hiera_data["openstack::barbican::params::api_port"],
                          constants.OPENSTACK_BARBICAN_PARAMS_API_PORT)
         self.assertEqual(hiera_data["openstack::keystone::params::api_port"],
@@ -3354,8 +3348,6 @@ class PlatformFirewallTestCaseSystemConfig(PlatformFirewallTestCaseMixin,
                          constants.PLATFORM_DCMANAGER_PARAMS_API_PORT)
         self.assertEqual(hiera_data["platform::dcorch::params::identity_api_proxy_port"],
                          constants.PLATFORM_DCORCH_PARAMS_IDENTITY_API_PROXY_PORT)
-        self.assertEqual(hiera_data["platform::dcorch::params::patch_api_proxy_port"],
-                         constants.PLATFORM_DCORCH_PARAMS_PATCH_API_PROXY_PORT)
         self.assertEqual(hiera_data["platform::dcorch::params::usm_api_proxy_port"],
                          constants.PLATFORM_DCORCH_PARAMS_USM_API_PROXY_PORT)
         self.assertEqual(hiera_data["platform::dcorch::params::sysinv_api_proxy_port"],

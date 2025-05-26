@@ -2677,7 +2677,6 @@ PLATFORM_FM_PARAMS_API_PORT = 18002
 PLATFORM_CEPH_PARAMS_RGW_PORT = 7480  # depending on service availability
 PLATFORM_DCMANAGER_PARAMS_API_PORT = 8119               # for DC setups (system controller)
 PLATFORM_DCORCH_PARAMS_SYSINV_API_PROXY_PORT = 26385    # for DC setups (system controller)
-PLATFORM_DCORCH_PARAMS_PATCH_API_PROXY_PORT = 25491     # for DC setups (system controller)
 PLATFORM_DCORCH_PARAMS_USM_API_PROXY_PORT = 25497       # for DC setups (system controller)
 PLATFORM_DCORCH_PARAMS_IDENTITY_API_PROXY_PORT = 25000  # for DC setups (system controller)
 PLATFORM_FIREWALL_SSH_PORT = 22
