@@ -1,9 +1,11 @@
-# Copyright (c) 2019-2024 Wind River Systems, Inc.
+# Copyright (c) 2019-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
 
+import itertools
 import mock
+import random
 from six.moves import http_client
 from six.moves.urllib.parse import urlencode
 
@@ -12,6 +14,7 @@ from sysinv.db import api as dbapi
 from sysinv.tests.api import base
 from sysinv.api.controllers.v1 import label as policylabel
 from sysinv.tests.db import utils as dbutils
+from sysinv.tests.db import base as dbbase
 import wsme
 
 
@@ -39,10 +42,9 @@ def mock_get_system_enabled_k8s_plugins_return_none():
 
 
 class LabelTestCase(base.FunctionalTest):
+
     def setUp(self):
         super(LabelTestCase, self).setUp()
-        self.dbapi = dbapi.get_instance()
-        self.system = dbutils.create_test_isystem()
 
     def _get_path(self, host=None, params=None):
         if host:
@@ -79,8 +81,11 @@ class LabelTestCase(base.FunctionalTest):
 
 
 class LabelAssignTestCase(LabelTestCase):
+
     def setUp(self):
         super(LabelAssignTestCase, self).setUp()
+        self.dbapi = dbapi.get_instance()
+        self.system = dbutils.create_test_isystem()
         self.controller = dbutils.create_test_ihost(
             id='1',
             uuid=None,
@@ -321,3 +326,411 @@ class LabelAssignTestCase(LabelTestCase):
 
         response_data = self.get_host_labels(self.worker.uuid)
         self.validate_labels(test_plugin_label, response_data)
+
+
+class FakeConductorAPI(object):
+
+    def __init__(self):
+        self.update_kubernetes_label = mock.MagicMock()
+        self.update_grub_config = mock.MagicMock()
+        self.configure_power_manager = mock.MagicMock()
+        self.configure_stalld = mock.MagicMock()
+
+
+class StalldLabelTestCase(LabelTestCase, dbbase.BaseHostTestCase):
+
+    def _create_host(self, personality, subfunction=None,
+                     mgmt_mac=None, mgmt_ip=None,
+                     admin=None,
+                     invprovision=constants.PROVISIONED, **kw):
+        host = self._create_test_host(personality=personality,
+                                      subfunction=subfunction,
+                                      administrative=(admin or
+                                      constants.ADMIN_UNLOCKED),
+                                      invprovision=invprovision,
+                                      **kw)
+        return host
+
+    def _setup_context(self):
+        self.fake_conductor_api = FakeConductorAPI()
+        p = mock.patch('sysinv.conductor.rpcapiproxy.ConductorAPI')
+        self.mock_conductor_api = p.start()
+        self.mock_conductor_api.return_value = self.fake_conductor_api
+        self.addCleanup(p.stop)
+
+    def _create_standard_system(self):
+        self.controller = self._create_host(constants.CONTROLLER)
+        self.worker = self._create_host(constants.WORKER)
+        self._create_test_host_cpus(self.worker,
+                                    application=8)
+        self.storage = self._create_host(constants.STORAGE)
+
+    def _create_aio_system(self):
+        self.controller = self._create_host(constants.CONTROLLER,
+                                            subfunction=constants.WORKER)
+        self._create_test_host_cpus(self.controller,
+                                    platform=2,
+                                    application=6)
+
+    def setUp(self):
+        super(StalldLabelTestCase, self).setUp()
+        self._setup_context()
+
+    def test_stalld_enable_successful_on_aio_controller(self):
+        self._create_aio_system()
+        host_uuid = self.controller.uuid
+        input_data = {
+            constants.LABEL_STALLD: constants.LABEL_VALUE_STALLD_ENABLED
+        }
+        parameters = {'overwrite': True}
+        self.assign_labels(host_uuid, input_data, parameters)
+        response_data = self.get_host_labels(host_uuid)
+        self.validate_labels(input_data, response_data)
+
+        # Verify that the method configure_stalld() is called
+        self.fake_conductor_api.configure_stalld.assert_called_once()
+
+    def test_stalld_disable_successful_on_aio_controller(self):
+        self._create_aio_system()
+        host_uuid = self.controller.uuid
+        input_data = {
+            constants.LABEL_STALLD: constants.LABEL_VALUE_STALLD_DISABLED
+        }
+        parameters = {'overwrite': True}
+        self.assign_labels(host_uuid, input_data, parameters)
+        response_data = self.get_host_labels(host_uuid)
+        self.validate_labels(input_data, response_data)
+
+        # Verify that the method configure_stalld() is called
+        self.fake_conductor_api.configure_stalld.assert_called_once()
+
+    def test_stalld_enable_successful_on_worker_node(self):
+        self._create_standard_system()
+        host_uuid = self.worker.uuid
+        input_data = {
+            constants.LABEL_STALLD: constants.LABEL_VALUE_STALLD_ENABLED
+        }
+        parameters = {'overwrite': True}
+        self.assign_labels(host_uuid, input_data, parameters)
+        response_data = self.get_host_labels(host_uuid)
+        self.validate_labels(input_data, response_data)
+
+        # Verify that the method configure_stalld() is called
+        self.fake_conductor_api.configure_stalld.assert_called_once()
+
+    def test_stalld_disable_successful_on_worker_node(self):
+        self._create_standard_system()
+        host_uuid = self.worker.uuid
+        input_data = {
+            constants.LABEL_STALLD: constants.LABEL_VALUE_STALLD_DISABLED
+        }
+        parameters = {'overwrite': True}
+        self.assign_labels(host_uuid, input_data, parameters)
+        response_data = self.get_host_labels(host_uuid)
+        self.validate_labels(input_data, response_data)
+
+        # Verify that the method configure_stalld() is called
+        self.fake_conductor_api.configure_stalld.assert_called_once()
+
+    def test_stalld_enable_fails_on_standard_controller(self):
+        self._create_standard_system()
+        host_uuid = self.controller.uuid
+        input_data = {
+            constants.LABEL_STALLD: constants.LABEL_VALUE_STALLD_ENABLED
+        }
+        parameters = {'overwrite': True}
+        self.assign_labels_failure(host_uuid, input_data, parameters)
+
+        # Verify that the method configure_stalld() is not called
+        self.fake_conductor_api.configure_stalld.assert_not_called()
+
+    def test_stalld_enable_fails_on_storage_node(self):
+        self._create_standard_system()
+        host_uuid = self.storage.uuid
+        input_data = {
+            constants.LABEL_STALLD: constants.LABEL_VALUE_STALLD_ENABLED
+        }
+        parameters = {'overwrite': True}
+        self.assign_labels_failure(host_uuid, input_data, parameters)
+
+        # Verify that the method configure_stalld() is not called
+        self.fake_conductor_api.configure_stalld.assert_not_called()
+
+    def test_stalld_assign_application_cpus_successful(self):
+        """Labels assigned together
+        """
+        self._create_standard_system()
+        host_uuid = self.worker.uuid
+        input_data = {
+            constants.LABEL_STALLD: constants.LABEL_VALUE_STALLD_ENABLED,
+            constants.LABEL_STALLD_CPU_FUNCTIONS: constants.LABEL_VALUE_CPU_APPLICATION
+        }
+        parameters = {'overwrite': True}
+        self.assign_labels(host_uuid, input_data, parameters)
+
+        # Verify that the method configure_stalld() is called
+        self.fake_conductor_api.configure_stalld.assert_called_once()
+
+    def test_stalld_assign_all_cpus_successful(self):
+        """Labels assigned together
+        """
+        self._create_standard_system()
+        host_uuid = self.worker.uuid
+        input_data = {
+            constants.LABEL_STALLD: constants.LABEL_VALUE_STALLD_ENABLED,
+            constants.LABEL_STALLD_CPU_FUNCTIONS: constants.LABEL_VALUE_CPU_ALL
+        }
+        parameters = {'overwrite': True}
+        self.assign_labels(host_uuid, input_data, parameters)
+
+        # Verify that the method configure_stalld() is called
+        self.fake_conductor_api.configure_stalld.assert_called_once()
+
+    def test_stalld_assign_application_isolated_cpus_fails(self):
+        """Fails because no cpus are assigned to application isolated function
+           on the worker node.
+        """
+        self._create_standard_system()
+        host_uuid = self.worker.uuid
+        input_data = {
+            constants.LABEL_STALLD: constants.LABEL_VALUE_STALLD_ENABLED,
+            constants.LABEL_STALLD_CPU_FUNCTIONS: constants.LABEL_VALUE_CPU_APPLICATION_ISOLATED
+        }
+        parameters = {'overwrite': True}
+        self.assign_labels_failure(host_uuid, input_data, parameters)
+
+        # Verify that the method configure_stalld() is not called
+        self.fake_conductor_api.configure_stalld.assert_not_called()
+
+    def _generate_case_insensite_permutations(self,
+                                              label_values: list[str],
+                                              sample_size=5) -> list:
+        all_permutations = []
+        for label_value in label_values:
+            character_tuples = ((c.lower(), c.upper()) for c in label_value)
+            label_permutations = [
+                ''.join(x) for x in itertools.product(*character_tuples)
+            ]
+            # randomly sample 'n' permutation because the list could be very long
+            sample_size = min(sample_size, len(label_permutations))
+            all_permutations.extend(random.sample(label_permutations,
+                                                  k=sample_size))
+        return all_permutations
+
+    def test_stalld_assign_case_insensitive(self):
+        """Labels assigned together
+        """
+        self._create_standard_system()
+        host_uuid = self.worker.uuid
+        label_values = self._generate_case_insensite_permutations([
+            'enabled',
+            'disabled'
+        ])
+        parameters = {'overwrite': True}
+        for label_value in label_values:
+            input_data = {
+                constants.LABEL_STALLD: label_value
+            }
+            self.assign_labels(host_uuid, input_data, parameters)
+
+            # Verify that the method configure_stalld() is called
+            self.fake_conductor_api.configure_stalld.assert_called_once()
+            self.fake_conductor_api.configure_stalld.reset_mock()
+
+    def test_stalld_assign_cpu_function_case_insensitive(self):
+        """Labels assigned together
+        """
+        self._create_standard_system()
+        host_uuid = self.worker.uuid
+        label_values = self._generate_case_insensite_permutations([
+            'all',
+            'Application',
+            'Application-isolated'
+        ])
+        parameters = {'overwrite': True}
+        for label_value in label_values:
+            input_data = {
+                constants.LABEL_STALLD_CPU_FUNCTIONS: label_value
+            }
+            self.assign_labels(host_uuid, input_data, parameters)
+
+            # Verify that the method configure_stalld() is called
+            self.fake_conductor_api.configure_stalld.assert_called_once()
+            self.fake_conductor_api.configure_stalld.reset_mock()
+
+    def test_stalld_enable_fails_if_assigned_app_iso_cpus_prior(self):
+        """Fails because no cpus are assigned to application isolated function
+           on the worker node.
+           While stalld is disabled we can assign the isolated cpu functions
+           but if we try to enable stalld it will fail
+        """
+        self._create_standard_system()
+        host_uuid = self.worker.uuid
+        input_data = {
+            constants.LABEL_STALLD: constants.LABEL_VALUE_STALLD_DISABLED,
+            constants.LABEL_STALLD_CPU_FUNCTIONS: constants.LABEL_VALUE_CPU_APPLICATION_ISOLATED
+        }
+        parameters = {'overwrite': True}
+        self.assign_labels(host_uuid, input_data, parameters)
+
+        # Verify that the method configure_stalld() is called
+        self.fake_conductor_api.configure_stalld.assert_called_once()
+
+        # after cpu functions are assigned attempt to enable stalld
+        self.fake_conductor_api.configure_stalld.reset_mock()
+        input_data = {
+            constants.LABEL_STALLD: constants.LABEL_VALUE_STALLD_ENABLED
+        }
+        parameters = {'overwrite': True}
+        self.assign_labels_failure(host_uuid, input_data, parameters)
+
+        # Verify that the method configure_stalld() is not called
+        self.fake_conductor_api.configure_stalld.assert_not_called()
+
+    def test_stalld_assign_cpus_before_enable_successful(self):
+        """Labels assigned in sequence
+           1. starlingx.io/stalld_cpu_functions=application
+           2. starlingx.io/stalld_cpu_functions=all
+           3. starlingx.io/stalld=enabled
+        """
+        self._create_standard_system()
+        host_uuid = self.worker.uuid
+        input_data = {
+            constants.LABEL_STALLD_CPU_FUNCTIONS: constants.LABEL_VALUE_CPU_APPLICATION
+        }
+        parameters = {'overwrite': True}
+        self.assign_labels(host_uuid, input_data, parameters)
+
+        # Verify that the method configure_stalld() is called
+        self.fake_conductor_api.configure_stalld.assert_called_once()
+        self.fake_conductor_api.configure_stalld.reset_mock()
+
+        input_data = {
+            constants.LABEL_STALLD_CPU_FUNCTIONS: constants.LABEL_VALUE_CPU_ALL
+        }
+        parameters = {'overwrite': True}
+        self.assign_labels(host_uuid, input_data, parameters)
+
+        # Verify that the method configure_stalld() is called
+        self.fake_conductor_api.configure_stalld.assert_called_once()
+        self.fake_conductor_api.configure_stalld.reset_mock()
+
+        input_data = {
+            constants.LABEL_STALLD: constants.LABEL_VALUE_STALLD_ENABLED
+        }
+        parameters = {'overwrite': True}
+        self.assign_labels(host_uuid, input_data, parameters)
+
+        # Verify that the method configure_stalld() is called
+        self.fake_conductor_api.configure_stalld.assert_called_once()
+
+    def test_stalld_assign_different_cpu_functions(self):
+        """Labels assigned in sequence
+           1. starlingx.io/stalld=enabled
+           2. starlingx.io/stalld_cpu_functions=all
+           3. starlingx.io/stalld_cpu_functions=application
+           4. starlingx.io/stalld_cpu_functions=application-isolated <- fails
+           5. assign application-isolated function to 1 cpu of the worker node
+           6. starlingx.io/stalld_cpu_functions=application-isolated <- success
+        """
+        self._create_standard_system()
+        host_uuid = self.worker.uuid
+        input_data = {
+            constants.LABEL_STALLD: constants.LABEL_VALUE_STALLD_ENABLED
+        }
+        parameters = {'overwrite': True}
+        self.assign_labels(host_uuid, input_data, parameters)
+
+        # Verify that the method configure_stalld() is called
+        self.fake_conductor_api.configure_stalld.assert_called_once()
+        self.fake_conductor_api.configure_stalld.reset_mock()
+
+        input_data = {
+            constants.LABEL_STALLD_CPU_FUNCTIONS: constants.LABEL_VALUE_CPU_ALL
+        }
+        parameters = {'overwrite': True}
+        self.assign_labels(host_uuid, input_data, parameters)
+
+        # Verify that the method configure_stalld() is called
+        self.fake_conductor_api.configure_stalld.assert_called_once()
+        self.fake_conductor_api.configure_stalld.reset_mock()
+
+        input_data = {
+            constants.LABEL_STALLD_CPU_FUNCTIONS: constants.LABEL_VALUE_CPU_APPLICATION
+        }
+        parameters = {'overwrite': True}
+        self.assign_labels(host_uuid, input_data, parameters)
+
+        # Verify that the method configure_stalld() is called
+        self.fake_conductor_api.configure_stalld.assert_called_once()
+        self.fake_conductor_api.configure_stalld.reset_mock()
+
+        input_data = {
+            constants.LABEL_STALLD_CPU_FUNCTIONS: constants.LABEL_VALUE_CPU_APPLICATION_ISOLATED
+        }
+        parameters = {'overwrite': True}
+        self.assign_labels_failure(host_uuid, input_data, parameters)
+
+        # Verify that the method configure_stalld() is called
+        self.fake_conductor_api.configure_stalld.assert_not_called()
+        self.fake_conductor_api.configure_stalld.reset_mock()
+
+        # Change the last cpu to application-isolated
+        last_cpu = self.dbapi.icpu_get_by_ihost(host_uuid)[-1]
+        values = {"allocated_function": constants.ISOLATED_FUNCTION}
+        self.dbapi.icpu_update(last_cpu.uuid, values)
+
+        # try again
+        self.assign_labels(host_uuid, input_data, parameters)
+
+        # Verify that the method configure_stalld() is called
+        self.fake_conductor_api.configure_stalld.assert_called_once()
+
+    def test_stalld_assign_custom_label_to_worker_successful(self):
+        """Custom stalld label on worker node
+           1. starlingx.io/stalld.custom_label=custom_value
+        """
+        self._create_standard_system()
+        host_uuid = self.worker.uuid
+        custom_stalld_label = f"{constants.LABEL_STALLD}.customlabel"
+        input_data = {
+            custom_stalld_label: "custom_value"
+        }
+        parameters = {'overwrite': True}
+        self.assign_labels(host_uuid, input_data, parameters)
+
+        # Verify that the method configure_stalld() is called
+        self.fake_conductor_api.configure_stalld.assert_called_once()
+
+    def test_stalld_assign_custom_label_to_storage_fails(self):
+        """Custom stalld label on worker node
+           1. starlingx.io/stalld.custom_label=custom_value
+        """
+        self._create_standard_system()
+        host_uuid = self.storage.uuid
+        custom_stalld_label = f"{constants.LABEL_STALLD}.customlabel"
+        input_data = {
+            custom_stalld_label: "custom_value"
+        }
+        parameters = {'overwrite': True}
+        self.assign_labels_failure(host_uuid, input_data, parameters)
+
+        # Verify that the method configure_stalld() is not called
+        self.fake_conductor_api.configure_stalld.assert_not_called()
+
+    def test_stalld_assign_custom_label_invalid_format(self):
+        """Custom stalld label on worker node
+           1. starlingx.io/stalld_custom_label=custom_value
+           should be a '.' not an '_' character
+        """
+        self._create_standard_system()
+        host_uuid = self.worker.uuid
+        custom_stalld_label = f"{constants.LABEL_STALLD}_customlabel"
+        input_data = {
+            custom_stalld_label: "custom_value"
+        }
+        parameters = {'overwrite': True}
+        self.assign_labels_failure(host_uuid, input_data, parameters)
+
+        # Verify that the method configure_stalld() is not called
+        self.fake_conductor_api.configure_stalld.assert_not_called()

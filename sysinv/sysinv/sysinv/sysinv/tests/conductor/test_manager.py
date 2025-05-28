@@ -5849,6 +5849,51 @@ class ManagerTestCase(base.DbTestCase):
         # update only 1 time
         mock_update_cached_app_bundles_set.assert_called_once()
 
+    @mock.patch('sysinv.conductor.manager.'
+                'ConductorManager._config_apply_runtime_manifest')
+    @mock.patch('sysinv.conductor.manager.'
+                'ConductorManager._config_update_hosts')
+    def test_configure_stalld(self,
+                              mock_config_update_hosts,
+                              mock_config_apply_runtime_manifest):
+        self._create_test_ihosts()
+        hostname = 'compute-0'
+        host = self.service.get_ihost_by_hostname(self.context, hostname)
+        host_uuid = host['uuid']
+        personalities = [host['personality']]
+        host_uuids = [host_uuid]
+        config_dict = {
+            "personalities": personalities,
+            "host_uuids": host_uuids,
+            "classes": [
+                'platform::stalld::runtime'
+            ],
+        }
+        config_uuid = '1234'
+        mock_config_update_hosts.return_value = config_uuid
+        self.service.configure_stalld(context=self.context,
+                                      host_uuid=host_uuid)
+
+        mock_config_update_hosts.assert_called_once()
+        mock_config_apply_runtime_manifest.assert_called_once_with(
+            mock.ANY,
+            config_uuid,
+            config_dict)
+
+    @mock.patch('sysinv.conductor.manager.'
+                'ConductorManager._config_apply_runtime_manifest')
+    @mock.patch('sysinv.conductor.manager.'
+                'ConductorManager._config_update_hosts')
+    def test_configure_stalld_host_not_found(self,
+                              mock_config_update_hosts,
+                              mock_config_apply_runtime_manifest):
+        host_uuid = str(uuid.uuid4())
+        self.service.configure_stalld(context=self.context,
+                                      host_uuid=host_uuid)
+
+        mock_config_update_hosts.assert_not_called()
+        mock_config_apply_runtime_manifest.assert_not_called()
+
 
 class ManagerTestCaseInternal(base.BaseHostTestCase):
     def setUp(self):

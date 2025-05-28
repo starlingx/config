@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2018 Wind River Systems, Inc.
+# Copyright (c) 2018,2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -35,8 +35,28 @@ class KubernetesLabelManager(base.Manager):
         except IndexError:
             return None
 
+    def _assign(self, url, body):
+        _, body = self.api.json_request('POST', url, body=body)
+
+        if not body:
+            return None
+
+        body = body.get('labels', body)
+        if not isinstance(body, list):
+            return self.resource_class(self, body)  # noqa pylint: disable=not-callable
+
+        resources = []
+        for item in body:
+            resources.append(self.resource_class(self, item))  # noqa pylint: disable=not-callable
+
+        return resources
+
     def assign(self, host_uuid, label, parameters=None):
-        return self._create(options.build_url(self._path(host_uuid), q=None, params=parameters), label)
+        url = options.build_url(
+            self._path(host_uuid),
+            q=None,
+            params=parameters)
+        return self._assign(url, label)
 
     def remove(self, uuid):
         return self._delete(self._path(uuid))
