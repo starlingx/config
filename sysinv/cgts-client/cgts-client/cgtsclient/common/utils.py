@@ -906,7 +906,9 @@ def _is_service_impacting_command(command):
         "host-upgraded",
         "kube-host-cordon",
         "kube-host-upgrade",
-        "kube-rootca-host-update"
+        "kube-rootca-host-update",
+        "ca-certificate-install",
+        "ca-certificate-uninstall"
     ]
 
     return (
