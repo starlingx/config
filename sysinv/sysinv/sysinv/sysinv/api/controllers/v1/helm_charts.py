@@ -278,9 +278,10 @@ class HelmChartsController(rest.RestController):
         Check whether the system has QAT device or not.
         """
         try:
-            cmd = 'lspci -n | grep -E -c "{}:({}|{})"'.format(constants.PCI_ALIAS_QAT_VENDOR,
+            cmd = 'lspci -n | grep -E -c "{}:({}|{}|{})"'.format(constants.PCI_ALIAS_QAT_VENDOR,
                                                               constants.PCI_ALIAS_QAT_4XXX_PF_DEVICE,
-                                                              constants.PCI_ALIAS_QAT_401XX_PF_DEVICE)
+                                                              constants.PCI_ALIAS_QAT_401XX_PF_DEVICE,
+                                                              constants.PCI_ALIAS_QAT_420XX_PF_DEVICE)
             output = subprocess.run(cmd, shell=True, check=False, capture_output=True, text=True)
             if output.returncode == 0:
                 return True
