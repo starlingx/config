@@ -1903,11 +1903,18 @@ def update_mgmt_controller_routes(dbapi, mgmt_iface_id, host=None):
     # Mirror the management routes from the mate controller.
     # Do this by copying all the routes configured on the management
     # interface on the mate controller (if it exists).
+
     if host:
         host_id = host.id
     else:
         mgmt_iface = dbapi.iinterface_get(mgmt_iface_id)
         host_id = mgmt_iface.forihostid
+        host = dbapi.ihost_get(host_id)
+
+    if host and host.personality != constants.CONTROLLER:
+        LOG.debug("Host ID: {} is {}. Ignore route update for iface id: {}"
+                  .format(host_id, host.personality, mgmt_iface_id))
+        return
 
     controller_hosts = dbapi.ihost_get_by_personality(constants.CONTROLLER)
     mate_controller = None
@@ -1917,7 +1924,8 @@ def update_mgmt_controller_routes(dbapi, mgmt_iface_id, host=None):
             break
 
     if not mate_controller:
-        LOG.info("DC Config: Mate controller for host id %s not found. Routes not added." % host_id)
+        LOG.info("DC Config: Mate controller for host id {} not found."
+                 " Routes not added.".format(host_id))
         return
 
     mate_interfaces = dbapi.iinterface_get_all(forihostid=mate_controller.id)
@@ -1926,7 +1934,8 @@ def update_mgmt_controller_routes(dbapi, mgmt_iface_id, host=None):
             mate_mgmt_iface = interface
             break
     else:
-        LOG.error("Management interface for host %d not found." % mate_controller.hostname)
+        LOG.error("Management interface for host {} not found."
+                  .format(mate_controller.hostname))
         return
 
     routes = dbapi.routes_get_by_interface(mate_mgmt_iface.id)
@@ -1941,8 +1950,9 @@ def update_mgmt_controller_routes(dbapi, mgmt_iface_id, host=None):
         except exception.RouteAlreadyExists:
             LOG.info("DC Config: Attempting to add duplicate route to system controller.")
 
-        LOG.info("DC Config: Added route to subcloud: %s/%s gw:%s on mgmt_iface_id: %s" %
-                 (new_route['network'], new_route['prefix'], new_route['gateway'], mgmt_iface_id))
+        LOG.info("DC Config: Added route to subcloud: {}/{} gw:{} on mgmt_iface_id: {}"
+                 .format(new_route['network'], new_route['prefix'],
+                         new_route['gateway'], mgmt_iface_id))
 
 
 def perform_distributed_cloud_config(dbapi, mgmt_iface_id, host):
