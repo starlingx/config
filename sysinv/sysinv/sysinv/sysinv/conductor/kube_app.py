@@ -1965,6 +1965,8 @@ class AppOperator(object):
         LOG.info("Starting recover Application %s from version: %s to version: %s" %
                  (old_app.name, new_app.version, old_app.version))
 
+        self._deregister_app_abort(old_app.name)
+
         lifecycle_hook_info_app_recover = copy.deepcopy(lifecycle_hook_info_app)
         lifecycle_hook_info_app_recover.operation = constants.APP_RECOVER_OP
 
