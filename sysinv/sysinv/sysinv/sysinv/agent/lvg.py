@@ -16,6 +16,7 @@ import sys
 
 from oslo_log import log as logging
 from sysinv.common import constants
+from sysinv.common import utils
 
 LOG = logging.getLogger(__name__)
 
@@ -74,16 +75,9 @@ class LVGOperator(object):
 
         disable_filter = ' --config \'devices/global_filter=["a|.*|"]\''
         vgdisplay_command = vgdisplay_command + disable_filter
-
-        try:
-            vgdisplay_process = subprocess.Popen(vgdisplay_command,
-                                                 stdout=subprocess.PIPE,
-                                                 shell=True)
-            vgdisplay_output = vgdisplay_process.stdout.read().decode("utf-8")
-        except Exception as e:
-            self.handle_exception("Could not retrieve vgdisplay "
-                                  "information: %s" % e)
-            vgdisplay_output = ""
+        vgdisplay_stdout, vgdisplay_stderr = utils.subprocess_open(command=vgdisplay_command,
+                                                                   timeout=5)
+        vgdisplay_output = vgdisplay_stdout
 
         # parse the output 1 vg/row
         rook_vgs = []
@@ -131,33 +125,18 @@ class LVGOperator(object):
                             'vg_extent_count,vg_free_count'\
                             ' --units B --nosuffix --noheadings'
 
-        # Execute the command
-        try:
-            vgdisplay_process = subprocess.Popen(vgdisplay_command,
-                                                 stdout=subprocess.PIPE,
-                                                 shell=True,
-                                                 universal_newlines=True)
-            vgdisplay_output = vgdisplay_process.stdout.read()
-        except Exception as e:
-            self.handle_exception("Could not retrieve vgdisplay "
-                                  "information: %s" % e)
-            vgdisplay_output = ""
+        vgdisplay_stdout, vgdisplay_stderr = utils.subprocess_open(command=vgdisplay_command,
+                                                                   timeout=5)
+        vgdisplay_output = vgdisplay_stdout
 
-        # Cinder devices are hidden by global_filter, list them separately.
         if cinder_device:
             new_global_filer = ' --config \'devices/global_filter=["a|' + \
                                cinder_device + '|","r|.*|"]\''
             vgdisplay_command = vgdisplay_command + new_global_filer
+            vgdisplay_stdout, vgdisplay_stderr = utils.subprocess_open(command=vgdisplay_command,
+                                                                       timeout=5)
 
-            try:
-                vgdisplay_process = subprocess.Popen(vgdisplay_command,
-                                                     stdout=subprocess.PIPE,
-                                                     shell=True,
-                                                     universal_newlines=True)
-                vgdisplay_output = vgdisplay_output + vgdisplay_process.stdout.read()
-            except Exception as e:
-                self.handle_exception("Could not retrieve vgdisplay "
-                                      "information: %s" % e)
+            vgdisplay_output = vgdisplay_output + vgdisplay_stdout
 
         # parse the output 1 vg/row
         for row in vgdisplay_output.split('\n'):
