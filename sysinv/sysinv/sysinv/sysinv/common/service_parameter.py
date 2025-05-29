@@ -352,6 +352,12 @@ def _validate_irq_work_prio(name, value):
                     constants.SERVICE_PARAM_PLATFORM_KSOFTIRQD_PRIO_MAX)
 
 
+def _validate_kthread_prio(name, value):
+    _validate_range(name, value,
+                    constants.SERVICE_PARAM_PLATFORM_KTHREAD_PRIO_MIN,
+                    constants.SERVICE_PARAM_PLATFORM_KTHREAD_PRIO_MAX)
+
+
 def _validate_hbs_failure_action(name, value):
     error = False
     try:
@@ -1082,7 +1088,6 @@ SERVICE_PARAM_PLAT_MTCE_MNFA_THRESHOLD_MAX = 100
 SERVICE_PARAM_PLAT_MTCE_MNFA_TIMEOUT_MIN = 100
 SERVICE_PARAM_PLAT_MTCE_MNFA_TIMEOUT_MAX = 86400
 
-
 PLATFORM_MTCE_PARAMETER_VALIDATOR = {
     constants.SERVICE_PARAM_PLAT_MTCE_WORKER_BOOT_TIMEOUT:
         _validate_worker_boot_timeout,
@@ -1118,6 +1123,7 @@ PLATFORM_KERNEL_PARAMETER_OPTIONAL = [
     constants.SERVICE_PARAM_NAME_PLATFORM_OOT,
     constants.SERVICE_PARAM_PLATFORM_KSOFTIRQD_PRIO,
     constants.SERVICE_PARAM_PLATFORM_IRQ_WORK_PRIO,
+    constants.SERVICE_PARAM_PLATFORM_KTHREAD_PRIO,
 ]
 
 PLATFORM_KEYSTONE_PARAMETER_OPTIONAL = [
@@ -1161,6 +1167,7 @@ PLATFORM_KERNEL_PARAMETER_VALIDATOR = {
     constants.SERVICE_PARAM_NAME_PLATFORM_OOT: _validate_oot,
     constants.SERVICE_PARAM_PLATFORM_KSOFTIRQD_PRIO: _validate_ksoftirqd_prio,
     constants.SERVICE_PARAM_PLATFORM_IRQ_WORK_PRIO: _validate_irq_work_prio,
+    constants.SERVICE_PARAM_PLATFORM_KTHREAD_PRIO: _validate_kthread_prio,
 }
 
 PLATFORM_KEYSTONE_PARAMETER_VALIDATOR = {
@@ -1225,6 +1232,8 @@ PLATFORM_KERNEL_PARAMETER_RESOURCE = {
         'platform::params::ksoftirqd_priority',
     constants.SERVICE_PARAM_PLATFORM_IRQ_WORK_PRIO:
         'platform::params::irq_work_priority',
+    constants.SERVICE_PARAM_PLATFORM_KTHREAD_PRIO:
+        'platform::compute::grub::params::g_kthread_prio',
 }
 
 PLATFORM_KEYSTONE_PARAMETER_RESOURCE = {
