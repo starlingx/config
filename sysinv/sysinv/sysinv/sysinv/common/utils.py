@@ -4489,3 +4489,26 @@ def get_app_metadata_from_tarfile(absolute_tarball_path):
                 metadata = yaml.safe_load(f)
 
     return metadata
+
+
+def compare_lists_of_dict(dependent_parent_list, dependent_parent_exceptions):
+    """
+    Compare two lists of dictionaries to determine if they are equivalent.
+    This function converts the input lists of dictionaries into sets of tuples,
+    where each tuple represents the key-value pairs of a dictionary. It then
+    compares the two sets for equality.
+    Args:
+        dependent_parent_list (list[dict]): A list of dictionaries representing
+            the first set of dependent parents.
+        dependent_parent_exceptions (list[dict]): A list of dictionaries representing
+            the second set of dependent parents to compare against.
+    Returns:
+        bool: True if the two lists are equivalent (contain the same dictionaries),
+              False otherwise.
+    """
+    # Convert both lists to sets of tuples for easier comparison
+    set_parent_list = {tuple(item.items()) for item in dependent_parent_list}
+    set_parent_exceptions = {tuple(item.items()) for item in dependent_parent_exceptions}
+
+    # Compare the sets
+    return set_parent_list == set_parent_exceptions

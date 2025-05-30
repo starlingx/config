@@ -8152,11 +8152,6 @@ class ConductorManager(service.PeriodicService):
             LOG.exception(e)
             return False
 
-        if (app_dependents.is_dependent_app(
-                app.name, app.app_version, self.dbapi)):
-            LOG.info(f"Auto-update skipped for dependent application: {app.name}")
-            return True
-
         if app.status != constants.APP_APPLY_SUCCESS:
             # In case the previous re-apply fails
             return False
@@ -8196,6 +8191,32 @@ class ConductorManager(service.PeriodicService):
             # Skip if no bundles are found
             LOG.debug("No bundle found for updating %s" % app_name)
             return
+
+        # get the list of dependent parent app that list the current application as a dependency
+        dependent_parent_list = app_dependents.get_dependent_parent_list(app.name,
+                                                                         app.app_version,
+                                                                         self.dbapi)
+        if dependent_parent_list:
+            # get dependent_parent_exceptions declared in metadata.yaml of the current app
+            dependent_parent_exceptions = self.apps_metadata[
+                constants.APP_METADATA_APPS][app.name].get(
+                    constants.APP_METADATA_DEPENDENT_PARENT_EXCEPTIONS, {})
+
+            skip_auto_update_msg = (f"Auto-update skipped for: {app.name} because "
+                                     "it is app dependent of other applications "
+                                     "that are currently applied.")
+
+            # If this app is a dependency for other currently applied apps,
+            # and there are no exceptions, skip auto-update.
+            if not dependent_parent_exceptions:
+                LOG.info(skip_auto_update_msg)
+                return True
+
+            # If the dependent parent list does not match the exceptions, skip auto-update.
+            if not cutils.compare_lists_of_dict(dependent_parent_list,
+                                                dependent_parent_exceptions):
+                LOG.info(skip_auto_update_msg)
+                return True
 
         LOG.info("Found new tarfile version for %s: %s"
                  % (app.name, app_bundle.file_path))
