@@ -4947,28 +4947,13 @@ class ConductorManager(service.PeriodicService):
         :returns: pass or fail
         """
 
-        def is_same_disk(i, idisk):
-            # Upgrades R3->R4: An update from an N-1 agent will be missing the
-            # persistent naming fields.
-            if 'device_path' in i:
-                if i.get('device_path') is not None:
-                    if idisk.device_path == i.get('device_path'):
-                        # Update from R4 node: Use R4 disk identification logic
-                        return True
-                    elif not idisk.device_path:
-                        # TODO: remove R5. still need to compare device_node
-                        # because not inventoried for R3 node controller-0
-                        if idisk.device_node == i.get('device_node'):
-                            LOG.info("host_uuid=%s idisk.device_path not"
-                                     "set, match on device_node %s" %
-                                     (ihost_uuid, idisk.device_node))
-                            return True
-                else:
-                    return False
-            elif idisk.device_node == i.get('device_node'):
-                # Update from R3 node: Fall back to R3 disk identification
-                # logic.
-                return True
+        def does_disk_path_exist(i, idisk):
+
+            if i.get('device_path') is not None:
+                if idisk.device_path == i.get('device_path'):
+                    LOG.info("The disk is the same, because the %s matches" % "device_path")
+                    return True
+
             return False
 
         ihost_uuid.strip()
@@ -4998,6 +4983,9 @@ class ConductorManager(service.PeriodicService):
 
         idisks = self.dbapi.idisk_get_by_ihost(ihost_uuid)
 
+        idisk_dict_array.sort(key=lambda i: i.get('device_path') is None)
+        LOG.debug(f"Disks received from agent: {str(idisk_dict_array)}")
+
         for i in idisk_dict_array:
             disk_dict = {'forihostid': forihostid}
             # this could overwrite capabilities - do not overwrite device_function?
@@ -5009,11 +4997,12 @@ class ConductorManager(service.PeriodicService):
                 disk = self.dbapi.idisk_create(forihostid, disk_dict)
             else:
                 found = False
+                is_valid_disk = True
                 for idisk in idisks:
                     LOG.debug("[DiskEnum] for - current idisk: %s - %s -%s" %
                              (idisk.uuid, idisk.device_node, idisk.device_id))
 
-                    if is_same_disk(i, idisk):
+                    if does_disk_path_exist(i, idisk):
                         found = True
                         # The disk has been replaced?
                         if idisk.serial_id != i.get('serial_id'):
@@ -5059,8 +5048,6 @@ class ConductorManager(service.PeriodicService):
                                    idisk.device_id, idisk.capabilities,
                                    disk_dict['capabilities']))
 
-                        # disk = self.dbapi.idisk_update(idisk['uuid'],
-                        #                                disk_dict)
                         disk_dict_capabilities = disk_dict.get('capabilities')
                         if (disk_dict_capabilities and
                                 ('device_function' not in
@@ -5082,15 +5069,25 @@ class ConductorManager(service.PeriodicService):
                                   (idisk['uuid'], str(disk_dict)))
                         disk = self.dbapi.idisk_update(idisk['uuid'],
                                                        disk_dict)
-                    elif not idisk.device_path:
-                        if idisk.device_node == i.get('device_node'):
-                            found = True
-                            disk = self.dbapi.idisk_update(idisk['uuid'],
-                                                           disk_dict)
-                            self.dbapi.journal_update_path(disk)
+                        break
+                else:
+                    if i.get('device_path') is None:
+                        # If the disk's `device_path` is still `None` after
+                        # the disks loop, mark it as invalid.
+                        # This can happen if pyudev takes longer than normal
+                        # to provide all device information.
+                        # Such missing device information is unexpected and
+                        # usually means something went wrong.
+                        # Marking the disk as invalid helps avoid duplicate
+                        # entries caused by temporary inconsistencies.
+                        is_valid_disk = False
+                        LOG.warn(f"The disk received with device_node {i.get('device_node')} is invalid,"
+                                  "because it does not have the device_path value.")
 
-                if not found:
+                if not found and is_valid_disk:
+                    LOG.info(f"Creating new disk with device_path {disk_dict.get('device_path')}")
                     disk = self.dbapi.idisk_create(forihostid, disk_dict)
+                    idisks.append(disk)
 
                 # Update the capabilities if the device is a cinder
                 # disk
