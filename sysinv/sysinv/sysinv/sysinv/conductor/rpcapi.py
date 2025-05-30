@@ -659,6 +659,22 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.call(context, self.make_msg('update_pcidp_config',
                                                 host_uuid=host_uuid))
 
+    def update_platform_ratelimit_config(self, context, host_uuid):
+        """Synchronously, have a conductor configure platform ratelimit.
+
+        Does the following tasks:
+        - sends a message to conductor
+        - who sends a message to all inventory agents
+        - who each apply the network manifest
+
+        :param context: request context.
+        :param host_uuid: the host unique uuid
+        """
+        LOG.debug("ConductorApi.update_platform_ratelimit_config: sending "
+                  "update_platform_ratelimit_config to conductor")
+        return self.call(context, self.make_msg('update_platform_ratelimit_config',
+                                                host_uuid=host_uuid))
+
     def update_distributed_cloud_role(self, context):
         """Synchronously, have a conductor configure the distributed cloud
            role of the system.

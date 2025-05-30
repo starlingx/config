@@ -923,6 +923,9 @@ LINK_SPEED_25G = 25000
 # VF rate limit
 VF_TOTAL_RATE_RATIO = 0.9
 
+# Platform interface rate limit
+PLATFORM_RATELIMIT_LOWER_CUTOFF = 0
+
 # DRBD engineering limits.
 # Link Util values are in Percentage.
 DRBD_LINK_UTIL_MIN = 5
