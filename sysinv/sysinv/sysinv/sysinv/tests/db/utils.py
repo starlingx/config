@@ -15,7 +15,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2024 Wind River Systems, Inc.
+# Copyright (c) 2013-2025 Wind River Systems, Inc.
 #
 
 """Sysinv test utilities."""
@@ -1374,6 +1374,8 @@ def get_test_interface(**kw):
         'ptp_role': kw.get('ptp_role', None),
         'max_tx_rate': kw.get('max_tx_rate', None)
     }
+    if 'max_rx_rate' in kw:
+        interface['max_rx_rate'] = kw.get('max_rx_rate', None)
     return interface
 
 

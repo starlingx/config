@@ -68,6 +68,10 @@ IPV6_ADDRESS_MODES = [IPV6_DISABLED,
                       IPV6_AUTO,
                       IPV6_LINK_LOCAL,
                       IPV6_POOL]
+# IP address pool
+IPV6 = "ipv6"
+IPV4 = "ipv4"
+DUAL = "dual"
 
 # sysinv-vim-mtce definitions
 # Host Actions:
@@ -850,6 +854,11 @@ PLATFORM_NETWORK_TYPES = [NETWORK_TYPE_PXEBOOT,
                           NETWORK_TYPE_IRONIC,
                           NETWORK_TYPE_STORAGE,
                           NETWORK_TYPE_ADMIN]
+
+INTERNAL_NETWORK_TYPES = [NETWORK_TYPE_PXEBOOT,
+                          NETWORK_TYPE_CLUSTER_HOST,
+                          NETWORK_TYPE_CLUSTER_POD,
+                          NETWORK_TYPE_CLUSTER_SERVICE]
 
 PCI_NETWORK_TYPES = [NETWORK_TYPE_PCI_PASSTHROUGH,
                      NETWORK_TYPE_PCI_SRIOV]
