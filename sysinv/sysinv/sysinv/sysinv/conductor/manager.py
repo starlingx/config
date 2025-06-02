@@ -7467,6 +7467,12 @@ class ConductorManager(service.PeriodicService):
             older_than=expired_date)
 
         if not pending_runtime_config:
+            # Check if there are leftover temporary directories and delete them
+            for entry in os.listdir(tsc.PUPPET_PATH):
+                entry_path = os.path.join(tsc.PUPPET_PATH, entry)
+                if os.path.isdir(entry_path) and entry.startswith('tmp'):
+                    LOG.info("Removing temporary directory %s" % entry_path)
+                    shutil.rmtree(entry_path, ignore_errors=True)
             return
 
         LOG.info("Found stale runtime config entries, retrying the requests...")
@@ -11202,6 +11208,10 @@ class ConductorManager(service.PeriodicService):
                       {'iconfig': iconfig, 'cfg': reported_cfg})
 
         if success:
+            temp_puppet_path = iconfig.get('puppet_path')
+            if temp_puppet_path:
+                LOG.info("Removing temporary puppet directory %s" % temp_puppet_path)
+                shutil.rmtree(temp_puppet_path, ignore_errors=True)
             self.check_pending_app_reapply(context)
 
     def verify_k8s_upgrade_not_in_progress(self):
@@ -14365,6 +14375,19 @@ class ConductorManager(service.PeriodicService):
                     # already exist in the retry scenario
                     pass
 
+    def _create_temp_puppet_path(self):
+        """Create temporary puppet directory to use during manifest application"""
+        local_hiera_path = os.path.join(tsc.PUPPET_PATH, 'hieradata')
+        temp_puppet_path = tempfile.mkdtemp(dir=tsc.PUPPET_PATH, prefix="tmp_puppet_")
+        temp_hiera_path = os.path.join(temp_puppet_path, 'hieradata')
+        # copy hieradata to temp_dir
+        LOG.info(f"Copying existing hieradata from {local_hiera_path} to {temp_hiera_path}")
+        # Recursively copy hieradata from tsc.PUPPET_PATH into a temporary directory
+        if not os.path.isdir(local_hiera_path):
+            raise RuntimeError(f"Source hieradata directory does not exist: {local_hiera_path}")
+        shutil.copytree(local_hiera_path, temp_hiera_path, dirs_exist_ok=True)
+        return temp_puppet_path
+
     def _config_apply_runtime_manifest(self,
                                        context,
                                        config_uuid,
@@ -14470,6 +14493,10 @@ class ConductorManager(service.PeriodicService):
         if not self._try_config_update_puppet(
                 config_uuid, config_dict, deferred_config, host_uuids, force, skip_update_config):
             return
+
+        # Create temporary hieradata path and add it to config_dict
+        temp_puppet_path = self._create_temp_puppet_path()
+        config_dict.update({"puppet_path": temp_puppet_path})
 
         skip_app_reapply = config_dict.get('generate_optimized_hieradata', False)
 
