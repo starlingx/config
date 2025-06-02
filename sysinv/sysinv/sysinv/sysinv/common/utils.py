@@ -463,6 +463,24 @@ def is_valid_mac(address):
     return False
 
 
+def is_empty_value(value):
+    """checks empty or nullish values
+
+    :param value: value to be checked
+    :return bool: True if value is empty or nullish
+    """
+    if not value:
+        return True
+
+    if isinstance(value, str):
+        if len(value.strip()) == 0:
+            return True
+        if value.strip().lower() in ["none", "null"]:
+            return True
+
+    return False
+
+
 def validate_and_normalize_mac(address):
     """Validate a MAC address and return normalized form.
 

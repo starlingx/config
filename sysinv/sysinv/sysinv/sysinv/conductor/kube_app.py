@@ -688,6 +688,8 @@ class AppOperator(object):
                 static_overrides_imgs_copy = copy.deepcopy(static_overrides_imgs)
                 static_overrides_imgs = self._image.merge_dict(helm_chart_imgs, static_overrides_imgs)
 
+                self._add_local_registry_to_repository(static_overrides_imgs, override_imgs)
+
                 # Update image tags with local registry prefix
                 override_imgs = self._image.update_images_with_local_registry(override_imgs)
                 static_overrides_imgs = self._image.update_images_with_local_registry(static_overrides_imgs)
@@ -695,6 +697,7 @@ class AppOperator(object):
                 # Generate a list of required images by chart
                 download_imgs = copy.deepcopy(static_overrides_imgs)
                 download_imgs = self._image.merge_dict(download_imgs, override_imgs)
+                download_imgs = self._image.update_images_with_local_registry(download_imgs)
                 download_imgs_list = self._image.generate_download_images_list(download_imgs, [])
                 app_imgs.extend(download_imgs_list)
 
@@ -719,6 +722,21 @@ class AppOperator(object):
                         yaml.safe_dump(static_overrides_to_dump, f, default_flow_style=False)
 
         return list(set(app_imgs))
+
+    def _add_local_registry_to_repository(self, static_override, override_imgs):
+        """adds local registry to static overrides, mutating the static_override dict
+
+        :param static_override: dict with static override
+        :param overrides_imgs: dict with user overrides
+        """
+        for k, v in override_imgs.items():
+            if isinstance(v, dict):
+                self._add_local_registry_to_repository(static_override.get(k, {}), v)
+            else:
+                if k == 'registry' and cutils.is_empty_value(v):
+                    if constants.DOCKER_REGISTRY_SERVER not in static_override['repository']:
+                        static_override['repository'] = \
+                            f"{constants.DOCKER_REGISTRY_SERVER}/{static_override['repository']}"
 
     def _register_embedded_images(self, app):
         """
@@ -4023,6 +4041,8 @@ class AppImageParser(object):
                             image.update({'repository': v['repository']})
                         if 'registry' not in keys and 'repository' in keys:
                             image.update({'repository': v['repository']})
+                        if 'registry' in keys and cutils.is_empty_value(v['registry']):
+                            image.update({'registry': v['registry']})
                         if 'tag' in keys:
                             image.update({'tag': v['tag']})
                         if image:
@@ -4090,7 +4110,13 @@ class AppImageParser(object):
                     imgs_dict[k] = v
 
             elif isinstance(v, dict):
-                if "registry" in v and "repository" in v:
+                if ("registry" in v and "repository" in v and
+                        cutils.is_empty_value(v["registry"]) and
+                        constants.DOCKER_REGISTRY_SERVER not in v["repository"]):
+                    v["repository"] = '{}/{}'.format(
+                        constants.DOCKER_REGISTRY_SERVER, v["repository"])
+                elif ("registry" in v and "repository" in v and
+                        constants.DOCKER_REGISTRY_SERVER not in v["repository"]):
                     if (not re.search(r'^.+:.+/', v["registry"]) and ":" not in v["registry"]):
                         v["registry"] = '{}/{}'.format(
                             constants.DOCKER_REGISTRY_SERVER, v["registry"])
@@ -4124,7 +4150,7 @@ class AppImageParser(object):
 
             elif dict_key == 'image':
                 try:
-                    if "registry" in v:
+                    if "registry" in v and not cutils.is_empty_value(v['registry']):
                         img = v['registry'] + '/' + v['repository'] + ':' + v['tag']
                     else:
                         img = v['repository'] + ':' + v['tag']
