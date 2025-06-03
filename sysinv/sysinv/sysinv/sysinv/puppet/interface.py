@@ -1995,14 +1995,14 @@ def check_interface_rate_limit_conditions(iface, db_api):
     if iface.get('max_tx_rate', None) is None and iface.get('max_rx_rate', None) is None:
         return False
 
-    networktypelist = set(iface.get('networktypelist', []))
+    networktypelist = iface.get('networktypelist', [])
     ifname = iface.get('ifname', None)
 
     if not networktypelist:
         LOG.error(f"iface {ifname} has no networktypes, but rate_limit is configured")
         return False
 
-    if networktypelist.intersection(constants.INTERNAL_NETWORK_TYPES):
+    if set(networktypelist).intersection(constants.INTERNAL_NETWORK_TYPES):
         LOG.error(f"Cannot configure rate limit for iface {ifname}  \
                 internal networktypes {constants.INTERNAL_NETWORK_TYPES} are not supported")
         return False
