@@ -301,7 +301,14 @@ class DiskOperator(object):
                     hdparm_stdout, hdparm_sterr = utils.subprocess_open(command=hdparm_command,
                                                                         timeout=10)
 
-                    if not hdparm_sterr:
+                    # Expected output format: "Model Number: <model_number>"
+                    is_hdparm_stdout_valid = (
+                        not hdparm_sterr and
+                        ':' in hdparm_stdout
+                        and len(hdparm_stdout.split(':')) > 1
+                    )
+
+                    if is_hdparm_stdout_valid:
                         second_half = hdparm_stdout.split(':')[1]
                         model_num = second_half.strip()
                     else:
@@ -309,7 +316,7 @@ class DiskOperator(object):
                         lsblk_stdout, lsblk_stderr = utils.subprocess_open(command=lsblk_command,
                                                                            timeout=10)
 
-                        if not lsblk_stderr:
+                        if lsblk_stdout and not lsblk_stderr:
                             model_num = lsblk_stdout.strip()
                         else:
                             model_num = device.get('ID_MODEL')
