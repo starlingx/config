@@ -2260,13 +2260,12 @@ def _check_platform_interface_ratelimit(interface):
     Function to check interface rate_limit conditions below:-.
     1. Interface class is platform.
     2. Interface type is ethernet, ae, or vlan.
-    3. Interface must have networktype configured
-    4. Interface networktypes has no internal traffic type.
-    5. If Interface networktype has mgmt, It should be a Distributed Cloud set up.
+    3. Interface networktypes has no internal traffic type.
+    4. If Interface networktype has mgmt, It should be a Distributed Cloud set up.
        Only in DC setup, mgmt network has both internal and external platform traffic.
        In other cases it is only internal.
-    6. max_tx_rate and max_rx_rate are non-negative integer values.
-    7. max_tx_rate and max_rx_rate are greater than or equal to
+    5. max_tx_rate and max_rx_rate are non-negative integer values.
+    6. max_tx_rate and max_rx_rate are greater than or equal to
        PLATFORM_RATELIMIT_LOWER_CUTOFF.
     """
     ifname = interface.get('ifname', None)
@@ -2281,22 +2280,21 @@ def _check_platform_interface_ratelimit(interface):
                 "interface class {} and interface type {}".format(ifclass, iftype))
         raise wsme.exc.ClientSideError(msg)
 
-    networktypelist = set(interface.get('networktypelist', []))
+    networktypelist = interface.get('networktypelist', [])
 
-    if not networktypelist:
-        msg = _("No network type for the interface {}, cannot modify Rate limit"
-                .format(ifname))
-        raise wsme.exc.ClientSideError(msg)
-
-    if networktypelist.intersection(constants.INTERNAL_NETWORK_TYPES):
-        msg = _("Rate limit is not allowed for internal network types {}"
-                .format(constants.INTERNAL_NETWORK_TYPES))
-        raise wsme.exc.ClientSideError(msg)
-
-    if constants.NETWORK_TYPE_MGMT in networktypelist:
-        if not utils.get_distributed_cloud_role():
-            msg = _("Rate limit for mgmt interfaces is only allowed for DC setups")
+    if networktypelist:
+        if set(networktypelist).intersection(constants.INTERNAL_NETWORK_TYPES):
+            msg = _("Rate limit is not allowed for internal network types {}"
+                    .format(constants.INTERNAL_NETWORK_TYPES))
             raise wsme.exc.ClientSideError(msg)
+
+        if constants.NETWORK_TYPE_MGMT in networktypelist:
+            if not utils.get_distributed_cloud_role():
+                msg = _("Rate limit for mgmt interfaces is only allowed for DC setups")
+                raise wsme.exc.ClientSideError(msg)
+    else:
+        LOG.info("No network types configured for interface {}. "
+                 "Skipped network checks".format(ifname))
 
     max_tx_rate = interface.get('max_tx_rate', None)
     max_rx_rate = interface.get('max_rx_rate', None)
@@ -2320,6 +2318,6 @@ def _check_platform_interface_ratelimit(interface):
             raise wsme.exc.ClientSideError(msg)
 
     LOG.info("validated rate_limit for interface {} with max_tx_rate: {}, max_rx_rate {}".format(
-            interface['ifname'], max_tx_rate, max_rx_rate))
+            ifname, max_tx_rate, max_rx_rate))
 
 # TODO (pbovina): Move utils methods within InterfaceController class

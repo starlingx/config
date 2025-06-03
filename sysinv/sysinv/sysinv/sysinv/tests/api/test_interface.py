@@ -2242,12 +2242,13 @@ class TestPostMixin(object):
         response = self.patch_dict_json(
             '%s' % self._get_path(uuid),
             max_rx_rate=20, max_tx_rate=20,
-            expect_errors=True)
+            expect_errors=False)
 
         self.assertEqual('application/json', response.content_type)
-        self.assertEqual(http_client.BAD_REQUEST, response.status_code)
-        self.assertIn("No network type for the interface bond0, cannot modify Rate limit",
-                      response.json['error_message'])
+        self.assertEqual(http_client.OK, response.status_code)
+        self.assertEqual("ae", response.json['iftype'])
+        self.assertEqual(20, response.json['max_tx_rate'])
+        self.assertEqual(20, response.json['max_rx_rate'])
 
     def test_modify_sriov_restricted_port(self):
         pvendor = constants.PVENDOR_CAVIUM
