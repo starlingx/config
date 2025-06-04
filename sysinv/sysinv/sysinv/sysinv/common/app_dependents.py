@@ -122,28 +122,37 @@ def has_circular_dependency(rpc_app, upload_apps_succeeded_list, dbapi):
     return False
 
 
-def is_dependent_app(app_name, app_version, dbapi):
+def get_dependent_parent_list(app_name, app_version, dbapi):
     """
-    Determine if a given application is a dependent application of any
-    currently applied applications.
+    Retrieve a list of parent applications that declare a dependency on the specified
+    application and version.
 
     Args:
-        app_name (str): The name of the application to check.
-        app_version (str): The version of the application to check.
-        dbapi (object): Database API object used to query application data.
+        app_name (str): The name of the application to check for as a dependency.
+        app_version (str): The version of the application to check for as a dependency.
+        dbapi: Database API object used to query applied applications.
+
     Returns:
-        bool: True if the specified application is a dependent application
-              of any currently applied applications, False otherwise.
+        list of dict: A list of dictionaries, each containing the 'name' and 'version'
+        of an applied parent application that lists the specified application and
+        version as a dependency.
     """
 
     # Get the list of apps that are already applied
     applied_apps = dbapi.kube_app_get_all_by_status(constants.APP_APPLY_SUCCESS)
 
+    dependent_parent_list = []
+
     for app in applied_apps:
         app_metadata = app.app_metadata
         dependent_apps_metadata_list = app_metadata.get(constants.APP_METADATA_DEPENDENT_APPS, [])
-        if any(dependent_app.get('name') == app_name and
-               dependent_app.get('version') == app_version
-               for dependent_app in dependent_apps_metadata_list):
-            return True
-    return False
+        for dependent_app in dependent_apps_metadata_list:
+            name_matches = dependent_app.get('name') == app_name
+            version_matches = dependent_app.get('version') == app_version
+            if name_matches and version_matches:
+                dependent_parent_list.append({
+                    'name': app.name,
+                    'version': app.app_version
+                })
+
+    return dependent_parent_list

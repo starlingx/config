@@ -594,6 +594,18 @@ def validate_metadata_file(path, metadata_file, upgrade_from_release=None):
         if app_class:
             validate_class_types(app_class)
 
+        dependent_parent_exceptions = \
+            validate_list_field(doc, constants.APP_METADATA_DEPENDENT_PARENT_EXCEPTIONS)
+        if dependent_parent_exceptions:
+            for parent_exception in dependent_parent_exceptions:
+                validate_dict(parent_exception)
+                validate_string_field(
+                    parent_exception,
+                    constants.APP_METADATA_DEPENDENT_APPS_NAME)
+                validate_string_field(
+                    parent_exception,
+                    constants.APP_METADATA_DEPENDENT_APPS_VERSION)
+
     return app_name, app_version, patches
 
 
