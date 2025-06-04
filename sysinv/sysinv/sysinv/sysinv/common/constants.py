@@ -821,6 +821,7 @@ LVG_AUDIT_REQUEST = "audit_lvg"
 PV_AUDIT_REQUEST = "audit_pv"
 PARTITION_AUDIT_REQUEST = "audit_partition"
 FILESYSTEM_AUDIT_REQUEST = "audit_fs"
+MEMORY_AUDIT_REQUEST = "audit_memory"
 CONTROLLER_AUDIT_REQUESTS = [DISK_AUDIT_REQUEST,
                              LVG_AUDIT_REQUEST,
                              PV_AUDIT_REQUEST,
