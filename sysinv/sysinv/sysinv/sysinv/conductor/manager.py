@@ -381,7 +381,8 @@ class ConductorManager(service.PeriodicService):
         self.apps_metadata = {constants.APP_METADATA_APPS: {},
                               constants.APP_METADATA_PLATFORM_MANAGED_APPS: {},
                               constants.APP_METADATA_DESIRED_STATES: {},
-                              constants.APP_METADATA_ORDERED_APPS: []}
+                              constants.APP_METADATA_ORDERED_APPS: {},
+                              constants.APP_METADATA_ORDERED_APPS_BY_AFTER_KEY: []}
 
         self._backup_action_map = dict()
         for action in [constants.BACKUP_ACTION_SEMANTIC_CHECK,
@@ -8251,17 +8252,26 @@ class ConductorManager(service.PeriodicService):
                                 tarball,
                                 k8s_version=None,
                                 async_update=True):
-        # Check no other app is in progress of apply/update/recovery
-        for other_app in self.dbapi.kube_app_get_all():
-            if other_app.status in [constants.APP_APPLY_IN_PROGRESS,
-                                    constants.APP_UPDATE_IN_PROGRESS,
-                                    constants.APP_RECOVER_IN_PROGRESS]:
-                LOG.info("%s requires update but %s "
-                         "is in progress of apply/update/recovery. "
-                         "Will retry on next audit",
-                         applied_app.name, other_app.name)
-                return False
+        """
+        Synchronize and auto-update a application.
 
+        This method handles the process of transitioning an applied application
+        to an inactive state, creating or updating the target application, and
+        initiating the update process either asynchronously or synchronously.
+
+        Args:
+            context (object): The request context for the operation.
+            applied_app (object): The currently applied application object.
+            tarball (object): The tarball object containing application details.
+            k8s_version (str, optional): The Kubernetes version for the update. Defaults to None.
+            async_update (bool, optional): Whether to perform the update asynchronously.
+                                           Defaults to True.
+
+        Returns:
+            bool: True if the update process is initiated successfully, False otherwise.
+                  If `async_update` is False, the return value will be the result of
+                  `perform_app_update`.
+        """
         # Set the status for the current applied app to inactive
         applied_app.status = constants.APP_INACTIVE_STATE
         applied_app.progress = None
@@ -8870,15 +8880,26 @@ class ConductorManager(service.PeriodicService):
                             app_name] in [constants.APP_UPLOAD_SUCCESS, constants.APP_APPLY_SUCCESS]:
                     self._auto_upload_managed_app(context, app_name)
 
-        # TODO(dbarbosa): Handle where there is no "after" key in the application
-        # metadata. In this case the determine_apps_reapply_order function instead
-        # of return a list will return a dictionary with 3 keys: dependent_apps,
-        # class and independent_apps. To identify if any app uses the key after,
-        # use the function app_metadata.has_after_key_in_apps_metadata.
+        apps = []
+        # TODO(dbarbosa): remove determine_apps_reapply_order_by_after_key function after the
+        # previous release no longer use the after key in the metadata of the platform apps
+        if app_metadata.has_after_key_in_apps_metadata(
+                self.apps_metadata[constants.APP_METADATA_APPS]):
+            apps = self.determine_apps_reapply_order_by_after_key(
+                name_only=True, filter_active=False)
+        else:
+            apps = self.determine_apps_reapply_order(name_only=True,
+                                                     filter_active=False)
 
         # Check the application state and take the appropriate action
         # App applies need to be done in a specific order
-        for app_name in self.determine_apps_reapply_order(name_only=True, filter_active=False):
+        apps_to_apply = []
+        apps_to_update = []
+        # TODO(dbarbosa): Add apps_to_reaply list and perform the reapply
+        # call using the perform_automatic_operation_in_parallel function.
+        # This way the platform cores will be taken into account to process
+        # the reapply of apps in parallel.
+        for app_name in apps:
             if app_name not in self.apps_metadata[constants.APP_METADATA_PLATFORM_MANAGED_APPS].keys():
                 continue
 
@@ -8895,7 +8916,7 @@ class ConductorManager(service.PeriodicService):
                 if app_name in self.apps_metadata[constants.APP_METADATA_DESIRED_STATES].keys() and \
                         self.apps_metadata[constants.APP_METADATA_DESIRED_STATES][
                             app_name] == constants.APP_APPLY_SUCCESS:
-                    self._auto_apply_managed_app(context, app_name)
+                    apps_to_apply.append(app_name)
             elif status == constants.APP_APPLY_IN_PROGRESS:
                 # Action: do nothing
                 pass
@@ -8903,7 +8924,7 @@ class ConductorManager(service.PeriodicService):
                 self._auto_recover_managed_app(context, app_name)
             elif status == constants.APP_APPLY_SUCCESS:
                 self.check_pending_app_reapply(context)
-                self._auto_update_app(context, app_name)
+                apps_to_update.append(app_name)
 
         # Special case, we want to apply some logic to non-managed applications
         for app_name in self.apps_metadata[constants.APP_METADATA_APPS].keys():
@@ -8923,7 +8944,16 @@ class ConductorManager(service.PeriodicService):
             # Automatically update non-managed applications
             if status == constants.APP_APPLY_SUCCESS:
                 self.check_pending_app_reapply(context)
-                self._auto_update_app(context, app_name)
+                apps_to_update.append(app_name)
+
+        if not self.perform_automatic_operation_in_parallel(context,
+                                                            apps_to_apply,
+                                                            constants.APP_APPLY_OP):
+            LOG.error("Error while auto applying one or more apps")
+        if not self.perform_automatic_operation_in_parallel(context,
+                                                            apps_to_update,
+                                                            constants.APP_UPDATE_OP):
+            LOG.error("Error while auto updating one or more apps")
 
         # Run alarm audit every 5 iterations (5 minutes)
         self._app_alarm_audit_counter += 1
@@ -8932,6 +8962,51 @@ class ConductorManager(service.PeriodicService):
             self._app_alarm_audit_counter = 0
 
         LOG.debug("Periodic Task: _k8s_application_audit: Finished")
+
+    def perform_automatic_operation_in_parallel(self, context, apps, op):
+        """
+        Perform an automatic operation on a list of applications using a thread pool.
+        This method executes the specified operation (`op`) on the provided list of
+        applications (`apps`) concurrently, utilizing a thread pool with a number of
+        workers equal to the number of physical CPU cores.
+        Args:
+            context (object): The context object containing runtime information.
+            apps (list): A list of application objects to process.
+            op (str): The operation to perform. Supported operations are:
+                - constants.APP_APPLY_OP: Automatically apply managed applications.
+                - constants.APP_REAPPLY_OP: Automatically reapply managed applications.
+                - constants.APP_UPDATE_OP: Automatically update applications.
+        Returns:
+            bool: True if all operations are completed successfully, False if any
+            operation fails.
+        """
+        # Get the number of platform CPU cores
+        core_count = cutils.get_platform_core_count(self.dbapi)
+
+        result = True
+        LOG.info(f"Initiating automatic operation '{op}' on {len(apps)} applications: "
+                 f"{', '.join(apps)} using a thread pool with {core_count} workers.")
+
+        with ThreadPoolExecutor(max_workers=core_count) as executor:
+            futures = []
+            if op in {constants.APP_APPLY_OP, constants.APP_REAPPLY_OP}:
+                futures = [
+                    executor.submit(self._auto_apply_managed_app, context, app)
+                    for app in apps
+                ]
+            elif op == constants.APP_UPDATE_OP:
+                futures = [
+                    executor.submit(self._auto_update_app, context, app)
+                    for app in apps
+                ]
+            for future in as_completed(futures):
+                try:
+                    future.result()
+                    LOG.info(f"Automatic operation '{op}' completed successfully.")
+                except Exception as e:
+                    LOG.error(f"Error occurred while processing app: {e}")
+                    result = False
+        return result
 
     def check_pending_app_reapply(self, context):
         if self._verify_restore_in_progress():
@@ -8951,15 +9026,18 @@ class ConductorManager(service.PeriodicService):
                      "Ignore app reapply checks.")
             return
 
-        # TODO(dbarbosa): Handle where there is no "after" key in the application
-        # metadata. In this case the determine_apps_reapply_order function instead
-        # of return a list will return a dictionary with 3 keys: dependent_apps,
-        # class and independent_apps. To identify if any app uses the key after,
-        # use the function app_metadata.has_after_key_in_apps_metadata.
+        apps = []
+        # TODO(dbarbosa): remove determine_apps_reapply_order_by_after_key function after the
+        # previous release no longer use the after key in the metadata of the platform apps
+        if app_metadata.has_after_key_in_apps_metadata(
+                self.apps_metadata[constants.APP_METADATA_APPS]):
+            apps = self.determine_apps_reapply_order_by_after_key(
+                name_only=True, filter_active=False)
+        else:
+            apps = self.determine_apps_reapply_order(name_only=True, filter_active=False)
 
         # Pick first app that needs to be re-applied
-        for index, app_name in enumerate(
-                self.determine_apps_reapply_order(name_only=True, filter_active=False)):
+        for index, app_name in enumerate(apps):
             if self._app.needs_reapply(app_name):
                 break
         else:
@@ -8979,16 +9057,19 @@ class ConductorManager(service.PeriodicService):
 
     @cutils.synchronized(LOCK_APP_AUTO_MANAGE)
     def _inner_sync_auto_apply(self, context, app_name, status_constraints=None):
+        """
+        Synchronizes and triggers the automatic apply/re-apply of a Kubernetes app
+        based on its presence and status constraints.
 
-        # Check no other app apply is in progress
-        for other_app in self.dbapi.kube_app_get_all():
-            if other_app.status == constants.APP_APPLY_IN_PROGRESS:
-                LOG.info("%s requires re-apply but %s "
-                            "apply is in progress. "
-                            "Will retry on next audit",
-                         app_name, other_app.name)
-                return
-
+        Args:
+            context (object): The request context for the operation.
+            app_name (str): The name of application to be checked
+                            and potentially re-applied.
+            status_constraints (list, optional): A list of acceptable app statuses
+                                                 for re-application. If provided,
+                                                 the app's status must match one
+                                                 of these values to proceed.
+        """
         # Check app is present
         try:
             app = kubeapp_obj.get_by_name(context, app_name)
@@ -16491,7 +16572,9 @@ class ConductorManager(service.PeriodicService):
           """
         return self._fernet.get_fernet_keys(key_id)
 
-    def determine_apps_reapply_order(self, name_only, filter_active=True):
+    # TODO(dbarbosa): remove determine_apps_reapply_order_by_after_key function after the
+    # previous release no longer use the after key in the metadata of the platform apps
+    def determine_apps_reapply_order_by_after_key(self, name_only, filter_active=True):
         """ Order the apps for reapply
 
         :param name_only: return list of app names if name_only is True
@@ -16503,19 +16586,17 @@ class ConductorManager(service.PeriodicService):
         try:
             # Cached entry: precomputed order of reapply evaluation
             if name_only and not filter_active:
-                return self.apps_metadata[constants.APP_METADATA_ORDERED_APPS]
+                return self.apps_metadata[constants.APP_METADATA_ORDERED_APPS_BY_AFTER_KEY]
 
             ordered_apps = []
             # Start from already ordered list
-            for app_name in self.apps_metadata[constants.APP_METADATA_ORDERED_APPS]:
+            for app_name in self.apps_metadata[constants.APP_METADATA_ORDERED_APPS_BY_AFTER_KEY]:
                 try:
                     app = self.dbapi.kube_app_get(app_name)
                 except exception.KubeAppNotFound:
                     continue
 
-                if filter_active and app.active:
-                    ordered_apps.append(app)
-                elif not filter_active:
+                if not filter_active or app.active:
                     ordered_apps.append(app)
 
             LOG.info("Apps reapply order: {}".format(
@@ -16528,6 +16609,52 @@ class ConductorManager(service.PeriodicService):
             ordered_apps = []
 
         return ordered_apps
+
+    def determine_apps_reapply_order(self, name_only, filter_active=True):
+        """ Order the apps for reapply
+
+        :param name_only: return list of app names if name_only is True
+                          return list of apps if name_only is False
+        :param filter_active: When true keep only applied apps in the list
+
+        :returns: list of apps or app names
+        """
+        ordered_apps = []
+        ordered_active_apps = []
+
+        ordered_apps.extend(self.apps_metadata[constants.APP_METADATA_ORDERED_APPS].get(
+            constants.APP_METADATA_DEPENDENT_APPS, []))
+        class_data = self.apps_metadata[constants.APP_METADATA_ORDERED_APPS].get(
+            constants.APP_METADATA_CLASS, {})
+        for class_category in class_data.keys():
+            ordered_apps.extend(class_data.get(class_category, []))
+        ordered_apps.extend(self.apps_metadata[constants.APP_METADATA_ORDERED_APPS].get(
+            constants.APP_METADATA_INDEPENDENT_APPS, []))
+
+        try:
+            if name_only and not filter_active:
+                return ordered_apps
+
+            for app_name in ordered_apps:
+                try:
+                    app = self.dbapi.kube_app_get(app_name)
+                except exception.KubeAppNotFound:
+                    continue
+
+                if not filter_active or app.active:
+                    ordered_active_apps.append(app)
+
+            LOG.info("Apps reapply order: {}".format(
+                [app.name for app in ordered_active_apps]))
+
+            if name_only:
+                ordered_active_apps = [app.name for app in ordered_apps]
+
+        except Exception as e:
+            LOG.error("Error while ordering apps for reapply {}".format(str(e)))
+            ordered_active_apps = []
+
+        return ordered_active_apps
 
     def evaluate_apps_reapply(self, context, trigger):
         """Synchronously, determine whether an application
@@ -16569,15 +16696,19 @@ class ConductorManager(service.PeriodicService):
             return
 
         LOG.info("Evaluating apps reapply {} ".format(trigger))
-        apps = self.determine_apps_reapply_order(name_only=False, filter_active=True)
+
+        apps = []
+        # TODO(dbarbosa): remove determine_apps_reapply_order_by_after_key function after the
+        # previous release no longer use the after key in the metadata of the platform apps
+        if app_metadata.has_after_key_in_apps_metadata(
+                self.apps_metadata[constants.APP_METADATA_APPS]):
+            apps = self.determine_apps_reapply_order_by_after_key(name_only=False,
+                                                                  filter_active=True)
+        else:
+            apps = self.determine_apps_reapply_order(name_only=False, filter_active=True)
 
         metadata_map = constants.APP_EVALUATE_REAPPLY_TRIGGER_TO_METADATA_MAP
 
-        # TODO(dbarbosa): Handle where there is no "after" key in the application
-        # metadata. In this case the determine_apps_reapply_order function instead
-        # of return a list will return a dictionary with 3 keys: dependent_apps,
-        # class and independent_apps. To identify if any app uses the key after,
-        # use the function app_metadata.has_after_key_in_apps_metadata.
         for app in apps:
             # We need to get an updated app status before moving on. It may have
             # changed during the for loop execution. This avoids race conditions
@@ -16596,9 +16727,10 @@ class ConductorManager(service.PeriodicService):
                 LOG.info(f"Skipping reapply evaluation for {app.name}, "
                          "reason: update in progress.")
             else:
-                app_metadata = self.apps_metadata[constants.APP_METADATA_APPS].get(app.name, {})
+                app_metadata_dict = self.apps_metadata[constants.APP_METADATA_APPS].get(
+                    app.name, {})
                 try:
-                    app_triggers = app_metadata[constants.APP_METADATA_BEHAVIOR][
+                    app_triggers = app_metadata_dict[constants.APP_METADATA_BEHAVIOR][
                         constants.APP_METADATA_EVALUATE_REAPPLY][
                         constants.APP_METADATA_TRIGGERS]
                 except KeyError:
@@ -16941,6 +17073,66 @@ class ConductorManager(service.PeriodicService):
             LOG.exception(ex)
             return (False, None)
 
+    def check_status_dependent_app_upload(self, context, db_app, app_name, app_version):
+        """
+        Check the status of a dependent application upload and determine whether
+        to proceed with the upload or skip it based on the application's current
+        state.
+        Args:
+            context (object): The execution context for the operation.
+            db_app (object): The database object representing the dependent application.
+            app_name (str): The name of the dependent application.
+            app_version (str): The expected version of the dependent application.
+        Returns:
+            bool: True if the upload can be skipped or successfully completed,
+                  False if the upload fails or the application is in an invalid state.
+        """
+        if (db_app.app_version == app_version and
+                db_app.status == constants.APP_UPLOAD_SUCCESS):
+            LOG.info(f"Dependent app {app_name} is already uploaded. "
+                        f"Skipping upload.")
+            return True
+        elif (db_app.app_version == app_version and
+                db_app.status == constants.APP_APPLY_SUCCESS):
+            LOG.info(f"Dependent app {app_name} is already applied. "
+                        f"Skipping upload.")
+            return True
+        elif (db_app.app_version == app_version and
+                db_app.status == constants.APP_UPLOAD_IN_PROGRESS):
+            # Wait for the app status to be uploaded
+            timeout = constants.APP_UPLOAD_DEPENDENT_APP_TIMEOUT
+            start_time = time.time()
+
+            while time.time() - start_time < timeout:
+                app = kubeapp_obj.get_by_name(context, app_name)
+                if app.status in {constants.APP_UPLOAD_SUCCESS,
+                                    constants.APP_APPLY_IN_PROGRESS,
+                                    constants.APP_APPLY_SUCCESS}:
+                    LOG.info(f"Dependent app {app_name} upload succeeded.")
+                    break
+                elif app.status == constants.APP_UPLOAD_FAILURE:
+                    LOG.error(f"Dependent app {app_name} upload failed.")
+                    return False
+                time.sleep(5)  # Check every 5 seconds
+            else:
+                LOG.error(f"Timeout waiting for dependent app {app_name} to upload.")
+                return False
+            return True
+        elif (app.app_version == app_version and
+                app.status == constants.APP_APPLY_IN_PROGRESS):
+            LOG.info(f"Dependent app {app_name} is already apply in progress. "
+                        "Skipping upload.")
+            return True
+        elif (app.app_version != app_version):
+            LOG.error(f"Dependent app {app_name} version mismatch. "
+                        f"Expected version: {app_version}, "
+                        f"found version: {app.app_version}.")
+            return False
+        else:
+            LOG.error(f"Dependent app {app_name} is in an invalid state. "
+                        f"Current status: {app.status}.")
+            return False
+
     def upload_dependent_app(self, context, dependent_app_apply_type):
         """ Uploads a dependent application to the system.
 
@@ -16962,28 +17154,12 @@ class ConductorManager(service.PeriodicService):
         # and has the same version
         app_name = dependent_app_apply_type['name']
         app_version = dependent_app_apply_type['version']
+        # Initialize the app object to None
+        app = None
+
         try:
             app = kubeapp_obj.get_by_name(context, app_name)
-
-            if (app.app_version == app_version and
-                    app.status == constants.APP_UPLOAD_SUCCESS):
-                LOG.info(f"Dependent app {app_name} is already uploaded. "
-                            f"Skipping upload.")
-                return True
-            elif (app.app_version == app_version and
-                    app.status == constants.APP_APPLY_SUCCESS):
-                LOG.info(f"Dependent app {app_name} is already applied. "
-                            f"Skipping upload.")
-                return True
-            elif (app.app_version != app_version):
-                LOG.error(f"Dependent app {app_name} version mismatch. "
-                            f"Expected version: {app_version}, "
-                            f"found version: {app.app_version}.")
-                return False
-            else:
-                LOG.error(f"Dependent app {app_name} is in an invalid state. "
-                            f"Current status: {app.status}.")
-                return False
+            return self.check_status_dependent_app_upload(context, app, app_name, app_version)
         except exception.KubeAppNotFound:
             LOG.info(f"Dependent app {app_name} not found. Creating a new app.")
 
@@ -17028,6 +17204,10 @@ class ConductorManager(service.PeriodicService):
         except exception.KubeAppBundleNotFound as e:
             LOG.error(e)
             return False
+        except exception.KubeAppAlreadyExists:
+            # This prevents race condition within the process of
+            # executing the upload_dependent_app function in parallel.
+            return self.check_status_dependent_app_upload(context, app, app_name, app_version)
         except Exception as e:
             LOG.error(
                 f"Failed to upload tarball for dependent app {app_name} "
@@ -17067,11 +17247,43 @@ class ConductorManager(service.PeriodicService):
         LOG.info("Starting apply of dependent app")
         for dependent_app in upload_apps_succeeded_list:
             app_name = dependent_app['name']
+            app_version = dependent_app['version']
             try:
                 app = kubeapp_obj.get_by_name(context, app_name)
             except exception.KubeAppNotFound as e:
                 LOG.exception(e)
                 apply_apps_failed_list.append(dependent_app)
+                continue
+
+            if (app.app_version == app_version and
+                    app.status == constants.APP_APPLY_IN_PROGRESS):
+                # Wait for the app status to be applied
+                timeout = constants.APP_INSTALLATION_DEPENDENT_APP_TIMEOUT
+                start_time = time.time()
+
+                while time.time() - start_time < timeout:
+                    app = kubeapp_obj.get_by_name(context, app_name)
+                    LOG.info(f"Checking status of dependent app {app_name}: {app.status}")
+                    if app.status == constants.APP_APPLY_SUCCESS:
+                        LOG.info(f"Dependent app {app_name} aplied succeeded.")
+                        apply_apps_succeeded_list.append(dependent_app)
+                        break
+                    if app.status == constants.APP_APPLY_FAILURE:
+                        LOG.error(f"Dependent app {app_name} apply failed.")
+                        apply_apps_failed_list.append(dependent_app)
+                        break
+                    time.sleep(5)  # Check every 5 seconds
+                else:
+                    LOG.error(f"Timeout waiting for dependent app {app_name} to apply.")
+                    apply_apps_failed_list.append(dependent_app)
+                continue
+
+            elif (app.app_version == app_version and
+                    app.status == constants.APP_APPLY_SUCCESS):
+                LOG.info(f"Dependent app {app_name} is already applied. "
+                         f"Skipping apply.")
+                apply_apps_succeeded_list.append(dependent_app)
+                continue
 
             hook_info = LifecycleHookInfo()
             hook_info.init(LifecycleConstants.APP_LIFECYCLE_MODE_MANUAL,
@@ -17083,25 +17295,32 @@ class ConductorManager(service.PeriodicService):
             except exception.LifecycleSemanticCheckException as e:
                 LOG.info(f"Auto-apply failed prerequisites for {app.name}: {e}")
                 apply_apps_failed_list.append(dependent_app)
+                continue
             except exception.SysinvException:
                 LOG.exception(f"Internal sysinv error while auto applying {app.name}")
                 apply_apps_failed_list.append(dependent_app)
+                continue
             except Exception as e:
                 LOG.exception(f"Automatic operation:{hook_info} "
                               f"for app {app.name} failed with: {e}")
                 apply_apps_failed_list.append(dependent_app)
+                continue
 
             if self._patching_operation_is_occurring():
                 apply_apps_failed_list.append(dependent_app)
+                continue
 
             # Update the app status to in progress
             cutils.update_app_status(app, constants.APP_APPLY_IN_PROGRESS)
 
-            app_applied = self.perform_app_apply(context, app, app.mode, hook_info)
-
-            if app_applied:
-                apply_apps_succeeded_list.append(dependent_app)
-            else:
+            try:
+                app_applied = self.perform_app_apply(context, app, app.mode, hook_info)
+                if app_applied:
+                    apply_apps_succeeded_list.append(dependent_app)
+                else:
+                    apply_apps_failed_list.append(dependent_app)
+            except exception.KubeAppApplyFailure as e:
+                LOG.exception(f"Failed to apply dependent app {app.name}: {e}")
                 apply_apps_failed_list.append(dependent_app)
 
         return apply_apps_succeeded_list, apply_apps_failed_list
@@ -17174,8 +17393,7 @@ class ConductorManager(service.PeriodicService):
             LOG.error(
                 "Failed to upload or apply dependent applications. "
                 f"Upload failed: {upload_apps_failed_list}, "
-                f"Apply failed: {apply_apps_failed_list}. "
-                "Please check /var/logs/sysinv.log for more details."
+                f"Apply failed: {apply_apps_failed_list}."
             )
             return False
 
