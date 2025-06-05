@@ -4441,6 +4441,23 @@ class HostController(rest.RestController):
                 raise wsme.exc.ClientSideError('%s' % msg)
 
     @staticmethod
+    def _semantic_check_cgts_vg(hostname, ihost_uuid):
+        """
+        Perform semantic checking for cgts-vg volume group
+        :param ihost_uuid: ihost uuid unique id
+        """
+        # Prevent unlock if cgts-vg volume group has no physical volumes allocated
+        ihost_ipvs = pecan.request.dbapi.ipv_get_by_ihost(ihost_uuid)
+        for pv in ihost_ipvs:
+            # Make sure that we have physical volumes allocated to the volume group
+            if pv.lvm_vg_name == constants.LVG_CGTS_VG:
+                break
+        else:
+            raise wsme.exc.ClientSideError(
+                _("The cgts-vg volume group on %s does not "
+                  "contain any physical volumes.") % hostname)
+
+    @staticmethod
     def _semantic_check_restore_complete(ihost):
         """
         During a restore procedure, checks worker nodes can be unlocked
@@ -5323,16 +5340,14 @@ class HostController(rest.RestController):
                 LOG.warn("Allowing force-unlock of host %s "
                          "undergoing reinstall." % hostupdate.displayid)
 
-        if not force_unlock:
-            # Ensure inventory has completed prior to allowing unlock
-            host = pecan.request.dbapi.ihost_get(
-                hostupdate.ihost_orig['uuid'])
-            if host.inv_state != constants.INV_STATE_INITIAL_INVENTORIED:
-                raise wsme.exc.ClientSideError(
-                    _("Can not unlock host %s that has not yet been "
-                      "inventoried. Please wait for host to complete "
-                      "initial inventory prior to unlock."
-                      % hostupdate.displayid))
+        # Ensure inventory has completed prior to allowing unlock
+        host = pecan.request.dbapi.ihost_get(hostupdate.ihost_orig['uuid'])
+        if host.inv_state != constants.INV_STATE_INITIAL_INVENTORIED:
+            raise wsme.exc.ClientSideError(
+                _("Can not unlock host %s that has not yet been "
+                    "inventoried. Please wait for host to complete "
+                    "initial inventory prior to unlock."
+                    % hostupdate.displayid))
 
         # To unlock, ensure no app is being applied/reapplied, updated or recovered
         # as this could at best delay the in-progress app operation or at worst result
@@ -5343,6 +5358,9 @@ class HostController(rest.RestController):
         # Ensure there is no k8s rootca update phase in progress
         self._semantic_check_unlock_kube_rootca_update(hostupdate.ihost_orig,
                                                        force_unlock)
+
+        # Ensure that we have physical volumes allocated to the cgts-vg volume group
+        self._semantic_check_cgts_vg(hostupdate.ihost_orig['hostname'], hostupdate.ihost_orig['uuid'])
 
         personality = hostupdate.ihost_patch.get('personality')
         if personality == constants.CONTROLLER:
