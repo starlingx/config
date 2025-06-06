@@ -18028,93 +18028,50 @@ class ConductorManager(service.PeriodicService):
             self.report_kube_upgrade_control_plane_result(
                     context, host_uuid, target_version, is_first_master, False)
 
+    def report_kube_upgrade_kubelet_result(self, context, host_uuid, to_version, success):
+        """Handle kubelet upgrade result call from Sysinv Agent.
+
+        :param: context: request context
+        :param: host_uuid: UUID of the host reporting status
+        :param: to_version: Kube version to which control plane was being upgraded to
+        :param: success: True if upgrade was successful, False otherwise
+        """
+        host_obj = objects.host.get_by_uuid(context, host_uuid)
+        kube_host_upgrade_obj = objects.kube_host_upgrade.get_by_host_id(context, host_obj.id)
+        host_name = host_obj.hostname
+        if success:
+            kube_host_upgrade_obj.status = kubernetes.KUBE_HOST_UPGRADED_KUBELET
+            LOG.info("Kubelet on the host %s upgraded successfully to version %s."
+                     % (host_name, to_version))
+        else:
+            kube_host_upgrade_obj.status = kubernetes.KUBE_HOST_UPGRADING_KUBELET_FAILED
+            LOG.error("Failed to upgrade kubelet on the host %s to version %s."
+                      % (host_name, to_version))
+        kube_host_upgrade_obj.save()
+
     def kube_upgrade_kubelet(self, context, host_uuid):
         """Upgrade the kubernetes kubelet on this host"""
-
-        def manifest_apply_failed_state(context, host_obj):
-            kube_host_upgrade_obj = objects.kube_host_upgrade.get_by_host_id(
-                context, host_obj.id)
-            kube_host_upgrade_obj.status = \
-                kubernetes.KUBE_HOST_UPGRADING_KUBELET_FAILED
-            kube_host_upgrade_obj.save()
 
         host_obj = objects.host.get_by_uuid(context, host_uuid)
         host_name = host_obj.hostname
         kube_host_upgrade_obj = objects.kube_host_upgrade.get_by_host_id(
             context, host_obj.id)
-        target_version = kube_host_upgrade_obj.target_version
+        to_version = kube_host_upgrade_obj.target_version
 
-        if host_obj.personality == constants.CONTROLLER:
-            puppet_class = 'platform::kubernetes::master::upgrade_kubelet'
-        elif host_obj.personality == constants.WORKER:
-            puppet_class = 'platform::kubernetes::worker::upgrade_kubelet'
+        if host_obj.personality in (constants.CONTROLLER, constants.WORKER):
+            agent_api = agent_rpcapi.AgentAPI()
+            try:
+                agent_api.kube_upgrade_kubelet(context, host_uuid, to_version)
+            except Exception as ex:
+                # Handle unexpected exception
+                LOG.error("Kubelet upgrade failed on host: [%s]. Error: [%s]" % (host_name, ex))
+                self._kube_upgrade_state_update(
+                        context, kubernetes.KUBE_HOST_UPGRADING_KUBELET_FAILED)
+                return
         else:
             raise exception.SysinvException(_(
                 "Invalid personality %s to upgrade kubelet." %
                 host_obj.personality))
-
-        # Update the config for this host
-        personalities = [host_obj.personality]
-        config_uuid = self._config_update_hosts(context, personalities,
-            [host_uuid])
-
-        # Apply the runtime manifest to upgrade the kubelet
-        config_dict = {
-            "personalities": personalities,
-            "host_uuids": [host_uuid],
-            "classes": [puppet_class]
-        }
-        try:
-            self._config_apply_runtime_manifest(context, config_uuid, config_dict)
-        except Exception:
-            LOG.error("Manifest apply failed for host %s with config_uuid %s" %
-                      (host_name, config_uuid))
-            return manifest_apply_failed_state(context, host_obj)
-
-        # Wait for the manifest to be applied
-        LOG.debug("Waiting for config apply on host %s" % host_name)
-        starttime = datetime.utcnow()
-        while ((datetime.utcnow() - starttime).total_seconds() <
-                kubernetes.MANIFEST_APPLY_TIMEOUT):
-            greenthread.sleep(kubernetes.MANIFEST_APPLY_INTERVAL)
-            try:
-                host_obj = objects.host.get_by_uuid(context, host_uuid)
-                if host_obj.config_target == host_obj.config_applied:
-                    LOG.info("Config was applied for host %s" % host_name)
-                    break
-            except Exception:
-                LOG.exception("Problem getting host info.")
-            LOG.debug("Waiting for config apply on host %s" % host_name)
-        else:
-            LOG.warning("Manifest apply failed for host %s" % host_name)
-            return manifest_apply_failed_state(context, host_obj)
-
-        # Wait for the kubelet to start with the new version
-        kube_operator = kubernetes.KubeOperator()
-        LOG.debug("Waiting for kubelet update on host %s" % host_name)
-        starttime = datetime.utcnow()
-        while ((datetime.utcnow() - starttime).total_seconds() <
-                kubernetes.POD_START_TIMEOUT):
-            greenthread.sleep(kubernetes.POD_START_INTERVAL)
-            try:
-                # If we can't talk to the Kubernetes API we still want to
-                # hit the else clause below on timeout.
-                kubelet_versions = kube_operator.kube_get_kubelet_versions()
-                if kubelet_versions.get(host_name, None) == target_version:
-                    LOG.info("Kubelet was updated for host %s" % host_name)
-                    break
-            except Exception:
-                LOG.exception("Problem getting kubelet versions.")
-            LOG.debug("Waiting for kubelet update on host %s" % host_name)
-        else:
-            LOG.warning("Kubelet upgrade failed for host %s" % host_name)
-            return manifest_apply_failed_state(context, host_obj)
-
-        # The kubelet update was successful
-        kube_host_upgrade_obj = objects.kube_host_upgrade.get_by_host_id(
-            context, host_obj.id)
-        kube_host_upgrade_obj.status = kubernetes.KUBE_HOST_UPGRADED_KUBELET
-        kube_host_upgrade_obj.save()
 
     def _get_kubernetes_system_images(self, kube_version):
         """Get kubernetes images information for a kubernetes version
@@ -18458,7 +18415,6 @@ class ConductorManager(service.PeriodicService):
                     context, kubernetes.KUBE_UPGRADING_NETWORKING_FAILED)
             return
 
-        # Indicate that networking upgrade is complete
         self._kube_upgrade_state_update(context, kubernetes.KUBE_UPGRADED_NETWORKING)
         LOG.info("Kubernetes networking upgrade completed successfully.")
 

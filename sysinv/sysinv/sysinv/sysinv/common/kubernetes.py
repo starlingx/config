@@ -684,6 +684,29 @@ def is_k8s_configured():
     return False
 
 
+def enable_kubelet_garbage_collection():
+    """ Disables kubelet garbage collection
+
+    This method virtually enables back kubelet image garbage collection by removing
+    high(100) image garbage collection threshold in the kubelet config.
+    Note that, this DOES NOT restart the kubelet after updating the value and must be
+    restarted explicitly to take effect.
+
+    :raises: SysinvException if an error is encountered
+    """
+    try:
+        stream = None
+        with open(KUBEADM_FLAGS_FILE, "r") as file:
+            stream = file.read()
+        if stream and "image-gc-high-threshold" in stream:
+            stream = stream.replace("--image-gc-high-threshold 100 ", "")
+            with open(KUBEADM_FLAGS_FILE, "w") as file:
+                file.write(stream)
+    except Exception as ex:
+        raise exception.SysinvException("Failed to enable kubelet garbage "
+                                        "collection. Error: [%s]" % (ex))
+
+
 def create_configmap_obj(namespace, name, filename, **kwargs):
     data_section_name = kwargs.pop('data_section_name', 'data')
     metadata = client.V1ObjectMeta(namespace=namespace, name=name, **kwargs)

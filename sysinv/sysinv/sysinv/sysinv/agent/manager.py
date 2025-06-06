@@ -2324,6 +2324,46 @@ class AgentManager(service.PeriodicService):
                 LOG.exception("Sysinv Agent exception updating ipv"
                               "conductor.")
 
+    def kube_upgrade_kubelet(self, context, host_uuid, to_kube_version):
+        """Upgrade the kubernetes kubelet on this host
+
+        Upgrade kubelet on controller or worker host.
+
+        :param: context: context object
+        :param: host_uuid: A host UUID string.
+        :param: to_kube_version: kubernetes version being upgraded to
+        """
+        if self._ihost_personality in (constants.WORKER, constants.CONTROLLER):
+
+            try:
+                current_link = os.readlink(kubernetes.KUBERNETES_SYMLINKS_STAGE_2)
+
+                from_kube_version = 'v' + current_link.split('/')[4]
+
+                LOG.info("Kubelet upgrade from version %s to %s started on this host."
+                         % (from_kube_version, to_kube_version))
+
+                if self._ihost_personality == constants.CONTROLLER:
+                    operator = kube_host.KubeControllerOperator(context, host_uuid, self._hostname)
+                else:
+                    operator = kube_host.KubeWorkerOperator(context, host_uuid, self._hostname)
+
+                operator.upgrade_kubelet(from_kube_version, to_kube_version)
+
+                LOG.info("Kubelet upgrade successful from version %s to %s on this host."
+                         % (from_kube_version, to_kube_version))
+
+                success = True
+
+            except Exception as ex:
+                LOG.error("Failed to upgrade Kubelet from version %s to %s on this host. Error: "
+                          "[%s]. Please retry." % (from_kube_version, to_kube_version, ex))
+                success = False
+
+            conductor_api = conductor_rpcapi.ConductorAPI()
+            conductor_api.report_kube_upgrade_kubelet_result(context, host_uuid,
+                                                             to_kube_version, success)
+
     def report_initial_inventory(self, context, host_uuid):
         # conductor requests re-report initial inventory
         if self._ihost_uuid and self._ihost_uuid == host_uuid:

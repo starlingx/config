@@ -1995,6 +1995,19 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.cast(context, self.make_msg(
             'kube_upgrade_control_plane', host_uuid=host_uuid))
 
+    def report_kube_upgrade_kubelet_result(self, context, host_uuid, to_version, success):
+        """Asynchronously receive the result of kubelet upgrade on a host.
+
+        :param: context: request context
+        :param: host_uuid: UUID of the host reporting status
+        :param: to_version: Kube version to which kubelet was being upgraded to
+        :param: success: True if kubelet upgraded successfully else False
+        """
+        return self.cast(context, self.make_msg('report_kube_upgrade_kubelet_result',
+                                                host_uuid=host_uuid,
+                                                to_version=to_version,
+                                                success=success))
+
     def kube_upgrade_kubelet(self, context, host_uuid):
         """Asynchronously, have the conductor upgrade the kubernetes kubelet
         plane on this host.

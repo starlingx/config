@@ -110,7 +110,6 @@ class KubeHostOperator(object):
         self._host_name = host_name
         self._system_mode = tsc.system_mode
         self._containerd_operator = ContainerdOperator()
-        self._k8s_images = kubernetes.get_k8s_images_for_all_versions()
         self._kubernetes_operator = kubernetes.KubeOperator()
 
     def _mask_stop_service(self, service, runtime=False, now=False):
@@ -213,6 +212,55 @@ class KubeHostOperator(object):
             raise exception.SysinvException("Kubeadm upgrade node operation failed "
                                             "with error: [%s]" % (ex))
 
+    def _update_pause_image_in_containerd(self, current_pause_image, target_pause_image):
+        """Update pause image in containerd config file
+
+        :param: current_pause_image: full pause image name with tag currently configured. String
+        :param: target_pause_image: full pause image name with tag to be replaced. String
+
+        :return: True if successful, False otherwise
+        """
+        try:
+            stream = ""
+            with open(containers.CONTAINERD_CONFIG_FULL_PATH, 'r') as file:
+                stream = file.read()
+            if stream != "":
+                sandbox_image_prefix = \
+                        f"sandbox_image = \"{constants.DOCKER_REGISTRY_SERVER}/"
+                stream = stream.replace(sandbox_image_prefix + current_pause_image,
+                                        sandbox_image_prefix + target_pause_image)
+                with open(containers.CONTAINERD_CONFIG_FULL_PATH, 'w') as file:
+                    file.write(stream + '\n')
+                LOG.info("Successfully updated pause image version in the "
+                         "containerd config.")
+            else:
+                raise exception.SysinvException("Could not properly read containerd config file: "
+                                                "[%s]. "
+                                                % (containers.CONTAINERD_CONFIG_FULL_PATH))
+        except Exception as ex:
+            raise exception.SysinvException("Failed to update containerd config file [%s] with the "
+                                            "new pause image version [%s], Error: [%s]"
+                                            % (containers.CONTAINERD_CONFIG_FULL_PATH,
+                                               target_pause_image, ex))
+
+    def upgrade_kubelet(
+            self, from_kube_version, to_kube_version, current_pause_image, target_pause_image):
+        """Upgrade the kubernetes kubelet on this host
+
+        Common operations for both controller and worker personalities
+
+        :param: from_kube_version: current kubernetes version
+        :param: to_kube_version: kubernetes version being upgraded to
+        """
+        # Update pause image
+        if current_pause_image == target_pause_image:
+            LOG.info("No need to update 'pause' image inside containerd config. Proceeding...")
+        else:
+            self._update_pause_image_in_containerd(current_pause_image, target_pause_image)
+
+        # update stage2 symlink.
+        self._update_symlink(kubernetes.KUBERNETES_SYMLINKS_STAGE_2, to_kube_version)
+
 
 class KubeWorkerOperator(KubeHostOperator):
     '''Class for kubernetes worker operations in Sysinv '''
@@ -221,6 +269,46 @@ class KubeWorkerOperator(KubeHostOperator):
         self._host_personality = constants.WORKER
         self._kubeconfig = kubernetes.KUBERNETES_KUBELET_CONF
         super().__init__(context, host_uuid, host_name)
+
+    def upgrade_kubelet(self, from_kube_version, to_kube_version):
+        """Upgrade the kubernetes kubelet on this worker
+
+        Upgrade kubelet on worker hosts.
+
+        :param: from_kube_version: current kubernetes version
+        :param: to_kube_version: kubernetes version being upgraded to
+        """
+        try:
+            from_kube_version = from_kube_version.strip('v')
+            to_kube_version = to_kube_version.strip('v')
+
+            current_images = kubernetes.get_k8s_images(from_kube_version)
+            current_pause_image = current_images['pause']
+
+            target_images = kubernetes.get_k8s_images(to_kube_version)
+            target_pause_image = target_images['pause']
+
+            # pull pause image if required
+            if current_pause_image != target_pause_image:
+                if not self._containerd_operator.pull_images([target_pause_image]):
+                    raise exception.SysinvException("Failed to pull the pause image required for "
+                                                    "the kubelet upgrade.")
+            else:
+                LOG.info("No need to update the pause image. Skip pulling ...")
+
+            # kubeadm upgrade node
+            self.kubeadm_upgrade_node(to_kube_version)
+
+            # update stage1 symlink.
+            self._update_symlink(kubernetes.KUBERNETES_SYMLINKS_STAGE_1, to_kube_version)
+
+            super().upgrade_kubelet(
+                    from_kube_version, to_kube_version, current_pause_image, target_pause_image)
+
+            utils.pmon_restart_service(kubernetes.KUBELET_SYSTEMD_SERVICE_NAME)
+
+        except Exception as ex:
+            raise exception.SysinvException("Error upgrading kubelet: [%s]. " % (ex))
 
 
 class KubeControllerOperator(KubeHostOperator):
@@ -580,7 +668,9 @@ class KubeControllerOperator(KubeHostOperator):
         """
         try:
             process = None
+
             to_kube_version = to_kube_version.strip('v')
+
             LOG.info("Running command 'kubeadm upgrade apply' on this host ...")
 
             cmd = [constants.KUBEADM_PATH_FORMAT_STR.format(kubeadm_ver=to_kube_version),
@@ -778,3 +868,36 @@ class KubeControllerOperator(KubeHostOperator):
 
         except Exception as ex:
             raise exception.SysinvException("Error upgrading control plane components: %s" % (ex))
+
+    def upgrade_kubelet(self, from_kube_version, to_kube_version):
+        """Upgrade the kubernetes kubelet on this controller
+
+        Upgrade kubelet on controller hosts.
+        pause image pull, execution of command 'kubeadm upgrade node' and 'stage1' symlink update
+        etc. operations are already done on controller nodes during previous stages of kubernetes
+        upgrade.
+
+        :param: from_kube_version: current kubernetes version
+        :param: to_kube_version: kubernetes version being upgraded to
+        """
+        try:
+            from_kube_version = from_kube_version.strip('v')
+            to_kube_version = to_kube_version.strip('v')
+
+            current_images = kubernetes.get_k8s_images(from_kube_version)
+            current_pause_image = current_images['pause']
+
+            target_images = kubernetes.get_k8s_images(to_kube_version)
+            target_pause_image = target_images['pause']
+
+            super().upgrade_kubelet(
+                    from_kube_version, to_kube_version, current_pause_image, target_pause_image)
+
+            # GC was disabled during image download to prevent undesirable image removal before
+            # control plane and kubelet upgrade. Re-enable it now.
+            kubernetes.enable_kubelet_garbage_collection()
+
+            utils.pmon_restart_service(kubernetes.KUBELET_SYSTEMD_SERVICE_NAME)
+
+        except Exception as ex:
+            raise exception.SysinvException("Error upgrading kubelet: [%s]. " % (ex))
