@@ -18176,8 +18176,7 @@ class ConductorManager(service.PeriodicService):
                 rc = 1
 
             if rc == 1:
-                kube_upgrade_obj.state = fail_state
-                kube_upgrade_obj.save()
+                manifest_apply_failed_state(context, fail_state, host_obj)
                 return
 
         elif kube_upgrade_obj.state == kubernetes.KUBE_UPGRADING_SECOND_MASTER:
