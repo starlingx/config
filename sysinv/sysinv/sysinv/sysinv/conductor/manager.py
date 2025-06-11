@@ -7465,12 +7465,6 @@ class ConductorManager(service.PeriodicService):
             older_than=expired_date)
 
         if not pending_runtime_config:
-            # Check if there are leftover temporary directories and delete them
-            for entry in os.listdir(tsc.PUPPET_PATH):
-                entry_path = os.path.join(tsc.PUPPET_PATH, entry)
-                if os.path.isdir(entry_path) and entry.startswith('tmp'):
-                    LOG.info("Removing temporary directory %s" % entry_path)
-                    shutil.rmtree(entry_path, ignore_errors=True)
             return
 
         LOG.info("Found stale runtime config entries, retrying the requests...")
