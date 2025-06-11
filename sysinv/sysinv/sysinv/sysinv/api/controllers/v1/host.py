@@ -2036,6 +2036,15 @@ class HostController(rest.RestController):
                                                         constants.NETWORK_TYPE_MGMT, True)
             return address.address
 
+    def _exists_monitoring_instance_on_host(self, host_uuid):
+        ptp_instances = pecan.request.dbapi.ptp_instances_get_list(host_uuid)
+
+        for instance in ptp_instances:
+            if instance["service"] == constants.PTP_INSTANCE_TYPE_MONITORING:
+                return True
+
+        return False
+
     def _patch(self, uuid, patch):
         log_start = cutils.timestamped("ihost_patch_start")
 
@@ -2048,12 +2057,22 @@ class HostController(rest.RestController):
                 ptp_instance_id = p.get('value')
                 try:
                     # Check PTP instance exists
-                    pecan.request.dbapi.ptp_instance_get(ptp_instance_id)
+                    ptp_instance = pecan.request.dbapi.ptp_instance_get(ptp_instance_id)
                 except exception.PtpInstanceNotFound:
                     raise wsme.exc.ClientSideError(_("No PTP instance object"))
                 values = {'host_id': ihost_obj.id,
                           'ptp_instance_id': ptp_instance_id}
                 if p.get('op') == constants.PTP_PATCH_OPERATION_ADD:
+                    # Check constraint: single monitoring ptp instance on host
+                    if ptp_instance[
+                        "service"
+                    ] == constants.PTP_INSTANCE_TYPE_MONITORING and self._exists_monitoring_instance_on_host(
+                        uuid
+                    ):
+                        raise wsme.exc.ClientSideError(
+                            _("Monitoring ptp instance already exists on host")
+                        )
+
                     pecan.request.dbapi.ptp_instance_assign(values)
                 else:
                     pecan.request.dbapi.ptp_instance_remove(values)

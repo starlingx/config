@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2021-2023 Wind River Systems, Inc.
+# Copyright (c) 2021-2023, 2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -74,7 +74,8 @@ class PtpInstance(base.APIBase):
                           constants.PTP_INSTANCE_TYPE_PHC2SYS,
                           constants.PTP_INSTANCE_TYPE_TS2PHC,
                           constants.PTP_INSTANCE_TYPE_CLOCK,
-                          constants.PTP_INSTANCE_TYPE_SYNCE4L)
+                          constants.PTP_INSTANCE_TYPE_SYNCE4L,
+                          constants.PTP_INSTANCE_TYPE_MONITORING)
     "Type of service of the PTP instance"
 
     hostnames = types.MultiType([list])

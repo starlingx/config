@@ -323,8 +323,38 @@ class NetworkingPuppet(base.BasePuppet):
 
         return config
 
-    def _set_ptp_instance_global_parameters(self, ptp_instances, ptp_parameters_instance):
+    def _set_ptp_instance_monitoring_global_parameters(
+        self, instance, ptp_parameters_instance
+    ):
+        default_global_parameters = {
+            "satellite_count": constants.PTP_MONITORING_SATELLITE_COUNT,
+            "signal_quality_db": constants.PTP_MONITORING_SIGNAL_QUALITY_DB_VALUE,
+        }
+        default_cmdline_opts = ""
 
+        # Add default global parameters the instance
+        instance["global_parameters"] = default_global_parameters
+        instance["cmdline_opts"] = default_cmdline_opts
+
+        for global_param in ptp_parameters_instance:
+            # Add the supplied instance parameters to global_parameters
+            if instance["uuid"] in global_param["owners"]:
+                instance["global_parameters"][global_param["name"]] = global_param[
+                    "value"
+                ]
+            if "cmdline_opts" in instance["global_parameters"]:
+                cmdline = instance["global_parameters"].pop("cmdline_opts")
+                quotes = {"'", "\\'", '"', '\\"'}
+                for quote in quotes:
+                    cmdline = cmdline.strip(quote)
+                instance["cmdline_opts"] = cmdline
+
+        allowed_instance_fields = ["global_parameters", "cmdline_opts"]
+        monitoring_config = {r: instance[r] for r in allowed_instance_fields}
+
+        return monitoring_config
+
+    def _set_ptp_instance_global_parameters(self, ptp_instances, ptp_parameters_instance):
         default_global_parameters = {
             # Default ptp4l parameters were determined during the original integration of PTP.
             # These defaults maintain the same PTP behaviour as single instance implementation.
@@ -713,12 +743,20 @@ class NetworkingPuppet(base.BasePuppet):
         nic_clock_config = {}
         nic_clock_enabled = False
         ptp_instance_configs = []
+        monitoring_instance_configs = []
 
         for index, instance in enumerate(ptp_instances):
             if ptp_instances[index]['service'] == constants.PTP_INSTANCE_TYPE_CLOCK:
                 clock_instance = ptp_instances[index]
                 nic_clocks[instance['name']] = clock_instance.as_dict()
                 nic_clocks[instance['name']]['interfaces'] = []
+            elif (
+                ptp_instances[index]["service"]
+                == constants.PTP_INSTANCE_TYPE_MONITORING
+            ):
+                ptp_instances[index][instance["name"]] = instance.as_dict()
+                ptp_instances[index][instance["name"]]["interfaces"] = []
+                monitoring_instance_configs.append(ptp_instances[index])
             else:
                 ptp_instances[index][instance['name']] = instance.as_dict()
                 ptp_instances[index][instance['name']]['interfaces'] = []
@@ -751,14 +789,34 @@ class NetworkingPuppet(base.BasePuppet):
         else:
             ptp_config = {}
 
-        return {'platform::ptpinstance::config': ptp_config,
-                'platform::ptpinstance::enabled': ptpinstance_enabled,
-                'platform::ptpinstance::nic_clock::nic_clock_config': nic_clock_config,
-                'platform::ptpinstance::nic_clock::nic_clock_enabled': nic_clock_enabled}
+        # Generate the monitoring config
+        monitoring_enabled = False
+        monitoring_config = {}
+        len_monitoring_instance_configs = len(monitoring_instance_configs)
+
+        if ptpinstance_enabled and len_monitoring_instance_configs > 0:
+            # Only single monitoring instance per host is allowed.
+            if len_monitoring_instance_configs == 1:
+                monitoring_enabled = True
+                monitoring_config = self._set_ptp_instance_monitoring_global_parameters(
+                    monitoring_instance_configs[0], ptp_parameters_instance
+                )
+            else:
+                LOG.warning(
+                    f"PTP monitoring instances are {len_monitoring_instance_configs > 1} on host id {host.id}."
+                )
+
+        return {
+            'platform::ptpinstance::config': ptp_config,
+            'platform::ptpinstance::enabled': ptpinstance_enabled,
+            'platform::ptpinstance::monitoring::monitoring_config': monitoring_config,
+            'platform::ptpinstance::monitoring::monitoring_enabled': monitoring_enabled,
+            'platform::ptpinstance::nic_clock::nic_clock_config': nic_clock_config,
+            'platform::ptpinstance::nic_clock::nic_clock_enabled': nic_clock_enabled,
+        }
 
     def _get_interface_config(self, networktype):
         config = {}
-
         network_interface = interface.find_interface_by_type(
             self.context, networktype)
 

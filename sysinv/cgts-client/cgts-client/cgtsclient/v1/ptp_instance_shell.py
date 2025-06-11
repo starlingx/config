@@ -1,11 +1,12 @@
 ########################################################################
 #
-# Copyright (c) 2021-2023 Wind River Systems, Inc.
+# Copyright (c) 2021-2023, 2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
 ########################################################################
 
+from cgtsclient.common import constants
 from cgtsclient.common import utils
 from cgtsclient import exc
 from cgtsclient.v1 import ihost as ihost_utils
@@ -45,7 +46,10 @@ def do_ptp_instance_list(cc, args):
            help="Name of PTP instance [REQUIRED]")
 @utils.arg('service',
            metavar='<service type>',
-           choices=['ptp4l', 'phc2sys', 'ts2phc', 'clock', 'synce4l'],
+           choices=[
+               'ptp4l', 'phc2sys', 'ts2phc', 'clock', 'synce4l',
+               constants.PTP_INSTANCE_TYPE_MONITORING
+           ],
            help="Service type [REQUIRED]")
 def do_ptp_instance_add(cc, args):
     """Add a PTP instance."""
@@ -81,6 +85,20 @@ def _ptp_instance_parameter_op(cc, op, instance, parameters):
     if len(parameters) == 0:
         raise exc.CommandError('Missing PTP parameter')
     ptp_instance = ptp_instance_utils._find_ptp_instance(cc, instance)
+
+    # check for supported parameters in case of monitoring type
+    if (ptp_instance.service == constants.PTP_INSTANCE_TYPE_MONITORING and op == "add"):
+        for param_keypair in parameters:
+            if param_keypair.find("=") < 0:
+                raise exc.CommandError(f"Bad PTP parameter keypair: {param_keypair}")
+            (param_name, param_value) = param_keypair.split("=", 1)
+
+            if param_name not in constants.PTP_INSTANCE_TYPE_MONITORING_SUPPORTED_PARAMETERS:
+                raise exc.CommandError(
+                    f"Parameter {param_name} is not supported. Supported parameters:"
+                    f"{constants.PTP_INSTANCE_TYPE_MONITORING_SUPPORTED_PARAMETERS}"
+                )
+
     patch = []
     for parameter in parameters:
         patch.append({'op': op,
