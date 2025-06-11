@@ -50,7 +50,7 @@ source_suffix = '.rst'
 master_doc = 'index'
 
 # General information about the project.
-openstackdocs_repo_name = 'openstack/stx-config'
+openstackdocs_repo_name = 'starlingx/stx-config'
 openstackdocs_auto_name = False
 project = u'StarlingX Configuration'
 openstackdocs_bug_project = 'starlingx'
