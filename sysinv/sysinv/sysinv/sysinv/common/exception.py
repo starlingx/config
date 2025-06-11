@@ -1,6 +1,6 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 
-# Copyright (c) 2013-2024 Wind River Systems, Inc.
+# Copyright (c) 2013-2025 Wind River Systems, Inc.
 # Copyright 2010 United States Government as represented by the
 # Administrator of the National Aeronautics and Space Administration.
 # All Rights Reserved.
@@ -273,6 +273,11 @@ class ManagedIPAddress(Invalid):
     message = _("The infrastructure IP address for this nodetype is "
                 "specified by the system configuration and cannot be "
                 "modified.")
+
+
+class InvalidVIMAction(Invalid):
+    message = _("Unsupported action: %(vim_event)s, "
+                "only host-audit action is supported")
 
 
 class AddressAlreadyExists(Conflict):
@@ -1725,3 +1730,7 @@ class UnexpectedEvent(SysinvException):
 
 class CannotQueryPlatformUpgrade(SysinvException):
     message = _("Failed to query platform upgrade state")
+
+
+class CannotTriggerVIMHostAudit(SysinvException):
+    message = _("Failed to trigger VIM host-audit for %(hostname)s")
