@@ -2600,7 +2600,8 @@ itemNotFound (404)
    "updated_at (Optional)", "plain", "xsd:dateTime", "The time when the object was last updated."
    "uses (Optional)", "plain", "xsd:list", "Interfaces which the current interface uses."
    "used_by (Optional)", "plain", "xsd:list", "Interfaces which use the current interface."
-   "max_tx_rate (Optional)", "plain", "xsd:integer", "The Maximum Transmission Rate of the interface, in Mbps. Only applicable if ``ifclass : pci-sriov`` and ``iftype : vf``"
+   "max_tx_rate (Optional)", "plain", "xsd:integer", "The Maximum Transmission Rate of the interface, in Mbps. Only applicable for combinations - ``ifclass : pci-sriov`` and ``iftype : vf`` or ``ifclass : platform`` and ``iftype : VLAN/AE/Ethernet``."
+   "max_rx_rate (Optional)", "plain", "xsd:integer", "The Maximum Reception Rate of the interface, in Mbps. Only applicable if ``ifclass : platform`` and ``iftype : VLAN/AE/Ethernet``."
 
 ::
 
@@ -2629,8 +2630,10 @@ itemNotFound (404)
          "vlan_id": null,
          "imtu": 1500,
          "aemode": null,
-         "ifclass": "platform"
-         "ifname": "eth1"
+         "ifclass": "platform",
+         "ifname": "eth1",
+         "max_tx_rate": 30,
+         "max_rx_rate": 30,
        },
        {
          "forihostid": 2,
@@ -2716,7 +2719,8 @@ itemNotFound (404)
    "ports (Optional)", "plain", "xsd:list", "URIs to the physical ports of this interface."
    "uses (Optional)", "plain", "xsd:list", "Interfaces which the current interface uses."
    "used_by (Optional)", "plain", "xsd:list", "Interfaces which use the current interface."
-   "max_tx_rate (Optional)", "plain", "xsd:integer", "The Maximum Transmission Rate of the interface, in Mbps. Only applicable if ``ifclass : pci-sriov`` and ``iftype : vf``"
+   "max_tx_rate (Optional)", "plain", "xsd:integer", "The Maximum Transmission Rate of the interface, in Mbps. Only applicable for combinations - ``ifclass : pci-sriov`` and ``iftype : vf`` or ``ifclass : platform`` and ``iftype : VLAN/AE/Ethernet``."
+   "max_rx_rate (Optional)", "plain", "xsd:integer", "The Maximum Reception Rate of the interface, in Mbps. Only applicable if ``ifclass : platform`` and ``iftype : VLAN/AE/Ethernet``."
    "uuid (Optional)", "plain", "csapi:UUID", "The universally unique identifier for this object."
    "links (Optional)", "plain", "xsd:list", "For convenience, resources contain links to themselves. This allows a client to easily obtain rather than construct resource URIs. The following types of link relations are associated with resources: a self link containing a versioned link to the resource, and a bookmark link containing a permanent link to a resource that is appropriate for long term storage."
    "created_at (Optional)", "plain", "xsd:dateTime", "The time when the object was created."
@@ -2806,7 +2810,8 @@ badMediaType (415)
    "used_by (Optional)", "plain", "xsd:list", "This attribute specifies a comma-separated list of interfaces that use this interface."
    "imtu (Optional)", "plain", "xsd:integer", "This attribute specifies the interface's Maximum Transmit Unit."
    "sriov_numvfs (Optional)", "plain", "xsd:integer", "The number of VFs to configure on the interface's port; only applicable if ``ifclass : pci-sriov`` where only a single port is associated with the interface."
-   "max_tx_rate (Optional)", "plain", "xsd:integer", "The Maximum Transmission Rate of the interface, in Mbps. Only applicable if ``ifclass : pci-sriov`` and ``iftype : vf``"
+   "max_tx_rate (Optional)", "plain", "xsd:integer", "The Maximum Transmission Rate of the interface, in Mbps. Only applicable for combinations - ``ifclass : pci-sriov`` and ``iftype : vf`` or ``ifclass : platform`` and ``iftype : VLAN/AE/Ethernet``."
+   "max_rx_rate (Optional)", "plain", "xsd:integer", "The Maximum Reception Rate of the interface, in Mbps. Only applicable if ``ifclass : platform`` and ``iftype : VLAN/AE/Ethernet``."
    "ihost_uuid (Optional)", "plain", "csapi:UUID", "The UUID of the host to create the interface on."
 
 **Response parameters**
@@ -2832,7 +2837,8 @@ badMediaType (415)
    "ports (Optional)", "plain", "xsd:list", "URIs to the physical ports of this interface."
    "uses (Optional)", "plain", "xsd:list", "Interfaces which the current interface uses."
    "used_by (Optional)", "plain", "xsd:list", "Interfaces which use the current interface."
-   "max_tx_rate (Optional)", "plain", "xsd:integer", "The Maximum Transmission Rate of the interface, in Mbps. Only applicable if ``ifclass : pci-sriov`` and ``iftype : vf``"
+   "max_tx_rate (Optional)", "plain", "xsd:integer", "The Maximum Transmission Rate of the interface, in Mbps. Only applicable for combinations - ``ifclass : pci-sriov`` and ``iftype : vf`` or ``ifclass : platform`` and ``iftype : VLAN/AE/Ethernet``."
+   "max_rx_rate (Optional)", "plain", "xsd:integer", "The Maximum Reception Rate of the interface, in Mbps. Only applicable if ``ifclass : platform`` and ``iftype : VLAN/AE/Ethernet``."
    "uuid (Optional)", "plain", "csapi:UUID", "The universally unique identifier for this object."
    "links (Optional)", "plain", "xsd:list", "For convenience, resources contain links to themselves. This allows a client to easily obtain rather than construct resource URIs. The following types of link relations are associated with resources: a self link containing a versioned link to the resource, and a bookmark link containing a permanent link to a resource that is appropriate for long term storage."
    "created_at (Optional)", "plain", "xsd:dateTime", "The time when the object was created."
@@ -2939,7 +2945,8 @@ badMediaType (415)
    "used_by (Optional)", "plain", "xsd:list", "This attribute specifies a comma-separated list of interfaces that use this interface."
    "imtu (Optional)", "plain", "xsd:integer", "This attribute specifies the interface's Maximum Transmit Unit."
    "sriov_numvfs (Optional)", "plain", "xsd:integer", "The number of VFs to configure on the interface's port; only applicable if ``ifclass : pci-sriov`` where only a single port is associated with the interface."
-   "max_tx_rate (Optional)", "plain", "xsd:integer", "The Maximum Transmission Rate of the interface, in Mbps. Only applicable if ``ifclass : pci-sriov`` and ``iftype : vf``"
+   "max_tx_rate (Optional)", "plain", "xsd:integer", "The Maximum Transmission Rate of the interface, in Mbps. Only applicable for combinations - ``ifclass : pci-sriov`` and ``iftype : vf`` or ``ifclass : platform`` and ``iftype : VLAN/AE/Ethernet``."
+   "max_rx_rate (Optional)", "plain", "xsd:integer", "The Maximum Reception Rate of the interface, in Mbps. Only applicable if ``ifclass : platform`` and ``iftype : VLAN/AE/Ethernet``."
 
 **Response parameters**
 
@@ -2964,7 +2971,8 @@ badMediaType (415)
    "ports (Optional)", "plain", "xsd:list", "URIs to the physical ports of this interface."
    "uses (Optional)", "plain", "xsd:list", "Interfaces which the current interface uses."
    "used_by (Optional)", "plain", "xsd:list", "Interfaces which use the current interface."
-   "max_tx_rate (Optional)", "plain", "xsd:integer", "The Maximum Transmission Rate of the interface, in Mbps. Only applicable if ``ifclass : pci-sriov`` and ``iftype : vf``"
+   "max_tx_rate (Optional)", "plain", "xsd:integer", "The Maximum Transmission Rate of the interface, in Mbps. Only applicable for combinations - ``ifclass : pci-sriov`` and ``iftype : vf`` or ``ifclass : platform`` and ``iftype : VLAN/AE/Ethernet``."
+   "max_rx_rate (Optional)", "plain", "xsd:integer", "The Maximum Reception Rate of the interface, in Mbps. Only applicable if ``ifclass : platform`` and ``iftype : VLAN/AE/Ethernet``."
    "uuid (Optional)", "plain", "csapi:UUID", "The universally unique identifier for this object."
    "links (Optional)", "plain", "xsd:list", "For convenience, resources contain links to themselves. This allows a client to easily obtain rather than construct resource URIs. The following types of link relations are associated with resources: a self link containing a versioned link to the resource, and a bookmark link containing a permanent link to a resource that is appropriate for long term storage."
    "created_at (Optional)", "plain", "xsd:dateTime", "The time when the object was created."
