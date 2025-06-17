@@ -1549,6 +1549,24 @@ SERVICE_PARAM_NAME_PLATFORM_CLI_CONFIRMATIONS = 'cli_confirmations'
 SERVICE_PARAM_DISABLED = 'disabled'
 SERVICE_PARAM_ENABLED = 'enabled'
 
+# systemd related
+SYSTEMCTL_PATH = '/usr/bin/systemctl'
+PMON_START_FULL_PATH = '/usr/local/sbin/pmon-start'
+PMON_STOP_FULL_PATH = '/usr/local/sbin/pmon-stop'
+PMON_RESTART_FULL_PATH = '/usr/local/sbin/pmon-restart'
+MASK_COMMAND = 'mask'
+START_COMMAND = 'start'
+UNMASK_COMMAND = 'unmask'
+IS_ACTIVE_COMMAND = 'is-active'
+IS_ENABLED_COMMAND = 'is-enabled'
+SYSTEMCTL_RUNTIME_FLAG = '--runtime'
+SYSTEMCTL_NOW_FLAG = '--now'
+
+ETCD_PATH = "/opt/etcd"
+# TODO: This will be changed to 'db'.
+ETCD_DIR_NAME = "25.09"
+PLATFORM_PATH = "/opt/platform"
+
 # TIS part number, CPE = combined load, STD = standard load
 TIS_STD_BUILD = 'Standard'
 TIS_AIO_BUILD = 'All-in-one'

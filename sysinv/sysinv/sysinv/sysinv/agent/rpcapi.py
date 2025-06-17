@@ -235,6 +235,22 @@ class AgentAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
 
         return retval
 
+    def kube_upgrade_abort(self, context, current_kube_version, back_to_kube_version):
+        """Asynchronously, abort kubernetes upgrade
+
+        Kubernetes upgrade abort on controller hosts. This is currently supported only
+        on AIO-SX and will be supported on all other deployment configurations in future
+        releases.
+
+        :param: context: context object
+        :param: current_kube_version: current kubernetes version
+        :param: back_to_kube_version: kubernetes version to be rolled back to
+        """
+        return self.fanout_cast(context,
+                         self.make_msg("kube_upgrade_abort",
+                                       current_kube_version=current_kube_version,
+                                       back_to_kube_version=back_to_kube_version))
+
     def update_host_lvm(self, context, host_uuid):
         """Synchronously, update LVM physical volume
 

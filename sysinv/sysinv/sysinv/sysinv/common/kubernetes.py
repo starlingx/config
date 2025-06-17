@@ -21,6 +21,8 @@ import requests
 import ruamel.yaml as yaml
 from ruamel.yaml.compat import StringIO
 import shutil
+import subprocess
+import sys
 import time
 import tsconfig.tsconfig as tsc
 import urllib3
@@ -38,8 +40,8 @@ from urllib3.exceptions import MaxRetryError
 
 from oslo_log import log as logging
 from sysinv.common import constants
-from sysinv.common import utils
 from sysinv.common import exception
+from sysinv.common import utils
 from sysinv.common.retrying import retry
 
 K8S_MODULE_MAJOR_VERSION = int(K8S_MODULE_VERSION.split('.')[0])
@@ -52,7 +54,6 @@ CERT_MANAGER_GROUP = 'cert-manager.io'
 # Kubernetes API versions
 V1_ALPHA_2 = 'v1alpha2'
 CERT_MANAGER_VERSION = 'v1'
-
 
 # Kubernetes Files
 KUBEADM_FLAGS_FILE = '/var/lib/kubelet/kubeadm-flags.env'
@@ -91,6 +92,10 @@ KUBE_CONTROLLER_MANAGER = 'kube-controller-manager'
 KUBE_SCHEDULER = 'kube-scheduler'
 
 # Kubernetes systemd service names
+KUBE_CONTAINERD_SYSTEMD_SERVICE_NAME = 'containerd'
+KUBE_DOCKER_SYSTEMD_SERVICE_NAME = 'docker'
+KUBE_ETCD_SYSTEMD_SERVICE_NAME = 'etcd'
+KUBE_ISOLCPU_PLUGIN_SYSTEMD_SERVICE_NAME = 'isolcpu_plugin'
 KUBELET_SYSTEMD_SERVICE_NAME = 'kubelet'
 
 # Kubernetes upgrade states
@@ -182,6 +187,9 @@ KUBE_CONTROL_PLANE_STATIC_PODS_BACKUP_PATH = os.path.join(
     KUBE_CONTROL_PLANE_BACKUP_PATH, 'static-pod-manifests')
 KUBE_CONTROL_PLANE_ETCD_BACKUP_PATH = os.path.join(
     KUBE_CONTROL_PLANE_BACKUP_PATH, 'etcd')
+KUBE_CONFIG_BACKUP_PATH = os.path.join(KUBE_CONTROL_PLANE_BACKUP_PATH, 'k8s-config')
+KUBE_CONTROL_PLANE_STATIC_PODS_MANIFESTS_ABORT = os.path.join(
+    KUBE_CONTROL_PLANE_BACKUP_PATH, 'static-pod-manifests-abort')
 
 
 def k8s_health_check(tries=20, try_sleep=5, timeout=5,
@@ -234,6 +242,55 @@ def k8s_health_check(tries=20, try_sleep=5, timeout=5,
         LOG.info('k8s control-plane endpoint %s healthy' %
                  healthz_endpoint)
     return rc
+
+
+def k8s_wait_for_control_plane_terminated(tries=5, try_sleep=1, timeout=5):
+    """ This checks if all k8s control-plane endpoints are down
+
+    Each endpoint is tested up to 'tries' times using a API connection
+    timeout, and a sleep interval between tries.
+
+    :param tries: maximum number of tries
+    :param try_sleep: sleep interval between tries (seconds)
+    :param timeout: timeout waiting for response (seconds)
+
+    :return: True if all endpoints are down
+             False otherwise
+    """
+
+    healthz_endpoints = [constants.APISERVER_READYZ_ENDPOINT,
+                         constants.CONTROLLER_MANAGER_HEALTHZ_ENDPOINT,
+                         constants.SCHEDULER_HEALTHZ_ENDPOINT]
+
+    threads = {}
+    threadpool = greenpool.GreenPool(len(healthz_endpoints))
+    result = True
+
+    LOG.info("Checking Kubernetes control plane endpoints ...")
+
+    # Check endpoints in parallel
+    for endpoint in healthz_endpoints:
+        threads[endpoint] = threadpool.spawn(k8s_health_check,
+                                             tries,
+                                             try_sleep,
+                                             timeout,
+                                             endpoint,
+                                             False)
+
+    # Wait for all checks to finish
+    threadpool.waitall()
+
+    # Check results
+    terminated = []
+    for endpoint, thread in threads.items():
+        if thread.wait() is False:
+            terminated.append(endpoint)
+
+    if len(terminated) == len(healthz_endpoints):
+        result = True
+    else:
+        result = False
+    return result
 
 
 def k8s_wait_for_endpoints_health(tries=20, try_sleep=5, timeout=5, quiet=False):
@@ -535,6 +592,88 @@ def get_kube_storage_upgrade_version(kube_upgrade):
         return kube_upgrade.to_version
 
 
+def kube_drain_node_with_options(node_name):
+    """Drain a node with command line options
+
+    :param: node_name: string. Name of the node to be drained.
+    :raise: SysinvException
+    """
+    try:
+        LOG.info("Started draining node %s ..." % (node_name))
+        cmd = ['kubectl', '--kubeconfig=%s' % KUBERNETES_ADMIN_CONF,
+               'drain', node_name, '--ignore-daemonsets', '--delete-emptydir-data',
+               '--force', '--skip-wait-for-delete-timeout=1', '--timeout=150s']
+
+        process = subprocess.Popen(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1)
+
+        for line in process.stdout:
+            LOG.info("[Node %s drain]: %s" % (node_name, line))
+            sys.stdout.flush()
+
+        return_code = process.wait()
+
+        if return_code == 0:
+            LOG.info("Node %s drained successfully." % (node_name))
+        else:
+            stderr = process.stderr.read()
+            # Allow the cordon to succeed when pod failed to evict due to pod disruption budget
+            # or when pod failed to evict in the given timeout.
+            if ("violate the pod's disruption budget" in stderr or
+                    "global timeout reached" in stderr):
+                LOG.warning("Node drain failed with error: [%s]. Proceeding anyways."
+                            % (process.stderr))
+            else:
+                raise exception.ProcessExecutionError(
+                    cmd=cmd, exit_code=return_code, stderr=stderr)
+
+    except exception.ProcessExecutionError as ex:
+        raise exception.SysinvException("Command [%s] execution failed with error: [%s] and "
+                                        "return code: [%s]" % (cmd, ex.stderr, ex.exit_code))
+    except Exception as ex:
+        raise exception.SysinvException("Failed to cordon node %s. Error: [%s]" % (node_name, ex))
+
+
+def is_node_cordoned(node_name):
+    """Check if a node is drained/cordoned
+
+    :param: node_name: string. Name of the node
+    :raise: SysinvException
+    """
+    try:
+        LOG.info("Checking node cordon status for %s ..." % (node_name))
+        operator = KubeOperator()
+        node_status = operator.kube_get_node_status(node_name)
+        if node_status.spec.unschedulable:
+            return True
+        else:
+            return False
+    except Exception as ex:
+        raise exception.SysinvException("Failed to check cordon status of the node %s. Error: [%s]"
+                                        % (node_name, ex))
+
+
+def kube_uncordon_node(node_name):
+    """Uncordon a node
+
+    :param: node_name: string. Name of the node to be uncordoned.
+    :raise: SysinvException
+    """
+    try:
+        LOG.info("Started node %s uncordon ..." % (node_name))
+        operator = KubeOperator()
+        body = {
+            "spec": {
+                "unschedulable": False
+            }
+        }
+        operator.kube_patch_node(node_name, body)
+        LOG.info("Node %s uncordoned successfully." % (node_name))
+    except Exception as ex:
+        raise exception.SysinvException("Node [%s] uncordon failed with error: [%s] "
+                                        % (node_name, ex))
+
+
 def is_k8s_configured():
     """Check to see if the k8s admin config file exists."""
     if os.path.isfile(KUBERNETES_ADMIN_CONF):
@@ -590,7 +729,7 @@ def backup_kube_static_pods(backup_path):
     :param backup_path: secured location to backup static pods
      """
     try:
-        shutil.copytree('/etc/kubernetes/manifests/', backup_path)
+        shutil.copytree(KUBE_CONTROL_PLANE_MANIFESTS_PATH, backup_path)
         LOG.info('Kubernetes static pod manifests copied to: %s' % backup_path)
     except Exception as e:
         LOG.error('Error copying kubernetes static pods manifests: %s' % e)
