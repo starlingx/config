@@ -16496,18 +16496,25 @@ class ConductorManager(service.PeriodicService):
         :param label_dict: a dictionary of host label attributes
 
         """
-        LOG.info("update_kubernetes_label: label_dict=%s" % label_dict)
+        LOG.info(f"update_kubernetes_label: label_dict={label_dict}")
+        if label_dict is None:
+            return
         try:
             host = self.dbapi.ihost_get(host_uuid)
         except exception.ServerNotFound:
             LOG.error("Cannot find host by id %s" % host_uuid)
             return
+
+        # remove stalld labels as they are not used in kubernetes
+        k8slabels = {k: v for k, v in label_dict.items() if constants.LABEL_STALLD not in k}
+        if not k8slabels:
+            return
+
         body = {
             'metadata': {
-                'labels': {}
+                'labels': k8slabels
             }
         }
-        body['metadata']['labels'].update(label_dict)
         try:
             self._kube.kube_patch_node(host.hostname, body)
         except exception.KubeNodeNotFound:
