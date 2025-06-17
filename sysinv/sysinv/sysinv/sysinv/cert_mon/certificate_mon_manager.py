@@ -24,6 +24,7 @@ from oslo_log import log
 from oslo_service import periodic_task
 
 from sysinv.cert_mon import watcher
+from sysinv.common import constants
 
 LOG = log.getLogger(__name__)
 
@@ -47,6 +48,7 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
         super(CertificateMonManager, self).__init__(CONF)
         self.mon_threads = []
         self.task_thread = None
+        self.dc_monitor = None
         self.systemlocalcacert_monitor = None
         self.restapicert_monitor = None
         self.registrycert_monitor = None
@@ -90,6 +92,10 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
             eventlet.sleep(0.1)
         LOG.debug("End retry_monitor_task")
 
+    def init_dc_monitor(self):
+        self.dc_monitor = watcher.DC_CertWatcher()
+        self.dc_monitor.initialize()
+
     def start_periodic_tasks(self):
         self.task_thread = eventlet.greenthread.spawn(self.periodic_tasks_loop)
 
@@ -109,7 +115,7 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
         self.openldapcert_monitor = watcher.OpenldapCert_CertWatcher()
         self.openldapcert_monitor.initialize()
 
-    def start_monitor(self):
+    def start_monitor(self, dc_role):
         while True:
             try:
                 # init system-local-ca RCA cert monitor
@@ -118,6 +124,11 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
                 self.init_restapicert_monitor()
                 self.init_registrycert_monitor()
                 self.init_openldapcert_monitor()
+
+                # init dc monitor only if running in DC role
+                if dc_role in (constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER,
+                               constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD):
+                    self.init_dc_monitor()
             except Exception as e:
                 LOG.exception(e)
                 time.sleep(5)
@@ -138,6 +149,11 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
         self.mon_threads.append(
             eventlet.greenthread.spawn(self.monitor_cert,
                                        self.openldapcert_monitor))
+
+        if dc_role in (constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER,
+                       constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD):
+            self.mon_threads.append(
+                eventlet.greenthread.spawn(self.monitor_cert, self.dc_monitor))
 
     def stop_monitor(self):
         for mon_thread in self.mon_threads:

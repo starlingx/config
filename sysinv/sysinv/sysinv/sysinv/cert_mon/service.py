@@ -15,12 +15,17 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
+import time
+
 from oslo_config import cfg
 from oslo_log import log as logging
 from oslo_service import service
 
 from sysinv.cert_mon import utils
 from sysinv.cert_mon.certificate_mon_manager import CertificateMonManager
+
+DC_ROLE_TIMEOUT_SECONDS = 180
+DC_ROLE_DELAY_SECONDS = 5
 
 CONF = cfg.CONF
 LOG = logging.getLogger(__name__)
@@ -31,15 +36,35 @@ class CertificateMonitorService(service.Service):
 
     def __init__(self):
         super(CertificateMonitorService, self).__init__()
+        self.dc_role = utils.DC_ROLE_UNDETECTED
         self.manager = CertificateMonManager()
 
     def start(self):
         super(CertificateMonitorService, self).start()
+        self._get_dc_role()
         utils.init_keystone_auth_opts()
-        self.manager.start_monitor()
+        self.manager.start_monitor(self.dc_role)
         self.manager.start_periodic_tasks()
 
     def stop(self):
         self.manager.stop_periodic_tasks()
         self.manager.stop_monitor()
         super(CertificateMonitorService, self).stop()
+
+    def _get_dc_role(self):
+        if self.dc_role != utils.DC_ROLE_UNDETECTED:
+            return self.dc_role
+        utils.init_keystone_auth_opts()
+        delay = DC_ROLE_DELAY_SECONDS
+        max_dc_role_attempts = DC_ROLE_TIMEOUT_SECONDS // delay
+        dc_role_attempts = 1
+        while dc_role_attempts < max_dc_role_attempts:
+            try:
+                self.dc_role = utils.get_dc_role()
+                return self.dc_role
+            except Exception as e:
+                LOG.info("Unable to get DC role: %s [attempt: %s]",
+                         str(e), dc_role_attempts)
+            time.sleep(delay)
+            dc_role_attempts += 1
+        raise Exception('Failed to obtain DC role from keystone')

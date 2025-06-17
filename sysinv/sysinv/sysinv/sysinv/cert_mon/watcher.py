@@ -54,10 +54,11 @@ CONF = cfg.CONF
 class MonitorContext(object):
     """Context data for watches"""
     def __init__(self):
+        self.dc_role = None
         self.kubernetes_namespace = None
 
     def initialize(self):
-        pass
+        self.dc_role = utils.get_dc_role()
 
     # Reuse cached tokens across all contexts
     # (i.e. all watches reuse these caches)
@@ -66,6 +67,11 @@ class MonitorContext(object):
     def get_token():
         """Uses the cached local access token"""
         return utils.get_cached_token()
+
+    @staticmethod
+    def get_dc_token():
+        """Uses the cached DC token for subcloud"""
+        return utils.get_cached_dc_token()
 
 
 class CertUpdateEventData(object):
@@ -361,6 +367,26 @@ class CertWatcher(object):
             raise
 
 
+class DC_CertWatcher(CertWatcher):
+    def __init__(self):
+        super(DC_CertWatcher, self).__init__()
+
+    def initialize(self):
+        self.context.initialize()
+        dc_role = self.context.dc_role
+        LOG.info('DC role: %s' % dc_role)
+
+        if dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
+            ns = utils.CERT_NAMESPACE_SUBCLOUD_CONTROLLER
+        elif dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
+            ns = utils.CERT_NAMESPACE_SYS_CONTROLLER
+        else:
+            ns = ''
+        self.namespace = ns
+        self.context.kubernetes_namespace = ns
+        self.register_listener(AdminEndpointRenew(self.context))
+
+
 class SystemLocalCACert_CertWatcher(CertWatcher):
     def __init__(self):
         super(SystemLocalCACert_CertWatcher, self).__init__()
@@ -469,6 +495,35 @@ class CertificateRenew(CertWatcherListener):
             self.recreate_secret(event_data)
         else:
             self.update_certificate(event_data)
+
+
+class AdminEndpointRenew(CertificateRenew):
+    def __init__(self, context):
+        super(AdminEndpointRenew, self).__init__(context)
+        role = self.context.dc_role
+        if role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
+            self.secret_name = constants.DC_ADMIN_ENDPOINT_SECRET_NAME
+        elif role == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
+            self.secret_name = constants.SC_ADMIN_ENDPOINT_SECRET_NAME
+        else:
+            self.secret_name = None
+
+    def check_filter(self, event_data):
+        if self.secret_name == event_data.secret_name:
+            return self.certificate_is_ready(event_data)
+        else:
+            return False
+
+    def update_certificate(self, event_data):
+        token = self.context.get_token()
+        role = self.context.dc_role
+        utils.update_admin_ep_cert(token, event_data.ca_crt, event_data.tls_crt,
+                                   event_data.tls_key)
+        # In subclouds, it was observed that sometimes old ICA was used
+        # to sign adminep-cert. Here we run a verification to confirm that
+        # the chain is valid & delete secret if chain fails
+        if role == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
+            utils.verify_adminep_cert_chain()
 
 
 class TrustedCARenew(CertificateRenew):
