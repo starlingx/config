@@ -20,9 +20,11 @@ import os
 import tempfile
 
 import requests
+from eventlet.green import subprocess
 from oslo_config import cfg
 from oslo_log import log
 from oslo_utils import encodeutils
+from oslo_serialization import base64
 from six.moves.urllib.request import Request
 from six.moves.urllib.error import HTTPError
 from six.moves.urllib.error import URLError
@@ -30,7 +32,13 @@ from six.moves.urllib.request import urlopen
 
 from sysinv.common import constants
 from sysinv.openstack.common.keystone_objects import Token
+from sysinv.common import kubernetes as sys_kube
 
+# Subcloud sync status
+ENDPOINT_TYPE_DC_CERT = 'dc-cert'
+
+CERT_NAMESPACE_SYS_CONTROLLER = 'dc-cert'
+CERT_NAMESPACE_SUBCLOUD_CONTROLLER = 'sc-cert'
 DC_ROLE_UNDETECTED = 'unknown'
 
 CERT_INSTALL_LOCK_NAME = "sysinv-certs"
@@ -41,6 +49,81 @@ CONF = cfg.CONF
 dc_role = DC_ROLE_UNDETECTED
 
 internal_token_cache = None
+dc_token_cache = None
+
+
+def update_admin_ep_cert(token, ca_crt, tls_crt, tls_key):
+    service_type = 'platform'
+    service_name = 'sysinv'
+    sysinv_url = token.get_service_internal_url(service_type, service_name)
+    api_cmd = sysinv_url + '/certificate/certificate_renew'
+    api_cmd_payload = dict()
+    api_cmd_payload['certtype'] = constants.CERTIFICATE_TYPE_ADMIN_ENDPOINT
+    resp = rest_api_request(token, "POST", api_cmd, json.dumps(api_cmd_payload))
+
+    if 'result' in resp and resp['result'] == 'OK':
+        LOG.info('Update admin endpoint certificate request succeeded')
+    else:
+        LOG.error('Request response %s' % resp)
+        raise Exception('Update admin endpoint certificate failed')
+
+
+def verify_adminep_cert_chain():
+    """
+    Verify admin endpoint certificate chain & delete if invalid
+    :param context: an admin context.
+    :return: True/False if chain is valid
+    * Retrieve ICA & AdminEP cert secrets from k8s
+    * base64 decode ICA cert (tls.crt from SC_INTERMEDIATE_CA_SECRET_NAME)
+    *   & adminep (tls.crt from SC_ADMIN_ENDPOINT_SECRET_NAME)
+    *   & store the crts in tempfiles
+    * Run openssl verify against RootCA to verify the chain
+    """
+    kube_op = sys_kube.KubeOperator()
+
+    secret_ica = kube_op.kube_get_secret(constants.SC_INTERMEDIATE_CA_SECRET_NAME,
+                                         CERT_NAMESPACE_SUBCLOUD_CONTROLLER)
+    if 'tls.crt' not in secret_ica.data:
+        raise Exception('%s tls.crt (ICA) data missing'
+                        % (constants.SC_INTERMEDIATE_CA_SECRET_NAME))
+
+    secret_adminep = kube_op.kube_get_secret(constants.SC_ADMIN_ENDPOINT_SECRET_NAME,
+                                             CERT_NAMESPACE_SUBCLOUD_CONTROLLER)
+    if 'tls.crt' not in secret_adminep.data:
+        raise Exception('%s tls.crt data missing'
+                        % (constants.SC_ADMIN_ENDPOINT_SECRET_NAME))
+
+    txt_ca_crt = base64.decode_as_text(secret_ica.data['tls.crt'])
+    txt_tls_crt = base64.decode_as_text(secret_adminep.data['tls.crt'])
+
+    with tempfile.NamedTemporaryFile() as ca_tmpfile:
+        ca_tmpfile.write(txt_ca_crt.encode('utf8'))
+        ca_tmpfile.flush()
+        with tempfile.NamedTemporaryFile() as adminep_tmpfile:
+            adminep_tmpfile.write(txt_tls_crt.encode('utf8'))
+            adminep_tmpfile.flush()
+            cmd = ['openssl', 'verify', '-CAfile', constants.DC_ROOT_CA_CERT_PATH,
+                   '-untrusted', ca_tmpfile.name, adminep_tmpfile.name]
+            proc = subprocess.Popen(cmd, stdin=subprocess.PIPE,
+                                    stdout=subprocess.PIPE,
+                                    stderr=subprocess.PIPE,
+                                    universal_newlines=True)
+            stdout, stderr = proc.communicate()
+            proc.wait()
+            if 0 == proc.returncode:
+                LOG.info('verify_adminep_cert_chain passed. Valid chain')
+                return True
+            else:
+                LOG.info('verify_adminep_cert_chain: Chain is invalid\n%s\n%s'
+                         % (stdout, stderr))
+
+                res = kube_op.kube_delete_secret(constants.SC_ADMIN_ENDPOINT_SECRET_NAME,
+                                                 CERT_NAMESPACE_SUBCLOUD_CONTROLLER)
+                LOG.info('Deleting AdminEP secret due to invalid chain. %s:%s, result %s, msg %s'
+                         % (CERT_NAMESPACE_SUBCLOUD_CONTROLLER,
+                         constants.SC_ADMIN_ENDPOINT_SECRET_NAME,
+                         res.status, res.message))
+                return False
 
 
 def rest_api_request(token, method, api_cmd,
@@ -403,3 +486,14 @@ def get_internal_token_cache():
 
 def get_cached_token():
     return get_internal_token_cache().get_token()
+
+
+def get_dc_token_cache():
+    global dc_token_cache
+    if not dc_token_cache:
+        dc_token_cache = TokenCache("dc")
+    return dc_token_cache
+
+
+def get_cached_dc_token():
+    return get_dc_token_cache().get_token()
