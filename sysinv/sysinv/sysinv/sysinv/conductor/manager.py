@@ -8185,13 +8185,26 @@ class ConductorManager(service.PeriodicService):
             return
 
         # get the list of dependent parent app that list the current application as a dependency
-        dependent_parent_list = app_dependents.get_dependent_parent_list(app.name,
-                                                                         app.app_version,
-                                                                         self.dbapi)
-        if dependent_parent_list:
+        blocking_parent_list = \
+            app_dependents.get_blocking_parent_dependencies(app.name,
+                                                            app.app_version,
+                                                            app_bundle.version,
+                                                            self.dbapi)
+
+        LOG.info("Found new tarfile version for %s: %s"
+                 % (app.name, app_bundle.file_path))
+        tarball = self._check_tarfile(app_name, app_bundle.file_path,
+                                      preserve_metadata=True)
+        if ((tarball.app_name is None) or
+            (tarball.app_version is None) or
+             (tarball.manifest_name is None) or
+              (tarball.manifest_file is None)):
+            # Skip if tarball check fails
+            return False
+
+        if blocking_parent_list:
             # get dependent_parent_exceptions declared in metadata.yaml of the current app
-            dependent_parent_exceptions = self.apps_metadata[
-                constants.APP_METADATA_APPS][app.name].get(
+            dependent_parent_exceptions = tarball.metadata.get(
                     constants.APP_METADATA_DEPENDENT_PARENT_EXCEPTIONS, {})
 
             skip_auto_update_msg = (f"Auto-update skipped for: {app.name} because "
@@ -8205,21 +8218,10 @@ class ConductorManager(service.PeriodicService):
                 return True
 
             # If the dependent parent list does not match the exceptions, skip auto-update.
-            if not cutils.compare_lists_of_dict(dependent_parent_list,
-                                                dependent_parent_exceptions):
+            if not app_dependents.validate_parent_exceptions(blocking_parent_list,
+                                                             dependent_parent_exceptions):
                 LOG.info(skip_auto_update_msg)
                 return True
-
-        LOG.info("Found new tarfile version for %s: %s"
-                 % (app.name, app_bundle.file_path))
-        tarball = self._check_tarfile(app_name, app_bundle.file_path,
-                                      preserve_metadata=True)
-        if ((tarball.app_name is None) or
-            (tarball.app_version is None) or
-             (tarball.manifest_name is None) or
-              (tarball.manifest_file is None)):
-            # Skip if tarball check fails
-            return False
 
         if app_bundle.version in \
             app.app_metadata.get(
@@ -17064,7 +17066,7 @@ class ConductorManager(service.PeriodicService):
             LOG.exception(ex)
             return (False, None)
 
-    def check_status_dependent_app_upload(self, context, db_app, app_name, app_version):
+    def check_status_dependent_app_upload(self, context, db_app, app_name, app_version_regex):
         """
         Check the status of a dependent application upload and determine whether
         to proceed with the upload or skip it based on the application's current
@@ -17073,22 +17075,22 @@ class ConductorManager(service.PeriodicService):
             context (object): The execution context for the operation.
             db_app (object): The database object representing the dependent application.
             app_name (str): The name of the dependent application.
-            app_version (str): The expected version of the dependent application.
+            app_version_regex (str): The version regular expression for the dependent application.
         Returns:
             bool: True if the upload can be skipped or successfully completed,
                   False if the upload fails or the application is in an invalid state.
         """
-        if (db_app.app_version == app_version and
+        if (re.fullmatch(app_version_regex, db_app.app_version) is not None and
                 db_app.status == constants.APP_UPLOAD_SUCCESS):
             LOG.info(f"Dependent app {app_name} is already uploaded. "
                         f"Skipping upload.")
             return True
-        elif (db_app.app_version == app_version and
+        elif (re.fullmatch(app_version_regex, db_app.app_version) is not None and
                 db_app.status == constants.APP_APPLY_SUCCESS):
             LOG.info(f"Dependent app {app_name} is already applied. "
                         f"Skipping upload.")
             return True
-        elif (db_app.app_version == app_version and
+        elif (re.fullmatch(app_version_regex, db_app.app_version) is not None and
                 db_app.status == constants.APP_UPLOAD_IN_PROGRESS):
             # Wait for the app status to be uploaded
             timeout = constants.APP_UPLOAD_DEPENDENT_APP_TIMEOUT
@@ -17109,19 +17111,20 @@ class ConductorManager(service.PeriodicService):
                 LOG.error(f"Timeout waiting for dependent app {app_name} to upload.")
                 return False
             return True
-        elif (app.app_version == app_version and
-                app.status == constants.APP_APPLY_IN_PROGRESS):
+        elif (re.fullmatch(app_version_regex, db_app.app_version) is not None and
+                db_app.status == constants.APP_APPLY_IN_PROGRESS):
             LOG.info(f"Dependent app {app_name} is already apply in progress. "
                         "Skipping upload.")
             return True
-        elif (app.app_version != app_version):
+        elif re.fullmatch(app_version_regex, db_app.app_version) is None:
             LOG.error(f"Dependent app {app_name} version mismatch. "
-                        f"Expected version: {app_version}, "
-                        f"found version: {app.app_version}.")
+                      "Expected versions should match the regular "
+                      f"expression: {app_version_regex}. "
+                      f"Found version: {db_app.app_version} instead.")
             return False
         else:
             LOG.error(f"Dependent app {app_name} is in an invalid state. "
-                        f"Current status: {app.status}.")
+                      f"Current status: {db_app.status}.")
             return False
 
     def upload_dependent_app(self, context, dependent_app_apply_type):
@@ -17152,23 +17155,26 @@ class ConductorManager(service.PeriodicService):
             app = kubeapp_obj.get_by_name(context, app_name)
             return self.check_status_dependent_app_upload(context, app, app_name, app_version)
         except exception.KubeAppNotFound:
-            LOG.info(f"Dependent app {app_name} not found. Creating a new app.")
+            LOG.info(f"Dependent app {app_name} not found. Uploading new app.")
 
-        app_data = {'name': app_name,
-                    'app_version': app_version,
-                    'manifest_name': constants.APP_MANIFEST_NAME_PLACEHOLDER,
-                    'manifest_file': constants.APP_TARFILE_NAME_PLACEHOLDER,
-                    'status': constants.APP_UPLOAD_IN_PROGRESS}
         try:
             LOG.info(
                 "Starting upload process for dependent app: "
                 f"{app_name}, version: {app_version}"
             )
 
-            # Check if tarball for app_name and app_version exists
-            app_bundle = self.dbapi.kube_app_bundle_get(
+            # Check if tarball for app_name, app_version anc current k8s version exists
+            app_bundle = self.dbapi.kube_app_bundle_get_by_version_regex(
                 name=app_name,
-                version=app_version)
+                version_regex=app_version,
+                k8s_version=self._kube.kube_get_kubernetes_version())
+
+            app_data = {'name': app_name,
+                        'app_version': app_bundle.version,
+                        'manifest_name': constants.APP_MANIFEST_NAME_PLACEHOLDER,
+                        'manifest_file': constants.APP_TARFILE_NAME_PLACEHOLDER,
+                        'status': constants.APP_UPLOAD_IN_PROGRESS}
+
             # Create the app in the database
             self.dbapi.kube_app_create(app_data)
             # Get the app object from the database
@@ -17201,8 +17207,8 @@ class ConductorManager(service.PeriodicService):
             return self.check_status_dependent_app_upload(context, app, app_name, app_version)
         except Exception as e:
             LOG.error(
-                f"Failed to upload tarball for dependent app {app_name} "
-                f"(path: {app_bundle.file_path}). Error: {e}")
+                f"Failed to upload tarball for dependent app {app_name}, version {app_version} "
+                f"Error: {e}")
 
             if app:
                 cutils.update_app_status(app, constants.APP_UPLOAD_FAILURE)

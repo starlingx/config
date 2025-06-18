@@ -4972,6 +4972,21 @@ class Connection(object):
         """
 
     @abc.abstractmethod
+    def kube_app_bundle_get_by_version_regex(self,
+                                             name,
+                                             version_regex,
+                                             k8s_version):
+        """Return the highest version app bundle compatible with the given
+        version regular expression and the Kubernetes version.
+
+        :param name: Application name.
+        :param version_regex: Application version regular expression.
+        :param current_k8s_version: Kubernetes version to check against.
+        :returns: record that matches the version regular expression
+                  and is compatible with the requested Kubernetes version.
+        """
+
+    @abc.abstractmethod
     def kube_app_bundle_destroy_all(self, file_path=None):
         """Delete all records from kube_app_bundle or delete based on a
         given filter"""

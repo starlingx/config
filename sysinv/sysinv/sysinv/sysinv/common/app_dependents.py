@@ -8,11 +8,31 @@
 #
 """ Application interdependency support code. """
 
-import logging
+import re
 
 from sysinv.common import constants
 
-LOG = logging.getLogger(__name__)
+
+def match_dependency(app_list, app_tuple):
+    """ Check if a given app matches any apps in a list
+
+    Args:
+        app_list (list): List of tuples containing apps with their names and versions.
+        app_tuple (tuple): Tuple with the dependency name and its version regular
+            expression.
+
+    Returns:
+        boolean: True if any apps in the list match the app name and the version regular
+            expression from the given app tuple.
+    """
+
+    app_name, app_version_regex = app_tuple
+    for applied_app_name, applied_app_version in app_list:
+        if (applied_app_name == app_name and
+                re.fullmatch(app_version_regex, applied_app_version) is not None):
+            return True
+
+    return False
 
 
 def get_dependent_apps_missing(app_metadata, dbapi, include_apps_action_ignore=False):
@@ -44,8 +64,9 @@ def get_dependent_apps_missing(app_metadata, dbapi, include_apps_action_ignore=F
             app_tuple = (dependent_app.get('name', None), dependent_app.get('version', None))
             # If the action is not ignore, include_apps_action_ignore is False and the
             # dependent app is not already applied, add the dependent app to the list
-            if (action != constants.APP_METADATA_DEPENDENT_APPS_ACTION_IGNORE or
-                    include_apps_action_ignore) and app_tuple not in applied_apps_name_version:
+            if ((action != constants.APP_METADATA_DEPENDENT_APPS_ACTION_IGNORE or
+                    include_apps_action_ignore) and
+                    not match_dependency(applied_apps_name_version, app_tuple)):
                 dependent_apps_list.append(dependent_app)
 
     return dependent_apps_list
@@ -117,19 +138,27 @@ def has_circular_dependency(rpc_app, upload_apps_succeeded_list, dbapi):
             dependent_apps_missing_list,
             constants.APP_METADATA_DEPENDENT_APPS_ACTION_APPLY)
 
-    if any(dep == app_target for dep in dependent_apps_apply_type):
-        return True
+    for dep in dependent_apps_apply_type:
+        if (app_target['name'] == dep['name'] and
+                re.fullmatch(dep['version'], app_target['version'])):
+            return True
+
     return False
 
 
-def get_dependent_parent_list(app_name, app_version, dbapi):
+def get_blocking_parent_dependencies(app_name,
+                                     current_app_version,
+                                     update_candidate_app_version,
+                                     dbapi):
     """
-    Retrieve a list of parent applications that declare a dependency on the specified
-    application and version.
+    Retrieve a list of parent applied applications that do not comply with an update candidate
+    version and declare a dependency on the current applied version.
 
     Args:
         app_name (str): The name of the application to check for as a dependency.
-        app_version (str): The version of the application to check for as a dependency.
+        current_app_version (str): The applied version of the application to check
+                                   for dependent apps.
+        update_candidate_app_version (str): The update candidate version of the application.
         dbapi: Database API object used to query applied applications.
 
     Returns:
@@ -147,12 +176,40 @@ def get_dependent_parent_list(app_name, app_version, dbapi):
         app_metadata = app.app_metadata
         dependent_apps_metadata_list = app_metadata.get(constants.APP_METADATA_DEPENDENT_APPS, [])
         for dependent_app in dependent_apps_metadata_list:
-            name_matches = dependent_app.get('name') == app_name
-            version_matches = dependent_app.get('version') == app_version
-            if name_matches and version_matches:
-                dependent_parent_list.append({
-                    'name': app.name,
-                    'version': app.app_version
-                })
+            # Check if the new app version is not compliant
+            if re.fullmatch(dependent_app.get('version'), update_candidate_app_version) is None:
+                name_matches = dependent_app.get('name') == app_name
+                version_matches = \
+                    re.fullmatch(dependent_app.get('version'), current_app_version) is not None
+                if name_matches and version_matches:
+                    dependent_parent_list.append({
+                        'name': app.name,
+                        'version': app.app_version
+                    })
 
     return dependent_parent_list
+
+
+def validate_parent_exceptions(blocking_parent_list, dependent_parent_exceptions):
+    """ Check if all blocking apps have a corresponding exception
+
+    Args:
+        blocking_parent_list (list of dict): apps blocking an operation.
+        dependent_parent_exceptions (list of dict): parent exceptions to be compared.
+
+    Returns:
+        True if all blocking apps have a corresponding exception. False otherwise.
+
+    """
+
+    for blocking_parent in blocking_parent_list:
+        # Look for exceptions
+        for parent_exception in dependent_parent_exceptions:
+            if (blocking_parent['name'] == parent_exception['name'] and
+                    re.fullmatch(parent_exception['version'],
+                                 blocking_parent['version']) is not None):
+                break
+        else:
+            return False
+
+    return True
