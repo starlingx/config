@@ -2397,3 +2397,40 @@ class AgentManager(service.PeriodicService):
             rpcapi = conductor_rpcapi.ConductorAPI(topic=conductor_rpcapi.MANAGER_TOPIC)
             rpcapi.report_kube_upgrade_abort_result(
                 context, current_kube_version, back_to_kube_version, abort, recovery)
+
+    def kube_upgrade_control_plane(self, context, host_uuid, to_kube_version, is_first_master):
+        """Upgrade kubernetes control plane on this host
+
+        Upgrade control plane on controller host.
+
+        :param: context: context object
+        :param: host_uuid: uuid of this host
+        :param: to_kube_version: kubernetes version being upgraded to
+        :param: is_first_master: True if this is the first control plane host being upgraded
+                                 else False
+        """
+        if self._ihost_personality == constants.CONTROLLER:
+            operator = kube_host.KubeControllerOperator(context, host_uuid, self._hostname)
+            attempt = 1
+            while attempt <= constants.CONTROL_PLANE_RETRY_COUNT:
+                try:
+                    LOG.info("Kubernetes control-plane upgrade to version %s started on this "
+                            "host. Attempt: %s" % (to_kube_version, attempt))
+                    operator.upgrade_control_plane(to_kube_version, is_first_master)
+                    LOG.info("Kubernetes control-plane upgrade to version %s successful on this "
+                             "host." % (to_kube_version))
+                    success = True
+                    break
+                except Exception as ex:
+                    LOG.error("Attempt %s to upgrade Kubernetes control-plane to version %s failed "
+                              "on this host. Error: [%s]" % (attempt, to_kube_version, ex))
+                    attempt += 1
+                    success = False
+
+            if not success:
+                LOG.error("Kubernetes control-plane upgrade to version %s failed on this host."
+                          % (to_kube_version))
+
+            rpcapi = conductor_rpcapi.ConductorAPI(topic=conductor_rpcapi.MANAGER_TOPIC)
+            rpcapi.report_kube_upgrade_control_plane_result(context, host_uuid, to_kube_version,
+                                                            is_first_master, success)
