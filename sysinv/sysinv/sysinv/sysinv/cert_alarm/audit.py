@@ -199,7 +199,7 @@ class CertAlarmAudit(object):
         renew_before = None
         if utils.SNAPSHOT_KEY_RENEW_BEFORE in snapshot:
             renew_before = self.parse_time(snapshot[utils.SNAPSHOT_KEY_RENEW_BEFORE])
-        LOG.debug('cert_name=%s, entity_id=%s, expiry=%s, alarm_before=%s, renew_before=%s'
+        LOG.info('cert_name=%s, entity_id=%s, expiry=%s, alarm_before=%s, renew_before=%s'
             % (cert_name, entity_id, expiry, alarm_before, renew_before))
 
         # set threshold date to raise alarms
