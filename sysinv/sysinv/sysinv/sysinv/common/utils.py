@@ -4512,3 +4512,27 @@ def compare_lists_of_dict(dependent_parent_list, dependent_parent_exceptions):
 
     # Compare the sets
     return set_parent_list == set_parent_exceptions
+
+
+def flatten_nested_lists(nested_lists):
+    """
+    Recursively flattens a nested list structure into a single flat list.
+
+    Args:
+        nested_lists (list): A list which may contain other nested lists at arbitrary depth.
+
+    Returns:
+        list: A flat list containing all the elements from the nested lists.
+
+    Example:
+        >>> flatten_nested_lists([1, [2, [3, 4], 5], 6])
+        [1, 2, 3, 4, 5, 6]
+    """
+
+    flat_list = []
+    for item in nested_lists:
+        if isinstance(item, list):
+            flat_list.extend(flatten_nested_lists(item))
+        else:
+            flat_list.append(item)
+    return flat_list

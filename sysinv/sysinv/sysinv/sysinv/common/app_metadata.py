@@ -417,6 +417,21 @@ def validate_metadata_file(path, metadata_file, upgrade_from_release=None):
                         constants.APP_METADATA_CLASS,
                         constants.APP_METADATA_CLASS_TYPES)))
 
+    def validate_dependent_app(dependent_app):
+        """Validate a single dependent app entry (dict)"""
+        validate_dict(dependent_app)
+        validate_string_field(
+            dependent_app,
+            constants.APP_METADATA_DEPENDENT_APPS_NAME)
+        validate_regex_field(
+            dependent_app,
+            constants.APP_METADATA_DEPENDENT_APPS_VERSION)
+        validate_string_field(
+            dependent_app,
+            constants.APP_METADATA_DEPENDENT_APPS_ACTION)
+        validate_dependent_apps_action(
+            dependent_app.get(constants.APP_METADATA_DEPENDENT_APPS_ACTION))
+
     app_name = ''
     app_version = ''
     patches = []
@@ -562,18 +577,20 @@ def validate_metadata_file(path, metadata_file, upgrade_from_release=None):
         dependent_apps = validate_list_field(doc, constants.APP_METADATA_DEPENDENT_APPS)
         if dependent_apps:
             for dependence in dependent_apps:
-                validate_dict(dependence)
-                validate_string_field(
-                    dependence,
-                    constants.APP_METADATA_DEPENDENT_APPS_NAME)
-                validate_regex_field(
-                    dependence,
-                    constants.APP_METADATA_DEPENDENT_APPS_VERSION)
-                validate_string_field(
-                    dependence,
-                    constants.APP_METADATA_DEPENDENT_APPS_ACTION)
-                validate_dependent_apps_action(
-                    dependence.get(constants.APP_METADATA_DEPENDENT_APPS_ACTION))
+                if isinstance(dependence, dict):
+                    validate_dependent_app(dependence)
+                elif isinstance(dependence, list):
+                    # If istead of a dict, it is a list of apps that are mutually
+                    # exclusive, then validate each app in the list.
+                    if len(dependence) < 2:
+                        raise exception.SysinvException(_(
+                            "Invalid dependent_apps entry: "
+                            "must contain at least two mutually exclusive apps."))
+                    for mutually_exclusive_dependence in dependence:
+                        validate_dependent_app(mutually_exclusive_dependence)
+                else:
+                    raise exception.SysinvException(
+                        _("Invalid dependent_apps entry: must be dict or list."))
 
         app_class = validate_string_field(doc, constants.APP_METADATA_CLASS)
         if app_class:

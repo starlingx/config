@@ -17216,7 +17216,8 @@ class ConductorManager(service.PeriodicService):
 
         return True
 
-    def apply_dependent_apps(self, context, upload_apps_succeeded_list):
+    def apply_dependent_apps(
+            self, context, upload_apps_succeeded_list, mutually_exclusive_apps=False):
         """
         Apply dependent applications based on a list of successfully uploaded apps.
 
@@ -17241,10 +17242,13 @@ class ConductorManager(service.PeriodicService):
         apply_apps_succeeded_list = []
         apply_apps_failed_list = []
 
-        LOG.info("Starting apply of dependent app")
         for dependent_app in upload_apps_succeeded_list:
+            if mutually_exclusive_apps and apply_apps_succeeded_list:
+                break
             app_name = dependent_app['name']
             app_version = dependent_app['version']
+            LOG.info(f"Starting upload process for dependent app: "
+                     f"{app_name}, version: {app_version}")
             try:
                 app = kubeapp_obj.get_by_name(context, app_name)
             except exception.KubeAppNotFound as e:
@@ -17290,7 +17294,7 @@ class ConductorManager(service.PeriodicService):
             try:
                 self.app_lifecycle_actions(context, app, hook_info)
             except exception.LifecycleSemanticCheckException as e:
-                LOG.info(f"Auto-apply failed prerequisites for {app.name}: {e}")
+                LOG.info(f"Apply dependence failed prerequisites for {app.name}: {e}")
                 apply_apps_failed_list.append(dependent_app)
                 continue
             except exception.SysinvException:
@@ -17340,18 +17344,30 @@ class ConductorManager(service.PeriodicService):
             bool: True if all dependent applications were successfully uploaded
               and applied, False otherwise.
         """
-
         upload_apps_succeeded_list = []
         upload_apps_failed_list = []
-        apply_apps_succeeded_list = []
         apply_apps_failed_list = []
+        # Variables for mutually exclusive apps
+        mutually_exclusive_apps_lists = []
+        uploaded_apps_mutually_exclusive_succeeded = []
+        apply_apps_mutually_exclusive_succeeded = []
+        apply_apps_mutually_exclusive_failed = []
 
-        # Launch a thread for each update candidate, then wait for all applications
-        # to finish updating.
-        with ThreadPoolExecutor(max_workers=len(dependent_apps_apply_type)) as executor:
+        # get the list of dependent applications that are mutually exclusive
+        for dependent_app in dependent_apps_apply_type:
+            if isinstance(dependent_app, list):
+                mutually_exclusive_apps_lists.append(dependent_app)
+
+        # Combine common dependencies with mutually exclusive dependencies.
+        # Filtering will be done below.
+        flat_dependent_apps = cutils.flatten_nested_lists(dependent_apps_apply_type)
+
+        # Launch a thread for each upload candidate, then wait for all applications
+        # to finish uploading.
+        with ThreadPoolExecutor(max_workers=len(flat_dependent_apps)) as executor:
             futures = {
                 executor.submit(self.upload_dependent_app, context, dependent_app): dependent_app
-                for dependent_app in dependent_apps_apply_type
+                for dependent_app in flat_dependent_apps
             }
 
             # Wait for all uploads to complete
@@ -17380,11 +17396,58 @@ class ConductorManager(service.PeriodicService):
             )
             return False
 
+        if mutually_exclusive_apps_lists:
+            # If there are mutually exclusive apps, filter out the ones that failed to upload.
+            upload_failed_app_names = {app['name'] for app in upload_apps_failed_list}
+            uploaded_apps_mutually_exclusive_succeeded = [
+                [app for app in exclusive_group if app['name'] not in upload_failed_app_names]
+                for exclusive_group in mutually_exclusive_apps_lists
+            ]
+
+            if uploaded_apps_mutually_exclusive_succeeded:
+                # Filter mutually exclusive apps that were successfully uploaded from
+                # the upload_apps_succeeded_list variable. The purpose of this is to
+                # be able to call the apply_dependent_apps function separately for
+                # mutually exclusive apps and common dependencies.
+                remove_app_names = {
+                    app["name"]
+                    for group in uploaded_apps_mutually_exclusive_succeeded
+                    for app in group
+                }
+                upload_apps_succeeded_list = [
+                    app for app in upload_apps_succeeded_list if app['name'] not in remove_app_names
+                ]
+
+                # Apply mutually exclusive apps in groups.
+                # Each group will be applied separately.
+                for exclusive_group in uploaded_apps_mutually_exclusive_succeeded:
+                    apply_success, apply_failed = self.apply_dependent_apps(
+                        context, exclusive_group, mutually_exclusive_apps=True
+                    )
+                    apply_apps_mutually_exclusive_succeeded.extend(apply_success)
+                    apply_apps_mutually_exclusive_failed.extend(apply_failed)
+
         # Only apply dependent applications if the upload was successful.
         if upload_apps_succeeded_list:
-            apply_apps_succeeded_list, apply_apps_failed_list = self.apply_dependent_apps(
+            _, apply_apps_failed_list = self.apply_dependent_apps(
                 context, upload_apps_succeeded_list
             )
+
+        # Check result of the apply of mutually exclusive apps dependencies
+        # Track overall result status
+        result = True
+        if mutually_exclusive_apps_lists:
+            # Check if at least one app in each mutually exclusive group succeeded
+            apply_success_app_me_names = \
+                {app['name'] for app in apply_apps_mutually_exclusive_succeeded}
+            for exclusive_group in mutually_exclusive_apps_lists:
+                if not any(item['name'] in apply_success_app_me_names for item in exclusive_group):
+                    LOG.error(
+                        "Failed to apply any mutually exclusive dependent applications in group: "
+                        f"{[item['name'] for item in exclusive_group]}. "
+                        f"Apply failed: {apply_apps_mutually_exclusive_failed}."
+                    )
+                    result = False
 
         if apply_apps_failed_list or upload_apps_failed_list:
             LOG.error(
@@ -17392,14 +17455,12 @@ class ConductorManager(service.PeriodicService):
                 f"Upload failed: {upload_apps_failed_list}, "
                 f"Apply failed: {apply_apps_failed_list}."
             )
-            return False
+            result = False
 
-        # If there are no failed uploads or applies, return True
-        LOG.info(
-            f"Successfully uploaded and applied dependent applications. "
-            f"Apply succeeded: {apply_apps_succeeded_list}."
-        )
-        return True
+        if result:
+            LOG.info("Successfully uploaded and applied dependent applications.")
+
+        return result
 
     def perform_app_upload(self, context, rpc_app, tarfile,
                            lifecycle_hook_info_app_upload, images=False):
