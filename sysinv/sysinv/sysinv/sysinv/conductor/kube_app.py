@@ -3978,6 +3978,11 @@ class DockerHelper(object):
                     # So we cannot cache auth info, need refresh it each time.
                     local_registry_auth = cutils.get_local_docker_registry_auth()
                     client.push(img_tag, auth_config=local_registry_auth)
+
+                    # Test inspecting the image. This avoids a scenario where the push command
+                    # returns a false positive result during docker service restarts.
+                    client.inspect_distribution(img_tag, auth_config=local_registry_auth)
+                    LOG.info("Image %s successfully pushed to local registry." % (img_tag))
                 except Exception as e:
                     rc = False
                     LOG.error("Image %s push failed to local registry: %s" % (img_tag, e))
