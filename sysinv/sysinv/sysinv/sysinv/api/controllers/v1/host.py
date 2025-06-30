@@ -4362,7 +4362,7 @@ class HostController(rest.RestController):
     def _semantic_check_storage_backend(ihost):
         """
         Perform semantic checking for storage backends
-        :param ihost_uuid: uuid of host with controller functionality
+        :param ihost: host information of host with controller functionality
         """
         # deny operation if any storage backend is either configuring or in error
         backends = pecan.request.dbapi.storage_backend_get_list()
@@ -4382,6 +4382,33 @@ class HostController(rest.RestController):
                                               'notok': bk['state'],
                                               'ok': constants.SB_STATE_CONFIGURED}
                     raise wsme.exc.ClientSideError(msg)
+
+    @staticmethod
+    def _semantic_check_controllerfs(ihost, force_action):
+        """
+        Perform semantic checking for controller filesystems
+        :param ihost: host information of host with controller functionality
+        :param force_action: if the action is forced
+        """
+
+        if not force_action:
+            if StorageBackendConfig.has_backend(pecan.request.dbapi,
+                                                constants.SB_TYPE_CEPH_ROOK):
+                controller_fs_list = pecan.request.dbapi.controller_fs_get_list()
+                if any(
+                    eval(controller_fs['state'])['status'] in [
+                            constants.CONTROLLER_FS_CREATING_IN_PROGRESS,
+                            constants.CONTROLLER_FS_DELETING_IN_PROGRESS
+                    ]
+                    for controller_fs in controller_fs_list
+                ):
+                    # The host that is locking is the standby controller
+                    if not utils.is_host_active_controller(ihost):
+                        msg = _("The standby controller (%s) cannot be unlocked "
+                                "while controller filesystem operations are in progress. "
+                                "Please wait until all operations are complete, then retry "
+                                "the host-unlock." % ihost['hostname'])
+                        raise wsme.exc.ClientSideError(msg)
 
     @staticmethod
     def _semantic_check_nova_local_storage(ihost_uuid, personality, required=False):
@@ -5706,6 +5733,7 @@ class HostController(rest.RestController):
         self._semantic_check_cinder_volumes(hostupdate.ihost_orig)
         self._semantic_check_filesystem_sizes(hostupdate.ihost_orig)
         self._semantic_check_storage_backend(hostupdate.ihost_orig)
+        self._semantic_check_controllerfs(hostupdate.ihost_orig, force_unlock)
         system_mode_options = [
                     constants.SYSTEM_MODE_DUPLEX,
                     constants.SYSTEM_MODE_DUPLEX_DIRECT,
