@@ -39,14 +39,20 @@ def get_dependent_apps_missing(app_metadata, dbapi, include_apps_action_ignore=F
     """
     Determine the list of dependent applications that are missing based
     on the provided app metadata.
+
     Args:
         app_metadata (dict): Metadata of the application which includes
             information about dependent apps.
+        dbapi: Database API object used to query applied applications.
         include_apps_action_ignore (bool): Flag to include dependent apps
             with action set to ignore. Default is False.
+
     Returns:
-        list: A list of dictionaries representing the dependent
-        applications that are missing.
+        list: A list containing dictionaries (for individual missing dependencies)
+        and lists of dictionaries (for mutually exclusive missing dependencies).
+        Each dictionary represents a dependent application that is missing.
+        Each list represents a group of mutually exclusive dependencies, where
+        at least one must be satisfied.
     """
 
     dependent_apps_list = []
@@ -60,16 +66,75 @@ def get_dependent_apps_missing(app_metadata, dbapi, include_apps_action_ignore=F
 
     if dependent_apps_metadata_list:
         for dependent_app in dependent_apps_metadata_list:
-            action = dependent_app.get('action', None)
-            app_tuple = (dependent_app.get('name', None), dependent_app.get('version', None))
-            # If the action is not ignore, include_apps_action_ignore is False and the
-            # dependent app is not already applied, add the dependent app to the list
-            if ((action != constants.APP_METADATA_DEPENDENT_APPS_ACTION_IGNORE or
-                    include_apps_action_ignore) and
-                    not match_dependency(applied_apps_name_version, app_tuple)):
-                dependent_apps_list.append(dependent_app)
-
+            if isinstance(dependent_app, dict):
+                action = dependent_app.get('action', None)
+                app_tuple = (dependent_app.get('name', None), dependent_app.get('version', None))
+                # If the action is not ignore, include_apps_action_ignore is False and the
+                # dependent app is not already applied, add the dependent app to the list
+                if ((action != constants.APP_METADATA_DEPENDENT_APPS_ACTION_IGNORE or
+                        include_apps_action_ignore) and
+                        not match_dependency(applied_apps_name_version, app_tuple)):
+                    dependent_apps_list.append(dependent_app)
+            elif isinstance(dependent_app, list):
+                mutually_exclusive_apps = []
+                for mutually_exclusive_app in dependent_app:
+                    action = mutually_exclusive_app.get('action', None)
+                    app_tuple = (mutually_exclusive_app.get('name', None),
+                                 mutually_exclusive_app.get('version', None))
+                    # If the action is not ignore, include_apps_action_ignore is False and the
+                    # dependent app is not already applied, add the dependent app to the list
+                    if ((action != constants.APP_METADATA_DEPENDENT_APPS_ACTION_IGNORE or
+                            include_apps_action_ignore) and
+                            not match_dependency(applied_apps_name_version, app_tuple)):
+                        mutually_exclusive_apps.append(mutually_exclusive_app)
+                if mutually_exclusive_apps:
+                    dependent_apps_list.append(mutually_exclusive_apps)
     return dependent_apps_list
+
+
+def format_missing_apps_output(app_list):
+    """
+    Format a list of missing applications (including mutually exclusive groups)
+    into a human-readable string.
+
+    Args:
+        app_list (list): List of dicts or lists of dicts representing missing apps.
+
+    Returns:
+        str: Formatted string describing the missing apps.
+    """
+    def format_single_app(app):
+        return f"{app['name']} (compatible version(s): {app['version']})"
+
+    formatted = []
+    for app in app_list:
+        if isinstance(app, dict):
+            formatted.append(format_single_app(app))
+        elif isinstance(app, list):
+            formatted.append(" or ".join(
+                format_single_app(mutually_exclusive_app) for mutually_exclusive_app in app))
+    return ", ".join(formatted)
+
+
+def is_action_match(action, action_type):
+    """
+    Determine if the given action matches the specified action type.
+
+    Args:
+        action (str or None): The action to check. Can be a string representing the action or None.
+        action_type (str): The action type to match against.
+
+    Returns:
+        bool: True if the action matches the action type, or if the action type is
+        'warn' and the action is None.
+    """
+
+    # If the action type is warn and the action is None, add the dependent
+    # app to the list. The default action for dependent apps is warn.
+    return (
+        action == action_type or
+        (action_type == constants.APP_METADATA_DEPENDENT_APPS_ACTION_WARN and action is None)
+    )
 
 
 def get_dependent_apps_by_action(dependent_apps_metadata_list, action_type):
@@ -81,24 +146,32 @@ def get_dependent_apps_by_action(dependent_apps_metadata_list, action_type):
         action_type (str): Action type of the dependent apps.
 
     Returns:
-        list: A list of dictionaries with 'name' and 'version' keys,
+        list: A list containing dictionaries (for individual dependencies)
+        and lists of dictionaries (for mutually exclusive dependencies),
         representing the dependent applications that match the action type.
     """
 
     dependent_apps_list = []
 
     for dependent_app in dependent_apps_metadata_list:
-        action = dependent_app.get('action', None)
-        # If the action matches the action type, add the dependent app to the list and
-        if action == action_type or (
-            # If the action type is warn and the action is None, add the dependent
-            # app to the list. The default action for dependent apps is warn.
-            action_type == constants.APP_METADATA_DEPENDENT_APPS_ACTION_WARN and action is None
-        ):
-            dependent_apps_list.append({
-                'name': dependent_app['name'],
-                'version': dependent_app['version']
-            })
+        if isinstance(dependent_app, dict):
+            action = dependent_app.get('action', None)
+            if is_action_match(action, action_type):
+                dependent_apps_list.append({
+                    'name': dependent_app['name'],
+                    'version': dependent_app['version']
+                })
+        elif isinstance(dependent_app, list):
+            mutually_exclusive_apps = []
+            for dep in dependent_app:
+                action = dep.get('action', None)
+                if is_action_match(action, action_type):
+                    mutually_exclusive_apps.append({
+                        'name': dep['name'],
+                        'version': dep['version']
+                    })
+            if mutually_exclusive_apps:
+                dependent_apps_list.append(mutually_exclusive_apps)
 
     return dependent_apps_list
 
@@ -146,6 +219,26 @@ def has_circular_dependency(rpc_app, upload_apps_succeeded_list, dbapi):
     return False
 
 
+def is_blocking_dependency(dep, app_name, current_app_version, update_candidate_app_version):
+    """
+    Check if a dependency blocks the update candidate version.
+
+    Args:
+        dep (dict): Dependency dictionary with 'name' and 'version'.
+        app_name (str): Name of the application.
+        current_app_version (str): Currently applied version.
+        update_candidate_app_version (str): Update candidate version.
+
+    Returns:
+        bool: True if the dependency blocks the update candidate version.
+    """
+    if re.fullmatch(dep.get('version'), update_candidate_app_version) is None:
+        name_matches = dep.get('name') == app_name
+        version_matches = re.fullmatch(dep.get('version'), current_app_version) is not None
+        return name_matches and version_matches
+    return False
+
+
 def get_blocking_parent_dependencies(app_name,
                                      current_app_version,
                                      update_candidate_app_version,
@@ -176,12 +269,23 @@ def get_blocking_parent_dependencies(app_name,
         app_metadata = app.app_metadata
         dependent_apps_metadata_list = app_metadata.get(constants.APP_METADATA_DEPENDENT_APPS, [])
         for dependent_app in dependent_apps_metadata_list:
-            # Check if the new app version is not compliant
-            if re.fullmatch(dependent_app.get('version'), update_candidate_app_version) is None:
-                name_matches = dependent_app.get('name') == app_name
-                version_matches = \
-                    re.fullmatch(dependent_app.get('version'), current_app_version) is not None
-                if name_matches and version_matches:
+            # Handle mutually exclusive dependencies (list of dicts)
+            if isinstance(dependent_app, list):
+                for mutually_exclusive_app in dependent_app:
+                    if is_blocking_dependency(mutually_exclusive_app,
+                                              app_name,
+                                              current_app_version,
+                                              update_candidate_app_version):
+                        dependent_parent_list.append({
+                            'name': app.name,
+                            'version': app.app_version
+                        })
+            # Handle single dependency (dict)
+            elif isinstance(dependent_app, dict):
+                if is_blocking_dependency(dependent_app,
+                                          app_name,
+                                          current_app_version,
+                                          update_candidate_app_version):
                     dependent_parent_list.append({
                         'name': app.name,
                         'version': app.app_version
