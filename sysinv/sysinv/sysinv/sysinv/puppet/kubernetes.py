@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2018-2024 Wind River Systems, Inc.
+# Copyright (c) 2018-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -372,6 +372,10 @@ class KubernetesPuppet(base.BasePuppet):
                 host_cluster_ip = self._get_host_cluster_address(host)
                 join_cmd_additions += \
                     " --apiserver-advertise-address %s" % host_cluster_ip
+
+                # Customize port to kube-apiserver
+                join_cmd_additions += \
+                    " --apiserver-bind-port %s" % str(constants.KUBE_APISERVER_INTERNAL_PORT)
 
             cmd = ['kubeadm', KUBECONFIG, 'token', 'create', '--print-join-command',
                    '--description', 'Bootstrap token for %s' % host.hostname]
