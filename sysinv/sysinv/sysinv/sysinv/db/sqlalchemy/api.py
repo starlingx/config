@@ -9701,16 +9701,28 @@ class Connection(api.Connection):
                                sort_key, sort_dir, query)
 
     @db_objects.objectify(objects.kube_app_bundle)
-    def kube_app_bundle_get(self, name, version):
+    def kube_app_bundle_get_by_version_regex(self,
+                                             name,
+                                             version_regex,
+                                             k8s_version):
+        k8s_version = k8s_version.strip().lstrip('v')
+        sql_full_match_regex = "^" + version_regex + "$"
         query = model_query(models.KubeAppBundle)
         query = query.filter(
             models.KubeAppBundle.name == name,
-            models.KubeAppBundle.version == version,
+            models.KubeAppBundle.version.regexp_match(sql_full_match_regex),
+            models.KubeAppBundle.k8s_minimum_version <= k8s_version,
+            or_(models.KubeAppBundle.k8s_maximum_version.is_(None),
+                models.KubeAppBundle.k8s_maximum_version >= k8s_version
+                )
         )
-        try:
-            result = query.one()
-        except NoResultFound:
-            raise exception.KubeAppBundleNotFound(name=name, version=version)
+        query = query.order_by(models.KubeAppBundle.version.desc())
+
+        result = query.first()
+
+        if result is None:
+            raise exception.KubeAppBundleNotFound(name=name, version=version_regex)
+
         return result
 
     def kube_app_bundle_destroy_all(self, file_path=None):

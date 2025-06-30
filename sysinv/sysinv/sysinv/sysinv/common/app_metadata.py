@@ -142,8 +142,12 @@ def validate_metadata_file(path, metadata_file, upgrade_from_release=None):
 
     dependent_apps: - optional: list of dependent apps.
         - name: <app_name>
-          version: <version>
+          version: <regular expression (full match)> e.g: 25.09-\d+
           action: <ignore|warn|error|apply>
+
+    dependent_parent_exceptions: exceptions for parent apps dependencies.
+        - name: <app_name>
+          version: <regular expression (full match)> e.g: 25\.09-1
     """
 
     # Type-level validations:
@@ -369,39 +373,23 @@ def validate_metadata_file(path, metadata_file, upgrade_from_release=None):
                 "corresponding k8s_upgrade:auto_update field was found. Please "
                 "add an 'auto_update' field to the 'k8s_upgrade' section."))
 
-    def validate_dependent_apps_version(parent, key):
-        """ Validate a metadata version string field
+    def validate_regex_field(parent, key):
+        """ Validate a regular expression field
 
-        :param parent: parent section that contains the version string field
-                    to be verified
-        :param key: field name to be validated
-
-        TODO(dbarbosa): support checks if the installed app version should
-        be > or < than the given version string. Exemple: "> 1.0.0" or "< 1.0.0"
+        :param parent: parent section that contains the regular expression field to be verified.
+        :param key: field name to be validated.
         """
 
-        value = None
-
-        error_message = _("Invalid {}: {} should be a valid version string."
-                           .format(metadata_file, key))
-
         try:
-            value = parent[key]
-            if not re.fullmatch(r'^[0-9.-]+$', value):
-                raise exception.SysinvException(
-                    _(error_message)
-                )
-
-            try:
-                LooseVersion(value)
-            except ValueError:
-                raise exception.SysinvException(
-                    _(error_message)
-                )
+            re.compile(parent[key])
+        except re.error:
+            error_message = _("Invalid {}: {} should be a valid regular expression."
+                              .format(metadata_file, key))
+            raise exception.SysinvException(_(error_message))
         except KeyError:
-            pass
-
-        return value
+            error_message = _("Invalid {}: {} is a required regular expression field."
+                              .format(metadata_file, key))
+            raise exception.SysinvException(_(error_message))
 
     def validate_dependent_apps_action(action):
         """ Validate the dependent apps action field
@@ -578,10 +566,7 @@ def validate_metadata_file(path, metadata_file, upgrade_from_release=None):
                 validate_string_field(
                     dependence,
                     constants.APP_METADATA_DEPENDENT_APPS_NAME)
-                validate_string_field(
-                    dependence,
-                    constants.APP_METADATA_DEPENDENT_APPS_VERSION)
-                validate_dependent_apps_version(
+                validate_regex_field(
                     dependence,
                     constants.APP_METADATA_DEPENDENT_APPS_VERSION)
                 validate_string_field(
@@ -602,7 +587,7 @@ def validate_metadata_file(path, metadata_file, upgrade_from_release=None):
                 validate_string_field(
                     parent_exception,
                     constants.APP_METADATA_DEPENDENT_APPS_NAME)
-                validate_string_field(
+                validate_regex_field(
                     parent_exception,
                     constants.APP_METADATA_DEPENDENT_APPS_VERSION)
 

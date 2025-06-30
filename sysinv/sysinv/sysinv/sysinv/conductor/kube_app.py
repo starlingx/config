@@ -2227,10 +2227,7 @@ class AppOperator(object):
             if dependent_apps_missing_list:
                 # Update the application status to APP_UPLOAD_SUCCESS with a message
                 # indicating that the application has dependent apps missing.
-                missing_apps = ', '.join(
-                    [f"{app['name']} (version: {app['version']})"
-                     for app in dependent_apps_missing_list]
-                )
+                missing_apps = self.format_missing_apps_output(dependent_apps_missing_list)
 
                 LOG.warning(
                     f"Application {app.name} ({app.version}) upload completed. "
@@ -2787,6 +2784,22 @@ class AppOperator(object):
                                                         app.name,
                                                         metadata)
 
+    @staticmethod
+    def format_missing_apps_output(app_list):
+        """Format missing apps output message
+
+        :param app_list: List of missing apps.
+
+        :return string: message stating the list of missing apps.
+        """
+
+        missing_apps = ', '.join(
+                    [f"{app['name']} (compatible version(s): {app['version']})"
+                     for app in app_list]
+        )
+
+        return missing_apps
+
     def _remove_from_metadata_dict(self, app_name):
         """Remove all the information about an app in apps_metadada dict
 
@@ -2894,7 +2907,7 @@ class AppOperator(object):
             app_metadata, self._dbapi)
 
         try:
-            # Check if the application has dependent apps missing of action type 'APPLY'
+            # Check if the application has dependent apps missing of action type 'error'
             dependent_apps_error_type = app_dependents.get_dependent_apps_by_action(
                 dependent_apps_missing_list, constants.APP_METADATA_DEPENDENT_APPS_ACTION_ERROR)
 
@@ -2902,16 +2915,17 @@ class AppOperator(object):
                 # Update the application status to APP_APPLY_FAILURE with a message
                 # indicating that the application has dependent apps missing of
                 # action type 'error'.
+                missing_apps = self.format_missing_apps_output(dependent_apps_error_type)
                 progress_msg = (
                     "This app depends on the following missing apps: "
-                    f"{dependent_apps_error_type}. Please install them and try to apply again."
+                    f"{missing_apps}. Please install them and try to apply again."
                 )
                 self._update_app_status(
                     app, constants.APP_APPLY_FAILURE, progress_msg
                 )
                 LOG.error(
                     f"Application {app.name} ({app.version}) apply failed "
-                    f"with dependent apps missing: {dependent_apps_error_type}."
+                    f"with dependent apps missing: {missing_apps}."
                 )
                 return False
 
@@ -3034,9 +3048,10 @@ class AppOperator(object):
                         self._clear_app_alarm(app.name)
 
                     if dependent_apps_missing_list and dependent_apps_warn_type:
+                        missing_apps = self.format_missing_apps_output(dependent_apps_warn_type)
                         LOG.warning(
                             f"Application {app.name} ({app.version}) apply completed "
-                            f"with dependent apps missing: {dependent_apps_warn_type}."
+                            f"with dependent apps missing: {missing_apps}."
                         )
                     else:
                         LOG.info(f"Application {app.name} ({app.version}) apply completed.")
