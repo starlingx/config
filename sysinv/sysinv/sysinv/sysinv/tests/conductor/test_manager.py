@@ -2761,7 +2761,10 @@ class ManagerTestCase(base.DbTestCase):
                                                               config_uuid='4e93a1c4-44c0-4cb8-839b-e50d166514d0',
                                                               config_dict=config_dict, skip_update_config=True)
 
-    def test_kube_delete_container_images(self):
+    @mock.patch('os.listdir')
+    @mock.patch('os.path.isdir', return_value=True)
+    @mock.patch('sysinv.helm.helm.HelmOperator.discover_plugins', return_value=None)
+    def test_kube_delete_container_images(self, mock_isdir, mock_listdir, mock_discover_plugins):
         # Create controller-0
         config_uuid = str(uuid.uuid4())
         self._create_test_ihost(
