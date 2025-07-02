@@ -825,11 +825,13 @@ def extract_bundle_metadata(file_path):
         LOG.exception(e)
 
 
-def load_metadata_of_apps(apps_metadata):
+def load_metadata_of_apps(apps_metadata, isPlatformRollback=False):
     """ Extracts the tarball and loads the metadata of the
     loaded/applied applications.
 
     :param apps_metadata: metadata dictionary of the applications
+    :param isPlatformRollback (bool): If True, the app order calculation is performed using
+        the ostree folder containing old versions of the tarballs (used during platform rollback).
     """
 
     dbapi = api.get_instance()
@@ -848,7 +850,12 @@ def load_metadata_of_apps(apps_metadata):
     for app in db_apps:
         loaded_apps.append(app.name)
 
-    for app_bundle in os.listdir(constants.HELM_APP_ISO_INSTALL_PATH):
+    # Determine the applications path based on whether this is a rollback process
+    apps_path = (f'{constants.ROLLBACK_OSTREE_PATH}{constants.HELM_APP_ISO_INSTALL_PATH}'
+                 if isPlatformRollback
+                 else constants.HELM_APP_ISO_INSTALL_PATH)
+
+    for app_bundle in os.listdir(apps_path):
         # Get the app name from the tarball name
         app_name = None
         pattern = re.compile("^(.*)-([0-9]+\.[0-9]+-[0-9]+)")
@@ -861,7 +868,7 @@ def load_metadata_of_apps(apps_metadata):
         if app_name in loaded_apps:
             # Proceed with extracting the tarball
             tarball_name = '{}/{}'.format(
-                constants.HELM_APP_ISO_INSTALL_PATH, app_bundle)
+                apps_path, app_bundle)
 
             with utils.TempDirectory() as app_path:
                 if not utils.extract_tarfile(app_path, tarball_name):
@@ -901,11 +908,15 @@ def load_metadata_of_apps(apps_metadata):
                         apps_metadata, name, metadata)
 
 
-def get_reorder_apps():
+def get_reorder_apps(isPlatformRollback=False):
     """Reorders apps based on the metadata.yaml presenting the application tarball
 
     The purpose of this function is to print the updated apps
     order based on the metadata.yaml of the tarballs.
+
+    Args:
+        isPlatformRollback (bool): If True, the app order calculation is performed using
+        the ostree folder containing old versions of the tarballs (used during platform rollback).
 
     Returns:
         Array: String array representing the mandatory installation order
@@ -915,13 +926,17 @@ def get_reorder_apps():
                      constants.APP_METADATA_PLATFORM_MANAGED_APPS: {},
                      constants.APP_METADATA_DESIRED_STATES: {},
                      constants.APP_METADATA_ORDERED_APPS: {},
+                     constants.APP_METADATA_ORDERED_APPS_BY_AFTER_KEY: [],
                      constants.APP_METADATA_PLATFORM_UNMANAGED_APPS: set()}
 
-    load_metadata_of_apps(apps_metadata)
+    load_metadata_of_apps(apps_metadata, isPlatformRollback)
 
     if isinstance(apps_metadata[constants.APP_METADATA_ORDERED_APPS], dict):
         apps_metadata[constants.APP_METADATA_ORDERED_APPS]['unmanaged_apps'] = \
             apps_metadata[constants.APP_METADATA_PLATFORM_UNMANAGED_APPS]
+
+    if isPlatformRollback:
+        return apps_metadata[constants.APP_METADATA_ORDERED_APPS_BY_AFTER_KEY]
 
     return apps_metadata[constants.APP_METADATA_ORDERED_APPS]
 

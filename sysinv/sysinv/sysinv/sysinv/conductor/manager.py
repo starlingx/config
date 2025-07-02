@@ -8471,11 +8471,10 @@ class ConductorManager(service.PeriodicService):
         # No need to detect again until conductor restart
         self._do_detect_swact = False
 
-    def _populate_app_bundle_metadata(self):
+    def _populate_app_bundle_metadata(self, tarballs_path=constants.HELM_APP_ISO_INSTALL_PATH):
         """Read metadata of all application bundles and store in the database"""
-
         bundle_list = []
-        for file_path in glob.glob("{}/*.tgz".format(constants.HELM_APP_ISO_INSTALL_PATH)):
+        for file_path in glob.glob("{}/*.tgz".format(tarballs_path)):
             bundle_data = app_metadata.extract_bundle_metadata(file_path)
             if bundle_data:
                 bundle_list.append(bundle_data)
@@ -17332,9 +17331,79 @@ class ConductorManager(service.PeriodicService):
         self._apps_update_operation.update_apps(context)
 
     def get_apps_update_status(self, context):
-        if self._apps_update_operation:
-            return self._apps_update_operation.status
-        return
+        try:
+            if self._apps_update_operation:
+                return self._apps_update_operation.status
+        except Exception:
+            return
+
+    def execute_automatic_operation_sync(self, context, apps, op, **kwargs):
+        """
+            Perform an automatic operation on a list of applications sequentially.
+            :param context: request context.
+            :param apps (list): list with application names.
+            :param op (str): operation to perform. Supported operations include:
+                    - APP_APPLY_OP
+                    - APP_REAPPLY_OP
+                    - APP_UPDATE_OP
+                    - APP_UPLOAD_OP
+                    - APP_RECOVER_UPDATE_OP
+            :param **kwargs: Additional arguments for the operation.
+            :return tuple: (success: bool, failed_apps: list)
+        """
+        # TODO(edias): This function will no longer be necessary in future releases and should be
+        # deleted. Future releases will use the new inter-app dependency feature, which will allow
+        # rollback operations to use the perform_automatic_operation_in_parallel method instead.
+
+        operation_func = {
+            constants.APP_APPLY_OP: self._auto_apply_managed_app,
+            constants.APP_REAPPLY_OP: self._auto_apply_managed_app,
+            constants.APP_UPDATE_OP: self._auto_update_app,
+            constants.APP_UPLOAD_OP: self._auto_upload_managed_app,
+            constants.APP_RECOVER_UPDATE_OP: self.recover_and_update_apply_failed_app
+        }
+
+        result = True
+        failed_executions = []
+
+        LOG.info(f"Initiating automatic operation '{op}' on applications: {', '.join(apps)}")
+
+        for app in apps:
+            try:
+                response = operation_func[op](context, app, **kwargs)
+                if response is False:
+                    failed_executions.append(app)
+                    result = False
+                    break
+                LOG.info(
+                    f"Automatic operation '{op}' to the app {app} completed successfully."
+                )
+            except Exception as e:
+                LOG.error(f"Error occurred while processing the app {app}: {e}")
+                failed_executions.append(app)
+                result = False
+        return result, failed_executions
+
+    def rollback_all_apps(self, context):
+        """
+            Rollback all applications to the previous system state. This method removes existing app
+            bundles, restores metadata from the previous ostree path, and initiates the rollback
+            process using the application update manager.
+            :param context: The request context.
+        """
+
+        rollback_ostree_path = constants.ROLLBACK_OSTREE_PATH
+        previous_tarball_path = rollback_ostree_path + constants.HELM_APP_ISO_INSTALL_PATH
+        self._kube_app_bundle_storage.destroy_all()
+        self._populate_app_bundle_metadata(previous_tarball_path)
+
+        LOG.info("Starting the apps rollback process.")
+
+        self._apps_update_operation = app_update_manager.AppUpdateManager(
+            self.dbapi,
+            self.execute_automatic_operation_sync
+        )
+        self._apps_update_operation.rollback_apps(context)
 
     # TODO (mdecastr): This method is to support upgrades to stx 11,
     # it can be removed in later releases.
