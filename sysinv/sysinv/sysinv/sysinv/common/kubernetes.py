@@ -39,6 +39,7 @@ from urllib3.exceptions import MaxRetryError
 from oslo_log import log as logging
 from sysinv.common import exception
 from sysinv.common import constants
+from sysinv.common import utils
 from sysinv.common.retrying import retry
 
 K8S_MODULE_MAJOR_VERSION = int(K8S_MODULE_VERSION.split('.')[0])
@@ -240,10 +241,19 @@ def k8s_wait_for_endpoints_health(tries=20, try_sleep=5, timeout=5, quiet=False)
              False if at least one of the enpoints is unhealthy
     """
 
-    healthz_endpoints = [constants.APISERVER_READYZ_ENDPOINT,
-                         constants.CONTROLLER_MANAGER_HEALTHZ_ENDPOINT,
+    healthz_endpoints = [constants.CONTROLLER_MANAGER_HEALTHZ_ENDPOINT,
                          constants.SCHEDULER_HEALTHZ_ENDPOINT,
                          constants.KUBELET_HEALTHZ_ENDPOINT]
+
+    if utils.is_kube_apiserver_port_updated():
+        healthz_endpoints.append(constants.APISERVER_READYZ_ENDPOINT)
+    else:
+        # TODO (mdecastr): This code is to support upgrades to stx 11,
+        # it can be removed in later releases.
+        old_readyz_endpoint = constants.APISERVER_READYZ_ENDPOINT.replace(
+                                str(constants.KUBE_APISERVER_INTERNAL_PORT),
+                                str(constants.KUBE_APISERVER_EXTERNAL_PORT))
+        healthz_endpoints.append(old_readyz_endpoint)
 
     threads = {}
     threadpool = greenpool.GreenPool(len(healthz_endpoints))

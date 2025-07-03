@@ -2014,6 +2014,13 @@ def _check_upgrade(dbapi, host_obj=None):
               "software upgrade. Try again after the upgrade is completed."))
 
 
+# TODO (mdecastr): This code is to support upgrades to stx 11,
+# it can be removed in later releases.
+def is_kube_apiserver_port_updated():
+    return (os.path.exists(constants.KUBE_APISERVER_PORT_UPDATED) or
+            not os.path.exists(constants.USM_UPGRADE_IN_PROGRESS))
+
+
 def get_dhcp_client_iaid(mac_address):
     """Retrieves the client IAID from its MAC address."""
     hwaddr = list(int(byte, 16) for byte in mac_address.split(':'))

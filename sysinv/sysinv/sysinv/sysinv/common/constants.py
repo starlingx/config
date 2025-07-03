@@ -27,6 +27,12 @@ ADMIN_ENDPOINT_CONFIG_REQUIRED = os.path.join(tsc.CONFIG_PATH, '.admin_endpoint_
 PLATFORM_FIREWALL_CONFIG_REQUIRED = os.path.join(tsc.PLATFORM_CONF_PATH,
                                     '.platform_firewall_config_required')
 RESTORE_IN_PROGRESS_FLAG = tsc.RESTORE_IN_PROGRESS_FLAG
+
+USM_UPGRADE_IN_PROGRESS = os.path.join(tsc.PLATFORM_CONF_PATH,
+                                       '.usm_upgrade_in_progress')
+KUBE_APISERVER_PORT_UPDATED = os.path.join(tsc.PLATFORM_CONF_PATH,
+                                           '.upgrade_kube_apiserver_port_updated')
+
 # Minimum password length
 MINIMUM_PASSWORD_LENGTH = 8
 
@@ -1382,8 +1388,6 @@ APISERVER_READYZ_ENDPOINT = "https://localhost:%s/readyz" % str(KUBE_APISERVER_I
 SCHEDULER_HEALTHZ_ENDPOINT = "https://127.0.0.1:10259/healthz"
 CONTROLLER_MANAGER_HEALTHZ_ENDPOINT = "https://127.0.0.1:10257/healthz"
 KUBELET_HEALTHZ_ENDPOINT = "http://localhost:10248/healthz"
-healthz_endpoints = [APISERVER_READYZ_ENDPOINT, CONTROLLER_MANAGER_HEALTHZ_ENDPOINT,
-                         SCHEDULER_HEALTHZ_ENDPOINT, KUBELET_HEALTHZ_ENDPOINT]
 
 # Platform pods use under 20 in steady state, but allow extra room.
 SERVICE_PARAM_KUBERNETES_POD_MAX_PIDS_MIN = 100
