@@ -12710,8 +12710,9 @@ class ConductorManager(service.PeriodicService):
             personalities = None
         elif service == constants.SERVICE_TYPE_DOCKER:
             reboot = True
-            if section == constants.SERVICE_PARAM_SECTION_DOCKER_PROXY or \
-                    name == constants.SERVICE_PARAM_NAME_DOCKER_AUTH_SECRET:
+            if (section in [constants.SERVICE_PARAM_SECTION_DOCKER_PROXY,
+                            constants.SERVICE_PARAM_SECTION_DOCKER_CONCURRENCY]
+                    or name == constants.SERVICE_PARAM_NAME_DOCKER_AUTH_SECRET):
                 reboot = False
         elif service == constants.SERVICE_TYPE_KUBERNETES:
             reboot = True
