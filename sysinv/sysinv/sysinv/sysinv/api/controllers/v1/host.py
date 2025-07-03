@@ -2513,20 +2513,6 @@ class HostController(rest.RestController):
             pecan.request.rpcapi.delete_flag_file(
                 pecan.request.context, tsc.RESTORE_IN_PROGRESS_FLAG)
 
-        # Once controller-1 is installed and unlocked we no longer need to
-        # skip wiping OSDs. Skipping OSD wipe is needed on B&R restore
-        # operation when installing controller-1 on both DX and Standard
-        # with controller storage.
-        # Flag file is created by ansible restore platfom procedure.
-        if (ihost_obj['hostname'] == constants.CONTROLLER_1_HOSTNAME and
-                os.path.isfile(tsc.SKIP_CEPH_OSD_WIPING) and
-                patched_ihost.get('action') in
-                [constants.UNLOCK_ACTION, constants.FORCE_UNLOCK_ACTION]):
-            # flag file can only be deleted by root. So
-            # have to send a rpc request to sysinv-conductor to do it.
-            pecan.request.rpcapi.delete_flag_file(
-                pecan.request.context, tsc.SKIP_CEPH_OSD_WIPING)
-
         return Host.convert_with_links(ihost_obj)
 
     def _vim_host_add(self, ihost):
