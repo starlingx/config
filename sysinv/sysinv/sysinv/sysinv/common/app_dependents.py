@@ -87,7 +87,7 @@ def get_dependent_apps_missing(app_metadata, dbapi, include_apps_action_ignore=F
                             include_apps_action_ignore) and
                             not match_dependency(applied_apps_name_version, app_tuple)):
                         mutually_exclusive_apps.append(mutually_exclusive_app)
-                if mutually_exclusive_apps:
+                if len(mutually_exclusive_apps) == len(dependent_app):
                     dependent_apps_list.append(mutually_exclusive_apps)
     return dependent_apps_list
 
