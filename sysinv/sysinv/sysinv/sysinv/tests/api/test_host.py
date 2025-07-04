@@ -582,6 +582,44 @@ class TestPostKubeUpgrades(TestHost):
         self.assertEqual(result['state'],
                          kubernetes.KUBE_UPGRADING_FIRST_MASTER)
 
+    def test_kube_upgrade_control_plane_controller_0_skew_fail(self):
+        # Test upgrading kubernetes control plane on controller-0
+
+        # Create controller-0
+        self._create_controller_0(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Create the upgrade
+        dbutils.create_test_kube_upgrade(
+            from_version='v1.42.1',
+            to_version='v1.42.2',
+            state=kubernetes.KUBE_UPGRADED_STORAGE,
+        )
+
+        # Make the control plane upgrade fail, one node has large kubelet skew,
+        # e.g., 42 - 38 = 4 (>3 tolerance)
+        self.kube_get_kubelet_versions_result = {
+            'controller-0': 'v1.42.1',
+            'controller-1': 'v1.42.1',
+            'worker-0': 'v1.38.5'}
+
+        # Upgrade the control plane
+        body = {}
+        result = self.post_json(
+            '/ihosts/controller-0/kube_upgrade_control_plane',
+            body, headers={'User-Agent': 'sysinv-test'},
+            expect_errors=True)
+
+        # Verify the failure
+        self.assertEqual(result.content_type, 'application/json')
+        self.assertEqual(http_client.BAD_REQUEST, result.status_int)
+        self.assertTrue(result.json['error_message'])
+        self.assertRegex(result.json['error_message'],
+            r"Update kubelet on.*before updating control plane again")
+
     def test_kube_upgrade_control_plane_controller_0_after_failure(self):
         # Test upgrading kubernetes control plane on controller-0 after a
         # failure
@@ -697,6 +735,15 @@ class TestPostKubeUpgrades(TestHost):
             state=kubernetes.KUBE_UPGRADED_FIRST_MASTER,
         )
 
+        # Differentiate 'first' from 'second' controller by their
+        # versions. 'second' must have older version since we upgrade
+        # 'first' first. This is further complicated by K8S version skew
+        # policy since we can update controllers multiple times before
+        # updating kubelet.
+        self.kube_get_control_plane_versions_result = {
+            'controller-0': 'v1.42.2',
+            'controller-1': 'v1.42.1'}
+
         # Mark the first kube host upgrade as OK
         values = {'target_version': 'v1.42.2'}
         self.dbapi.kube_host_upgrade_update(1, values)
@@ -747,6 +794,16 @@ class TestPostKubeUpgrades(TestHost):
             to_version='v1.42.2',
             state=kubernetes.KUBE_UPGRADING_SECOND_MASTER_FAILED,
         )
+
+        # Differentiate 'first' from 'second' controller by their
+        # versions. 'second' must have older version since we upgrade
+        # 'first' first. This is further complicated by K8S version skew
+        # policy since we can update controllers multiple times before
+        # updating kubelet.
+        self.kube_get_control_plane_versions_result = {
+            'controller-0': 'v1.42.2',
+            'controller-1': 'v1.42.1',
+            'worker-0': 'v1.42.1'}
 
         # Mark the first kube host upgrade as OK
         values = {'target_version': 'v1.42.2'}
@@ -845,7 +902,7 @@ class TestPostKubeUpgrades(TestHost):
         self.assertIn("upgrade is not in progress",
                       result.json['error_message'])
 
-    def test_kube_upgrade_control_plane_wrong_upgrade_state(self):
+    def test_kube_upgrade_control_plane_upgrade_not_required(self):
         # Test upgrading kubernetes control plane with wrong upgrade state
 
         # Create controller-0
@@ -862,7 +919,15 @@ class TestPostKubeUpgrades(TestHost):
             state=kubernetes.KUBE_UPGRADING_KUBELETS,
         )
 
+        # controller-0 version already at the target_version,
+        # and it has highest version so it was 'first'
+        self.kube_get_control_plane_versions_result = {
+            'controller-0': 'v1.42.2',
+            'controller-1': 'v1.42.1',
+            'worker-0': 'v1.42.1'}
+
         # Upgrade the control plane
+        # update second control-plane before updating first control plane again
         result = self.post_json(
             '/ihosts/controller-0/kube_upgrade_control_plane',
             {}, headers={'User-Agent': 'sysinv-test'},
@@ -872,7 +937,48 @@ class TestPostKubeUpgrades(TestHost):
         self.assertEqual(result.content_type, 'application/json')
         self.assertEqual(http_client.BAD_REQUEST, result.status_int)
         self.assertTrue(result.json['error_message'])
-        self.assertIn("The kubernetes upgrade is not in a valid state",
+        self.assertIn("The control plane is already running the target version",
+                      result.json['error_message'])
+
+    def test_kube_upgrade_control_plane_correct_order(self):
+        # Test upgrading kubernetes control planes in correct order
+
+        # Create controller-0
+        self._create_controller_0(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Create the upgrade
+        dbutils.create_test_kube_upgrade(
+            from_version='v1.42.1',
+            to_version='v1.42.2',
+            state=kubernetes.KUBE_UPGRADING_KUBELETS,
+        )
+
+        # Differentiate 'first' from 'second' controller by their
+        # versions. 'second' must have older version since we upgrade
+        # 'first' first. This is further complicated by K8S version skew
+        # policy since we can update controllers multiple times before
+        # updating kubelet.
+        self.kube_get_control_plane_versions_result = {
+            'controller-0': 'v1.41.2',
+            'controller-1': 'v1.41.1',
+            'worker-0': 'v1.41.1'}
+
+        # Upgrade the control plane
+        # update second control-plane before updating first control plane again
+        result = self.post_json(
+            '/ihosts/controller-0/kube_upgrade_control_plane',
+            {}, headers={'User-Agent': 'sysinv-test'},
+            expect_errors=True)
+
+        # Verify the failure
+        self.assertEqual(result.content_type, 'application/json')
+        self.assertEqual(http_client.BAD_REQUEST, result.status_int)
+        self.assertTrue(result.json['error_message'])
+        self.assertIn("Update second control-plane before updating first",
                       result.json['error_message'])
 
     def test_kube_upgrade_control_plane_wrong_personality(self):
@@ -1159,6 +1265,11 @@ class TestPostKubeUpgrades(TestHost):
             state=kubernetes.KUBE_UPGRADING_KUBELETS,
         )
 
+        # Indicate control-planes have been upgraded
+        self.kube_get_control_plane_versions_result = {
+            'controller-0': 'v1.42.2',
+            'controller-1': 'v1.42.2'}
+
         # Indicate kubelets on controllers have been upgraded
         self.kube_get_kubelet_versions_result = {
             'controller-0': 'v1.42.2',
@@ -1389,6 +1500,11 @@ class TestPostKubeUpgrades(TestHost):
             to_version='v1.42.2',
             state=kubernetes.KUBE_UPGRADING_KUBELETS,
         )
+
+        # Indicate control-planes have been upgraded
+        self.kube_get_control_plane_versions_result = {
+            'controller-0': 'v1.42.2',
+            'controller-1': 'v1.42.2'}
 
         # Indicate kubelets on controllers have not been upgraded
         self.kube_get_kubelet_versions_result = {

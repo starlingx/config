@@ -275,8 +275,11 @@ class KubernetesPuppet(base.BasePuppet):
         return config
 
     def _retry_on_token(ex):  # pylint: disable=no-self-argument
-        LOG.warn('Retrying in _get_kubernetes_join_cmd')
-        return True
+        if isinstance(ex, subprocess.TimeoutExpired):
+            LOG.warn('Retrying in _get_kubernetes_join_cmd')
+            return True
+        else:
+            return False
 
     @retry(stop_max_attempt_number=API_RETRY_ATTEMPT_NUMBER,
            wait_fixed=API_RETRY_INTERVAL,
@@ -285,7 +288,7 @@ class KubernetesPuppet(base.BasePuppet):
         # The token expires after 24 hours and is needed for a reinstall.
         # The puppet manifest handles the case where the node already exists.
         try:
-            join_cmd_additions = ' --v=5'
+            join_cmd_additions = ' --v=4'
             if host.personality == constants.CONTROLLER:
                 # Upload the certificates used during kubeadm join
 
@@ -301,13 +304,28 @@ class KubernetesPuppet(base.BasePuppet):
                 # Fix up kubeadm-config ConfigMap IPv6 address formatting if needed
                 self._kube_operator.kubeadm_configmap_reformat(None)
 
-                # Get kubeadm version
+                # kubeadm version is system-wide
                 try:
                     kube_version = self.dbapi.kube_cmd_version_get()
                     kubeadm_version = kube_version.kubeadm_version
                 except Exception:
                     LOG.exception("Exception getting kubeadm version")
                     raise exception.KubeVersionUnavailable()
+
+                # If there's a k8s upgrade in progress the kubeadm version
+                # is determined by the upgrade state of the host.
+                kube_upgrade_state = None
+                try:
+                    kube_upgrade_obj = objects.kube_upgrade.get_one(
+                        self.context)
+                    kube_upgrade_state = kube_upgrade_obj.state
+                except exception.NotFound:
+                    pass
+                if kube_upgrade_state:
+                    kube_host_upgrade = objects.kube_host_upgrade.get_by_host_id(
+                        self.context, host.id)
+                    if 'upgrad' in kube_host_upgrade.status:
+                        kubeadm_version = kube_host_upgrade.target_version.lstrip('v')
 
                 # We will create a temp file with the kubeadm config
                 # We need this because the kubeadm config could have changed
@@ -326,6 +344,9 @@ class KubernetesPuppet(base.BasePuppet):
                         LOG.error("Command %s: timed out." % cmd)
                         os.unlink(temp_kubeadm_config_view)
                         raise
+                    except subprocess.CalledProcessError as ex:
+                        raise exception.SysinvException(
+                            "kubectl get kubeadm-config failed with error: [%s]" % (ex))
 
                 # We will use a custom key to encrypt kubeadm certificates
                 # to make sure all hosts decrypt using the same key
@@ -360,9 +381,12 @@ class KubernetesPuppet(base.BasePuppet):
                     subprocess.check_call(cmd, timeout=30)  # pylint: disable=not-callable
                 except subprocess.TimeoutExpired:
                     LOG.error("Command %s: timed out." % cmd)
-                    os.unlink(temp_kubeadm_config_view)
                     raise
-                os.unlink(temp_kubeadm_config_view)
+                except subprocess.CalledProcessError as ex:
+                    raise exception.SysinvException(
+                        "kubeadm init phase upload-certs failed with error: [%s]" % (ex))
+                finally:
+                    os.unlink(temp_kubeadm_config_view)
                 join_cmd_additions += \
                     " --control-plane --certificate-key %s" % key
 
@@ -385,6 +409,9 @@ class KubernetesPuppet(base.BasePuppet):
             except subprocess.TimeoutExpired:
                 LOG.error("Command %s: timed out." % cmd)
                 raise
+            except subprocess.CalledProcessError as ex:
+                raise exception.SysinvException(
+                    "kubeadm token create failed with error: [%s]" % (ex))
             join_cmd_additions += \
                 " --cri-socket /var/run/containerd/containerd.sock"
             join_cmd = join_cmd.strip() + join_cmd_additions

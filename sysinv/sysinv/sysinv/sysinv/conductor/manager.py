@@ -17757,11 +17757,9 @@ class ConductorManager(service.PeriodicService):
         kube_operator = kubernetes.KubeOperator()
         kube_upgrade_obj = objects.kube_upgrade.get_one(context)
         system = self.dbapi.isystem_get_one()
-        if system.system_mode == constants.SYSTEM_MODE_SIMPLEX:
-            next_versions = kube_operator.kube_get_higher_patch_version(kube_upgrade_obj.from_version,
-                                                                        kube_version)
-        else:
-            next_versions = [kube_version]
+
+        next_versions = kube_operator.kube_get_higher_patch_version(
+                kube_upgrade_obj.from_version, kube_version)
 
         LOG.info("Downloading images for versions: %s " % (next_versions))
 
@@ -17953,23 +17951,85 @@ class ConductorManager(service.PeriodicService):
         kube_upgrade_obj = objects.kube_upgrade.get_one(context)
         kube_upgrade_obj.save()
         kube_operator = kubernetes.KubeOperator()
-        current_versions = kube_operator.kube_get_kubelet_versions()
-        system = self.dbapi.isystem_get_one()
+
+        if kube_upgrade_obj.state not in [kubernetes.KUBE_UPGRADING_FIRST_MASTER,
+                                          kubernetes.KUBE_UPGRADING_SECOND_MASTER]:
+            raise exception.SysinvException(_(
+                "Invalid state %s to upgrade control plane." %
+                kube_upgrade_obj.state))
+
+        cp_versions = kube_operator.kube_get_control_plane_versions()
+        cp_version = cp_versions.get(host_obj.hostname)
+        kubelet_versions = kube_operator.kube_get_kubelet_versions()
+        kubelet_version = kubelet_versions.get(host_obj.hostname)
+
+        # Infer whether this is first control-plane being upgraded
+        is_first = False
+        if all(LooseVersion(cp_version) >= LooseVersion(ver)
+                for ver in cp_versions.values()):
+            is_first = True
+
+        # Determine target control-plane version for this host
+        cp_versions_next = kube_operator.kube_get_higher_patch_version(
+            cp_version,
+            kube_upgrade_obj.to_version)
+        if cp_versions_next:
+            target_version = cp_versions_next[0]
+            kubeadm_version = target_version
+        else:
+            LOG.error("Cannot determine target control-plane higher patch version on %s"
+                      % (host_name))
+            self.report_kube_upgrade_control_plane_result(
+                    context, host_uuid, target_version, is_first, False)
+            return
+
+        # Enforce Kubernetes Skew Policy. This prevents unsupported advancement
+        # of control-plane if any nodes are not current enough.
+
+        # Evaluate kubelet version skew for each K8S node.
+        # Example:  If current kubelet is at 1.29, current kubeadm is at 1.32,
+        # then the minor version skew is 3 (i.e., 32 - 29). We prevent the kubeadm
+        # upgrade to 1.33 since the resulting upgrade would have skew of 4.
+        rc = 0
+        for host, kubelet_version in kubelet_versions.items():
+            kubelet_skew = kube_operator.kubelet_version_skew(kubeadm_version,
+                                                              kubelet_version)
+            if kubelet_skew > kubernetes.KUBELET_MINOR_SKEW_TOLERANCE:
+                LOG.error("Kubernetes minor version skew %d exceeds %d tolerance. "
+                          "kubelet upgrade on %s is mandatory."
+                          % (kubelet_skew, kubernetes.KUBELET_MINOR_SKEW_TOLERANCE, host))
+                rc = 1
+
+        # Evaluate control-plane version skew. Prevent kubeadm upgrade of
+        # first master unless all control-planes are the same version.
+        # The client and server will exceed minor version skew of +/- 1.
+        all_equal = len(set(cp_versions.values())) == 1
+        if is_first and not all_equal:
+            LOG.error("Kubernetes minor version skew exceeds +/-1 tolerance. "
+                      "second control-plane upgrade %s is mandatory.")
+            rc = 1
+
+        # Check that we are in appropriate state to upgrade second master,
+        # otherwise we use the wrong upgrade API.
+        if is_first and (kube_upgrade_obj.state == kubernetes.KUBE_UPGRADING_SECOND_MASTER):
+            LOG.error("Invalid state %s to upgrade control plane since this is first."
+                % (kube_upgrade_obj.state))
+            rc = 1
+
+        if rc == 1:
+            self.report_kube_upgrade_control_plane_result(
+                    context, host_uuid, target_version, is_first, False)
+            return
+
+        # Update the target control-plane version to next K8S version
+        kube_cmd_versions = objects.kube_cmd_version.get(context)
+        kube_cmd_versions.kubeadm_version = kubeadm_version.lstrip('v')
+        kube_cmd_versions.kubelet_version = kubelet_version.lstrip('v')
+        kube_cmd_versions.save()
+        kube_host_upgrade_obj.target_version = kubeadm_version
+        kube_host_upgrade_obj.save()
 
         if kube_upgrade_obj.state == kubernetes.KUBE_UPGRADING_FIRST_MASTER:
-
-            if system.system_mode == constants.SYSTEM_MODE_SIMPLEX:
-                next_versions = kube_operator.kube_get_higher_patch_version(current_versions.get(host_name, None),
-                                                                    kube_upgrade_obj.to_version)
-                target_version = next_versions[0]
-                kube_cmd_versions = objects.kube_cmd_version.get(context)
-                kube_cmd_versions.kubeadm_version = target_version.lstrip('v')
-                kube_cmd_versions.kubelet_version = current_versions.get(host_name, None).lstrip('v')
-                kube_cmd_versions.save()
-                kube_host_upgrade_obj.target_version = target_version
-                kube_host_upgrade_obj.save()
-
-            is_first_master = True
 
             # Drop any removed/unsupported feature gates before we upgrade to a
             # newer Kubernetes.  If we leave them in we can prevent K8s services
@@ -18007,26 +18067,19 @@ class ConductorManager(service.PeriodicService):
 
             if rc == 1:
                 self.report_kube_upgrade_control_plane_result(
-                        context, host_uuid, target_version, is_first_master, False)
+                        context, host_uuid, target_version, is_first, False)
                 return
-
-        elif kube_upgrade_obj.state == kubernetes.KUBE_UPGRADING_SECOND_MASTER:
-            is_first_master = False
-        else:
-            raise exception.SysinvException(_(
-                "Invalid state %s to upgrade control plane." %
-                kube_upgrade_obj.state))
 
         try:
             agent_api = agent_rpcapi.AgentAPI()
             agent_api.kube_upgrade_control_plane(
-                    context, host_uuid, target_version, is_first_master)
+                    context, host_uuid, target_version, is_first)
         except Exception as ex:
             # Handle unexpected exception
             LOG.exception("Kubernetes control-plane upgrade for host %s failed. Error: [%s]"
                           % (host_name, ex))
             self.report_kube_upgrade_control_plane_result(
-                    context, host_uuid, target_version, is_first_master, False)
+                    context, host_uuid, target_version, is_first, False)
 
     def report_kube_upgrade_kubelet_result(self, context, host_uuid, to_version, success):
         """Handle kubelet upgrade result call from Sysinv Agent.

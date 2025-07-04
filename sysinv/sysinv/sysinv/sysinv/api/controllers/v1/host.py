@@ -23,6 +23,7 @@ import ast
 import cgi
 import copy
 import datetime
+from distutils.version import LooseVersion
 import json
 import math
 import os
@@ -6985,9 +6986,32 @@ class HostController(rest.RestController):
                 "This host does not have a kubernetes control plane."))
 
         cp_versions = self._kube_operator.kube_get_control_plane_versions()
-        current_cp_version = cp_versions.get(host_obj.hostname)
-        kubelet_version = self._kube_operator.kube_get_kubelet_versions()
-        current_kubelet_version = kubelet_version.get(host_obj.hostname)
+        cp_version = cp_versions.get(host_obj.hostname)
+        kubelet_versions = self._kube_operator.kube_get_kubelet_versions()
+        kubelet_version = kubelet_versions.get(host_obj.hostname)
+
+        if cp_version is None:
+            raise wsme.exc.ClientSideError(_(
+                "Unable to determine the version of the control plane."))
+        if kubelet_version is None:
+            raise wsme.exc.ClientSideError(_(
+                "Unable to determine the version of kubelet."))
+
+        # Determine whether this is first control-plane being upgraded
+        is_first = False
+        if all(LooseVersion(cp_version) >= LooseVersion(ver)
+                for ver in cp_versions.values()):
+            is_first = True
+
+        # Determine target control-plane version for this host
+        cp_versions_next = self._kube_operator.kube_get_higher_patch_version(
+            cp_version, kube_upgrade_obj.to_version)
+        if cp_versions_next:
+            target_version = cp_versions_next[0]
+            kubeadm_version = target_version
+        else:
+            target_version = None
+            kubeadm_version = None
 
         if utils.get_system_mode() == constants.SYSTEM_MODE_SIMPLEX:
             check_upgraded_state = [
@@ -6997,19 +7021,18 @@ class HostController(rest.RestController):
         else:
             check_upgraded_state = [
                 kubernetes.KUBE_UPGRADED_STORAGE,
-                kubernetes.KUBE_UPGRADED_FIRST_MASTER]
+                kubernetes.KUBE_UPGRADED_FIRST_MASTER,
+                kubernetes.KUBE_UPGRADED_SECOND_MASTER]
 
         # Verify the upgrade is in the correct state
         if kube_upgrade_obj.state in check_upgraded_state:
             # We are upgrading a control plane
             pass
         elif kube_upgrade_obj.state == kubernetes.KUBE_UPGRADING_KUBELETS and \
-            current_cp_version != kube_upgrade_obj.to_version and \
-                system.system_mode == constants.SYSTEM_MODE_SIMPLEX:
+                cp_version != kube_upgrade_obj.to_version:
             pass
         elif kube_upgrade_obj.state == kubernetes.KUBE_UPGRADING_KUBELETS and \
-            current_cp_version == kube_upgrade_obj.to_version and \
-                system.system_mode == constants.SYSTEM_MODE_SIMPLEX:
+                cp_version == kube_upgrade_obj.to_version:
             raise wsme.exc.ClientSideError(_(
                     "The control plane is already running the target version."))
         elif kube_upgrade_obj.state in [
@@ -7028,22 +7051,48 @@ class HostController(rest.RestController):
                 "The kubernetes upgrade is not in a valid state to "
                 "upgrade the control plane."))
 
-        if current_cp_version != kube_upgrade_obj.to_version and \
-                system.system_mode == constants.SYSTEM_MODE_SIMPLEX:
-            # Make sure kubelet is updated before updating
-            # control plane again
-            next_versions = self._kube_operator.kube_get_higher_patch_version(current_cp_version,
-                                                                    kube_upgrade_obj.to_version)
-            if kube_host_upgrade_obj.status != kubernetes.KUBE_HOST_UPGRADED_KUBELET and \
-                    current_cp_version != current_kubelet_version:
-                LOG.info("Upgrade kubelet version to %s before upgrading control plane "
-                         "version to %s " % (current_cp_version, next_versions[0]))
+        # Enforce Kubernetes Skew Policy. This prevents unsupported advancement
+        # of control-plane if any nodes are not current enough.
+
+        # Evaluate kubelet version skew for each K8S node.
+        # Example:  If current kubelet is at 1.29, current kubeadm is at 1.32,
+        # then the minor version skew is 3 (i.e., 32 - 29). We prevent the kubeadm
+        # upgrade to 1.33 since the resulting upgrade would have skew of 4.
+        if cp_version != kube_upgrade_obj.to_version:
+            if kube_host_upgrade_obj.status != kubernetes.KUBE_HOST_UPGRADED_KUBELET:
+                old_hosts = []
+                for host, kubelet_version in kubelet_versions.items():
+                    kubelet_skew = self._kube_operator.kubelet_version_skew(
+                        kubeadm_version, kubelet_version)
+                    if kubelet_skew > kubernetes.KUBELET_MINOR_SKEW_TOLERANCE:
+                        LOG.error("Kubernetes minor version skew %d exceeds %d tolerance. "
+                                  "kubelet upgrade on %s is mandatory."
+                                  % (kubelet_skew, kubernetes.KUBELET_MINOR_SKEW_TOLERANCE, host))
+                        old_hosts.append(host)
+                if old_hosts:
+                    raise wsme.exc.ClientSideError(_(
+                        "Update kubelet on %s before updating control plane "
+                        "again." % old_hosts))
+
+            # Infer whether this is first control-plane being upgraded
+            is_first = False
+            if all(LooseVersion(cp_version) >= LooseVersion(ver)
+                    for ver in cp_versions.values()):
+                is_first = True
+
+            # Evaluate control-plane version skew. Prevent kubeadm upgrade of
+            # first master unless all control-planes are the same version.
+            # The client and server will exceed minor version skew of +/- 1.
+            all_equal = len(set(cp_versions.values())) == 1
+            if is_first and not all_equal:
+                LOG.error("Kubernetes minor version skew exceeds +/-1 tolerance. "
+                          "second control-plane upgrade %s is mandatory.")
                 raise wsme.exc.ClientSideError(_(
-                    "Update kubelet before updating control plane "
-                    "again."))
+                    "Update second control-plane before updating first "
+                    "control plane again."))
 
         # Check the existing control plane version
-        if current_cp_version == kube_upgrade_obj.to_version:
+        if cp_version == kube_upgrade_obj.to_version:
             # Make sure we are not attempting to upgrade the first upgraded
             # control plane again
             if kube_upgrade_obj.state == kubernetes.KUBE_UPGRADED_FIRST_MASTER:
@@ -7054,7 +7103,7 @@ class HostController(rest.RestController):
             # to the next state, so something failed along the way.
             LOG.info("Redoing kubernetes control plane upgrade for %s" %
                      host_obj.hostname)
-        elif current_cp_version is None:
+        elif cp_version is None:
             raise wsme.exc.ClientSideError(_(
                 "Unable to determine the version of the kubernetes control "
                 "plane on this host."))
@@ -7082,8 +7131,11 @@ class HostController(rest.RestController):
 
         if kube_upgrade_obj.state in [
                 kubernetes.KUBE_UPGRADED_STORAGE,
+                kubernetes.KUBE_UPGRADED_FIRST_MASTER,
                 kubernetes.KUBE_UPGRADING_FIRST_MASTER_FAILED,
-                kubernetes.KUBE_UPGRADE_CORDON_COMPLETE]:
+                kubernetes.KUBE_UPGRADED_SECOND_MASTER,
+                kubernetes.KUBE_UPGRADING_SECOND_MASTER_FAILED,
+                kubernetes.KUBE_UPGRADE_CORDON_COMPLETE] and is_first:
             # Update the upgrade state
             kube_upgrade_obj.state = kubernetes.KUBE_UPGRADING_FIRST_MASTER
             kube_upgrade_obj.save()
@@ -7092,12 +7144,11 @@ class HostController(rest.RestController):
             pecan.request.rpcapi.kube_upgrade_control_plane(
                 pecan.request.context, host_obj.uuid)
         elif kube_upgrade_obj.state == kubernetes.KUBE_UPGRADING_KUBELETS and \
-            current_cp_version != kube_upgrade_obj.to_version and \
-                system.system_mode == constants.SYSTEM_MODE_SIMPLEX:
+                cp_version != kube_upgrade_obj.to_version:
             LOG.info("In state upgrading kubelets, kubelet version %s, transitioning to "
                      "upgrading control plane, current control plane version %s, "
-                     "target version %s." % (current_kubelet_version, current_cp_version,
-                                            next_versions[0]))
+                     "target version %s." % (kubelet_version, cp_version,
+                                            target_version))
             kube_upgrade_obj.state = kubernetes.KUBE_UPGRADING_FIRST_MASTER
             kube_upgrade_obj.save()
             kube_host_upgrade_obj.status = kubernetes.KUBE_HOST_UPGRADING_CONTROL_PLANE
@@ -7163,24 +7214,23 @@ class HostController(rest.RestController):
                     kubernetes.KUBE_UPGRADED_SECOND_MASTER,
                     kubernetes.KUBE_UPGRADING_KUBELETS)))
 
-        # Enforce the ordering of controllers first
+        # Enforce that kubelets on control-plane nodes are upgraded first
+        cp_versions = self._kube_operator.kube_get_control_plane_versions()
         kubelet_versions = self._kube_operator.kube_get_kubelet_versions()
         if host_obj.personality == constants.WORKER:
-            if kubelet_versions.get(constants.CONTROLLER_0_HOSTNAME) != \
-                    kube_upgrade_obj.to_version or \
-                    kubelet_versions.get(constants.CONTROLLER_1_HOSTNAME) != \
-                    kube_upgrade_obj.to_version:
-                raise wsme.exc.ClientSideError(_(
-                    "The kubelets on all controller hosts must be upgraded "
-                    "before upgrading kubelets on worker hosts."))
+            for host, version in cp_versions.items():
+                if version != kubelet_versions.get(host):
+                    raise wsme.exc.ClientSideError(_(
+                        "The kubelets on all controller hosts must be upgraded "
+                        "before upgrading kubelets on worker hosts."))
 
         # Check whether this host was already upgraded
         kube_host_upgrade_obj = objects.kube_host_upgrade.get_by_host_id(
             pecan.request.context, host_obj.id)
         if kube_host_upgrade_obj.target_version == kube_upgrade_obj.to_version:
             # Check the existing kubelet version
-            current_kubelet_version = kubelet_versions.get(host_obj.hostname)
-            if current_kubelet_version == kube_upgrade_obj.to_version:
+            kubelet_version = kubelet_versions.get(host_obj.hostname)
+            if kubelet_version == kube_upgrade_obj.to_version:
                 # If the force option was used, we will redo the upgrade
                 if force:
                     LOG.info("Redoing kubelet upgrade for %s" %
@@ -7192,7 +7242,7 @@ class HostController(rest.RestController):
                     LOG.info("Upgraded kubernetes kubelet on host %s" %
                             host_obj.hostname)
                     return Host.convert_with_links(host_obj)
-            elif current_kubelet_version is None:
+            elif kubelet_version is None:
                 raise wsme.exc.ClientSideError(_(
                     "Unable to determine the version of the kubelet on this "
                     "host."))
@@ -7215,9 +7265,10 @@ class HostController(rest.RestController):
             raise wsme.exc.ClientSideError(_(
                 "The kubelet on this host is already being upgraded."))
 
-        # Set the target version if this is a worker host
+        # Set the target version of worker host to match the controller
+        # control-plane version
         if host_obj.personality == constants.WORKER:
-            kube_host_upgrade_obj.target_version = kube_upgrade_obj.to_version
+            kube_host_upgrade_obj.target_version = list(cp_versions.values())[0]
 
         # Set the status
         kube_host_upgrade_obj.status = kubernetes.KUBE_HOST_UPGRADING_KUBELET

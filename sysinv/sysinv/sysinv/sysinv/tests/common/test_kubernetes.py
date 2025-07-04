@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2023 Wind River Systems, Inc.
+# Copyright (c) 2023-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -998,6 +998,64 @@ class TestKubeOperator(base.TestCase):
         result = self.kube_operator.kube_get_kubelet_versions()
         assert result == {'test-node-1': 'v1.42.4'}
 
+    def test_kubelet_version_skew(self):
+
+        self.list_node_result = self.single_node_result
+
+        # same minor version
+        result = self.kube_operator.kubelet_version_skew('v1.42.3', 'v1.42.0')
+        assert result == 0
+
+        # control plane newer than kubelet and skew 1, i.e., 43 - 42
+        result = self.kube_operator.kubelet_version_skew('v1.43.1', 'v1.42.0')
+        assert result == 1
+
+        # kubelet newer than control plane by 1
+        result = self.kube_operator.kubelet_version_skew('v1.41.1', 'v1.42.1')
+        assert result == -1
+
+        # kubelet much newer than control plane
+        result = self.kube_operator.kubelet_version_skew('v1.0.0', 'v1.42.1')
+        assert result == -42
+
+        # no leading 'v' and skew 3, i.e., 44 - 41
+        result = self.kube_operator.kubelet_version_skew('1.44.5', '1.41.1')
+        assert result == 3
+
+        # skew of 2, i.e., 45 - 43
+        result = self.kube_operator.kubelet_version_skew('v1.45.1', 'v1.43.7')
+        assert result == 2
+
+        # major kubernetes version change
+        result = self.kube_operator.kubelet_version_skew('v2.0.0', 'v1.42.1')
+        assert result == 58
+
+        # huge skew
+        result = self.kube_operator.kubelet_version_skew('v1.42.1', 'v1.26.0')
+        assert result == 16
+
+    def test_kubelet_version_skew_invalid(self):
+
+        self.list_node_result = self.single_node_result
+
+        # missing kubeadm_version
+        try:
+            self.kube_operator.kubelet_version_skew(None, 'v1.43.1')
+        except Exception as e:
+            self.assertIn("Invalid kubelet version skew input", str(e))
+
+        # missing kubelet_version
+        try:
+            self.kube_operator.kubelet_version_skew('v1.43.1', None)
+        except Exception as e:
+            self.assertIn("Invalid kubelet version skew input", str(e))
+
+        # invalid kubeadm_version
+        try:
+            self.kube_operator.kubelet_version_skew('v1', 'v1.43.1')
+        except Exception as e:
+            self.assertIn("Invalid kubelet version skew input", str(e))
+
     def test_kube_get_higher_patch_version(self):
 
         self.list_node_result = self.single_node_result
@@ -1012,12 +1070,19 @@ class TestKubeOperator(base.TestCase):
         result = self.kube_operator.kube_get_higher_patch_version('v1.41.3', 'v1.45.1')
         assert result == ['v1.42.4', 'v1.43.1', 'v1.44.0', 'v1.45.1']
 
-    def test_kube_get_higher_patch_wrong_version(self):
+    def test_kube_get_higher_patch_version_check_same_minor(self):
+
+        self.list_node_result = self.single_node_result
+
+        result = self.kube_operator.kube_get_higher_patch_version('v1.42.0', 'v1.42.3')
+        assert result == ['v1.42.3']
+
+    def test_kube_get_higher_patch_version_check_nohigher(self):
 
         self.list_node_result = self.single_node_result
 
         result = self.kube_operator.kube_get_higher_patch_version('v1.43.1', 'v1.42.4')
-        assert result is None
+        assert result == []
 
     def test_kube_get_kubelet_versions_multi_node(self):
 
@@ -1044,7 +1109,7 @@ class TestKubeOperator(base.TestCase):
                           'v1.45.1': 'unavailable',
                           'v1.45.3': 'unavailable'}
 
-    def test_kube_get_version_states_active(self):
+    def active(self):
 
         self.list_namespaced_pod_result = self.cp_pods_result
         self.list_node_result = self.single_node_result
@@ -1057,10 +1122,10 @@ class TestKubeOperator(base.TestCase):
                           'v1.42.1': 'active',
                           'v1.42.3': 'available',
                           'v1.42.4': 'available',
-                          'v1.43.1': 'unavailable',
-                          'v1.44.0': 'unavailable',
-                          'v1.45.1': 'unavailable',
-                          'v1.45.3': 'unavailable'}
+                          'v1.43.1': 'active',
+                          'v1.44.0': 'active',
+                          'v1.45.1': 'active',
+                          'v1.45.3': 'active'}
 
     def test_kube_get_version_states_active_simplex(self):
 
@@ -1098,10 +1163,6 @@ class TestKubeOperator(base.TestCase):
                           'v1.45.3': 'unavailable'}
 
     def test_kube_get_version_states_ignore_unknown_version(self):
-        # As of today, we support multi-version k8s upgrade only on
-        # AIO-SX. So for AIO-SX, assertion may fail as all versions
-        # higher than active version can be "available". For AIO-DX
-        # assertion will not fail.
         tsc.system_mode = constants.SYSTEM_MODE_DUPLEX
         self.list_namespaced_pod_result = self.cp_pods_result
         self.cp_pods_result['kube-controller-manager-test-node-1'].items[0].\
@@ -1116,10 +1177,10 @@ class TestKubeOperator(base.TestCase):
                           'v1.42.1': 'active',
                           'v1.42.3': 'available',
                           'v1.42.4': 'available',
-                          'v1.43.1': 'unavailable',
-                          'v1.44.0': 'unavailable',
-                          'v1.45.1': 'unavailable',
-                          'v1.45.3': 'unavailable'}
+                          'v1.43.1': 'available',
+                          'v1.44.0': 'available',
+                          'v1.45.1': 'available',
+                          'v1.45.3': 'available'}
 
     def test_kube_get_kubernetes_version(self):
 

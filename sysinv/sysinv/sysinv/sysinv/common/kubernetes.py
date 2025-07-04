@@ -24,7 +24,6 @@ import shutil
 import subprocess
 import sys
 import time
-import tsconfig.tsconfig as tsc
 import urllib3
 
 from eventlet import greenpool
@@ -175,6 +174,9 @@ MANIFEST_APPLY_TIMEOUT = 60 * 15
 MANIFEST_APPLY_INTERVAL = 10
 POD_START_TIMEOUT = 60 * 2
 POD_START_INTERVAL = 10
+
+# Kubeadm to Kubelet minor version skew toleration
+KUBELET_MINOR_SKEW_TOLERANCE = 3
 
 # retry for urllib3 max retry error
 # Function will fail after 200 seconds
@@ -1678,35 +1680,78 @@ class KubeOperator(object):
 
         return kubelet_versions
 
+    def kubelet_version_skew(self, kubeadm_version, kubelet_version):
+        """ Calculate integer skew between kubeadm (control-plane) minor
+            version and kubelet minor version.
+
+        Reference: https://kubernetes.io/releases/version-skew-policy/
+        kubelet may be up to three minor versions older than kube-apiserver.
+
+        This routine transforms major.minor.patch version string 'X.Y.Z'
+        to scaled representation 100*int(X) + int(Y). The major version is
+        scaled by 100. This ensures that major version changes go beyond
+        the skew limit. The patch version is ignored.
+
+        :param kubeadm_version: control-plane K8S version
+        :param kubelet_version: kubelet K8S version
+
+        :return: integer: skew between kubeadm minor version
+                 and kubelet minor version
+        """
+        def safe_strip(input_string):
+            if not input_string:
+                return ''
+            return ''.join(c for c in input_string if c in '1234567890.')
+
+        if any(value is None for value in (kubeadm_version, kubelet_version)):
+            raise ValueError("Invalid kubelet version skew input")
+
+        # Split major.minor.patch into integer components
+        try:
+            kubeadm_map = list(map(int, safe_strip(kubeadm_version).split(".")[:2]))
+            kubelet_map = list(map(int, safe_strip(kubelet_version).split(".")[:2]))
+        except Exception as e:
+            LOG.error("kubelet_version_skew: Unexpected error: %s, "
+                      "kubeadm_version=%s, kubelet_version=%s"
+                      % (e, kubeadm_version, kubelet_version))
+            raise ValueError("Invalid kubelet version skew input")
+
+        if len(kubeadm_map) != 2 or len(kubelet_map) != 2:
+            raise ValueError("Invalid kubelet version skew input")
+
+        # Calculate integer skew between kubeadm and kubelet minor version
+        skew = (
+                100 * (kubeadm_map[0] - kubelet_map[0]) +
+                (kubeadm_map[1] - kubelet_map[1])
+        )
+        return skew
+
     def kube_get_higher_patch_version(self, current_version, target_version):
         """Returns the list of all k8s "v<major>.<minor>.<patch>"
         versions that are greater than the current_version and up
         to the final target_version, keeping only the highest patch
         version for a given minor version. The list will contain minor
         versions that increment by 1 each time."""
+        if current_version is None or not current_version:
+            LOG.error("Current version not available.")
+            return []
 
         if LooseVersion(target_version) <= LooseVersion(current_version):
-            LOG.error("Target version should be greater than or "
-                      "equal to current version")
-            return None
+            LOG.warning("Target version %s should be greater than the current version %s"
+                        % (target_version, current_version))
         # Get version lists
         kube_versions = get_kube_versions()
         kube_versions = sorted(kube_versions, key=lambda v: LooseVersion(v['version']))
-        current_major_minor = ".".join(current_version.split(".")[:2])
         major_minor_version = set()
         final_versions = list()
         intermediate_versions = list()
 
         # loop over all k8s versions in minor.major.patch version sorted order
-        # exclude from the list:
-        # -- versions > the current version
-        # -- versions <= target_version
-        # -- version == current version
+        # Include versions: > the current version, and <= target_version
         for version in kube_versions:
             major_minor = ".".join(version['version'].split(".")[:2])
-            if LooseVersion(version['version']) > LooseVersion(current_version) \
-                and LooseVersion(version['version']) <= LooseVersion(target_version) \
-                    and current_major_minor not in major_minor:
+            if ((LooseVersion(version['version']) > LooseVersion(current_version)) and
+                    (LooseVersion(version['version']) <= LooseVersion(target_version))):
                 intermediate_versions.append(version['version'])
                 major_minor_version.add(major_minor)
 
@@ -1776,8 +1821,7 @@ class KubeOperator(object):
             for version in kube_versions:
                 if active_version in version['upgrade_from']:
                     version_states[version['version']] = KUBE_STATE_AVAILABLE
-                if (tsc.system_mode == constants.SYSTEM_MODE_SIMPLEX) and \
-                        LooseVersion(version['version']) > LooseVersion(active_version):
+                if LooseVersion(version['version']) > LooseVersion(active_version):
                     version_states[version['version']] = KUBE_STATE_AVAILABLE
 
         return version_states
