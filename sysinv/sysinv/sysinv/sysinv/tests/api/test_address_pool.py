@@ -585,6 +585,41 @@ class TestPatchMixin(object):
         self.assertEqual(addrpool.uuid, c1_address.pool_uuid)
         self.assertIsNone(c1_address.ifname)
 
+    def test_storage_aio_sx_to_dx_migration(self):
+        addrpool = self.find_addrpool_by_networktype(constants.NETWORK_TYPE_STORAGE)
+        interface = self.create_test_interface()
+
+        system_dict = self.system.as_dict()
+        system_dict['capabilities'].update({'simplex_to_duplex_migration': True})
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+
+        floating_addr = self.dbapi.address_get_by_id(addrpool.floating_address_id)
+        self.dbapi.address_update(floating_addr.uuid, {'interface_id': interface.id})
+
+        self.dbapi.address_destroy_by_id(addrpool.controller0_address_id)
+        self.dbapi.address_destroy_by_id(addrpool.controller1_address_id)
+        self.dbapi.address_pool_update(addrpool.uuid, {
+            'controller0_address_id': None,
+            'controller1_address_id': None
+        })
+
+        response = self.patch_success(
+            addrpool,
+            controller0_address=addrpool.controller0_address,
+            controller1_address=addrpool.controller1_address
+        )
+
+        floating_addr = self.dbapi.address_get_by_id(addrpool.floating_address_id)
+        self.assertIsNone(floating_addr.ifname)
+
+        c0_address = self.dbapi.address_get_by_id(response.json['controller0_address_id'])
+        self.assertEqual(addrpool.uuid, c0_address.pool_uuid)
+        self.assertEqual(interface.ifname, c0_address.ifname)
+
+        c1_address = self.dbapi.address_get_by_id(response.json['controller1_address_id'])
+        self.assertEqual(addrpool.uuid, c1_address.pool_uuid)
+        self.assertIsNone(c1_address.ifname)
+
     @mock.patch('sysinv.common.usm_service.is_usm_authapi_ready', lambda: True)
     @mock.patch('sysinv.common.usm_service.get_platform_upgrade')
     def test_fail_modify_oam_during_platform_upgrade(self, mock_get_platform_upgrade):
