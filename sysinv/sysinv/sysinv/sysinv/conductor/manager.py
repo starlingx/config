@@ -19046,11 +19046,26 @@ class ConductorManager(service.PeriodicService):
             LOG.info(message)
             return message
 
-        if cutils.is_app_applied(self.dbapi, constants.HELM_APP_ROOK_CEPH) and \
-                self._rook_ceph_recovery_is_running():
-            message = "The rook-ceph recovery is not yet complete. Try restore-complete later."
-            LOG.info(message)
-            return message
+        # Do not allow restore to complete if the rook recovery process is not completed
+        if cutils.is_app_applied(self.dbapi, constants.HELM_APP_ROOK_CEPH):
+            try:
+                if self._check_rook_ceph_recovery_configmap():
+                    status = self._get_rook_ceph_recovery_configmap_data("status")
+                    if status == constants.ROOK_CEPH_RECOVERY_COMPLETED:
+                        self._delete_rook_ceph_recovery_configmap()
+                        LOG.info("The rook-ceph recovery completed successfully.")
+                    elif status == constants.ROOK_CEPH_RECOVERY_FAILED:
+                        failure = self._get_rook_ceph_recovery_configmap_data("failure")
+                        message = f"Recovering rook-ceph failed for the following reason: {failure}"
+                        LOG.error(message)
+                        return message
+                    else:
+                        message = "The rook-ceph recovery is not yet complete. Try restore-complete later."
+                        LOG.info(message)
+                        return message
+            except Exception as e:
+                LOG.error(str(e))
+                return str(e)
 
         try:
             restore = self.dbapi.restore_get_one(
@@ -19093,14 +19108,47 @@ class ConductorManager(service.PeriodicService):
         LOG.info(output)
         return output
 
-    def _rook_ceph_recovery_is_running(self):
-        # Do not allow restore to complete if the rook recovery process is not completed
+    def _check_rook_ceph_recovery_configmap(self):
+        """Check if the rook-ceph-recovery configmap exists
+
+        :returns: True if it exists or False otherwise
+        """
         cmd = ['kubectl', '--kubeconfig=%s' % kubernetes.KUBERNETES_ADMIN_CONF,
-               '-n', 'rook-ceph', 'get', 'job', 'rook-ceph-recovery-monitor',
+               '-n', 'rook-ceph', 'get', 'configmap', 'rook-ceph-recovery',
                '--request-timeout=30s']
-        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        # Return code being "0" means the job exists and the recovery is still running
+        proc = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if proc.returncode not in [0, 1]:
+            raise Exception("Failed to check rook-ceph-recovery configmap (rc=%s)." % proc.returncode)
         return proc.returncode == 0
+
+    def _get_rook_ceph_recovery_configmap_data(self, key):
+        """Gets the value of a key (variable) from the rook-ceph-recovery configmap
+
+        This method is used to get the recovery status and/or get the failure message.
+
+        :param key: name of the configmap key (variable)
+        :returns: value of the key
+        """
+        cmd = ['kubectl', '--kubeconfig=%s' % kubernetes.KUBERNETES_ADMIN_CONF,
+               '-n', 'rook-ceph', 'get', 'configmap', 'rook-ceph-recovery',
+               '-o', 'jsonpath=\'{.data.%s}\'' % key, '--request-timeout=30s']
+        proc = subprocess.run(cmd, capture_output=True, text=True)
+        if proc.returncode != 0 or not proc.stdout:
+            raise Exception("Failed to get rook-ceph-recovery configmap data (rc=%s)." % proc.returncode)
+        return proc.stdout.replace("'", "")
+
+    def _delete_rook_ceph_recovery_configmap(self):
+        """Delete rook-ceph-recovery configmap.
+
+        This method is to delete the 'rook-ceph-recovery' configmap when
+        rook-ceph recovery has completed and restore-complete can be run.
+        """
+        cmd = ['kubectl', '--kubeconfig=%s' % kubernetes.KUBERNETES_ADMIN_CONF,
+               '-n', 'rook-ceph', 'delete', 'configmap', 'rook-ceph-recovery',
+               '--request-timeout=30s']
+        proc = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if proc.returncode != 0:
+            raise Exception("Failed to delete rook-ceph-recovery configmap (rc=%s)." % proc.returncode)
 
     def _create_kube_rootca_resources(self, certificate, key):
         """ A method to create new resources to store new kubernetes
