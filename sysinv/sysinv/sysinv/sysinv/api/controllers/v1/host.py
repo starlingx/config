@@ -2363,7 +2363,15 @@ class HostController(rest.RestController):
                     new_ihost_mtc['action'] = constants.UNLOCK_ACTION
 
                 # Notify maintenance about updated mgmt_ip
-                new_ihost_mtc['mgmt_ip'] = utils.get_mgmt_ip(ihost_obj.hostname)
+                system = pecan.request.dbapi.isystem_get_one()
+                if (system.capabilities.get('simplex_to_duplex_migration') or
+                        system.capabilities.get('simplex_to_duplex-direct_migration')) and \
+                        ihost_obj.hostname == constants.CONTROLLER_0_HOSTNAME:
+                    # during migration, controller-0 is still using the mgmt floating address,
+                    # the unit address will be available only after unlock to finish migration to DX
+                    new_ihost_mtc['mgmt_ip'] = utils.get_mgmt_ip(constants.CONTROLLER_HOSTNAME)
+                else:
+                    new_ihost_mtc['mgmt_ip'] = utils.get_mgmt_ip(ihost_obj.hostname)
 
                 if new_ihost_mtc['operation'] == 'add':
                     # Evaluate apps reapply on new host

@@ -1313,6 +1313,7 @@ class ConductorManager(service.PeriodicService):
         mgmt_network = self.dbapi.network_get_by_type(
             constants.NETWORK_TYPE_MGMT
         )
+        is_aio_simplex = cutils.is_aio_simplex_system(self.dbapi)
 
         func = "_generate_dnsmasq_hosts_file"
         with open(temp_dnsmasq_hosts_file, 'w') as f_out, \
@@ -1340,9 +1341,11 @@ class ConductorManager(service.PeriodicService):
             # get the list of hosts for the host id's needed below.
             ihosts = self.dbapi.ihost_get_list()
 
+            addresses = self.dbapi._addresses_get_by_pool_uuid(mgmt_network.pool_uuid)
+            has_controller_0_mgmt = any(address.name for address in addresses
+                                           if address.name == constants.CONTROLLER_0_MGMT)
             # Loop through mgmt addresses to write to file
-            for address in self.dbapi._addresses_get_by_pool_uuid(
-                    mgmt_network.pool_uuid):
+            for address in addresses:
                 line = None
                 hostname = re.sub("-%s$" % constants.NETWORK_TYPE_MGMT,
                                   '', str(address.name))
@@ -1357,6 +1360,10 @@ class ConductorManager(service.PeriodicService):
                                     "controller-platform-nfs"]
 
                 if hostname == constants.CONTROLLER_HOSTNAME:
+                    # For simplex with no controller-0/controller-1 addresses, set
+                    # controller-0.internal as an alias to the controller entry.
+                    if is_aio_simplex and not has_controller_0_mgmt:
+                        controller_alias.append(constants.CONTROLLER_0_FQDN)
                     addn_line_internal = self._dnsmasq_addn_host_entry_to_string(
                             address.address, constants.CONTROLLER_FQDN, controller_alias)
                 else:
@@ -1477,7 +1484,7 @@ class ConductorManager(service.PeriodicService):
         # The controller IP will be in the dnsmasq.addn_hosts.
         # Since the /opt/platform is not mounted during the startup it is
         # necessary to copy DNSMASQ files to /etc/platform/
-        if cutils.is_aio_simplex_system(self.dbapi):
+        if is_aio_simplex:
             ETC_PLAT = tsc.PLATFORM_CONF_PATH + '/'
 
             if os.path.isfile(dnsmasq_hosts_file):
@@ -2122,23 +2129,29 @@ class ConductorManager(service.PeriodicService):
         for pool_uuid in pool_uuid_list:
             pool = self.dbapi.address_pool_get(pool_uuid)
 
+            haddrname = hostname
+            if cutils.is_aio_simplex_system(self.dbapi) \
+                    and hostname == constants.CONTROLLER_0_HOSTNAME:
+                haddrname = constants.CONTROLLER_HOSTNAME
+
             # check for static mgmt IP
             mgmt_ip = self._lookup_static_ip_address_family(
-                hostname, constants.NETWORK_TYPE_MGMT, pool.family)
+                haddrname, constants.NETWORK_TYPE_MGMT, pool.family)
 
             # make sure address in address table and update dnsmasq host file
             if mgmt_ip:
-                LOG.info("Static mgmt ip {} for host{}".format(mgmt_ip, hostname))
-                self._create_or_update_address(context, hostname, mgmt_ip,
+                LOG.info("Static mgmt ip {} for host={}".format(mgmt_ip, hostname))
+                self._create_or_update_address(context, haddrname, mgmt_ip,
                                                constants.NETWORK_TYPE_MGMT,
                                                mgmt_interface_id, pool_uuid)
             # if no static address, then allocate one
             if not mgmt_ip:
-                address_name = cutils.format_address_name(hostname,
+                address_name = cutils.format_address_name(haddrname,
                                                         constants.NETWORK_TYPE_MGMT)
                 mgmt_ip = self._allocate_pool_address(mgmt_interface_id, pool_uuid,
                                                       address_name).address
-                LOG.info(f"Allocated mgmt ip {mgmt_ip} for host={hostname}")
+                LOG.info(f"Allocated mgmt ip {mgmt_ip} for host={hostname}"
+                         f" address_name={address_name}")
 
         self._generate_dnsmasq_hosts_file(existing_host=host)
         self._allocate_cluster_host_address_for_host(host)
@@ -9783,7 +9796,8 @@ class ConductorManager(service.PeriodicService):
 
             config_dict = {
                 "personalities": personalities,
-                "classes": ['platform::kubernetes::duplex_migration::runtime'],
+                "classes": ['platform::kubernetes::duplex_migration::runtime',
+                            'platform::sm::duplex_migration::runtime'],
             }
             self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
