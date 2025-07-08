@@ -186,8 +186,16 @@ class NetworkingPuppet(base.BasePuppet):
                 controller0_address = None
             configdata[family_name].update({'controller0_address': controller0_address})
 
-            if utils.is_aio_simplex_system(self.dbapi) and controller0_address is None \
-                    and networktype in [constants.NETWORK_TYPE_MGMT]:
+            if (
+                utils.is_aio_simplex_system(self.dbapi)
+                and controller0_address is None
+                and networktype in (
+                        constants.NETWORK_TYPE_ADMIN,
+                        constants.NETWORK_TYPE_MGMT,
+                        constants.NETWORK_TYPE_CLUSTER_HOST,
+                        constants.NETWORK_TYPE_STORAGE,
+                )
+            ):
                 configdata[family_name].update({'controller0_address': controller_address})
 
             try:

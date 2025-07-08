@@ -18569,7 +18569,10 @@ class ConductorManager(service.PeriodicService):
 
         controller_0_cluster_host = None
         controller_0_cluster_host_secondary = None
-        if "cluster_host_node_0_address" in overrides:
+        if cutils.is_aio_simplex_system(self.dbapi):
+            controller_0_cluster_host = cluster_host_floating_address
+            controller_0_cluster_host_secondary = cluster_floating_address_secondary
+        elif "cluster_host_node_0_address" in overrides:
             controller_0_cluster_hosts = \
                 overrides["cluster_host_node_0_address"].split(',')
             controller_0_cluster_host = controller_0_cluster_hosts[0]

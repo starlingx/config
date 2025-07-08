@@ -4033,9 +4033,12 @@ def get_primary_address_by_name(dbapi, db_address_name, networktype, raise_exc=F
     """
     if (
         is_aio_simplex_system(dbapi)
-        and networktype in (constants.NETWORK_TYPE_ADMIN,
-                            constants.NETWORK_TYPE_MGMT,
-                            constants.NETWORK_TYPE_STORAGE)
+        and networktype in (
+            constants.NETWORK_TYPE_ADMIN,
+            constants.NETWORK_TYPE_MGMT,
+            constants.NETWORK_TYPE_CLUSTER_HOST,
+            constants.NETWORK_TYPE_STORAGE,
+        )
         and db_address_name == f"{constants.CONTROLLER_0_HOSTNAME}-{networktype}"
     ):
         db_address_name = f"{constants.CONTROLLER_HOSTNAME}-{networktype}"
@@ -4109,7 +4112,10 @@ def get_secondary_address_by_name(dbapi, db_address_name, networktype, raise_exc
 
     if (
         is_aio_simplex_system(dbapi)
-        and networktype in (constants.NETWORK_TYPE_MGMT)
+        and networktype in (
+            constants.NETWORK_TYPE_MGMT,
+            constants.NETWORK_TYPE_CLUSTER_HOST,
+        )
         and db_address_name == f"{constants.CONTROLLER_0_HOSTNAME}-{networktype}"
     ):
         db_address_name = f"{constants.CONTROLLER_HOSTNAME}-{networktype}"

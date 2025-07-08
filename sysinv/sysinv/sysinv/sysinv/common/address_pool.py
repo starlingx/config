@@ -222,9 +222,15 @@ def _get_hostname_field_index(network_type, dbapi=None):
 
     for hostname, field in req_addresses.items():
         entries[hostname] = (field, True)
-        if network_type in {
-            constants.NETWORK_TYPE_ADMIN, constants.NETWORK_TYPE_MGMT, constants.NETWORK_TYPE_STORAGE
-        } and _get_system_mode(dbapi) == constants.SYSTEM_MODE_SIMPLEX:
+        if (
+            _get_system_mode(dbapi) == constants.SYSTEM_MODE_SIMPLEX and
+            network_type in (
+                constants.NETWORK_TYPE_ADMIN,
+                constants.NETWORK_TYPE_MGMT,
+                constants.NETWORK_TYPE_CLUSTER_HOST,
+                constants.NETWORK_TYPE_STORAGE,
+            )
+        ):
             if hostname in [constants.CONTROLLER_0_HOSTNAME, constants.CONTROLLER_1_HOSTNAME]:
                 del entries[hostname]
 
@@ -304,9 +310,13 @@ def assign_network_addresses_to_interface(host, interface_id, network, addrpools
 
 
 def _assign_addresses_to_controller_iface(host, interface_id, network, addrpools, dbapi):
-    if network.type in [constants.NETWORK_TYPE_OAM, constants.NETWORK_TYPE_ADMIN,
-                        constants.NETWORK_TYPE_MGMT, constants.NETWORK_TYPE_STORAGE] and \
-            _get_system_mode(dbapi) == constants.SYSTEM_MODE_SIMPLEX:
+    if _get_system_mode(dbapi) == constants.SYSTEM_MODE_SIMPLEX and network.type in (
+        constants.NETWORK_TYPE_OAM,
+        constants.NETWORK_TYPE_ADMIN,
+        constants.NETWORK_TYPE_MGMT,
+        constants.NETWORK_TYPE_CLUSTER_HOST,
+        constants.NETWORK_TYPE_STORAGE,
+    ):
         hostname = constants.CONTROLLER_HOSTNAME
     else:
         hostname = host.hostname
