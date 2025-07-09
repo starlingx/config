@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2023 Wind River Systems, Inc.
+# Copyright (c) 2013-2023,2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -11,6 +11,7 @@ from cgtsclient.common import base
 from cgtsclient.common import utils
 from cgtsclient import exc
 from cgtsclient.v1 import icpu
+from sysinv.common import constants
 
 
 CREATION_ATTRIBUTES = ['hostname', 'personality', 'subfunctions', 'mgmt_mac',
@@ -30,6 +31,11 @@ class ihost(base.Resource):
 class ihost_kernel(base.Resource):
     def __repr__(self):
         return "<kernel %s>" % self._info
+
+
+class ihost_vim(base.Resource):
+    def __repr__(self):
+        return "<vim %s>" % self._info
 
 
 class ihostManager(base.Manager):
@@ -151,6 +157,13 @@ class ihostManager(base.Manager):
         url = self._path(hostid) + "/kernel"
         resp, body = self.api.json_request('GET', url)
         return ihost_kernel(self, body)
+
+    def vim_host_audit(self, hostid):
+        # path = self._path(hostid) + "/vim"
+        url = self._path(hostid) + "/vim"
+        body = {"vim_event": constants.HOST_AUDIT_ACTION}
+        resp, body = self.api.json_request('POST', url, body=body)
+        return ihost_vim(self, body)
 
 
 def _find_ihost(cc, ihost_id):

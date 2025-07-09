@@ -312,6 +312,9 @@ class V1(base.APIBase):
     evaluate_apps_reapply = [link.Link]
     "Links to the evaluate_apps_reapply resource"
 
+    vim = [link.Link]
+    "Links to the VIM resource"
+
     @classmethod
     def convert(self):
         v1 = V1()
@@ -948,6 +951,13 @@ class V1(base.APIBase):
                                                         pecan.request.host_url,
                                                         'evaluate_apps_reapply', '',
                                                         bookmark=True)]
+
+        v1.vim = [link.Link.make_link('self', pecan.request.host_url,
+                                      'vim', ''),
+                  link.Link.make_link('bookmark',
+                                      pecan.request.host_url,
+                                      'vim', '',
+                                      bookmark=True)]
 
         return v1
 

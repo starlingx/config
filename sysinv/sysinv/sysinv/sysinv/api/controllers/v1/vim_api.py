@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2015-2020 Wind River Systems, Inc.
+# Copyright (c) 2015-2020,2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -102,7 +102,8 @@ def vim_host_action(token, uuid, hostname, action, timeout):
     _valid_actions = [constants.UNLOCK_ACTION,
                       constants.LOCK_ACTION,
                       constants.FORCE_LOCK_ACTION,
-                      constants.FORCE_UNSAFE_LOCK_ACTION]
+                      constants.FORCE_UNSAFE_LOCK_ACTION,
+                      constants.HOST_AUDIT_ACTION]
 
     if action not in _valid_actions:
         LOG.error("Unrecognized vim_host_action=%s" % action)

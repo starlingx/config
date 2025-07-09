@@ -13683,3 +13683,55 @@ Will reply with updated kernel value
       "kernel_provisioned": "lowlatency",
       "kernel_running": "standard"
    }
+
+
+-------------------------
+Host VIM Actions
+-------------------------
+
+These APIs allow the user to trigger actions in VIM.
+
+Supported actions:
+- host-audit
+
+********************
+Trigger Action
+********************
+
+.. rest_method:: POST /v1/ihosts/{ihost_uuid}/vim
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+computeFault (400, 500, ...), serviceUnavailable (503),
+unauthorized (401), forbidden (403), itemNotFound (404)
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "ihost_uuid", "URI", "csapi:UUID", "The unique identifier of the host"
+   "vim_event", "plain", "xsd:string", "The action to trigger (host-audit)"
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "ihost_uuid", "plain", "csapi:UUID", "The unique identifier of the host"
+   "hostname", "plain", "xsd:string", "The host name"
+   "vim_event", "plain", "xsd:string", "The action that was triggered"
+
+::
+
+   {
+      "ihost_uuid": "e551b1f0-ab6d-43a9-8eb1-05c39025a161",
+      "hostname": "controller-0",
+      "vim_event": "host-audit",
+   }

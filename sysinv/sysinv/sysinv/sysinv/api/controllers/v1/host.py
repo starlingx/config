@@ -88,6 +88,7 @@ from sysinv.api.controllers.v1 import patch_api
 from sysinv.api.controllers.v1 import ptp_instance
 from sysinv.api.controllers.v1 import ptp_interface
 from sysinv.api.controllers.v1 import kernel
+from sysinv.api.controllers.v1 import vim
 from sysinv.api.policies import ihosts as ihosts_policy
 from sysinv.common import ceph
 from sysinv.common import constants
@@ -1174,6 +1175,9 @@ class HostController(rest.RestController):
 
     kernel = kernel.KernelController()
     "Expose kernel as a sub-element of ihosts"
+
+    vim = vim.VIMController()
+    "Expose vim as a sub-element of ihosts"
 
     _custom_actions = {
         'detail': ['GET'],
