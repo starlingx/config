@@ -17840,6 +17840,19 @@ class ConductorManager(service.PeriodicService):
             return self._apps_update_operation.status
         return
 
+    # TODO (mdecastr): This method is to support upgrades to stx 11,
+    # it can be removed in later releases.
+    def flag_k8s_port_update_rollback(self, context):
+        personalities = [constants.CONTROLLER]
+        config_uuid = self._config_update_hosts(context, personalities)
+        config_dict = {
+            "personalities": personalities,
+            "classes": ['platform::kubernetes::master::rollback_flag']
+        }
+        self._config_apply_runtime_manifest(
+            context, config_uuid, config_dict, force=True)
+        LOG.info("K8s port update rollback flag requested.")
+
     def reconfigure_service_endpoints(self, context, host):
         """Reconfigure the service endpoints
 
