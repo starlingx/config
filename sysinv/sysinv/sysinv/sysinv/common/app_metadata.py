@@ -914,9 +914,14 @@ def get_reorder_apps():
     apps_metadata = {constants.APP_METADATA_APPS: {},
                      constants.APP_METADATA_PLATFORM_MANAGED_APPS: {},
                      constants.APP_METADATA_DESIRED_STATES: {},
-                     constants.APP_METADATA_ORDERED_APPS: []}
+                     constants.APP_METADATA_ORDERED_APPS: {},
+                     constants.APP_METADATA_PLATFORM_UNMANAGED_APPS: set()}
 
     load_metadata_of_apps(apps_metadata)
+
+    if isinstance(apps_metadata[constants.APP_METADATA_ORDERED_APPS], dict):
+        apps_metadata[constants.APP_METADATA_ORDERED_APPS]['unmanaged_apps'] = \
+            apps_metadata[constants.APP_METADATA_PLATFORM_UNMANAGED_APPS]
 
     return apps_metadata[constants.APP_METADATA_ORDERED_APPS]
 

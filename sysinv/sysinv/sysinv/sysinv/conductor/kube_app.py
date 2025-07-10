@@ -2659,8 +2659,10 @@ class AppOperator(object):
             is_managed = behavior.get(constants.APP_METADATA_PLATFORM_MANAGED_APP, None)
             desired_state = behavior.get(constants.APP_METADATA_DESIRED_STATE, None)
 
-            # Remember if the app wants to be managed by the platform
-            if cutils.is_valid_boolstr(is_managed):
+            if is_managed is True or (
+                isinstance(is_managed, str) and
+                is_managed.lower() in ('true', 'yes', 'y', '1')
+            ):
                 apps_metadata_dict[
                     constants.APP_METADATA_PLATFORM_MANAGED_APPS][app_name] = None
                 LOG.info("App {} requested to be platform managed"
@@ -2675,12 +2677,18 @@ class AppOperator(object):
                 else:
                     AppOperator.recompute_app_evaluation_order(apps_metadata_dict)
 
-            # Remember the desired state the app should achieve
-            if desired_state is not None:
-                apps_metadata_dict[
-                    constants.APP_METADATA_DESIRED_STATES][app_name] = desired_state
-                LOG.info("App {} requested to achieve {} state"
-                         "".format(app_name, desired_state))
+                # Remember the desired state the app should achieve
+                if desired_state is not None:
+                    apps_metadata_dict[
+                        constants.APP_METADATA_DESIRED_STATES][app_name] = desired_state
+                    LOG.info("App {} requested to achieve {} state"
+                             "".format(app_name, desired_state))
+
+            elif constants.APP_METADATA_PLATFORM_UNMANAGED_APPS in apps_metadata_dict:
+                apps_metadata_dict[constants.APP_METADATA_PLATFORM_UNMANAGED_APPS].add(app_name)
+
+        elif constants.APP_METADATA_PLATFORM_UNMANAGED_APPS in apps_metadata_dict:
+            apps_metadata_dict[constants.APP_METADATA_PLATFORM_UNMANAGED_APPS].add(app_name)
 
         dependent_apps = metadata.get(constants.APP_METADATA_DEPENDENT_APPS, None)
         if dependent_apps is not None:
