@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2018 Wind River Systems, Inc.
+# Copyright (c) 2013-2018,2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -45,8 +45,8 @@ class istorManager(base.Manager):
                 raise exc.InvalidAttribute('%s' % key)
         return self._create(path, new)
 
-    def delete(self, istor_id):
-        path = '/v1/istors/%s' % istor_id
+    def delete(self, istor_id, force=False):
+        path = '/v1/istors/%s?force=%s' % (istor_id, force)
         return self._delete(path)
 
     def update(self, istor_id, patch):
