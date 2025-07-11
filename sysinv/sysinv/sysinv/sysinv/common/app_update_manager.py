@@ -60,6 +60,13 @@ class AppUpdateManager:  # noqa: H238
                     APP_RECOVER_UPDATE_OP: List[str]
                 }.
         """
+        # Clear previous state for apps to update
+        self.apps_to_update = {
+            constants.APP_UPDATE_OP: [],
+            constants.APP_UPLOAD_OP: [],
+            constants.APP_RECOVER_UPDATE_OP: [],
+        }
+
         apps_metadata = app_metadata.get_reorder_apps()
         class_apps = apps_metadata.get('class', {})
 
