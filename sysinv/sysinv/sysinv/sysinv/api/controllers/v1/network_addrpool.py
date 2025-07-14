@@ -214,9 +214,7 @@ class NetworkAddresspoolController(rest.RestController):
                             caddress_pool.add_management_addresses_to_no_proxy_list([addrpool])
                         else:
                             caddress_pool.remove_management_addresses_from_no_proxy_list([addrpool])
-                        dc_role = utils.get_distributed_cloud_role()
-                        if dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
-                            cutils.update_subcloud_routes(pecan.request.dbapi)
+                        cutils.update_routes_to_system_controller(pecan.request.dbapi)
                 else:
                     # is the management secondary pool?
                     if network.pool_uuid != addrpool.uuid:
@@ -227,8 +225,7 @@ class NetworkAddresspoolController(rest.RestController):
 
         elif network.type == constants.NETWORK_TYPE_ADMIN:
             if hosts:
-                if utils.get_distributed_cloud_role() == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
-                    cutils.update_subcloud_routes(pecan.request.dbapi, hosts)
+                cutils.update_routes_to_system_controller(pecan.request.dbapi, hosts)
                 disable = operation == constants.API_DELETE and network.pool_uuid == addrpool.uuid
                 for host in hosts:
                     pecan.request.rpcapi.update_admin_config(pecan.request.context, host,

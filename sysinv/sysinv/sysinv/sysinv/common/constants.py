@@ -8,6 +8,7 @@
 # coding=utf-8
 #
 
+import datetime
 import os
 import tsconfig.tsconfig as tsc
 
@@ -26,6 +27,12 @@ ADMIN_ENDPOINT_CONFIG_REQUIRED = os.path.join(tsc.CONFIG_PATH, '.admin_endpoint_
 PLATFORM_FIREWALL_CONFIG_REQUIRED = os.path.join(tsc.PLATFORM_CONF_PATH,
                                     '.platform_firewall_config_required')
 RESTORE_IN_PROGRESS_FLAG = tsc.RESTORE_IN_PROGRESS_FLAG
+
+USM_UPGRADE_IN_PROGRESS = os.path.join(tsc.PLATFORM_CONF_PATH,
+                                       '.usm_upgrade_in_progress')
+KUBE_APISERVER_PORT_UPDATED = os.path.join(tsc.PLATFORM_CONF_PATH,
+                                           '.upgrade_kube_apiserver_port_updated')
+
 # Minimum password length
 MINIMUM_PASSWORD_LENGTH = 8
 
@@ -67,6 +74,10 @@ IPV6_ADDRESS_MODES = [IPV6_DISABLED,
                       IPV6_AUTO,
                       IPV6_LINK_LOCAL,
                       IPV6_POOL]
+# IP address pool
+IPV6 = "ipv6"
+IPV4 = "ipv4"
+DUAL = "dual"
 
 # sysinv-vim-mtce definitions
 # Host Actions:
@@ -75,6 +86,7 @@ FORCE_UNLOCK_ACTION = 'force-unlock'
 LOCK_ACTION = 'lock'
 FORCE_LOCK_ACTION = 'force-lock'
 FORCE_UNSAFE_LOCK_ACTION = 'force-unsafe-lock'
+HOST_AUDIT_ACTION = 'host-audit'
 REBOOT_ACTION = 'reboot'
 RESET_ACTION = 'reset'
 REINSTALL_ACTION = 'reinstall'
@@ -132,7 +144,10 @@ KERNEL_STANDARD = 'standard'
 
 SUPPORTED_KERNELS = [KERNEL_LOWLATENCY, KERNEL_STANDARD]
 
-KERNEL_CONFIG_STATUS_PENDING = 'config_pending'
+# Kernel config is alloted 2 minutes for config to complete
+# host-unlock can be blocked upto a maximum of 2 minutes
+KERNEL_CONFIG_STATUS_EXPIRY = datetime.timedelta(minutes=2)
+KERNEL_CONFIG_STATUS_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 # CPU functions
 PLATFORM_FUNCTION = "Platform"
@@ -552,6 +567,7 @@ SB_STATE_CONFIG_ERR = 'configuration-failed'
 SB_STATE_CONFIGURING_ON_UNLOCK = 'configuring-on-unlock'
 SB_STATE_CONFIGURING_WITH_APP = 'configuring-with-app'
 SB_STATE_DELETING_WITH_APP = 'deleting-with-app'
+SB_STATE_FORCE_DELETING_WITH_APP = 'force-deleting-with-app'
 
 # Storage backend tasks
 SB_TASK_NONE = None
@@ -633,6 +649,9 @@ DRBD_CEPH = 'ceph-float'
 # File system functions
 FILESYSTEM_CEPH_FUNCTION_MONITOR = 'monitor'
 FILESYSTEM_CEPH_FUNCTION_OSD = 'osd'
+
+# Maximum number of Ceph Monitors
+FILESYSTEM_CEPH_MONITOR_MAX = 5
 
 # File system names
 FILESYSTEM_NAME_BACKUP = 'backup'
@@ -810,6 +829,7 @@ LVG_AUDIT_REQUEST = "audit_lvg"
 PV_AUDIT_REQUEST = "audit_pv"
 PARTITION_AUDIT_REQUEST = "audit_partition"
 FILESYSTEM_AUDIT_REQUEST = "audit_fs"
+MEMORY_AUDIT_REQUEST = "audit_memory"
 CONTROLLER_AUDIT_REQUESTS = [DISK_AUDIT_REQUEST,
                              LVG_AUDIT_REQUEST,
                              PV_AUDIT_REQUEST,
@@ -843,6 +863,11 @@ PLATFORM_NETWORK_TYPES = [NETWORK_TYPE_PXEBOOT,
                           NETWORK_TYPE_IRONIC,
                           NETWORK_TYPE_STORAGE,
                           NETWORK_TYPE_ADMIN]
+
+INTERNAL_NETWORK_TYPES = [NETWORK_TYPE_PXEBOOT,
+                          NETWORK_TYPE_CLUSTER_HOST,
+                          NETWORK_TYPE_CLUSTER_POD,
+                          NETWORK_TYPE_CLUSTER_SERVICE]
 
 PCI_NETWORK_TYPES = [NETWORK_TYPE_PCI_PASSTHROUGH,
                      NETWORK_TYPE_PCI_SRIOV]
@@ -887,7 +912,6 @@ SM_MULTICAST_MGMT_IP_NAME = "sm-mgmt-ip"
 MTCE_MULTICAST_MGMT_IP_NAME = "mtce-mgmt-ip"
 PATCH_CONTROLLER_MULTICAST_MGMT_IP_NAME = "patch-controller-mgmt-ip"
 PATCH_AGENT_MULTICAST_MGMT_IP_NAME = "patch-agent-mgmt-ip"
-SYSTEM_CONTROLLER_GATEWAY_IP_NAME = "system-controller-gateway-ip"
 
 ADDRESS_FORMAT_ARGS = (CONTROLLER_HOSTNAME,
                        NETWORK_TYPE_MGMT)
@@ -907,6 +931,9 @@ LINK_SPEED_25G = 25000
 
 # VF rate limit
 VF_TOTAL_RATE_RATIO = 0.9
+
+# Platform interface rate limit
+PLATFORM_RATELIMIT_LOWER_CUTOFF = 0
 
 # DRBD engineering limits.
 # Link Util values are in Percentage.
@@ -960,7 +987,6 @@ IMPORTED_LOAD_STATES = [
     INACTIVE_LOAD_STATE,
 ]
 
-DELETE_LOAD_SCRIPT = '/etc/sysinv/upgrades/delete_load.sh'
 IMPORTED_LOAD_MAX_COUNT = 1
 LOAD_ISO = 'path_to_iso'
 LOAD_SIGNATURE = 'path_to_sig'
@@ -1202,6 +1228,7 @@ SERVICE_PARAM_SECTION_PLATFORM_CONFIG = 'config'
 SERVICE_PARAM_SECTION_PLATFORM_COREDUMP = 'coredump'
 SERVICE_PARAM_SECTION_PLATFORM_POSTGRESQL = 'postgresql'
 SERVICE_PARAM_SECTION_PLATFORM_DRBD = 'drbd'
+SERVICE_PARAM_SECTION_PLATFORM_FM = 'fm'
 
 # Containerd runTimeClass CRI entries
 SERVICE_PARAM_SECTION_PLATFORM_CRI_RUNTIME_CLASS = 'container_runtime'
@@ -1282,6 +1309,11 @@ SERVICE_PARAM_NAME_DOCKER_TYPE = 'type'
 SERVICE_PARAM_NAME_DOCKER_SECURE_REGISTRY = 'secure'
 SERVICE_PARAM_NAME_DOCKER_ADDITIONAL_OVERRIDES = 'additional-overrides'
 
+SERVICE_PARAM_SECTION_DOCKER_CONCURRENCY = 'concurrency'
+SERVICE_PARAM_NAME_MAX_CONCURRENT_DOWNLOADS = 'max-concurrent-downloads'
+SERVICE_PARAM_NAME_MAX_CONCURRENT_UPLOADS = 'max-concurrent-uploads'
+SERVICE_PARAM_NAME_MAX_KUBE_APP_DOWNLOAD_THREADS = 'max-kube-app-download-threads'
+
 SERVICE_PARAM_NAME_DRBD_HMAC = 'hmac'
 SERVICE_PARAM_NAME_DRBD_SECRET = 'secret'
 SERVICE_PARAM_NAME_DRBD_SECURE = 'secure'
@@ -1349,13 +1381,15 @@ SERVICE_PARAM_SECTION_KUBERNETES_CONFIG = 'config'
 SERVICE_PARAM_NAME_KUBERNETES_POD_MAX_PIDS = 'pod_max_pids'
 SERVICE_PARAM_NAME_KUBERNETES_AUTOMATIC_RECOVERY = 'automatic_recovery'
 
+# kube-apiserver service ports
+KUBE_APISERVER_INTERNAL_PORT = 16443
+KUBE_APISERVER_EXTERNAL_PORT = 6443
+
 # Kubernetes component endpoints for cluster audit
-APISERVER_READYZ_ENDPOINT = "https://localhost:6443/readyz"
+APISERVER_READYZ_ENDPOINT = "https://localhost:%s/readyz" % str(KUBE_APISERVER_INTERNAL_PORT)
 SCHEDULER_HEALTHZ_ENDPOINT = "https://127.0.0.1:10259/healthz"
 CONTROLLER_MANAGER_HEALTHZ_ENDPOINT = "https://127.0.0.1:10257/healthz"
 KUBELET_HEALTHZ_ENDPOINT = "http://localhost:10248/healthz"
-healthz_endpoints = [APISERVER_READYZ_ENDPOINT, CONTROLLER_MANAGER_HEALTHZ_ENDPOINT,
-                         SCHEDULER_HEALTHZ_ENDPOINT, KUBELET_HEALTHZ_ENDPOINT]
 
 # Platform pods use under 20 in steady state, but allow extra room.
 SERVICE_PARAM_KUBERNETES_POD_MAX_PIDS_MIN = 100
@@ -1436,6 +1470,13 @@ SERVICE_PARAM_NAME_PLATFORM_AUDITD = 'audit'
 SERVICE_PARAM_PLATFORM_AUDITD_DISABLED = '0'
 SERVICE_PARAM_PLATFORM_AUDITD_ENABLED = '1'
 
+# Kernel Soft IRQ, irq_word and RCU Tree
+SERVICE_PARAM_PLATFORM_IRQ_WORK_PRIO = 'irq_work_priority'
+SERVICE_PARAM_PLATFORM_KTHREAD_PRIO = 'kthread_prio'
+SERVICE_PARAM_PLATFORM_KSOFTIRQD_PRIO = 'ksoftirqd_priority'
+SERVICE_PARAM_PLATFORM_SCHED_RT_MIN_PRIO = 1
+SERVICE_PARAM_PLATFORM_SCHED_RT_MAX_PRIO = 99
+
 # platform keystone security compliance config
 SERVICE_PARAM_SECTION_SECURITY_COMPLIANCE = 'security_compliance'
 SERVICE_PARAM_NAME_SECURITY_COMPLIANCE_UNIQUE_LAST_PASSWORD_COUNT = 'unique_last_password_count'
@@ -1471,6 +1512,11 @@ SERVICE_PARAM_NAME_POSTGRESQL_MAX_PARALLEL_WORKERS = 'max_parallel_workers'
 SERVICE_PARAM_NAME_POSTGRESQL_MAX_PARALLEL_MAINTENANCE_WORKERS = 'max_parallel_maintenance_workers'
 SERVICE_PARAM_NAME_POSTGRESQL_MAX_PARALLEL_WORKERS_PER_GATHER = 'max_parallel_workers_per_gather'
 
+# Platform fm parameters
+SERVICE_PARAM_NAME_FM_DATABASE_MAX_POOL_SIZE = 'database_max_pool_size'
+SERVICE_PARAM_NAME_FM_DATABASE_MAX_POOL_TIMEOUT = 'database_max_pool_timeout'
+SERVICE_PARAM_NAME_FM_DATABASE_MAX_OVERFLOW_SIZE = 'database_max_overflow_size'
+
 # Ceph Service Parameters
 SERVICE_PARAM_SECTION_CEPH_MONITOR = 'monitor'
 SERVICE_PARAM_NAME_CEPH_MONITOR_AUTH_ID_RECLAIM = 'auth_id_reclaim'
@@ -1482,6 +1528,11 @@ SERVICE_PARAM_PLATFORM_MAX_CPU_PERCENTAGE_DEFAULT = 80
 # The number of sysinv-api workers
 SERVICE_PARAM_NAME_PLATFORM_SYSINV_API_WORKERS = 'sysinv_api_workers'
 
+# Platform sysinv parameters for database connection
+SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_POOL_SIZE = 'database_max_pool_size'
+SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_POOL_TIMEOUT = 'database_max_pool_timeout'
+SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_OVERFLOW_SIZE = 'database_max_overflow_size'
+
 # SCTP Config parameters
 # enables/disables SCTP module load by default
 SERVICE_PARAM_NAME_PLATFORM_SCTP_AUTOLOAD = 'sctp_autoload'
@@ -1491,6 +1542,12 @@ SERVICE_PARAM_PLATFORM_SCTP_AUTOLOAD_ENABLED = 'enabled'
 # DNS host record Service Parameters
 SERVICE_PARAM_SECTION_DNS_HOST_RECORD = 'host-record'
 SERVICE_PARAM_NAME_DNS_HOST_RECORD_HOSTS = 'hosts'
+
+# cli-confirmation parameters
+SERVICE_PARAM_SECTION_PLATFORM_CLIENT = 'client'
+SERVICE_PARAM_NAME_PLATFORM_CLI_CONFIRMATIONS = 'cli_confirmations'
+SERVICE_PARAM_DISABLED = 'disabled'
+SERVICE_PARAM_ENABLED = 'enabled'
 
 # TIS part number, CPE = combined load, STD = standard load
 TIS_STD_BUILD = 'Standard'
@@ -1987,6 +2044,7 @@ APP_INACTIVE_STATE = 'inactive'
 APP_UPDATE_IN_PROGRESS = 'updating'
 APP_RECOVER_IN_PROGRESS = 'recovering'
 APP_RESTORE_REQUESTED = 'restore-requested'
+APP_UPDATE_STARTING = 'update-starting'
 
 # Kubectl kustomize operations
 KUBECTL_KUSTOMIZE_APPLY = 'apply'
@@ -2000,9 +2058,12 @@ APP_APPLY_OP = 'apply'
 APP_REMOVE_OP = 'remove'
 APP_DELETE_OP = 'delete'
 APP_UPDATE_OP = 'update'
+APP_DOWNGRADE_OP = 'downgrade'
 APP_RECOVER_OP = 'recover'
 APP_ABORT_OP = 'abort'
+APP_REAPPLY_OP = 'reapply'
 APP_EVALUATE_REAPPLY_OP = 'evaluate-reapply'
+APP_RECOVER_UPDATE_OP = 'recover-update'
 # Backup/Restore lifecycle actions:
 APP_BACKUP = 'backup'
 APP_ETCD_BACKUP = 'etcd-backup'
@@ -2090,6 +2151,7 @@ APP_METADATA_DESIRED_STATE = 'desired_state'
 APP_METADATA_DESIRED_STATES = 'desired_states'
 APP_METADATA_FORBIDDEN_MANUAL_OPERATIONS = 'forbidden_manual_operations'
 APP_METADATA_ORDERED_APPS = 'ordered_apps'
+APP_METADATA_ORDERED_APPS_BY_AFTER_KEY = 'ordered_apps_by_after_key'
 APP_METADATA_UPGRADES = 'upgrades'
 APP_METADATA_UPDATE_FAILURE_SKIP_RECOVERY = 'update_failure_no_rollback'
 APP_METADATA_AUTO_UPDATE = 'auto_update'
@@ -2111,7 +2173,9 @@ APP_METADATA_TIMING_POST = 'post'
 APP_METADATA_TIMING_DEFAULT_VALUE = APP_METADATA_TIMING_POST
 APP_METADATA_NAME = 'app_name'
 APP_METADATA_VERSION = 'app_version'
+APP_METADATA_INDEPENDENT_APPS = 'independent_apps'
 APP_METADATA_DEPENDENT_APPS = 'dependent_apps'
+APP_METADATA_DEPENDENT_PARENT_EXCEPTIONS = 'dependent_parent_exceptions'
 APP_METADATA_DEPENDENT_APPS_NAME = 'name'
 APP_METADATA_DEPENDENT_APPS_VERSION = 'version'
 APP_METADATA_DEPENDENT_APPS_ACTION = 'action'
@@ -2241,6 +2305,8 @@ APP_TARFILE_NAME_PLACEHOLDER = 'tarfile-placeholder'
 
 # Application constants
 APP_INSTALLATION_TIMEOUT = 3600
+APP_UPLOAD_DEPENDENT_APP_TIMEOUT = 60
+APP_INSTALLATION_DEPENDENT_APP_TIMEOUT = 1800
 
 # Default node labels
 CONTROL_PLANE_LABEL = 'openstack-control-plane=enabled'
@@ -2278,6 +2344,12 @@ VOLATILE_FIRST_BOOT_FLAG = os.path.join(tsc.VOLATILE_PATH, ".first_boot")
 ANSIBLE_BOOTSTRAP_FLAG = os.path.join(tsc.VOLATILE_PATH, ".ansible_bootstrap")
 ANSIBLE_BOOTSTRAP_COMPLETED_FLAG = os.path.join(tsc.PLATFORM_CONF_PATH,
                                                 ".bootstrap_completed")
+
+# Ansible enrollment
+ANSIBLE_ENROLLMENT_FLAG = os.path.join(tsc.VOLATILE_PATH, ".enrollment_in_progress")
+ANSIBLE_ENROLLMENT_COMPLETED_FLAG = \
+    os.path.join(tsc.VOLATILE_PATH, ".subcloud_enrollment_completed")
+
 # just used for upgrade purposes
 OLD_ANSIBLE_BOOTSTRAP_COMPLETED_FLAG = os.path.join(tsc.CONFIG_PATH,
                                                     ".bootstrap_completed")
@@ -2348,6 +2420,10 @@ PTP_SYNCE_EEC_INVALID_VALUE = '0'
 PTP_SYNCE_TX_HEARTBEAT_MSEC = '1000'
 PTP_SYNCE_RX_HEARTBEAT_MSEC = '500'
 
+# PTP instance monitoring default parameters
+PTP_MONITORING_SATELLITE_COUNT = "5"
+PTP_MONITORING_SIGNAL_QUALITY_DB_VALUE = "30"
+
 # PTP pmc values
 PTP_PMC_CLOCK_CLASS = '248'
 PTP_PMC_CLOCK_ACCURACY = '0xfe'
@@ -2367,6 +2443,7 @@ PTP_INSTANCE_TYPE_PHC2SYS = 'phc2sys'
 PTP_INSTANCE_TYPE_TS2PHC = 'ts2phc'
 PTP_INSTANCE_TYPE_CLOCK = 'clock'
 PTP_INSTANCE_TYPE_SYNCE4L = 'synce4l'
+PTP_INSTANCE_TYPE_MONITORING = "monitoring"
 
 # PTP instances created during migration
 PTP_INSTANCE_LEGACY_PTP4L = 'ptp4l-legacy'
@@ -2631,11 +2708,10 @@ PLATFORM_FM_PARAMS_API_PORT = 18002
 PLATFORM_CEPH_PARAMS_RGW_PORT = 7480  # depending on service availability
 PLATFORM_DCMANAGER_PARAMS_API_PORT = 8119               # for DC setups (system controller)
 PLATFORM_DCORCH_PARAMS_SYSINV_API_PROXY_PORT = 26385    # for DC setups (system controller)
-PLATFORM_DCORCH_PARAMS_PATCH_API_PROXY_PORT = 25491     # for DC setups (system controller)
 PLATFORM_DCORCH_PARAMS_USM_API_PROXY_PORT = 25497       # for DC setups (system controller)
 PLATFORM_DCORCH_PARAMS_IDENTITY_API_PROXY_PORT = 25000  # for DC setups (system controller)
 PLATFORM_FIREWALL_SSH_PORT = 22
-PLATFORM_FIREWALL_KUBE_APISERVER_PORT = 6443
+PLATFORM_FIREWALL_KUBE_APISERVER_PORT = KUBE_APISERVER_EXTERNAL_PORT
 PLATFORM_FIREWALL_SM_PORT_1 = 2222
 PLATFORM_FIREWALL_SM_PORT_2 = 2223
 PLATFORM_FIREWALL_NTP_PORT = 123
@@ -2654,7 +2730,7 @@ AUTO_RECOVERY_COUNT = 3
 CONTROL_PLANE_RETRY_COUNT = 2
 
 # Puppet Runtime Manifest constants
-RUNTIME_CONFIG_APPLY_TIMEOUT_IN_SECS = 600
+RUNTIME_CONFIG_APPLY_TIMEOUT_IN_SECS = 1200
 RUNTIME_CONFIG_STATE_PENDING = "pending"
 RUNTIME_CONFIG_STATE_APPLIED = "applied"
 RUNTIME_CONFIG_STATE_FAILED = "failed"
@@ -2763,3 +2839,40 @@ DEPLOYED = "deployed"
 DEPLOYING = "deploying"
 REMOVING = "removing"
 UNAVAILABLE = "unavailable"
+
+# stalld labels
+LABEL_STALLD = 'starlingx.io/stalld'
+LABEL_VALUE_STALLD_ENABLED = 'enabled'
+LABEL_VALUE_STALLD_DISABLED = 'disabled'
+# Default is 'disabled'
+VALID_STALLD_VALUES = [
+        LABEL_VALUE_STALLD_DISABLED,
+        LABEL_VALUE_STALLD_ENABLED
+]
+
+# stalld cpu functions values
+LABEL_STALLD_CPU_FUNCTIONS = 'starlingx.io/stalld_cpu_functions'
+LABEL_VALUE_CPU_ALL = 'all'
+LABEL_VALUE_CPU_APPLICATION = 'application'
+LABEL_VALUE_CPU_APPLICATION_ISOLATED = 'application-isolated'
+# Default is 'application'
+LABEL_VALUE_CPU_DEFAULT = LABEL_VALUE_CPU_APPLICATION
+VALID_STALLD_CPU_FUNCTION_VALUES = [
+        LABEL_VALUE_CPU_APPLICATION,
+        LABEL_VALUE_CPU_APPLICATION_ISOLATED,
+        LABEL_VALUE_CPU_ALL
+]
+
+SUPPORTED_STALLD_LABELS = [
+    LABEL_STALLD,
+    LABEL_STALLD_CPU_FUNCTIONS
+]
+
+# Custom arguments follow starlingx.io/stalld.xxxx pattern
+# Examples
+# 'starlingx.io/stalld.boost_period'
+# 'starlingx.io/stalld.boost_runtime'
+# 'starlingx.io/stalld.boost_duration'
+# 'starlingx.io/stalld.starving_threshold'
+REGEX_STALLD_CUSTOM_LABEL = r"starlingx\.io\/stalld\.(\w+)"
+CUSTOM_STALLD_LABEL_STRING = "starlingx.io/stalld."

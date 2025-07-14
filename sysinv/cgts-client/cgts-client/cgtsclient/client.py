@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2021 Wind River Systems, Inc.
+# Copyright (c) 2013-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -99,9 +99,9 @@ def get_client(api_version, session=None, service_type=SERVICE_TYPE, **kwargs):
     endpoint = kwargs.get('system_url')
 
     if endpoint:
-        api_version_str = '/v' + api_version
+        api_version_str = 'v' + api_version
         if api_version_str not in endpoint.split('/'):
-            endpoint += api_version_str
+            endpoint += '/' + api_version_str
 
     auth_token = kwargs.get('os_auth_token')
     # if we have an endpoint and token, use those

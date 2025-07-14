@@ -2,7 +2,7 @@
 # -*- encoding: utf-8 -*-
 #
 #
-# Copyright (c) 2013-2023 Wind River Systems, Inc.
+# Copyright (c) 2013-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -10,7 +10,7 @@
 """
 Tests for the API /ihosts/ methods.
 """
-
+import datetime
 import mock
 import requests
 import webtest.app
@@ -267,18 +267,6 @@ class TestPostFirstController(TestHost):
                                             bm_type=constants.HOST_BM_TYPE_IPMI,
                                             bm_username=codeinjection)
         ndict['bm_password'] = "password"
-        self.assertRaises(webtest.app.AppError,
-                          self.post_json, '/ihosts', ndict,
-                          headers={'User-Agent': 'sysinv-test'})
-
-    def test_create_host_invalid_bm_password_length(self):
-        # Test creation of host with bm_password > 20 characters
-        longpassword = "this_is_a_really_long_paaaasssword"
-        ndict = dbutils.post_get_test_ihost(hostname='controller-0',
-                                            bm_ip='10.10.10.100',
-                                            bm_type=constants.HOST_BM_TYPE_IPMI,
-                                            bm_username="root")
-        ndict['bm_password'] = longpassword
         self.assertRaises(webtest.app.AppError,
                           self.post_json, '/ihosts', ndict,
                           headers={'User-Agent': 'sysinv-test'})
@@ -2216,49 +2204,6 @@ class TestPatch(TestHost):
                           patch,
                           headers={'User-Agent': 'sysinv-test'})
 
-    def test_update_host_invalid_bm_password_length(self):
-        # Test updating a host with bm_password > 20 characters
-
-        c0_host = self._create_controller_0(
-            invprovision=constants.PROVISIONED,
-            administrative=constants.ADMIN_UNLOCKED,
-            operational=constants.OPERATIONAL_DISABLED,
-            availability=constants.AVAILABILITY_OFFLINE)
-        self._create_test_host_platform_interface(c0_host)
-
-        bm_ip = '10.10.10.100'
-        bm_username = "root"
-        bm_password = 'this_is_a_really_long_paaaasssword'
-        bm_type = constants.HOST_BM_TYPE_IPMI
-        patch = ([
-            {
-                'path': '/bm_type',
-                'value': bm_type,
-                'op': 'replace'
-            },
-            {
-                'path': '/bm_ip',
-                'value': bm_ip,
-                'op': 'replace'
-            },
-            {
-                'path': '/bm_username',
-                'value': bm_username,
-                'op': 'replace'
-            },
-            {
-                'path': '/bm_password',
-                'value': bm_password,
-                'op': 'replace'
-            }
-        ])
-        # Verify that the action was rejected
-        self.assertRaises(webtest.app.AppError,
-                          self.patch_json,
-                          f"/ihosts/{c0_host['hostname']}",
-                          patch,
-                          headers={'User-Agent': 'sysinv-test'})
-
     def test_update_host_invalid_bm_password_whitespace(self):
         # Test updating a host with bm_password with whitespace
 
@@ -2615,9 +2560,6 @@ class TestPatch(TestHost):
             operational=constants.OPERATIONAL_ENABLED,
             availability=constants.AVAILABILITY_ONLINE)
 
-        upgrade = dbutils.create_test_upgrade(
-            state=constants.DEPLOY_STATE_START
-        )
         # Verify the error response on lock controller attempt
         response = self._patch_host_action(c1_host['hostname'],
                                            constants.LOCK_ACTION,
@@ -2626,15 +2568,6 @@ class TestPatch(TestHost):
         self.assertEqual(response.content_type, 'application/json')
         self.assertEqual(http_client.BAD_REQUEST, response.status_int)
         self.assertTrue(response.json['error_message'])
-        self.assertIn("host-lock %s is not allowed during upgrade state '%s'" %
-                      (c1_host['hostname'], upgrade.state),
-                      response.json['error_message'])
-
-    def test_lock_action_controller_during_upgrade_started(self):
-        dbutils.create_test_upgrade(
-            state=constants.UPGRADE_STARTED
-        )
-        self._test_lock_action_controller()
 
     @mock.patch('os.path.isfile')
     def test_lock_action_controller_during_backup_in_progress(self, mock_os_is_file):
@@ -3045,13 +2978,16 @@ class TestPatch(TestHost):
             availability=constants.AVAILABILITY_ONLINE)
 
         # Create worker-0
+        kernel_config_time = datetime.datetime.now()
+        kernel_config_time_str = \
+            kernel_config_time.strftime(constants.KERNEL_CONFIG_STATUS_FORMAT)
         w0_host = self._create_worker(
             mgmt_ip='192.168.204.5',
             invprovision=constants.PROVISIONED,
             administrative=constants.ADMIN_LOCKED,
             operational=constants.OPERATIONAL_ENABLED,
             availability=constants.AVAILABILITY_ONLINE,
-            kernel_config_status=constants.KERNEL_CONFIG_STATUS_PENDING)
+            kernel_config_status=kernel_config_time_str)
 
         self._create_test_host_platform_interface(w0_host)
         self._create_test_host_cpus(w0_host, platform=1, vswitch=2, application=12)
@@ -3083,6 +3019,55 @@ class TestPatch(TestHost):
                       "kernel configuration in progress",
                       response.json['error_message'])
 
+    def test_worker_unlock_after_kernel_configuration_expired(self):
+        # Create controller-0
+        self._create_controller_0(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Create controller-1
+        self._create_controller_1(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Create worker-0
+        kernel_config_time = \
+            datetime.datetime.now() + constants.KERNEL_CONFIG_STATUS_EXPIRY
+        kernel_config_time_str = \
+            kernel_config_time.strftime(constants.KERNEL_CONFIG_STATUS_FORMAT)
+        w0_host = self._create_worker(
+            mgmt_ip='192.168.204.5',
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_LOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            kernel_config_status=kernel_config_time_str)
+
+        self._create_test_host_platform_interface(w0_host)
+        self._create_test_host_cpus(w0_host, platform=1, vswitch=2, application=12)
+        self._create_test_host_addresses(w0_host.hostname)
+
+        w0_hostname = w0_host['hostname']
+
+        is_host_mock = mock.patch('sysinv.common.usm_service.is_host_next_to_be_deployed')
+        is_host = is_host_mock.start()
+        is_host.return_value = False
+        p = mock.patch('sysinv.common.usm_service.get_host_deploy')
+        get_host_deploy = p.start()
+        get_host_deploy.return_value = None
+        self.addCleanup(p.stop)
+
+        response = self._patch_host_action(
+            w0_hostname, constants.UNLOCK_ACTION,
+            'sysinv-test', expect_errors=True)
+
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
+
     def test_worker_force_unlock_during_kernel_configuration(self):
         # Create controller-0
         self._create_controller_0(
@@ -3099,13 +3084,16 @@ class TestPatch(TestHost):
             availability=constants.AVAILABILITY_ONLINE)
 
         # Create worker-0
+        kernel_config_time = datetime.datetime.now()
+        kernel_config_time_str = \
+            kernel_config_time.strftime(constants.KERNEL_CONFIG_STATUS_FORMAT)
         w0_host = self._create_worker(
             mgmt_ip='192.168.204.5',
             invprovision=constants.PROVISIONED,
             administrative=constants.ADMIN_LOCKED,
             operational=constants.OPERATIONAL_ENABLED,
             availability=constants.AVAILABILITY_ONLINE,
-            kernel_config_status=constants.KERNEL_CONFIG_STATUS_PENDING)
+            kernel_config_status=kernel_config_time_str)
 
         self._create_test_host_platform_interface(w0_host)
         self._create_test_host_cpus(w0_host, platform=1, vswitch=2, application=12)
@@ -3114,6 +3102,47 @@ class TestPatch(TestHost):
         w0_hostname = w0_host['hostname']
         response = self._patch_host_action(
             w0_hostname, constants.FORCE_UNLOCK_ACTION,
+            'sysinv-test')
+
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
+
+    def test_worker_unlock_during_kernel_configuration_invalid_string(self):
+        """
+        Test that kernel_config_status won't block host-unlock if the string
+        is not in the correct datetime format
+        """
+        # Create controller-0
+        self._create_controller_0(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Create controller-1
+        self._create_controller_1(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Create worker-0
+        kernel_config_str = 'config_pending'
+        w0_host = self._create_worker(
+            mgmt_ip='192.168.204.5',
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_LOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            kernel_config_status=kernel_config_str)
+
+        self._create_test_host_platform_interface(w0_host)
+        self._create_test_host_cpus(w0_host, platform=1, vswitch=2, application=12)
+        self._create_test_host_addresses(w0_host.hostname)
+
+        w0_hostname = w0_host['hostname']
+        response = self._patch_host_action(
+            w0_hostname, constants.UNLOCK_ACTION,
             'sysinv-test')
 
         self.assertEqual(response.content_type, 'application/json')

@@ -36,7 +36,6 @@ from sysinv.objects import drbdconfig
 from sysinv.objects import port_ethernet
 from sysinv.objects import helm_overrides
 from sysinv.objects import host
-from sysinv.objects import host_upgrade
 from sysinv.objects import kube_app
 from sysinv.objects import kube_app_bundle
 from sysinv.objects import kube_app_releases
@@ -57,7 +56,6 @@ from sysinv.objects import label
 from sysinv.objects import lldp_agent
 from sysinv.objects import lldp_neighbour
 from sysinv.objects import lldp_tlv
-from sysinv.objects import load
 from sysinv.objects import lvg
 from sysinv.objects import memory
 from sysinv.objects import network
@@ -87,7 +85,6 @@ from sysinv.objects import sensorgroup
 from sysinv.objects import sensorgroup_analog
 from sysinv.objects import sensorgroup_discrete
 from sysinv.objects import service_parameter
-from sysinv.objects import software_upgrade
 from sysinv.objects import storage
 from sysinv.objects import storage_backend
 from sysinv.objects import storage_ceph
@@ -165,10 +162,7 @@ sensor_discrete = sensor_discrete.SensorDiscrete
 sensorgroup = sensorgroup.SensorGroup
 sensorgroup_analog = sensorgroup_analog.SensorGroupAnalog
 sensorgroup_discrete = sensorgroup_discrete.SensorGroupDiscrete
-load = load.Load
 pci_device = pci_device.PCIDevice
-software_upgrade = software_upgrade.SoftwareUpgrade
-host_upgrade = host_upgrade.HostUpgrade
 service_parameter = service_parameter.ServiceParameter
 lldp_agent = lldp_agent.LLDPAgent
 lldp_neighbour = lldp_neighbour.LLDPNeighbour
@@ -251,10 +245,7 @@ __all__ = ("system",
            "sensorgroup",
            "sensorgroup_analog",
            "sensorgroup_discrete",
-           "load",
            "pci_device",
-           "software_upgrade",
-           "host_upgrade",
            "network",
            "interface_network",
            "service_parameter",

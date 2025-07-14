@@ -480,7 +480,8 @@ class StorageController(rest.RestController):
                                                 constants.SB_TYPE_CEPH_ROOK):
                 if osdid is not None:
                     rpc_stor['state'] = constants.SB_STATE_CONFIGURED
-                else:
+                elif rpc_stor['state'] not in {constants.SB_STATE_DELETING_WITH_APP,
+                                               constants.SB_STATE_FORCE_DELETING_WITH_APP}:
                     rpc_stor['state'] = constants.SB_STATE_CONFIGURING_WITH_APP
             else:
                 if ihost['operational'] == constants.OPERATIONAL_ENABLED:
@@ -522,8 +523,8 @@ class StorageController(rest.RestController):
         return Storage.convert_with_links(rpc_stor)
 
     @cutils.synchronized(LOCK_NAME)
-    @wsme_pecan.wsexpose(None, types.uuid, status_code=204)
-    def delete(self, stor_uuid):
+    @wsme_pecan.wsexpose(None, types.uuid, types.boolean, status_code=204)
+    def delete(self, stor_uuid, force=False):
         """Delete a stor."""
         if self._from_ihosts:
             raise exception.OperationNotPermitted
@@ -539,6 +540,15 @@ class StorageController(rest.RestController):
         # Make sure that we are allowed to delete
         _check_host(stor)
 
+        has_ceph_rook_backend = StorageBackendConfig.has_backend(
+            pecan.request.dbapi,
+            target=constants.SB_TYPE_CEPH_ROOK
+        )
+        if force and not has_ceph_rook_backend:
+            raise wsme.exc.ClientSideError(_(
+                "Forcefully deleting an OSD is only supported when storage-backend configured is %s."
+                % constants.SB_TYPE_CEPH_ROOK))
+
         # Delete the stor if supported
         ihost_id = stor['forihostid']
         ihost = pecan.request.dbapi.ihost_get(ihost_id)
@@ -547,7 +557,7 @@ class StorageController(rest.RestController):
             if ihost['administrative'] != constants.ADMIN_LOCKED:
                 raise wsme.exc.ClientSideError(_("Host %s must be locked." %
                                                 ihost['hostname']))
-            self.delete_stor(stor_uuid)
+            self.delete_stor(stor_uuid, force=force)
         elif (stor.function == constants.STOR_FUNCTION_OSD and
               stor.state == constants.SB_STATE_CONFIGURING_ON_UNLOCK):
             # Host must be locked only for ceph bare-metal
@@ -555,17 +565,13 @@ class StorageController(rest.RestController):
                 raise wsme.exc.ClientSideError(_("Host %s must be locked." %
                                                 ihost['hostname']))
 
-            self.delete_stor(stor_uuid)
+            self.delete_stor(stor_uuid, force=force)
         elif _satisfy_other_conditions_to_delete_osd():
-            has_ceph_rook_backend = StorageBackendConfig.has_backend(
-                pecan.request.dbapi,
-                target=constants.SB_TYPE_CEPH_ROOK
-            )
             # Host must be locked only for ceph bare-metal
             if not has_ceph_rook_backend and ihost['administrative'] != constants.ADMIN_LOCKED:
                 raise wsme.exc.ClientSideError(_("Host %s must be locked." %
                                                 ihost['hostname']))
-            self.delete_stor(stor_uuid)
+            self.delete_stor(stor_uuid, force=force)
         else:
             raise wsme.exc.ClientSideError(_(
                    "Deleting a Storage Function other than '%s' and '%s' in "
@@ -642,7 +648,7 @@ class StorageController(rest.RestController):
 
         return host_with_osds_count, osds_count
 
-    def delete_stor(self, stor_uuid, remove_from_cluster=False):
+    def delete_stor(self, stor_uuid, remove_from_cluster=False, force=False):
         """Delete a stor"""
 
         stor = objects.storage.get_by_uuid(pecan.request.context, stor_uuid)
@@ -658,25 +664,36 @@ class StorageController(rest.RestController):
                           constants.APP_UPDATE_IN_PROGRESS,
                           constants.APP_RECOVER_IN_PROGRESS]
 
-            # This condition is used for the rook-ceph app to transition the storage to the `deleting-with-app` state.
+            # This condition is used for the rook-ceph app to transition the
+            # storage to the `deleting-with-app/force-deleting-with-app` states.
             # The storage will only be fully removed upon applying the rook-ceph app.
             # The transition to `deleting-with-app` occurs only if:
             # 1. The rook-ceph app is not in a transition state,
             # 2. It is in not the `configuring-with-app` state, and
             # 3. The rook-ceph app exists.
+            # The transition to `force-deleting-with-app` occurs only if all
+            # `deleting-with-app` requirements above match and the flag `force`
+            # is passed.
             if (ceph_rook_backend and
                     stor.state != constants.SB_STATE_CONFIGURING_WITH_APP and
                     not rook_app_in_progress):
-                if stor.state == constants.SB_STATE_DELETING_WITH_APP:
-                    err_msg = f"This stor is already on {constants.SB_STATE_DELETING_WITH_APP} state."
+
+                if force:
+                    delete_state = constants.SB_STATE_FORCE_DELETING_WITH_APP
+                else:
+                    delete_state = constants.SB_STATE_DELETING_WITH_APP
+
+                if stor.state == delete_state:
+                    err_msg = f"This stor is already on {delete_state} state."
                     raise wsme.exc.ClientSideError(_(err_msg))
 
                 replication_factor = self._get_replication_factor(ceph_rook_backend)
                 host_with_osds_count, osds_count = self._get_osd_count(ceph_rook_backend, stor)
                 deployment_model = ceph_rook_backend.get("capabilities", {}).get("deployment_model", "")
 
-                # Compare replication_factor with OSDs count when deployment model is not open.
-                if deployment_model != constants.CEPH_ROOK_DEPLOYMENT_OPEN:
+                # Compare replication_factor with OSDs count when the remove is
+                # not forced and deployment model is not open.
+                if not force and deployment_model != constants.CEPH_ROOK_DEPLOYMENT_OPEN:
                     if cutils.is_aio_simplex_system(pecan.request.dbapi):
                         # Compare replication_factor with OSD count when is simplex enviroment
                         if osds_count < replication_factor:
@@ -690,8 +707,8 @@ class StorageController(rest.RestController):
                                       "than or equal to the replication factor."
                             raise wsme.exc.ClientSideError(_(err_msg))
 
-                LOG.info(f"Updating stor with uuid {stor_uuid} to {constants.SB_STATE_DELETING_WITH_APP} state")
-                istor_values = {'state': constants.SB_STATE_DELETING_WITH_APP}
+                LOG.info(f"Updating stor with uuid {stor_uuid} to {delete_state} state")
+                istor_values = {'state': delete_state}
                 pecan.request.dbapi.istor_update(stor_uuid, istor_values)
             elif rook_app_in_progress:
                 # If the rook-ceph app is in progress, the delete stor is not initialized.

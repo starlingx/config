@@ -27,15 +27,12 @@ import json
 import mock
 import os.path
 import netaddr
-import tempfile
 import uuid
 import threading
 from time import sleep
 
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
-from shutil import copy as shutil_copy
-from shutil import rmtree
 
 from fm_api import constants as fm_constants
 from oslo_context import context
@@ -48,10 +45,7 @@ from sysinv.common import kubernetes
 from sysinv.common import utils as cutils
 from sysinv.common import usm_service
 from sysinv.conductor import manager
-from sysinv.db.sqlalchemy.api import Connection
 from sysinv.db import api as dbapi
-from sysinv.loads.loads import LoadImport
-from sysinv.objects.load import Load
 from sysinv.puppet import common as puppet_common
 from sysinv.tests.db import utils as dbutils
 from sysinv import objects
@@ -195,124 +189,6 @@ class ManagerTestCase(base.DbTestCase):
         selflink_patch += 'ClusterConfiguration\nkubernetesVersion: v1.42.1\nscheduler: {}\n'
         self.kubeadm_config_map_patch_RemoveSelfLink = {'data': {'ClusterConfiguration': selflink_patch}}
 
-        self.kubeadm_config_read_ttlafterfinished = kubernetes.client.V1ConfigMap(
-            api_version='v1',
-            data={'ClusterConfiguration': 'apiServer:\n'
-                                            '  certSANs:\n'
-                                            '  - 192.168.206.1\n'
-                                            '  - 127.0.0.1\n'
-                                            '  - 10.10.6.3\n'
-                                            '  extraArgs:\n'
-                                            '    event-ttl: 24h\n'
-                                            '    feature-gates: TTLAfterFinished=true,CSIMigrationPortworx=false\n'
-                                            '  extraVolumes:\n'
-                                            '  - hostPath: '
-                                            '/etc/kubernetes/encryption-provider.yaml\n'
-                                            'apiVersion: kubeadm.k8s.io/v1beta3\n'
-                                            'controllerManager:\n'
-                                            '  extraArgs:\n'
-                                            '    feature-gates: TTLAfterFinished=true\n'
-                                            '  extraVolumes:\n'
-                                            'kind: ClusterConfiguration\n'
-                                            'kubernetesVersion: v1.42.1\n'
-                                            'scheduler: {}\n'},
-
-            metadata=kubernetes.client.V1ObjectMeta(
-                        name='kubeadm-config',
-                        namespace='kube-system'),
-        )
-        ttl_patch = 'apiServer:\n  certSANs: [192.168.206.1, 127.0.0.1, '
-        ttl_patch += '10.10.6.3]\n  extraArgs: {event-ttl: 24h, feature-gates: '
-        ttl_patch += 'CSIMigrationPortworx=false}\n  extraVolumes:\n  - '
-        ttl_patch += '{hostPath: /etc/kubernetes/encryption-provider.yaml}\n'
-        ttl_patch += 'apiVersion: kubeadm.k8s.io/v1beta3\ncontrollerManager:\n  '
-        ttl_patch += 'extraArgs: {}\n  extraVolumes: '
-        ttl_patch += 'null\nkind: ClusterConfiguration\nkubernetesVersion: '
-        ttl_patch += 'v1.42.1\nscheduler: {}\n'
-        self.kubeadm_config_map_patch_ttlafterfinished = {'data': {'ClusterConfiguration': ttl_patch}}
-
-        self.kubeadm_config_read_pod_eviction_timeout = kubernetes.client.V1ConfigMap(
-            api_version='v1',
-            data={'ClusterConfiguration': 'apiServer:\n'
-                                            '  certSANs:\n'
-                                            '  - 192.168.206.1\n'
-                                            '  - 127.0.0.1\n'
-                                            '  - 10.10.6.3\n'
-                                            '  extraArgs:\n'
-                                            '    event-ttl: 24h\n'
-                                            '  extraVolumes:\n'
-                                            '  - hostPath: '
-                                            '/etc/kubernetes/encryption-provider.yaml\n'
-                                            'apiVersion: kubeadm.k8s.io/v1beta3\n'
-                                            'controllerManager:\n'
-                                            '  extraArgs:\n'
-                                            '    node-monitor-period: 2s\n'
-                                            '    pod-eviction-timeout: 30s\n'
-                                            '  extraVolumes:\n'
-                                            'kind: ClusterConfiguration\n'
-                                            'kubernetesVersion: v1.42.1\n'
-                                            'scheduler: {}\n'},
-
-            metadata=kubernetes.client.V1ObjectMeta(
-                        name='kubeadm-config',
-                        namespace='kube-system'),
-        )
-
-        evct_patch = 'apiServer:\n  certSANs: [192.168.206.1, 127.0.0.1, '
-        evct_patch += '10.10.6.3]\n  extraArgs: {event-ttl: 24h}\n  extraVolumes:\n  - '
-        evct_patch += '{hostPath: /etc/kubernetes/encryption-provider.yaml}\n'
-        evct_patch += 'apiVersion: kubeadm.k8s.io/v1beta3\ncontrollerManager:\n  '
-        evct_patch += 'extraArgs: {node-monitor-period: 2s}\n  extraVolumes: '
-        evct_patch += 'null\nkind: ClusterConfiguration\nkubernetesVersion: '
-        evct_patch += 'v1.42.1\nscheduler: {}\n'
-        self.kubeadm_config_map_patch_pod_eviction_timeout = {'data': {'ClusterConfiguration': evct_patch}}
-
-        self.kubeadm_config_map_read_image_repository = kubernetes.client.V1ConfigMap(
-            api_version='v1',
-            data={'ClusterConfiguration': 'apiServer:\n'
-                                            '  certSANs:\n'
-                                            '  - 192.168.206.1\n'
-                                            '  - 127.0.0.1\n'
-                                            '  - 10.10.6.3\n'
-                                            '  extraArgs:\n'
-                                            '    event-ttl: 24h\n'
-                                            '  extraVolumes:\n'
-                                            '  - hostPath: '
-                                            '/etc/kubernetes/encryption-provider.yaml\n'
-                                            'apiVersion: kubeadm.k8s.io/v1beta3\n'
-                                            'controllerManager:\n'
-                                            '  extraArgs:\n'
-                                            '    feature-gates: CSIMigrationPortworx=false\n'
-                                            '  extraVolumes:\n'
-                                            'dns:\n'
-                                            '  imageRepository: registry.local:9001/k8s.gcr.io/coredns\n'
-                                            'imageRepository: registry.local:9001/k8s.gcr.io\n'
-                                            'kind: ClusterConfiguration\n'
-                                            'kubernetesVersion: v1.42.1\n'
-                                            'scheduler: {}\n'},
-
-            metadata=kubernetes.client.V1ObjectMeta(
-                        name='kubeadm-config',
-                        namespace='kube-system'),
-        )
-
-        self.kubeadm_config_map_patch_image_repository = \
-            {'data':
-             {'ClusterConfiguration': 'apiServer:\n'
-                                        '  certSANs: [192.168.206.1, 127.0.0.1, 10.10.6.3]\n'
-                                        '  extraArgs: {event-ttl: 24h}\n'
-                                        '  extraVolumes:\n'
-                                        '  - {hostPath: /etc/kubernetes/encryption-provider.yaml}\n'
-                                        'apiVersion: kubeadm.k8s.io/v1beta3\n'
-                                        'controllerManager:\n'
-                                        '  extraArgs: {feature-gates: CSIMigrationPortworx=false}\n'
-                                        '  extraVolumes: null\n'
-                                        'dns: {imageRepository: registry.local:9001/registry.k8s.io/coredns}\n'
-                                        'imageRepository: registry.local:9001/registry.k8s.io\n'
-                                        'kind: ClusterConfiguration\n'
-                                        'kubernetesVersion: v1.42.1\n'
-                                        'scheduler: {}\n'}}
-
         self.kubeadm_config_map_read_etcd_endpoints = kubernetes.client.V1ConfigMap(
             api_version='v1',
             data={'ClusterConfiguration': 'apiServer:\n'
@@ -377,7 +253,6 @@ class ManagerTestCase(base.DbTestCase):
         self.context = context.get_admin_context()
         self.dbapi = dbapi.get_instance()
         self.system = utils.create_test_isystem()
-        self.load = utils.create_test_load()
         self.dnsmasq_hosts_file = '/tmp/dnsmasq.hosts'
 
         # Mock the ceph operator
@@ -660,7 +535,7 @@ class ManagerTestCase(base.DbTestCase):
                 kind='ClusterRole',
                 name='test_system:test_node'
             ),
-            subjects=[kubernetes.client.V1Subject(
+            subjects=[kubernetes.client.RbacV1Subject(
                 kind='User',
                 name='test_system:test_node:test_hostname',
                 api_group='rbac.authorization.k8s.io',
@@ -1604,7 +1479,7 @@ class ManagerTestCase(base.DbTestCase):
         # Verify that we called kubectl drain command to cordon
         cordon_cmd = ['kubectl', '--kubeconfig=%s' % kubernetes.KUBERNETES_ADMIN_CONF,
                       'drain', constants.CONTROLLER_0_HOSTNAME, '--ignore-daemonsets',
-                      '--delete-emptydir-data', '--delete-local-data', '--force',
+                      '--delete-emptydir-data', '--force',
                       '--skip-wait-for-delete-timeout=1', '--timeout=150s']
         self.mock_subprocess_popen.assert_called_with(cordon_cmd, stdout=-1, stderr=-1,
                                                       universal_newlines=True)
@@ -1691,38 +1566,10 @@ class ManagerTestCase(base.DbTestCase):
             'controller-1': 'v1.42.1',
             'worker-0': 'v1.42.1'}
 
-        mock_sanitize_feature_gates_bootstrap_config_file = mock.MagicMock()
-        p = mock.patch(
-            'sysinv.conductor.manager.ConductorManager.sanitize_feature_gates_bootstrap_config_file',
-            mock_sanitize_feature_gates_bootstrap_config_file)
-        p.start().return_value = 0
-        self.addCleanup(p.stop)
-
-        mock_sanitize_feature_gates_service_parameters = mock.MagicMock()
-        p2 = mock.patch(
-            'sysinv.conductor.manager.ConductorManager.sanitize_feature_gates_service_parameters',
-            mock_sanitize_feature_gates_service_parameters)
-        p2.start().return_value = 0
-        self.addCleanup(p2.stop)
-
         mock_sanitize_kubeadm_configmap = mock.MagicMock()
         p2 = mock.patch(
             'sysinv.conductor.manager.ConductorManager.sanitize_kubeadm_configmap',
             mock_sanitize_kubeadm_configmap)
-        p2.start().return_value = 0
-        self.addCleanup(p2.stop)
-
-        mock_sanitize_feature_gates_kubelet_configmap = mock.MagicMock()
-        p2 = mock.patch(
-            'sysinv.conductor.manager.ConductorManager.sanitize_feature_gates_kubelet_configmap',
-            mock_sanitize_feature_gates_kubelet_configmap)
-        p2.start().return_value = 0
-        self.addCleanup(p2.stop)
-
-        mock_sanitize_image_repository_kubeadm_configmap = mock.MagicMock()
-        p2 = mock.patch(
-            'sysinv.conductor.manager.ConductorManager.sanitize_image_repository_kubeadm_configmap',
-            mock_sanitize_image_repository_kubeadm_configmap)
         p2.start().return_value = 0
         self.addCleanup(p2.stop)
 
@@ -1867,7 +1714,8 @@ class ManagerTestCase(base.DbTestCase):
         mock_config_apply_runtime_manifest.assert_called_with(mock.ANY, '273cfafd-886d-43ec-9478-8328727b34cc',
                                                                 config_dict)
 
-    def test_handle_k8s_upgrade_control_plane_success_first_master(self):
+    @mock.patch('eventlet.greenthread.spawn')
+    def test_handle_k8s_upgrade_control_plane_success_first_master(self, mock_spawn):
         # Create controller-0
         config_uuid = str(uuid.uuid4())
         c0 = self._create_test_ihost(
@@ -1898,10 +1746,153 @@ class ManagerTestCase(base.DbTestCase):
         fail_state = kubernetes.KUBE_UPGRADING_FIRST_MASTER_FAILED
 
         kube_upgrade_obj = objects.kube_upgrade.get_one(context)
+        q = mock.patch.object(self.service.fm_api, 'get_faults_by_id')
+        mock_alarm_get_list = q.start()
+        mock_alarm_get_list.return_value = []
+        self.addCleanup(q.stop)
+        p = mock.patch('time.sleep')
+        p.start().return_value = None
+        self.addCleanup(p.stop)
+        mock_spawn.side_effect = lambda func, *args, **kwargs: func(*args, **kwargs)
         self.service.handle_k8s_upgrade_control_plane_success(self.context,
                                         kube_upgrade_obj, c0.uuid, new_state, fail_state)
         self.assertEqual(kube_upgrade_obj.state,
                          new_state)
+
+    @mock.patch('eventlet.greenthread.spawn')
+    def test_handle_k8s_upgrade_control_plane_success_first_master_retries_alarm(self, mock_spawn):
+        # Create controller-0
+        config_uuid = str(uuid.uuid4())
+        c0 = self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname='controller-0',
+            uuid=str(uuid.uuid4()),
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+        )
+        # Set the target version for controller-0
+        self.dbapi.kube_host_upgrade_update(1, {'target_version': 'v1.42.2'})
+
+        utils.create_test_kube_upgrade(
+            from_version='v1.42.1',
+            to_version='v1.42.2',
+            state=kubernetes.KUBE_UPGRADED_FIRST_MASTER,
+        )
+
+        self.kube_get_control_plane_versions_result = {
+            'controller-0': 'v1.42.2'}
+
+        new_state = kubernetes.KUBE_UPGRADED_FIRST_MASTER
+        fail_state = kubernetes.KUBE_UPGRADING_FIRST_MASTER_FAILED
+
+        kube_upgrade_obj = objects.kube_upgrade.get_one(context)
+        q = mock.patch.object(self.service.fm_api, 'get_faults_by_id')
+        mock_alarm_get_list = q.start()
+        mock_alarm_get_list.side_effect = [['250.001'], ['250.001'], ['250.001'], []]
+        self.addCleanup(q.stop)
+        p = mock.patch('time.sleep')
+        p.start().return_value = None
+        self.addCleanup(p.stop)
+        mock_spawn.side_effect = lambda func, *args, **kwargs: func(*args, **kwargs)
+        self.service.handle_k8s_upgrade_control_plane_success(self.context,
+                                        kube_upgrade_obj, c0.uuid, new_state, fail_state)
+        self.assertEqual(mock_alarm_get_list.call_count, 4)
+        self.assertEqual(kube_upgrade_obj.state,
+                         new_state)
+
+    @mock.patch('eventlet.greenthread.spawn')
+    def test_handle_k8s_upgrade_control_plane_success_first_master_retries_alarm_failure(self, mock_spawn):
+        # Create controller-0
+        config_uuid = str(uuid.uuid4())
+        c0 = self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname='controller-0',
+            uuid=str(uuid.uuid4()),
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+        )
+        # Set the target version for controller-0
+        self.dbapi.kube_host_upgrade_update(1, {'target_version': 'v1.42.2'})
+
+        utils.create_test_kube_upgrade(
+            from_version='v1.42.1',
+            to_version='v1.42.2',
+            state=kubernetes.KUBE_UPGRADED_FIRST_MASTER,
+        )
+
+        self.kube_get_control_plane_versions_result = {
+            'controller-0': 'v1.42.2'}
+
+        new_state = kubernetes.KUBE_UPGRADED_FIRST_MASTER
+        fail_state = kubernetes.KUBE_UPGRADING_FIRST_MASTER_FAILED
+
+        kube_upgrade_obj = objects.kube_upgrade.get_one(context)
+        q = mock.patch.object(self.service.fm_api, 'get_faults_by_id')
+        mock_alarm_get_list = q.start()
+        mock_alarm_get_list.side_effect = [['250.001'], ['250.001'], ['250.001'], ['250.001'], ['250.001']]
+        self.addCleanup(q.stop)
+        p = mock.patch('time.sleep')
+        p.start().return_value = None
+        self.addCleanup(p.stop)
+        mock_spawn.side_effect = lambda func, *args, **kwargs: func(*args, **kwargs)
+        self.service.handle_k8s_upgrade_control_plane_success(self.context,
+                                        kube_upgrade_obj, c0.uuid, new_state, fail_state)
+        self.assertEqual(mock_alarm_get_list.call_count, 5)
+        self.assertEqual(kube_upgrade_obj.state,
+                         fail_state)
+
+    @mock.patch('eventlet.greenthread.spawn')
+    def test_handle_k8s_upgrade_control_plane_success_alarm_exception(self, mock_spawn):
+        # Create controller-0
+        config_uuid = str(uuid.uuid4())
+        c0 = self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname='controller-0',
+            uuid=str(uuid.uuid4()),
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+        )
+        # Set the target version for controller-0
+        self.dbapi.kube_host_upgrade_update(1, {'target_version': 'v1.42.2'})
+
+        utils.create_test_kube_upgrade(
+            from_version='v1.42.1',
+            to_version='v1.42.2',
+            state=kubernetes.KUBE_UPGRADED_FIRST_MASTER,
+        )
+
+        self.kube_get_control_plane_versions_result = {
+            'controller-0': 'v1.42.2'}
+        new_state = kubernetes.KUBE_UPGRADED_FIRST_MASTER
+        fail_state = kubernetes.KUBE_UPGRADING_FIRST_MASTER_FAILED
+        # Speed up the test
+        kubernetes.MANIFEST_APPLY_INTERVAL = 1
+        q = mock.patch.object(self.service.fm_api, 'get_faults_by_id')
+        mock_alarm_get_list = q.start()
+        mock_alarm_get_list.side_effect = Exception("API failure")
+        self.addCleanup(q.stop)
+        mock_spawn.side_effect = lambda func, *args, **kwargs: func(*args, **kwargs)
+
+        kube_upgrade_obj = objects.kube_upgrade.get_one(context)
+        self.service.handle_k8s_upgrade_control_plane_success(self.context, kube_upgrade_obj,
+                                                              c0.uuid, new_state, fail_state)
+        self.assertEqual(kube_upgrade_obj.state,
+                         fail_state)
 
     @mock.patch("time.sleep", return_value=None)  # Skip actual wait
     @mock.patch('sysinv.objects.host.get_by_uuid')
@@ -2013,7 +2004,8 @@ class ManagerTestCase(base.DbTestCase):
         mock_config_apply_runtime_manifest.assert_called_with(mock.ANY, '273cfafd-886d-43ec-9478-8328727b34cc',
                                                                 config_dict)
 
-    def test_handle_k8s_upgrade_control_plane_success_second_master(self):
+    @mock.patch('eventlet.greenthread.spawn')
+    def test_handle_k8s_upgrade_control_plane_success_second_master(self, mock_spawn):
         # Create controller-0
         config_uuid = str(uuid.uuid4())
         self._create_test_ihost(
@@ -2063,12 +2055,23 @@ class ManagerTestCase(base.DbTestCase):
         fail_state = kubernetes.KUBE_UPGRADING_SECOND_MASTER_FAILED
 
         kube_upgrade_obj = objects.kube_upgrade.get_one(context)
+        q = mock.patch.object(self.service.fm_api, 'get_faults_by_id')
+        mock_alarm_get_list = q.start()
+        mock_alarm_get_list.return_value = []
+        self.addCleanup(q.stop)
+        p = mock.patch('time.sleep')
+        p.start().return_value = None
+        self.addCleanup(p.stop)
+        mock_spawn.side_effect = lambda func, *args, **kwargs: func(*args, **kwargs)
         self.service.handle_k8s_upgrade_control_plane_success(self.context,
                                         kube_upgrade_obj, c1.uuid, new_state, fail_state)
         self.assertEqual(kube_upgrade_obj.state,
                          new_state)
 
-    def test_kube_upgrade_kubelet_controller(self):
+    @mock.patch('os.path.isdir', return_value=True)
+    @mock.patch('shutil.copytree')
+    @mock.patch('sysinv.conductor.manager.tempfile.mkdtemp', return_value='/tmp/mock-temp-dir')
+    def test_kube_upgrade_kubelet_controller(self, mock_mkdtemp, mock_copytree, mock_isdir):
         # Create an upgrade
         utils.create_test_kube_upgrade(
             from_version='v1.42.1',
@@ -2866,77 +2869,6 @@ class ManagerTestCase(base.DbTestCase):
         mock_kube_patch_config_map.assert_called_with(
                 'kubeadm-config', 'kube-system', self.kubeadm_config_map_patch)
 
-    def test_sanitize_kubeadm_configmap_with_ttlafterfinished(self):
-        mock_kube_read_config_map = mock.MagicMock()
-        p = mock.patch(
-            'sysinv.common.kubernetes.KubeOperator.kube_read_config_map',
-            mock_kube_read_config_map)
-        p.start().return_value = self.kubeadm_config_read_ttlafterfinished
-        self.addCleanup(p.stop)
-
-        mock_kube_patch_config_map = mock.MagicMock()
-        p2 = mock.patch(
-            'sysinv.common.kubernetes.KubeOperator.kube_patch_config_map',
-            mock_kube_patch_config_map)
-        p2.start().return_value = self.kubeadm_config_map_patch_ttlafterfinished
-        self.addCleanup(p2.stop)
-
-        self.service.start()
-        self.service.sanitize_kubeadm_configmap('v1.25.3')
-        mock_kube_patch_config_map.assert_called_with(
-                'kubeadm-config', 'kube-system', self.kubeadm_config_map_patch_ttlafterfinished)
-
-    def test_sanitize_kubeadm_configmap_with_pod_eviction_timeout(self):
-        """
-        This unit test covers the use case of the controller manager component
-        with an 'extraArgs' field containing 'pod-eviction-timeout'
-        """
-        mock_kube_read_config_map = mock.MagicMock()
-        p = mock.patch(
-            'sysinv.common.kubernetes.KubeOperator.kube_read_config_map',
-            mock_kube_read_config_map)
-        p.start().return_value = self.kubeadm_config_read_pod_eviction_timeout
-        self.addCleanup(p.stop)
-
-        mock_kube_patch_config_map = mock.MagicMock()
-        p2 = mock.patch(
-            'sysinv.common.kubernetes.KubeOperator.kube_patch_config_map',
-            mock_kube_patch_config_map)
-        p2.start().return_value = self.kubeadm_config_map_patch_pod_eviction_timeout
-        self.addCleanup(p2.stop)
-
-        self.service.start()
-        self.service.sanitize_kubeadm_configmap('v1.27.5')
-        mock_kube_patch_config_map.assert_called_with(
-                'kubeadm-config', 'kube-system', self.kubeadm_config_map_patch_pod_eviction_timeout)
-
-    def test_sanitize_image_repository_kubeadm_configmap(self):
-        """
-        This unit test covers the following use cases:
-        1. a component with an 'extraArgs' field containing 'feature-gates' with
-           only a "RemoveSelfLink=false" entry
-        2. a component with an 'extraArgs' field containing 'feature-gates' with a
-           "RemoveSelfLink=false" entry as well as others
-        """
-        mock_kube_read_config_map = mock.MagicMock()
-        p = mock.patch(
-            'sysinv.common.kubernetes.KubeOperator.kube_read_config_map',
-            mock_kube_read_config_map)
-        p.start().return_value = self.kubeadm_config_map_read_image_repository
-        self.addCleanup(p.stop)
-
-        mock_kube_patch_config_map = mock.MagicMock()
-        p2 = mock.patch(
-            'sysinv.common.kubernetes.KubeOperator.kube_patch_config_map',
-            mock_kube_patch_config_map)
-        p2.start().return_value = self.kubeadm_config_map_patch_image_repository
-        self.addCleanup(p2.stop)
-
-        self.service.start()
-        self.service.sanitize_image_repository_kubeadm_configmap('v1.42.2')
-        mock_kube_patch_config_map.assert_called_with(
-                'kubeadm-config', 'kube-system', self.kubeadm_config_map_patch_image_repository)
-
     def test_sanitize_kubeadm_configmap_etcd_endpoints(self):
         """
         This unit test covers the following use cases:
@@ -2993,7 +2925,10 @@ class ManagerTestCase(base.DbTestCase):
         return ihost
 
     @mock.patch('os.path.isfile', return_value=True)
-    def test_configure_out_of_date(self, _):
+    @mock.patch('os.path.isdir', return_value=True)
+    @mock.patch('shutil.copytree')
+    @mock.patch('sysinv.conductor.manager.tempfile.mkdtemp', return_value='/tmp/mock-temp-dir')
+    def test_configure_out_of_date(self, mock_mkdtemp, mock_copytree, mock_isdir, mock_isfile):
         cutils.is_aio_system = mock.Mock(return_value=True)
         ihost = self._create_test_controller_config_out_of_date('controller-0')
         self.service.configure_ihost(self.context, ihost)
@@ -3015,7 +2950,10 @@ class ManagerTestCase(base.DbTestCase):
         self.assertEqual(self.alarm_raised, True)
 
     @mock.patch('os.path.isfile', return_value=True)
-    def test_configure_out_of_date_upgrade(self, _):
+    @mock.patch('os.path.isdir', return_value=True)
+    @mock.patch('shutil.copytree')
+    @mock.patch('sysinv.conductor.manager.tempfile.mkdtemp', return_value='/tmp/mock-temp-dir')
+    def test_configure_out_of_date_upgrade(self, mock_mkdtemp, mock_copytree, mock_isdir, mock_isfile):
         cutils.is_aio_system = mock.Mock(return_value=True)
 
         # Check upgrade where the target sw_version does not match
@@ -3044,7 +2982,10 @@ class ManagerTestCase(base.DbTestCase):
     def fake_rename(self, old, new):
         self.executes.append(('mv', old, new))
 
-    def test_deferred_runtime_config_file(self):
+    @mock.patch('os.path.isdir', return_value=True)
+    @mock.patch('shutil.copytree')
+    @mock.patch('sysinv.conductor.manager.tempfile.mkdtemp', return_value='/tmp/mock-temp-dir')
+    def test_deferred_runtime_config_file(self, mock_mkdtemp, mock_copytree, mock_isdir):
 
         # Create controller-0
         config_uuid = str(uuid.uuid4())
@@ -3100,7 +3041,10 @@ class ManagerTestCase(base.DbTestCase):
                          chost_updated.config_applied)
         self.assertEqual(self.alarm_raised, False)
 
-    def test_deferred_runtime_config_manifest(self):
+    @mock.patch('os.path.isdir', return_value=True)
+    @mock.patch('shutil.copytree')
+    @mock.patch('sysinv.conductor.manager.tempfile.mkdtemp', return_value='/tmp/mock-temp-dir')
+    def test_deferred_runtime_config_manifest(self, mock_mkdtemp, mock_copytree, mock_isdir):
         # Create controller-0
         config_uuid = str(uuid.uuid4())
         chost = self._create_test_ihost(
@@ -3138,7 +3082,10 @@ class ManagerTestCase(base.DbTestCase):
                          chost_updated.config_applied)
         self.assertEqual(self.alarm_raised, False)
 
-    def test_deferred_multiple_runtime_config(self):
+    @mock.patch('os.path.isdir', return_value=True)
+    @mock.patch('shutil.copytree')
+    @mock.patch('sysinv.conductor.manager.tempfile.mkdtemp', return_value='/tmp/mock-temp-dir')
+    def test_deferred_multiple_runtime_config(self, mock_mkdtemp, mock_copytree, mock_isdir):
         # Create controller-0
         config_uuid = str(uuid.uuid4())
         chost = self._create_test_ihost(
@@ -5598,7 +5545,8 @@ class ManagerTestCase(base.DbTestCase):
             "host_uuids": host_uuids,
             "classes": [
                 'platform::grub::kernel_image::runtime',
-                'platform::config::file::subfunctions::lowlatency::runtime'
+                'platform::config::file::subfunctions::lowlatency::runtime',
+                'platform::compute::grub::runtime'
             ],
             'report_status': 'host_kernel_config'
         }
@@ -5919,503 +5867,50 @@ class ManagerTestCase(base.DbTestCase):
         # update only 1 time
         mock_update_cached_app_bundles_set.assert_called_once()
 
+    @mock.patch('sysinv.conductor.manager.'
+                'ConductorManager._config_apply_runtime_manifest')
+    @mock.patch('sysinv.conductor.manager.'
+                'ConductorManager._config_update_hosts')
+    def test_configure_stalld(self,
+                              mock_config_update_hosts,
+                              mock_config_apply_runtime_manifest):
+        self._create_test_ihosts()
+        hostname = 'compute-0'
+        host = self.service.get_ihost_by_hostname(self.context, hostname)
+        host_uuid = host['uuid']
+        personalities = [host['personality']]
+        host_uuids = [host_uuid]
+        config_dict = {
+            "personalities": personalities,
+            "host_uuids": host_uuids,
+            "classes": [
+                'platform::stalld::runtime'
+            ],
+        }
+        config_uuid = '1234'
+        mock_config_update_hosts.return_value = config_uuid
+        self.service.configure_stalld(context=self.context,
+                                      host_uuid=host_uuid)
 
-@mock.patch('sysinv.conductor.manager.verify_files', lambda x, y: True)
-@mock.patch('sysinv.conductor.manager.cutils.ISO', mock.MagicMock())
-class ManagerStartLoadImportTest(base.BaseHostTestCase):
-    def setUp(self):
-        super(ManagerStartLoadImportTest, self).setUp()
-
-        # Set up objects for testing
-        self.service = manager.ConductorManager('test-host', 'test-topic')
-        self.service.dbapi = dbapi.get_instance()
-        self.context = context.get_admin_context()
-
-        self.tmp_dir = tempfile.mkdtemp(dir='/tmp')
-
-        patch_mkdtemp = mock.patch('tempfile.mkdtemp')
-        mock_mkdtemp = patch_mkdtemp.start()
-        mock_mkdtemp.return_value = self.tmp_dir
-        self.addCleanup(patch_mkdtemp.stop)
-
-        self.upgrades_path = '%s/upgrades' % self.tmp_dir
-        os.makedirs(self.upgrades_path, exist_ok=True)
-
-        self.metadata = os.path.join(
-            os.path.dirname(__file__), "data", "metadata.xml"
-        )
-        shutil_copy(self.metadata, self.upgrades_path)
-
-        self.iso = os.path.join(
-            os.path.dirname(__file__), "data", "bootimage.iso"
-        )
-        self.sig = os.path.join(
-            os.path.dirname(__file__), "data", "bootimage.sig"
-        )
-
-        load_update = mock.patch.object(Connection, 'load_update')
-        self.mock_load_update = load_update.start()
-        self.mock_load_update.return_value = mock.MagicMock()
-        self.addCleanup(load_update.stop)
-
-    def test_start_import_load(self):
-        result = self.service.start_import_load(
-            self.context,
-            path_to_iso=self.iso,
-            path_to_sig=self.sig,
-        )
-
-        self.assertIsInstance(result, Load)
-        self.assertEqual(result.state, constants.IMPORTING_LOAD_STATE)
-
-    @mock.patch('sysinv.conductor.manager.cutils.get_active_load')
-    def test_start_import_load_same_version(self, mock_get_active_load):
-        mock_get_active_load.return_value.software_version = '0.1'
-
-        self.assertRaises(
-            exception.SysinvException,
-            self.service.start_import_load,
-            self.context,
-            self.iso,
-            self.sig,
-        )
-
-    @mock.patch('sysinv.conductor.manager.cutils.get_active_load')
-    def test_start_import_load_invalid_from_version(self, mock_get_active_load):
-        mock_get_active_load.return_value.software_version = '0.2'
-
-        self.assertRaises(
-            exception.SysinvException,
-            self.service.start_import_load,
-            self.context,
-            self.iso,
-            self.sig,
-        )
-
-    @mock.patch.object(Connection, 'load_get_list')
-    @mock.patch('sysinv.conductor.manager.cutils.get_active_load')
-    def test_start_import_load_active(self, mock_get_active_load, mock_load_get_list):
-        mock_get_active_load.return_value.software_version = '0.1'
-
-        load = utils.create_test_load(**{"software_version": "0.1"})
-        mock_load_get_list.return_value = [load]
-
-        result = self.service.start_import_load(
-            self.context,
-            path_to_iso=self.iso,
-            path_to_sig=self.sig,
-            import_type=constants.ACTIVE_LOAD_IMPORT,
-        )
-
-        self.assertIsInstance(result, Load)
-        self.assertEqual(result.state, constants.ACTIVE_LOAD_STATE)
-
-    def test_start_import_load_active_invalid_version(self):
-        self.assertRaises(
-            exception.SysinvException,
-            self.service.start_import_load,
-            self.context,
-            self.iso,
-            self.sig,
-            import_type=constants.ACTIVE_LOAD_IMPORT,
-        )
-
-    @mock.patch.object(Connection, 'load_get_list')
-    def test_start_import_load_active_load_not_found(self, mock_load_get_list):
-        load = utils.create_test_load(**{"software_version": "0.1"})
-        mock_load_get_list.side_effect = [[load], []]
-
-        self.assertRaises(
-            exception.SysinvException,
-            self.service.start_import_load,
-            self.context,
-            self.iso,
-            self.sig,
-            import_type=constants.ACTIVE_LOAD_IMPORT,
-        )
-
-    @mock.patch('os.path.exists', mock.MagicMock())
-    @mock.patch('sysinv.conductor.manager.cutils.get_active_load')
-    @mock.patch('sysinv.conductor.manager.ConductorManager._get_committed_patches_from_iso')
-    def test_start_import_load_inactive(self, mock__get_committed_patches_from_iso, mock_get_active_load):
-        mock_get_active_load.return_value.software_version = '0.2'
-        mock_get_active_load.return_value.uuid = "11111111-1111-1111-1111-111111111111"
-        mock_get_active_load.return_value.id = '1'
-        mock_get_active_load.return_value.compatible_version = ""
-        mock_get_active_load.return_value.required_patches = ""
-        mock__get_committed_patches_from_iso.return_value = ["PATCH_0001"]
-
-        loading_metadata = open(self.metadata, 'r').read()
-        current_metadata = '''
-            <build>\n<version>0.2</version>\n<supported_upgrades>
-            \n<upgrade>\n<version>0.1</version>\n<required_patch>PATCH_0001</required_patch>
-            \n</upgrade>\n</supported_upgrades>\n</build>
-        '''
-
-        mock_files = [
-            mock.mock_open(read_data=loading_metadata).return_value,
-            mock.mock_open(read_data=current_metadata).return_value,
-        ]
-        mock_open = mock.mock_open()
-        mock_open.side_effect = mock_files
-
-        with mock.patch('builtins.open', mock_open):
-            result = self.service.start_import_load(
-                self.context,
-                path_to_iso=self.iso,
-                path_to_sig=self.sig,
-                import_type=constants.INACTIVE_LOAD_IMPORT,
-            )
-
-        self.mock_load_update.assert_called_once_with(
+        mock_config_update_hosts.assert_called_once()
+        mock_config_apply_runtime_manifest.assert_called_once_with(
             mock.ANY,
-            {'compatible_version': '0.1', 'required_patches': 'PATCH_0001'},
-        )
+            config_uuid,
+            config_dict)
 
-        self.assertIsInstance(result, Load)
-        self.assertEqual(result.state, constants.IMPORTING_LOAD_STATE)
+    @mock.patch('sysinv.conductor.manager.'
+                'ConductorManager._config_apply_runtime_manifest')
+    @mock.patch('sysinv.conductor.manager.'
+                'ConductorManager._config_update_hosts')
+    def test_configure_stalld_host_not_found(self,
+                              mock_config_update_hosts,
+                              mock_config_apply_runtime_manifest):
+        host_uuid = str(uuid.uuid4())
+        self.service.configure_stalld(context=self.context,
+                                      host_uuid=host_uuid)
 
-    @mock.patch('sysinv.conductor.manager.open')
-    @mock.patch('sysinv.conductor.manager.cutils.get_active_load')
-    def test_start_import_load_inactive_incompatible_version(self, mock_get_active_load, mock_open):
-        mock_get_active_load.return_value.software_version = '0.3'
-        mock_get_active_load.return_value.uuid = "22222222-2222-2222-2222-222222222222"
-        mock_get_active_load.return_value.id = '1'
-        mock_get_active_load.return_value.compatible_version = ""
-        mock_get_active_load.return_value.required_patches = ""
-
-        current_metadata = b'''
-            <build>\n<version>0.3</version>\n<supported_upgrades>
-            \n<upgrade>\n<version>0.2</version>\n<required_patch>PATCH_0001</required_patch>
-            \n</upgrade>\n</supported_upgrades>\n</build>
-        '''
-
-        mock_files = [
-            mock.mock_open(read_data=current_metadata).return_value,
-        ]
-        mock_open.side_effect = mock_files
-
-        self.assertRaises(
-            exception.SysinvException,
-            self.service.start_import_load,
-            self.context,
-            path_to_iso=self.iso,
-            path_to_sig=self.sig,
-            import_type=constants.INACTIVE_LOAD_IMPORT,
-        )
-
-    def test_get_patch_id(self):
-        import tempfile
-        patches = {"PATCH_0001-metadata.xml": "<?xml version=\"1.0\" ?><patch><id>PATCH_0001</id></patch>",
-                   "PATCH_0002-metadata.xml": "<?xml version=\"1.0\" ?><patch><id>PATCH_0002</id></patch>", }
-
-        patch_ids = []
-        with tempfile.TemporaryDirectory() as tempdir:
-            for fn, content in patches.items():
-                filename = os.path.join(tempdir, fn)
-                with open(filename, 'w') as f:
-                    f.write(content)
-                patch_id = self.service._get_patch_id(filename)
-                if patch_id:
-                    patch_ids.append(patch_id)
-        self.assertEqual(patch_ids, ["PATCH_0001", "PATCH_0002"])
-
-    @mock.patch('os.path.exists', mock.MagicMock())
-    # @mock.patch('sysinv.conductor.manager.open')
-    @mock.patch('sysinv.conductor.manager.cutils.get_active_load')
-    @mock.patch('sysinv.conductor.manager.ConductorManager._get_committed_patches_from_iso')
-    def test_start_import_load_inactive_invalid_patch(self, mock__get_committed_patches_from_iso, mock_get_active_load):
-        mock_get_active_load.return_value.software_version = '0.3'
-        mock_get_active_load.return_value.uuid = "f0905590-9c02-445a-87c7-568cba08c997"
-        mock_get_active_load.return_value.id = 1
-        mock_get_active_load.return_value.compatible_version = ""
-        mock_get_active_load.return_value.required_patches = ""
-        mock__get_committed_patches_from_iso.return_value = ["PATCH_0001"]
-
-        loading_metadata = open(self.metadata, 'r').read()
-        current_metadata = b'''
-            <build>\n<version>0.2</version>\n<supported_upgrades>
-            \n<upgrade>\n<version>0.1</version>\n<required_patch>PATCH_0002</required_patch>
-            \n</upgrade>\n</supported_upgrades>\n</build>
-        '''
-
-        mock_files = [
-            mock.mock_open(read_data=loading_metadata).return_value,
-            mock.mock_open(read_data=current_metadata).return_value,
-        ]
-        mock_open = mock.mock_open()
-        mock_open.side_effect = mock_files
-
-        # load can be import, the restriction of required_patches only applies
-        # when upgrade starts
-        with mock.patch('builtins.open', mock_open):
-            self.assertRaises(
-                    exception.SysinvException,
-                    self.service.start_import_load,
-                    self.context,
-                    path_to_iso=self.iso,
-                    path_to_sig=self.sig,
-                    import_type=constants.INACTIVE_LOAD_IMPORT,
-            )
-
-    def test_start_import_load_invalid_path(self):
-        self.assertRaises(
-            exception.SysinvException,
-            self.service.start_import_load,
-            self.context,
-            'invalid/path/bootimage.iso',
-            'invalid/path/bootimage.sig',
-        )
-
-    def test_start_import_load_invalid_files(self):
-        with mock.patch('sysinv.conductor.manager.verify_files', lambda x, y: False):
-            self.assertRaises(
-                exception.SysinvException,
-                self.service.start_import_load,
-                self.context,
-                self.iso,
-                self.sig,
-            )
-
-    def test_start_import_load_without_metadata(self):
-        rmtree(self.upgrades_path, ignore_errors=True)
-
-        self.assertRaises(
-            exception.SysinvException,
-            self.service.start_import_load,
-            self.context,
-            self.iso,
-            self.sig,
-        )
-
-    def test_start_import_load_invalid_metadata(self):
-        iso = os.path.join(
-            os.path.dirname(__file__), "data", "bootimage.iso"
-        )
-        shutil_copy(iso, self.upgrades_path)
-        os.rename(
-            '%s/bootimage.iso' % self.upgrades_path,
-            '%s/metadata.xml' % self.upgrades_path,
-        )
-
-        self.assertRaises(
-            exception.SysinvException,
-            self.service.start_import_load,
-            self.context,
-            self.iso,
-            self.sig,
-        )
-
-
-@mock.patch('sysinv.conductor.manager.subprocess', mock.MagicMock())
-@mock.patch('sysinv.conductor.manager.cutils.ISO', mock.MagicMock())
-class ManagerLoadImportTest(base.BaseHostTestCase):
-    def setUp(self):
-        super(ManagerLoadImportTest, self).setUp()
-
-        # Set up objects for testing
-        self.service = manager.ConductorManager('test-host', 'test-topic')
-        self.service.dbapi = dbapi.get_instance()
-        self.context = context.get_admin_context()
-
-        self.iso = os.path.join(
-            os.path.dirname(__file__), "data", "bootimage.iso"
-        )
-
-        self.load = utils.create_test_load(
-            **{"software_version": "0.1"}
-        )
-
-        load_update = mock.patch.object(Connection, 'load_update')
-        self.mock_load_update = load_update.start()
-        self.mock_load_update.return_value = mock.MagicMock()
-        self.addCleanup(load_update.stop)
-
-        extract_files = mock.patch.object(LoadImport, 'extract_files')
-        self.mock_extract_files = extract_files.start()
-        self.mock_extract_files.return_value = mock.MagicMock()
-        self.addCleanup(extract_files.stop)
-
-    def test_import_load(self):
-        result = self.service.import_load(
-            self.context,
-            path_to_iso=self.iso,
-            new_load=self.load,
-        )
-
-        self.assertTrue(result)
-
-        self.mock_load_update.assert_called_once_with(
-            mock.ANY,
-            {'state': constants.IMPORTED_LOAD_STATE},
-        )
-
-    @mock.patch('sysinv.conductor.manager.os.chmod', mock.Mock())
-    @mock.patch('sysinv.conductor.manager.os.makedirs', mock.Mock())
-    def test_import_load_inactive(self):
-        with mock.patch('builtins.open', mock.mock_open()):
-            result = self.service.import_load(
-                self.context,
-                path_to_iso=self.iso,
-                new_load=self.load,
-                import_type=constants.INACTIVE_LOAD_IMPORT,
-            )
-
-        self.assertTrue(result)
-
-        self.mock_load_update.assert_called_once_with(
-            mock.ANY,
-            {'state': constants.INACTIVE_LOAD_STATE},
-        )
-
-    @mock.patch('sysinv.conductor.manager.os.chmod', mock.Mock())
-    @mock.patch('sysinv.conductor.manager.os.makedirs', mock.Mock())
-    def test_import_load_inactive_failed_extract_files(self):
-        self.mock_extract_files.side_effect = exception.SysinvException()
-
-        with mock.patch('builtins.open', mock.mock_open()):
-            self.assertRaises(
-                exception.SysinvException,
-                self.service.import_load,
-                self.context,
-                path_to_iso=self.iso,
-                new_load=self.load,
-                import_type=constants.INACTIVE_LOAD_IMPORT,
-            )
-
-        self.mock_load_update.assert_called_once_with(
-            mock.ANY,
-            {'state': constants.ERROR_LOAD_STATE},
-        )
-
-    def test_import_load_empty_new_load(self):
-        self.assertRaises(
-            exception.SysinvException,
-            self.service.import_load,
-            self.context,
-            path_to_iso=self.iso,
-            new_load=None,
-        )
-
-        self.mock_load_update.assert_not_called()
-
-    def test_import_load_invalid_iso_path(self):
-        self.assertRaises(
-            exception.SysinvException,
-            self.service.import_load,
-            self.context,
-            path_to_iso='invalid',
-            new_load=self.load,
-        )
-
-        self.mock_load_update.assert_called_once_with(
-            mock.ANY,
-            {'state': constants.ERROR_LOAD_STATE},
-        )
-
-    def test_import_load_load_update_failed(self):
-        self.mock_load_update.side_effect = exception.SysinvException()
-
-        self.assertRaises(
-            exception.SysinvException,
-            self.service.import_load,
-            self.context,
-            path_to_iso=self.iso,
-            new_load=self.load,
-        )
-
-        self.mock_load_update.assert_called_once_with(
-            mock.ANY,
-            {'state': constants.IMPORTED_LOAD_STATE},
-        )
-
-
-@mock.patch('sysinv.conductor.manager.os.path.isfile', mock.MagicMock())
-@mock.patch('sysinv.conductor.manager.subprocess.check_call', mock.MagicMock())
-class ManagerLoadDeleteTest(base.BaseHostTestCase):
-    def setUp(self):
-        super(ManagerLoadDeleteTest, self).setUp()
-
-        self.context = context.get_admin_context()
-        self.service = manager.ConductorManager('test-host', 'test-topic')
-        self.service.dbapi = dbapi.get_instance()
-
-        self.load = utils.create_test_load(
-            **{
-                'software_version': '0.1',
-                'state': constants.INACTIVE_LOAD_STATE,
-            }
-        )
-
-        ihost = utils.create_test_ihost()
-
-        controller_hostname = mock.patch.object(
-            cutils,
-            'get_mate_controller_hostname',
-            lambda: ihost.hostname,
-        )
-        self.mock_controller_hostname = controller_hostname.start()
-        self.addCleanup(controller_hostname.stop)
-
-        rpcapi_delete_load = mock.patch.object(
-            agent_rpcapi.AgentAPI,
-            'delete_load',
-            mock.MagicMock(),
-        )
-        self.mocked_rpcapi_delete_load = rpcapi_delete_load.start()
-        self.addCleanup(rpcapi_delete_load.stop)
-
-    def tearDown(self):
-        super(ManagerLoadDeleteTest, self).tearDown()
-
-    def test_load_delete(self):
-        self.service.delete_load(
-            self.context,
-            self.load.id,
-        )
-
-        self.mocked_rpcapi_delete_load.assert_called_once()
-
-    def test_load_delete_run_again(self):
-        utils.update_test_load(
-            self.load.id,
-            **{'state': constants.DELETING_LOAD_STATE},
-        )
-
-        self.service.delete_load(
-            self.context,
-            self.load.id,
-        )
-
-        self.mocked_rpcapi_delete_load.assert_called_once()
-
-    @mock.patch.object(cutils, 'get_mate_controller_hostname', lambda: '')
-    def test_load_delete_meta_controller_not_configured(self):
-        self.service.delete_load(
-            self.context,
-            self.load.id,
-        )
-
-        loads = self.dbapi.load_get_list()
-
-        self.assertEqual(1, len(loads))
-
-        self.mocked_rpcapi_delete_load.assert_not_called()
-
-    def test_load_delete_invalid_state(self):
-        utils.update_test_load(
-            self.load.id,
-            **{'state': constants.IMPORTING_LOAD_STATE},
-        )
-
-        self.assertRaises(
-            exception.SysinvException,
-            self.service.delete_load,
-            self.context,
-            self.load.id,
-        )
-
-        self.mocked_rpcapi_delete_load.assert_not_called()
+        mock_config_update_hosts.assert_not_called()
+        mock_config_apply_runtime_manifest.assert_not_called()
 
 
 class ManagerTestCaseInternal(base.BaseHostTestCase):

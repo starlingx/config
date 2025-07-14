@@ -46,8 +46,7 @@ ID_TO_ADDRESS_FIELD_INDEX = {FLOATING_ADDRESS_ID: FLOATING_ADDRESS,
 HOSTNAME_ADDRESS_ID_FIELDS = {constants.CONTROLLER_HOSTNAME: FLOATING_ADDRESS_ID,
                               constants.CONTROLLER_0_HOSTNAME: CONTROLLER0_ADDRESS_ID,
                               constants.CONTROLLER_1_HOSTNAME: CONTROLLER1_ADDRESS_ID,
-                              constants.CONTROLLER_GATEWAY: GATEWAY_ADDRESS_ID,
-                              constants.SYSTEM_CONTROLLER_GATEWAY_IP_NAME: GATEWAY_ADDRESS_ID}
+                              constants.CONTROLLER_GATEWAY: GATEWAY_ADDRESS_ID}
 
 ADDRESS_FIELD_HOSTNAMES = {FLOATING_ADDRESS: constants.CONTROLLER_HOSTNAME,
                            CONTROLLER0_ADDRESS: constants.CONTROLLER_0_HOSTNAME,
@@ -86,10 +85,14 @@ DYNAMIC_ALLOCATION_ENABLED_NETS = {constants.NETWORK_TYPE_MGMT,
                                    constants.NETWORK_TYPE_STORAGE}
 
 ALLOWED_OVERLAP_INDEX = {
-    constants.NETWORK_TYPE_OAM: constants.NETWORK_TYPE_SYSTEM_CONTROLLER_OAM,
-    constants.NETWORK_TYPE_SYSTEM_CONTROLLER_OAM: constants.NETWORK_TYPE_OAM,
-    constants.NETWORK_TYPE_CLUSTER_POD: constants.NETWORK_TYPE_CLUSTER_SERVICE,
-    constants.NETWORK_TYPE_CLUSTER_SERVICE: constants.NETWORK_TYPE_CLUSTER_POD}
+    constants.NETWORK_TYPE_OAM: [constants.NETWORK_TYPE_SYSTEM_CONTROLLER_OAM],
+    constants.NETWORK_TYPE_SYSTEM_CONTROLLER_OAM: [constants.NETWORK_TYPE_OAM],
+    constants.NETWORK_TYPE_CLUSTER_POD: [constants.NETWORK_TYPE_CLUSTER_SERVICE,
+                                         constants.NETWORK_TYPE_CLUSTER_HOST],
+    constants.NETWORK_TYPE_CLUSTER_SERVICE: [constants.NETWORK_TYPE_CLUSTER_POD,
+                                             constants.NETWORK_TYPE_CLUSTER_HOST],
+    constants.NETWORK_TYPE_CLUSTER_HOST: [constants.NETWORK_TYPE_CLUSTER_POD,
+                                          constants.NETWORK_TYPE_CLUSTER_SERVICE]}
 
 
 def _select_address(available, order):
@@ -217,14 +220,12 @@ def _get_hostname_field_index(network_type, dbapi=None):
 
     entries = {hostname: (field, False) for hostname, field in HOSTNAME_ADDRESS_ID_FIELDS.items()}
 
-    if network_type in {constants.NETWORK_TYPE_MGMT, constants.NETWORK_TYPE_ADMIN} and \
-            _get_distributed_cloud_role(dbapi) == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
-        del entries[constants.CONTROLLER_GATEWAY]
-    else:
-        del entries[constants.SYSTEM_CONTROLLER_GATEWAY_IP_NAME]
-
     for hostname, field in req_addresses.items():
         entries[hostname] = (field, True)
+        if network_type in {constants.NETWORK_TYPE_ADMIN, constants.NETWORK_TYPE_MGMT} and \
+                _get_system_mode(dbapi) == constants.SYSTEM_MODE_SIMPLEX:
+            if hostname in [constants.CONTROLLER_0_HOSTNAME, constants.CONTROLLER_1_HOSTNAME]:
+                del entries[hostname]
 
     return entries
 
@@ -302,7 +303,8 @@ def assign_network_addresses_to_interface(host, interface_id, network, addrpools
 
 
 def _assign_addresses_to_controller_iface(host, interface_id, network, addrpools, dbapi):
-    if network.type == constants.NETWORK_TYPE_OAM and \
+    if network.type in [constants.NETWORK_TYPE_OAM, constants.NETWORK_TYPE_ADMIN,
+                        constants.NETWORK_TYPE_MGMT] and \
             _get_system_mode(dbapi) == constants.SYSTEM_MODE_SIMPLEX:
         hostname = constants.CONTROLLER_HOSTNAME
     else:
@@ -411,8 +413,8 @@ def check_address_pools_overlaps(dbapi, ref_addrpools, network_types=None, show_
     if not overlaps:
         return
 
-    allowed_networks = {ALLOWED_OVERLAP_INDEX.get(t) for t in network_types
-                        if t in ALLOWED_OVERLAP_INDEX} if network_types else {}
+    allowed_networks = {network for t in network_types if t in ALLOWED_OVERLAP_INDEX
+                        for network in ALLOWED_OVERLAP_INDEX.get(t)} if network_types else {}
 
     addrpool_texts = []
     for overlap in overlaps:

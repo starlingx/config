@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2016-2020 Wind River Systems, Inc.
+# Copyright (c) 2016-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -24,3 +24,8 @@ POSTGRESQL_DEFAULT_PORT = 5432
 
 IPV4_FAMILY = 4
 IPV6_FAMILY = 6
+
+LOG_DEFAULT_FORMAT = ('%(asctime)s.%(msecs)03d USM - %(exec)s [%(process)s: '
+                      '%(thread)d]: %(filename)s(%(lineno)s): '
+                      '%(levelname)s: %(message)s')
+USM_LOG_FILE = '/var/log/software.log'

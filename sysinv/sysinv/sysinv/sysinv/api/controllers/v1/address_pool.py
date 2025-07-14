@@ -15,7 +15,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2015-2024 Wind River Systems, Inc.
+# Copyright (c) 2015-2025 Wind River Systems, Inc.
 #
 
 
@@ -389,6 +389,13 @@ class AddressPoolController(rest.RestController):
                             raise wsme.exc.ClientSideError(msg)
                     continue
 
+            if nw_type == constants.NETWORK_TYPE_MGMT:
+                if self._get_system_mode() == constants.SYSTEM_MODE_DUPLEX:
+                    system = pecan.request.dbapi.isystem_get_one()
+                    if (system.capabilities.get('simplex_to_duplex_migration') or
+                            system.capabilities.get('simplex_to_duplex-direct_migration')):
+                        continue
+
             # An addresspool except the admin and system controller's pools
             # are considered read-only after the initial configuration is
             # complete. During bootstrap it should be modifiable even though
@@ -529,15 +536,14 @@ class AddressPoolController(rest.RestController):
     ALL_CTL_ADDR_FIELDS = ['floating_address', 'controller0_address', 'controller1_address']
 
     def _get_required_address_fields(self, network_types):
-        if constants.NETWORK_TYPE_OAM in network_types:
+        sx_floating_only_networks = [constants.NETWORK_TYPE_OAM,
+                                     constants.NETWORK_TYPE_MGMT,
+                                     constants.NETWORK_TYPE_ADMIN]
+        if any(x in network_types for x in sx_floating_only_networks):
             if utils.get_system_mode() == constants.SYSTEM_MODE_SIMPLEX:
                 return self.FLOATING_ADDR_FIELD
             else:
                 return self.ALL_CTL_ADDR_FIELDS
-        if constants.NETWORK_TYPE_MGMT in network_types:
-            return self.ALL_CTL_ADDR_FIELDS
-        if constants.NETWORK_TYPE_ADMIN in network_types:
-            return self.ALL_CTL_ADDR_FIELDS
         return []
 
     def _check_required_addresses(self, updated_addrpool, network_types):
@@ -769,13 +775,9 @@ class AddressPoolController(rest.RestController):
                          caddress_pool.CONTROLLER1_ADDRESS: constants.CONTROLLER_1_HOSTNAME,
                          caddress_pool.FLOATING_ADDRESS: constants.CONTROLLER_HOSTNAME}
 
-    def _get_address_hostname(self, field, network_type, dc_role):
+    def _get_address_hostname(self, field):
         if field == 'gateway_address':
-            if network_type != constants.NETWORK_TYPE_OAM and \
-                    dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
-                return constants.SYSTEM_CONTROLLER_GATEWAY_IP_NAME
-            else:
-                return constants.CONTROLLER_GATEWAY
+            return constants.CONTROLLER_GATEWAY
         return self.FIELD_TO_HOSTNAME[field]
 
     def _process_address_create_cmds(self, addrpool, updates, create_index, field_updates,
@@ -789,15 +791,13 @@ class AddressPoolController(rest.RestController):
                          'enable_dad': constants.IP_DAD_STATES[addrpool.family]}
 
         network_type = next(iter(network_types)) if len(network_types) == 1 else None
-        if network_type:
-            dc_role = utils.get_distributed_cloud_role()
 
         for addr_field, values in create_index.items():
             addr_id_field = ADDRESS_TO_ID_FIELD_INDEX[addr_field]
             params = create_params.copy()
             params.update(values)
             if network_type:
-                hostname = self._get_address_hostname(addr_field, network_type, dc_role)
+                hostname = self._get_address_hostname(addr_field)
                 params['name'] = cutils.format_address_name(hostname, network_type)
             else:
                 params['name'] = '{}-{}'.format(addrpool.name, addr_field)
@@ -813,14 +813,22 @@ class AddressPoolController(rest.RestController):
     def _apply_network_specific_address_updates(self, addrpool, network_types, commands):
         if constants.NETWORK_TYPE_OAM in network_types:
             self._apply_oam_address_updates(addrpool, commands)
+        if constants.NETWORK_TYPE_MGMT in network_types:
+            self._apply_mgmt_address_updates(addrpool, commands)
 
     def _apply_oam_address_updates(self, addrpool, commands):
         system = pecan.request.dbapi.isystem_get_one()
         if system.capabilities.get('simplex_to_duplex_migration') or \
                 system.capabilities.get('simplex_to_duplex-direct_migration'):
-            self._aio_sx_to_dx_oam_migration(addrpool, commands)
+            self._aio_sx_to_dx_address_migration(addrpool, commands)
 
-    def _aio_sx_to_dx_oam_migration(self, addrpool, commands):
+    def _apply_mgmt_address_updates(self, addrpool, commands):
+        system = pecan.request.dbapi.isystem_get_one()
+        if system.capabilities.get('simplex_to_duplex_migration') or \
+                system.capabilities.get('simplex_to_duplex-direct_migration'):
+            self._aio_sx_to_dx_address_migration(addrpool, commands)
+
+    def _aio_sx_to_dx_address_migration(self, addrpool, commands):
         create_cmd = commands['create'].get('controller0_address', None)
         if not create_cmd:
             return
@@ -870,9 +878,7 @@ class AddressPoolController(rest.RestController):
                 return
         if all(net_type not in network_types for net_type in self.SUBCLOUD_GATEWAY_NETWORKS):
             return
-        if utils.get_distributed_cloud_role() != constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
-            return
-        cutils.update_subcloud_routes(pecan.request.dbapi)
+        cutils.update_routes_to_system_controller(pecan.request.dbapi)
 
     def _operation_complete(self, addrpool, network_types, is_primary, operation):
         self._update_dc_routes(network_types, operation)

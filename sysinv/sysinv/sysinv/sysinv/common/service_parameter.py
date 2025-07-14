@@ -1,4 +1,4 @@
-# Copyright (c) 2017-2024 Wind River Systems, Inc.
+# Copyright (c) 2017-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -14,7 +14,7 @@ import re
 import wsme
 
 from oslo_log import log
-from six.moves.urllib.parse import urlparse
+from urllib.parse import urlparse
 from sysinv._i18n import _
 from sysinv.common import constants
 from sysinv.common import exception
@@ -173,15 +173,38 @@ def _validate_SAN_list(name, value):
                 % entry))
 
 
+def _validate_uri(name, parsed_value):
+    """Check if the uri is valid"""
+
+    if not parsed_value.netloc or not parsed_value.scheme:
+        raise wsme.exc.ClientSideError(_(
+            "Parameter '%s' must be a valid uri." % name))
+
+    if parsed_value.netloc and parsed_value.netloc != parsed_value.hostname:
+        try:
+            parsed_value.port
+        except ValueError as e:
+            raise wsme.exc.ClientSideError(_(
+                "Invalid port in uri: %s" % str(e)))
+        if parsed_value.netloc[-1] == ":" and parsed_value.port is None:
+            raise wsme.exc.ClientSideError(_(
+                "Port number is missing in uri"))
+
+    if parsed_value.hostname is None or not cutils.is_valid_domain_or_ip(parsed_value.netloc):
+        raise wsme.exc.ClientSideError(_(
+            "Parameter '%s' has invalid domain name or IP address." % name))
+
+    if parsed_value.path == "/":
+        raise wsme.exc.ClientSideError(_(
+            "Parameter '%s' has an empty path" % name))
+
+
 def _validate_oidc_issuer_url(name, value):
     """Check if oidc issuer address is valid"""
 
-    # is_valid_domain_or_ip does not work with entire urls
-    # for example, the 'https://' needs to be removed
+    _validate_not_empty(name, value)
     parsed_value = urlparse(value)
-    if not parsed_value.netloc or not cutils.is_valid_domain_or_ip(parsed_value.netloc):
-        raise wsme.exc.ClientSideError(_(
-            "Parameter '%s' must be a valid address or domain." % name))
+    _validate_uri(name, parsed_value)
 
 
 def _deprecated_oidc_params(name, value):
@@ -246,12 +269,12 @@ def _validate_ldap_uri(name, value):
 
     _validate_not_empty(name, value)
     parsed_value = urlparse(value)
-    if not parsed_value.netloc or parsed_value.scheme != "ldaps":
+
+    if parsed_value.scheme and parsed_value.scheme != "ldaps":
         raise wsme.exc.ClientSideError(_(
-            "Parameter '%s' must be a valid ldap uri." % name))
-    if not cutils.is_valid_domain_name(parsed_value.netloc):
-            raise wsme.exc.ClientSideError(_(
-                "Parameter '%s' has invalid domain name." % name))
+            "Parameter '%s' must be a valid ldap uri using ldaps protocol." % name))
+
+    _validate_uri(name, parsed_value)
 
 
 def _validate_ldap_dn(name, value):
@@ -315,6 +338,12 @@ def _validate_hbs_period(name, value):
     _validate_range(name, value,
                     SERVICE_PARAM_PLAT_MTCE_HBS_PERIOD_MIN,
                     SERVICE_PARAM_PLAT_MTCE_HBS_PERIOD_MAX)
+
+
+def _validate_sched_rt_prio(name, value):
+    _validate_range(name, value,
+                    constants.SERVICE_PARAM_PLATFORM_SCHED_RT_MIN_PRIO,
+                    constants.SERVICE_PARAM_PLATFORM_SCHED_RT_MAX_PRIO)
 
 
 def _validate_hbs_failure_action(name, value):
@@ -655,6 +684,39 @@ def _validate_oot(name, value):
         raise wsme.exc.ClientSideError(_(msg))
 
 
+def _validate_cli_confirmations(name, value):
+    """Check if specified value is supported"""
+    try:
+        if str(value) in [constants.SERVICE_PARAM_DISABLED,
+                          constants.SERVICE_PARAM_ENABLED]:
+            return
+    except ValueError:
+        pass
+
+    raise wsme.exc.ClientSideError(_(
+        "Parameter '%s' value must be either '%s' or '%s'" %
+        (name, constants.SERVICE_PARAM_DISABLED,
+         constants.SERVICE_PARAM_ENABLED)))
+
+
+def _validate_postgres_pool_configuration(name, value):
+    """Check if the system type, distributed cloud role and the values respects
+    the requirements"""
+    _validate_positive_integer(name, value)
+
+    try:
+        system = pecan.request.dbapi.isystem_get_one()
+        if system.distributed_cloud_role != constants.\
+                DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER and \
+                system.system_type == constants.TIS_AIO_BUILD:
+            return
+    except Exception:
+        pass
+
+    raise wsme.exc.ClientSideError(_(
+        "Connection Pool parameters are only accepted on AIO systems."))
+
+
 def parse_volume_string_to_dict(parameter):
     """
     Parse volume string value from parameter to dictionary.
@@ -848,7 +910,10 @@ PLATFORM_CONFIG_PARAMETER_OPTIONAL = [
     constants.SERVICE_PARAM_NAME_PLATFORM_MAX_CPU_PERCENTAGE,
     constants.SERVICE_PARAM_NAME_PLAT_CONFIG_INTEL_PSTATE,
     constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_API_WORKERS,
-    constants.SERVICE_PARAM_NAME_PLATFORM_SCTP_AUTOLOAD
+    constants.SERVICE_PARAM_NAME_PLATFORM_SCTP_AUTOLOAD,
+    constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_POOL_SIZE,
+    constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_POOL_TIMEOUT,
+    constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_OVERFLOW_SIZE
 ]
 
 PLATFORM_CONFIG_PARAMETER_READONLY = [
@@ -866,6 +931,12 @@ PLATFORM_CONFIG_PARAMETER_VALIDATOR = {
         _validate_sysinv_api_workers,
     constants.SERVICE_PARAM_NAME_PLATFORM_SCTP_AUTOLOAD:
         _validate_sctp_autoload,
+    constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_POOL_SIZE:
+        _validate_postgres_pool_configuration,
+    constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_POOL_TIMEOUT:
+        _validate_postgres_pool_configuration,
+    constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_OVERFLOW_SIZE:
+        _validate_postgres_pool_configuration,
 }
 
 PLATFORM_CONFIG_PARAMETER_RESOURCE = {
@@ -877,6 +948,12 @@ PLATFORM_CONFIG_PARAMETER_RESOURCE = {
         'platform::sysinv::params::sysinv_api_workers',
     constants.SERVICE_PARAM_NAME_PLATFORM_SCTP_AUTOLOAD:
         'platform::params::sctp_autoload',
+    constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_POOL_SIZE:
+        'platform::sysinv::custom::params::db_pool_size',
+    constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_POOL_TIMEOUT:
+        'platform::sysinv::custom::params::db_idle_timeout',
+    constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_OVERFLOW_SIZE:
+        'platform::sysinv::custom::params::db_over_size',
 }
 
 IDENTITY_LDAP_PARAMETER_OPTIONAL = [
@@ -999,7 +1076,6 @@ SERVICE_PARAM_PLAT_MTCE_MNFA_THRESHOLD_MAX = 100
 SERVICE_PARAM_PLAT_MTCE_MNFA_TIMEOUT_MIN = 100
 SERVICE_PARAM_PLAT_MTCE_MNFA_TIMEOUT_MAX = 86400
 
-
 PLATFORM_MTCE_PARAMETER_VALIDATOR = {
     constants.SERVICE_PARAM_PLAT_MTCE_WORKER_BOOT_TIMEOUT:
         _validate_worker_boot_timeout,
@@ -1033,6 +1109,9 @@ PLATFORM_MTCE_PARAMETER_RESOURCE = {
 PLATFORM_KERNEL_PARAMETER_OPTIONAL = [
     constants.SERVICE_PARAM_NAME_PLATFORM_AUDITD,
     constants.SERVICE_PARAM_NAME_PLATFORM_OOT,
+    constants.SERVICE_PARAM_PLATFORM_KSOFTIRQD_PRIO,
+    constants.SERVICE_PARAM_PLATFORM_IRQ_WORK_PRIO,
+    constants.SERVICE_PARAM_PLATFORM_KTHREAD_PRIO,
 ]
 
 PLATFORM_KEYSTONE_PARAMETER_OPTIONAL = [
@@ -1059,6 +1138,12 @@ PLATFORM_POSTGRESQL_PARAMETER_OPTIONAL = [
     constants.SERVICE_PARAM_NAME_POSTGRESQL_MAX_PARALLEL_WORKERS_PER_GATHER,
 ]
 
+PLATFORM_FM_PARAMETER_OPTIONAL = [
+    constants.SERVICE_PARAM_NAME_FM_DATABASE_MAX_POOL_SIZE,
+    constants.SERVICE_PARAM_NAME_FM_DATABASE_MAX_POOL_TIMEOUT,
+    constants.SERVICE_PARAM_NAME_FM_DATABASE_MAX_OVERFLOW_SIZE,
+]
+
 PLATFORM_DRBD_PARAMETER_OPTIONAL = [
     constants.SERVICE_PARAM_NAME_DRBD_HMAC,
     constants.SERVICE_PARAM_NAME_DRBD_SECRET,
@@ -1068,6 +1153,9 @@ PLATFORM_DRBD_PARAMETER_OPTIONAL = [
 PLATFORM_KERNEL_PARAMETER_VALIDATOR = {
     constants.SERVICE_PARAM_NAME_PLATFORM_AUDITD: _validate_kernel_audit,
     constants.SERVICE_PARAM_NAME_PLATFORM_OOT: _validate_oot,
+    constants.SERVICE_PARAM_PLATFORM_KSOFTIRQD_PRIO: _validate_sched_rt_prio,
+    constants.SERVICE_PARAM_PLATFORM_IRQ_WORK_PRIO: _validate_sched_rt_prio,
+    constants.SERVICE_PARAM_PLATFORM_KTHREAD_PRIO: _validate_sched_rt_prio,
 }
 
 PLATFORM_KEYSTONE_PARAMETER_VALIDATOR = {
@@ -1105,6 +1193,15 @@ PLATFORM_POSTGRESQL_PARAMETER_VALIDATOR = {
         _validate_zero_or_positive_integer,
 }
 
+PLATFORM_FM_PARAMETER_VALIDATOR = {
+    constants.SERVICE_PARAM_NAME_FM_DATABASE_MAX_POOL_SIZE:
+        _validate_postgres_pool_configuration,
+    constants.SERVICE_PARAM_NAME_FM_DATABASE_MAX_POOL_TIMEOUT:
+        _validate_postgres_pool_configuration,
+    constants.SERVICE_PARAM_NAME_FM_DATABASE_MAX_OVERFLOW_SIZE:
+        _validate_postgres_pool_configuration,
+}
+
 PLATFORM_DRBD_PARAMETER_VALIDATOR = {
     constants.SERVICE_PARAM_NAME_DRBD_HMAC:
         _validate_drbd_net_hmac,
@@ -1119,6 +1216,12 @@ PLATFORM_KERNEL_PARAMETER_RESOURCE = {
         'platform::compute::grub::params::g_audit',
     constants.SERVICE_PARAM_NAME_PLATFORM_OOT:
         'platform::compute::grub::params::g_out_of_tree_drivers',
+    constants.SERVICE_PARAM_PLATFORM_KSOFTIRQD_PRIO:
+        'platform::params::ksoftirqd_priority',
+    constants.SERVICE_PARAM_PLATFORM_IRQ_WORK_PRIO:
+        'platform::params::irq_work_priority',
+    constants.SERVICE_PARAM_PLATFORM_KTHREAD_PRIO:
+        'platform::compute::grub::params::g_kthread_prio',
 }
 
 PLATFORM_KEYSTONE_PARAMETER_RESOURCE = {
@@ -1158,6 +1261,15 @@ PLATFORM_POSTGRESQL_PARAMETER_RESOURCE = {
         'platform::postgresql::custom::params::max_parallel_maintenance_workers',
     constants.SERVICE_PARAM_NAME_POSTGRESQL_MAX_PARALLEL_WORKERS_PER_GATHER:
         'platform::postgresql::custom::params::max_parallel_workers_per_gather',
+}
+
+PLATFORM_FM_PARAMETER_RESOURCE = {
+    constants.SERVICE_PARAM_NAME_FM_DATABASE_MAX_POOL_SIZE:
+        'platform::fm::custom::params::db_pool_size',
+    constants.SERVICE_PARAM_NAME_FM_DATABASE_MAX_POOL_TIMEOUT:
+        'platform::fm::custom::params::db_idle_timeout',
+    constants.SERVICE_PARAM_NAME_FM_DATABASE_MAX_OVERFLOW_SIZE:
+        'platform::fm::custom::params::db_over_size',
 }
 
 PLATFORM_DRBD_PARAMETER_RESOURCE = {
@@ -1284,6 +1396,30 @@ DOCKER_ICR_REGISTRY_PARAMETER_RESOURCE = {
         'platform::docker::params::icr_registry',
     constants.SERVICE_PARAM_NAME_DOCKER_SECURE_REGISTRY:
         'platform::docker::params::icr_registry_secure',
+}
+
+DOCKER_CONCURRENCY_PARAMETER_OPTIONAL = [
+    constants.SERVICE_PARAM_NAME_MAX_CONCURRENT_UPLOADS,
+    constants.SERVICE_PARAM_NAME_MAX_CONCURRENT_DOWNLOADS,
+    constants.SERVICE_PARAM_NAME_MAX_KUBE_APP_DOWNLOAD_THREADS,
+]
+
+DOCKER_CONCURRENCY_PARAMETER_VALIDATOR = {
+    constants.SERVICE_PARAM_NAME_MAX_CONCURRENT_UPLOADS:
+        _validate_positive_integer,
+    constants.SERVICE_PARAM_NAME_MAX_CONCURRENT_DOWNLOADS:
+        _validate_positive_integer,
+    constants.SERVICE_PARAM_NAME_MAX_KUBE_APP_DOWNLOAD_THREADS:
+        _validate_positive_integer,
+}
+
+DOCKER_CONCURRENCY_PARAMETER_RESOURCE = {
+    constants.SERVICE_PARAM_NAME_MAX_CONCURRENT_DOWNLOADS:
+        'platform::docker::params::max_concurrent_downloads',
+    constants.SERVICE_PARAM_NAME_MAX_CONCURRENT_UPLOADS:
+        'platform::docker::params::max_concurrent_uploads',
+    constants.SERVICE_PARAM_NAME_MAX_KUBE_APP_DOWNLOAD_THREADS:
+        'platform::docker::params::max_kube_app_download_threads',
 }
 
 KUBERNETES_CERTIFICATES_PARAMETER_OPTIONAL = [
@@ -1546,6 +1682,20 @@ DNS_HOST_RECORD_PARAMETER_DATA_FORMAT = {
     constants.SERVICE_PARAM_NAME_DNS_HOST_RECORD_HOSTS: SERVICE_PARAMETER_DATA_FORMAT_ARRAY,
 }
 
+PLATFORM_CLIENT_PARAMETER_OPTIONAL = [
+    constants.SERVICE_PARAM_NAME_PLATFORM_CLI_CONFIRMATIONS
+]
+
+PLATFORM_CLIENT_PARAMETER_VALIDATOR = {
+    constants.SERVICE_PARAM_NAME_PLATFORM_CLI_CONFIRMATIONS:
+        _validate_cli_confirmations,
+}
+
+PLATFORM_CLIENT_PARAMETER_RESOURCE = {
+    constants.SERVICE_PARAM_NAME_PLATFORM_CLI_CONFIRMATIONS:
+        'platform::params::cli_confirmations',
+}
+
 # Service Parameter Schema
 SERVICE_PARAM_MANDATORY = 'mandatory'
 SERVICE_PARAM_OPTIONAL = 'optional'
@@ -1638,10 +1788,20 @@ SERVICE_PARAMETER_SCHEMA = {
             SERVICE_PARAM_VALIDATOR: PLATFORM_POSTGRESQL_PARAMETER_VALIDATOR,
             SERVICE_PARAM_RESOURCE: PLATFORM_POSTGRESQL_PARAMETER_RESOURCE,
         },
+        constants.SERVICE_PARAM_SECTION_PLATFORM_FM: {
+            SERVICE_PARAM_OPTIONAL: PLATFORM_FM_PARAMETER_OPTIONAL,
+            SERVICE_PARAM_VALIDATOR: PLATFORM_FM_PARAMETER_VALIDATOR,
+            SERVICE_PARAM_RESOURCE: PLATFORM_FM_PARAMETER_RESOURCE,
+        },
         constants.SERVICE_PARAM_SECTION_PLATFORM_DRBD: {
             SERVICE_PARAM_OPTIONAL: PLATFORM_DRBD_PARAMETER_OPTIONAL,
             SERVICE_PARAM_VALIDATOR: PLATFORM_DRBD_PARAMETER_VALIDATOR,
             SERVICE_PARAM_RESOURCE: PLATFORM_DRBD_PARAMETER_RESOURCE,
+        },
+        constants.SERVICE_PARAM_SECTION_PLATFORM_CLIENT: {
+            SERVICE_PARAM_OPTIONAL: PLATFORM_CLIENT_PARAMETER_OPTIONAL,
+            SERVICE_PARAM_VALIDATOR: PLATFORM_CLIENT_PARAMETER_VALIDATOR,
+            SERVICE_PARAM_RESOURCE: PLATFORM_CLIENT_PARAMETER_RESOURCE,
         },
     },
     constants.SERVICE_TYPE_RADOSGW: {
@@ -1698,6 +1858,11 @@ SERVICE_PARAMETER_SCHEMA = {
             SERVICE_PARAM_OPTIONAL: DOCKER_REGISTRIES_PARAMETER_OPTIONAL,
             SERVICE_PARAM_VALIDATOR: DOCKER_REGISTRIES_PARAMETER_VALIDATOR,
             SERVICE_PARAM_RESOURCE: DOCKER_ICR_REGISTRY_PARAMETER_RESOURCE
+        },
+        constants.SERVICE_PARAM_SECTION_DOCKER_CONCURRENCY: {
+            SERVICE_PARAM_OPTIONAL: DOCKER_CONCURRENCY_PARAMETER_OPTIONAL,
+            SERVICE_PARAM_VALIDATOR: DOCKER_CONCURRENCY_PARAMETER_VALIDATOR,
+            SERVICE_PARAM_RESOURCE: DOCKER_CONCURRENCY_PARAMETER_RESOURCE
         }
     },
     constants.SERVICE_TYPE_KUBERNETES: {

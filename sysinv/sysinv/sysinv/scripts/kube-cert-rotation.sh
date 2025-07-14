@@ -236,7 +236,7 @@ renew_cert_by_openssl() {
 # Get cluster host floating IP address
 get_cluster_host_floating_ip() {
     local floating_ip=""
-    floating_ip=$(cat /etc/kubernetes/admin.conf | grep "server:" | awk -F"//" '{print $2}' | tr -d "[]" | sed -e s/:6443//)
+    floating_ip=$(cat /etc/kubernetes/admin.conf | grep "server:" | awk -F"//" '{print $2}' | tr -d "[]" | sed -e s/:16443//)
     echo ${floating_ip}
 }
 
@@ -253,6 +253,7 @@ RESTART_CONTROLLER_MANAGER=0
 RESTART_SCHEDULER=0
 RESTART_SYSINV=0
 RESTART_CERT_MON=0
+RESTART_DC_CERT_MON=0
 RESTART_ETCD=0
 
 # Fist check the validity of the Root CAs in /etc/kubernetes/pki/ca.crt and /etc/etcd/ca.crt
@@ -306,6 +307,9 @@ if [ ${ERR} -eq 0 ]; then
     if [ ${result} -eq 0 ]; then
         RESTART_SYSINV=1
         RESTART_CERT_MON=1
+        # dccertmon is only provisioned in DC systems, so there
+        # won't be any impacts if it is restarted in AIO as well.
+        RESTART_DC_CERT_MON=1
     elif [ ${result} -eq 1 ]; then
         ERR_REASON="Failed to renew admin.conf certificate."
         ERR=1
@@ -493,6 +497,14 @@ if [ ${RESTART_CERT_MON} -eq 1 ]; then
     sm-restart-safe service cert-mon
     if [ $? -ne 0 ]; then
         ERR_REASON="Failed to restart cert-mon service."
+        ERR=2
+    fi
+fi
+# Restart dccert-mon since it's using credentials from admin.conf
+if [ ${RESTART_DC_CERT_MON} -eq 1 ]; then
+    sm-restart-safe service dccertmon
+    if [ $? -ne 0 ]; then
+        ERR_REASON="Failed to restart dccertmon service."
         ERR=2
     fi
 fi

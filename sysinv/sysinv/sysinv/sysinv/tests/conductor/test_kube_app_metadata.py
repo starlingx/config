@@ -39,7 +39,7 @@ class TestKubeAppMetadata(base.TestCase):
                                                                      metadata['app_name'],
                                                                      metadata)
 
-        ordered_list = mock_apps_metadata[constants.APP_METADATA_ORDERED_APPS]
+        ordered_list = mock_apps_metadata[constants.APP_METADATA_ORDERED_APPS_BY_AFTER_KEY]
 
         before_apps = {}
         self._compute_before_apps(mock_apps_metadata, before_apps)
@@ -71,7 +71,7 @@ class TestKubeAppMetadata(base.TestCase):
                                                                      metadata['app_name'],
                                                                      metadata)
 
-        ordered_list = mock_apps_metadata[constants.APP_METADATA_ORDERED_APPS]
+        ordered_list = mock_apps_metadata[constants.APP_METADATA_ORDERED_APPS_BY_AFTER_KEY]
 
         before_apps = {}
         self._compute_before_apps(mock_apps_metadata, before_apps)
@@ -109,7 +109,7 @@ class TestKubeAppMetadata(base.TestCase):
                                                                      metadata['app_name'],
                                                                      metadata)
 
-        ordered_list = mock_apps_metadata[constants.APP_METADATA_ORDERED_APPS]
+        ordered_list = mock_apps_metadata[constants.APP_METADATA_ORDERED_APPS_BY_AFTER_KEY]
 
         before_apps = {}
         self._compute_before_apps(mock_apps_metadata, before_apps)
@@ -144,7 +144,7 @@ class TestKubeAppMetadata(base.TestCase):
                                                                      metadata['app_name'],
                                                                      metadata)
 
-        ordered_list = mock_apps_metadata[constants.APP_METADATA_ORDERED_APPS]
+        ordered_list = mock_apps_metadata[constants.APP_METADATA_ORDERED_APPS_BY_AFTER_KEY]
 
         before_apps = {}
         self._compute_before_apps(mock_apps_metadata, before_apps)
@@ -182,7 +182,7 @@ class TestKubeAppMetadata(base.TestCase):
                                                                      metadata['app_name'],
                                                                      metadata)
 
-        ordered_list = mock_apps_metadata[constants.APP_METADATA_ORDERED_APPS]
+        ordered_list = mock_apps_metadata[constants.APP_METADATA_ORDERED_APPS_BY_AFTER_KEY]
 
         before_apps = {}
         self._compute_before_apps(mock_apps_metadata, before_apps)
@@ -220,7 +220,7 @@ class TestKubeAppMetadata(base.TestCase):
                                                                      metadata['app_name'],
                                                                      metadata)
 
-        ordered_list = mock_apps_metadata[constants.APP_METADATA_ORDERED_APPS]
+        ordered_list = mock_apps_metadata[constants.APP_METADATA_ORDERED_APPS_BY_AFTER_KEY]
 
         before_apps = {}
         self._compute_before_apps(mock_apps_metadata, before_apps)
@@ -274,7 +274,7 @@ class TestKubeAppMetadata(base.TestCase):
                                                                      metadata['app_name'],
                                                                      metadata)
 
-        ordered_list = mock_apps_metadata[constants.APP_METADATA_ORDERED_APPS]
+        ordered_list = mock_apps_metadata[constants.APP_METADATA_ORDERED_APPS_BY_AFTER_KEY]
 
         self.assertEqual(ordered_list, [])
 
@@ -292,7 +292,7 @@ class TestKubeAppMetadata(base.TestCase):
                                                                      metadata['app_name'],
                                                                      metadata)
 
-        ordered_list = mock_apps_metadata[constants.APP_METADATA_ORDERED_APPS]
+        ordered_list = mock_apps_metadata[constants.APP_METADATA_ORDERED_APPS_BY_AFTER_KEY]
 
         self.assertEqual(ordered_list, [])
 
@@ -310,6 +310,6 @@ class TestKubeAppMetadata(base.TestCase):
                                                                      metadata['app_name'],
                                                                      metadata)
 
-        ordered_list = mock_apps_metadata[constants.APP_METADATA_ORDERED_APPS]
+        ordered_list = mock_apps_metadata[constants.APP_METADATA_ORDERED_APPS_BY_AFTER_KEY]
 
         self.assertEqual(ordered_list, [])

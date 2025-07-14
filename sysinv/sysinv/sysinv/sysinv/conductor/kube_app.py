@@ -1,6 +1,6 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 #
-# Copyright (c) 2018-2024 Wind River Systems, Inc.
+# Copyright (c) 2018-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -36,6 +36,7 @@ import zipfile
 
 from collections import namedtuple
 from distutils.util import strtobool
+from distutils.version import LooseVersion
 from eventlet import greenpool
 from eventlet import queue
 from eventlet import Timeout
@@ -48,6 +49,7 @@ from sysinv._i18n import _
 from sysinv.api.controllers.v1 import kube_app
 from sysinv.common import app_metadata
 from sysinv.common import constants
+from sysinv.common import app_dependents
 from sysinv.common import exception
 from sysinv.common import kubernetes
 from sysinv.common.retrying import retry
@@ -299,8 +301,7 @@ class AppOperator(object):
         # New progress info can contain large messages from exceptions raised.
         # It may need to be truncated to fit the corresponding database field.
         if new_progress is not None:
-            new_progress = (new_progress[:252] + '...') if len(new_progress) > 255 \
-                else new_progress
+            new_progress = cutils.truncate_message(new_progress)
 
         with self._lock:
             app.update_status(new_status, new_progress)
@@ -687,6 +688,8 @@ class AppOperator(object):
                 static_overrides_imgs_copy = copy.deepcopy(static_overrides_imgs)
                 static_overrides_imgs = self._image.merge_dict(helm_chart_imgs, static_overrides_imgs)
 
+                self._add_local_registry_to_repository(static_overrides_imgs, override_imgs)
+
                 # Update image tags with local registry prefix
                 override_imgs = self._image.update_images_with_local_registry(override_imgs)
                 static_overrides_imgs = self._image.update_images_with_local_registry(static_overrides_imgs)
@@ -694,6 +697,7 @@ class AppOperator(object):
                 # Generate a list of required images by chart
                 download_imgs = copy.deepcopy(static_overrides_imgs)
                 download_imgs = self._image.merge_dict(download_imgs, override_imgs)
+                download_imgs = self._image.update_images_with_local_registry(download_imgs)
                 download_imgs_list = self._image.generate_download_images_list(download_imgs, [])
                 app_imgs.extend(download_imgs_list)
 
@@ -718,6 +722,21 @@ class AppOperator(object):
                         yaml.safe_dump(static_overrides_to_dump, f, default_flow_style=False)
 
         return list(set(app_imgs))
+
+    def _add_local_registry_to_repository(self, static_override, override_imgs):
+        """adds local registry to static overrides, mutating the static_override dict
+
+        :param static_override: dict with static override
+        :param overrides_imgs: dict with user overrides
+        """
+        for k, v in override_imgs.items():
+            if isinstance(v, dict):
+                self._add_local_registry_to_repository(static_override.get(k, {}), v)
+            else:
+                if k == 'registry' and cutils.is_empty_value(v):
+                    if constants.DOCKER_REGISTRY_SERVER not in static_override['repository']:
+                        static_override['repository'] = \
+                            f"{constants.DOCKER_REGISTRY_SERVER}/{static_override['repository']}"
 
     def _register_embedded_images(self, app):
         """
@@ -810,6 +829,20 @@ class AppOperator(object):
             images_list = yaml.safe_load(f)
         return images_list
 
+    def _get_max_download_threads(self):
+        """ Get max-kube-app-download-threads service parameter.
+            If not set returns MAX_DOWNLOAD_THREAD
+        """
+        try:
+            download_threads_param = self._dbapi.service_parameter_get_one(
+                constants.SERVICE_TYPE_DOCKER,
+                constants.SERVICE_PARAM_SECTION_DOCKER_CONCURRENCY,
+                constants.SERVICE_PARAM_NAME_MAX_KUBE_APP_DOWNLOAD_THREADS).value
+            max_download_threads = int(download_threads_param)
+        except exception.NotFound:
+            max_download_threads = MAX_DOWNLOAD_THREAD
+        return max_download_threads
+
     def download_images(self, app):
         if os.path.isdir(app.inst_images_dir):
             return self._register_embedded_images(app)
@@ -831,7 +864,8 @@ class AppOperator(object):
                 app.sync_imgfile).get("download_images")
 
         total_count = len(images_to_download)
-        threads = min(MAX_DOWNLOAD_THREAD, total_count)
+        max_download_threads = self._get_max_download_threads()
+        threads = min(max_download_threads, total_count)
 
         self._docker.set_crictl_image_list([])
 
@@ -1734,7 +1768,7 @@ class AppOperator(object):
 
                     raise exception.ApplicationApplyFailure(name=app.name)
 
-        @kubernetes.test_k8s_health
+        @kubernetes.test_k8s_health(quiet=True)
         def _get_helmrelease_info(release_name, namespace):
             """ get helmrelease data from a given chart
 
@@ -1964,6 +1998,24 @@ class AppOperator(object):
         LOG.info("Starting recover Application %s from version: %s to version: %s" %
                  (old_app.name, new_app.version, old_app.version))
 
+        self._deregister_app_abort(old_app.name)
+
+        lifecycle_hook_info_app_recover = copy.deepcopy(lifecycle_hook_info_app)
+        lifecycle_hook_info_app_recover.operation = constants.APP_RECOVER_OP
+
+        for lifecycle_type in (
+            LifecycleConstants.APP_LIFECYCLE_TYPE_RBD,
+            LifecycleConstants.APP_LIFECYCLE_TYPE_RESOURCE
+        ):
+            try:
+                lifecycle_hook_info_app_recover.lifecycle_type = lifecycle_type
+                self.app_lifecycle_actions(None, None, rpc_app, lifecycle_hook_info_app_recover)
+            except Exception as e:
+                LOG.error(
+                    f"The lifecycle recover {lifecycle_type} failed with error: {e}"
+                    "The system will still attempt to run the recovery process"
+                )
+
         # Ensure that the the failed app plugins are disabled prior to cleanup
         self._plugins.deactivate_plugins(new_app)
 
@@ -1981,17 +2033,6 @@ class AppOperator(object):
                                          version=new_app.version,
                                          inactive=True)
 
-            lifecycle_hook_info_app_recover = copy.deepcopy(lifecycle_hook_info_app)
-            lifecycle_hook_info_app_recover.operation = constants.APP_RECOVER_OP
-
-            lifecycle_hook_info_app_recover.lifecycle_type = \
-                LifecycleConstants.APP_LIFECYCLE_TYPE_RBD
-            self.app_lifecycle_actions(None, None, rpc_app, lifecycle_hook_info_app_recover)
-
-            lifecycle_hook_info_app_recover.lifecycle_type = \
-                LifecycleConstants.APP_LIFECYCLE_TYPE_RESOURCE
-            self.app_lifecycle_actions(None, None, rpc_app, lifecycle_hook_info_app_recover)
-
             LOG.info("Recovering helm charts for Application %s (%s)..."
                      % (old_app.name, old_app.version))
             self._update_app_status(old_app,
@@ -2006,31 +2047,46 @@ class AppOperator(object):
                 # Ensure that the old app plugins are enabled prior to fluxcd process.
                 _activate_old_app_plugins(old_app)
 
-                if self._make_app_request(old_app, constants.APP_APPLY_OP):
-                    old_app_charts = [c.release for c in old_app.charts]
-                    deployed_releases = helm_utils.retrieve_helm_releases()
-                    for new_chart in new_app.charts:
-                        # Cleanup the releases in the new application version
-                        # but are not in the old application version
-                        if (new_chart.release not in old_app_charts and
-                                new_chart.release in deployed_releases):
+                helm_files = self._helm.generate_helm_application_overrides(
+                    old_app.sync_overrides_dir, old_app.name, old_app.mode, cnamespace=None,
+                    chart_info=old_app.charts, combined=True)
 
-                            # Deletes secrets that are not in the version N of the app
-                            self._fluxcd.run_kubectl_kustomize(constants.KUBECTL_KUSTOMIZE_DELETE,
-                                                               new_chart.chart_os_path)
+                if helm_files:
+                    LOG.info("Application overrides generated.")
+                    LOG.info("Writing fluxcd overrides...")
+                    # Put the helm_overrides in the chart's system-overrides.yaml
+                    self._write_fluxcd_overrides(old_app.charts, helm_files)
+                    LOG.info("Fluxcd overrides generated.")
 
-                            # Send delete request in FluxCD so it doesn't
-                            # recreate the helm release
-                            self._kube.delete_custom_resource(
-                                constants.FLUXCD_CRD_HELM_REL_GROUP,
-                                constants.FLUXCD_CRD_HELM_REL_VERSION,
-                                new_chart.namespace,
-                                constants.FLUXCD_CRD_HELM_REL_PLURAL,
-                                new_chart.metadata_name)
-                            # Use helm to immediately remove the release
-                            helm_utils.delete_helm_release(new_chart.release,
-                                                           new_chart.namespace)
+                    if self._make_app_request(old_app, constants.APP_APPLY_OP):
+                        old_app_charts = [c.release for c in old_app.charts]
+                        deployed_releases = helm_utils.retrieve_helm_releases()
+                        for new_chart in new_app.charts:
+                            # Cleanup the releases in the new application version
+                            # but are not in the old application version
+                            if (new_chart.release not in old_app_charts and
+                                    new_chart.release in deployed_releases):
+
+                                # Deletes secrets that are not in the version N of the app
+                                self._fluxcd.run_kubectl_kustomize(
+                                    constants.KUBECTL_KUSTOMIZE_DELETE,
+                                    new_chart.chart_os_path)
+
+                                # Send delete request in FluxCD so it doesn't
+                                # recreate the helm release
+                                self._kube.delete_custom_resource(
+                                    constants.FLUXCD_CRD_HELM_REL_GROUP,
+                                    constants.FLUXCD_CRD_HELM_REL_VERSION,
+                                    new_chart.namespace,
+                                    constants.FLUXCD_CRD_HELM_REL_PLURAL,
+                                    new_chart.metadata_name)
+                                # Use helm to immediately remove the release
+                                helm_utils.delete_helm_release(new_chart.release,
+                                                               new_chart.namespace)
+                    else:
+                        rc = False
                 else:
+                    LOG.error(f"No Helm charts found for application {old_app.name}.")
                     rc = False
 
             self._cleanup(new_app, app_dir=False)
@@ -2075,7 +2131,7 @@ class AppOperator(object):
             LOG.error("Application %s recover to version %s aborted!"
                     % (old_app.name, old_app.version))
 
-    def perform_app_upload(self, rpc_app, tarfile, images=False):
+    def perform_app_upload(self, rpc_app, tarfile, images=False, transitory_state=None):
         """Process application upload request
 
         This method validates the application manifest. If Helm charts are
@@ -2172,9 +2228,39 @@ class AppOperator(object):
                 self._utils._patch_report_app_dependencies(
                     app.name + '-' + app.version, app.patch_dependencies)
             self._create_app_releases_version(app.name, app.charts)
-            self._update_app_status(app, constants.APP_UPLOAD_SUCCESS,
-                                    constants.APP_PROGRESS_COMPLETED)
-            LOG.info("Application %s (%s) upload completed." % (app.name, app.version))
+
+            # Retrieve the application metadata from the metadata file
+            metadata_file = self.retrieve_application_metadata_from_file(app.sync_metadata_file)
+
+            # Check if the application has dependent apps missing
+            dependent_apps_missing_list = app_dependents.get_dependent_apps_missing(
+                metadata_file, self._dbapi)
+
+            operation_status = transitory_state if transitory_state \
+                else constants.APP_UPLOAD_SUCCESS
+
+            if dependent_apps_missing_list:
+                # Update the application status to APP_UPLOAD_SUCCESS with a message
+                # indicating that the application has dependent apps missing.
+                missing_apps = \
+                    app_dependents.format_missing_apps_output(dependent_apps_missing_list)
+
+                LOG.warning(
+                    f"Application {app.name} ({app.version}) upload completed. "
+                    f"This app has dependent apps missing: {missing_apps}. "
+                    "Please install the missing apps first before starting the apply process."
+                )
+
+                # Merge the progress message with the dependent apps missing message
+                progress_msg = (
+                    f"{constants.APP_PROGRESS_COMPLETED} - "
+                    f"this app depends on the following missing apps: {missing_apps}"
+                )
+                self._update_app_status(app, operation_status, progress_msg)
+            else:
+                self._update_app_status(app, operation_status, constants.APP_PROGRESS_COMPLETED)
+                LOG.info("Application %s (%s) upload completed." % (app.name, app.version))
+
             return app
         except exception.KubeAppUploadFailure as e:
             LOG.exception(e)
@@ -2289,6 +2375,63 @@ class AppOperator(object):
 
     @staticmethod
     def recompute_app_evaluation_order(apps_metadata_dict):
+        """
+        Recomputes the evaluation order of applications based on their metadata
+        and categorizes them into dependent apps, class-based apps, and independent apps.
+        Args:
+            apps_metadata_dict (dict): A dictionary containing metadata about applications.
+                It must include the following keys:
+                - constants.APP_METADATA_PLATFORM_MANAGED_APPS: A list of platform-managed app names.
+                - constants.APP_METADATA_APPS: A dictionary where keys are app names and values
+                  are metadata dictionaries for each app.
+        Modifies:
+            apps_metadata_dict (dict): Adds a new key, constants.APP_METADATA_ORDERED_APPS,
+            which contains an ordered dictionary.
+        """
+
+        # Initialize the ordered_apps dictionary
+        ordered_apps = {
+            constants.APP_METADATA_DEPENDENT_APPS: [],
+            constants.APP_METADATA_CLASS: {
+                constants.APP_METADATA_CLASS_CRITICAL: [],
+                constants.APP_METADATA_CLASS_STORAGE: [],
+                constants.APP_METADATA_CLASS_DISCOVERY: [],
+                constants.APP_METADATA_CLASS_OPTIONAL: [],
+                constants.APP_METADATA_CLASS_REPORTING: []
+            },
+            constants.APP_METADATA_INDEPENDENT_APPS: []
+        }
+
+        # Iterate through the platform-managed apps
+        # and categorize them based on their metadata
+        for app_name in apps_metadata_dict[constants.APP_METADATA_PLATFORM_MANAGED_APPS]:
+
+            app_metadata = apps_metadata_dict[constants.APP_METADATA_APPS][app_name]
+            app_class = app_metadata.get(constants.APP_METADATA_CLASS, None)
+
+            if app_metadata.get(constants.APP_METADATA_DEPENDENT_APPS, None):
+                # This app has dependent apps
+                ordered_apps[constants.APP_METADATA_DEPENDENT_APPS].append(app_name)
+
+                # If the app has dependent apps, it should not be in the class-based apps
+                continue
+            elif app_class:
+                # This app has class
+                ordered_apps[constants.APP_METADATA_CLASS][app_class].append(app_name)
+            else:
+                # This app is independent
+                ordered_apps[constants.APP_METADATA_INDEPENDENT_APPS].append(app_name)
+
+        # Sort the dependent apps
+        ordered_apps[constants.APP_METADATA_DEPENDENT_APPS].sort()
+        # Sort the independent apps
+        ordered_apps[constants.APP_METADATA_INDEPENDENT_APPS].sort()
+
+        LOG.info("Applications reapply order dict: {}".format(ordered_apps))
+        apps_metadata_dict[constants.APP_METADATA_ORDERED_APPS] = ordered_apps
+
+    @staticmethod
+    def recompute_app_evaluation_order_by_after_key(apps_metadata_dict):
         """ Get the order of app reapplies based on dependencies
 
         The following algorithm uses these concepts:
@@ -2357,7 +2500,7 @@ class AppOperator(object):
 
         # Final result
         ordered_apps = []
-        apps_metadata_dict[constants.APP_METADATA_ORDERED_APPS] = ordered_apps
+        apps_metadata_dict[constants.APP_METADATA_ORDERED_APPS_BY_AFTER_KEY] = ordered_apps
 
         # Initialize structures
         for app_name in apps_metadata_dict[constants.APP_METADATA_PLATFORM_MANAGED_APPS]:
@@ -2478,7 +2621,7 @@ class AppOperator(object):
             ordered_apps.append(app_name)
 
         LOG.info("Applications reapply order: {}".format(ordered_apps))
-        apps_metadata_dict[constants.APP_METADATA_ORDERED_APPS] = ordered_apps
+        apps_metadata_dict[constants.APP_METADATA_ORDERED_APPS_BY_AFTER_KEY] = ordered_apps
 
     @staticmethod
     @cutils.synchronized(LOCK_NAME_PROCESS_APP_METADATA, external=False)
@@ -2524,7 +2667,13 @@ class AppOperator(object):
                          "".format(app_name))
 
                 # Recompute app reapply order
-                AppOperator.recompute_app_evaluation_order(apps_metadata_dict)
+                # TODO(dbarbosa): remove this after the previous release no longer use
+                # the after key in the metadata of the platform apps
+                if app_metadata.has_after_key_in_apps_metadata(
+                        apps_metadata_dict[constants.APP_METADATA_APPS]):
+                    AppOperator.recompute_app_evaluation_order_by_after_key(apps_metadata_dict)
+                else:
+                    AppOperator.recompute_app_evaluation_order(apps_metadata_dict)
 
             # Remember the desired state the app should achieve
             if desired_state is not None:
@@ -2532,6 +2681,13 @@ class AppOperator(object):
                     constants.APP_METADATA_DESIRED_STATES][app_name] = desired_state
                 LOG.info("App {} requested to achieve {} state"
                          "".format(app_name, desired_state))
+
+        dependent_apps = metadata.get(constants.APP_METADATA_DEPENDENT_APPS, None)
+        if dependent_apps is not None:
+            apps_metadata_dict[constants.APP_METADATA_APPS][app_name][
+                constants.APP_METADATA_DEPENDENT_APPS] = dependent_apps
+            LOG.info("App {} has dependent apps: {}"
+                     "".format(app_name, dependent_apps))
 
     def load_application_metadata_from_database(self, rpc_app):
         """ Load the application metadata from the database
@@ -2659,8 +2815,39 @@ class AppOperator(object):
             del self._apps_metadata[constants.APP_METADATA_PLATFORM_MANAGED_APPS][app_name]
         if app_name in self._apps_metadata[constants.APP_METADATA_DESIRED_STATES]:
             del self._apps_metadata[constants.APP_METADATA_DESIRED_STATES][app_name]
-        if app_name in self._apps_metadata[constants.APP_METADATA_ORDERED_APPS]:
-            self._apps_metadata[constants.APP_METADATA_ORDERED_APPS].remove(app_name)
+        if app_metadata.has_after_key_in_apps_metadata(self._apps_metadata[
+                constants.APP_METADATA_APPS]):
+            if app_name in self._apps_metadata[constants.APP_METADATA_ORDERED_APPS]:
+                self._apps_metadata[
+                    constants.APP_METADATA_ORDERED_APPS_BY_AFTER_KEY].remove(app_name)
+        else:
+            # Remove from dependent_apps
+            if app_name in (
+                self._apps_metadata[constants.APP_METADATA_ORDERED_APPS]
+                .get(constants.APP_METADATA_DEPENDENT_APPS, {})
+            ):
+                self._apps_metadata[constants.APP_METADATA_ORDERED_APPS][
+                    constants.APP_METADATA_DEPENDENT_APPS].remove(app_name)
+
+            # Remove from class categories
+            for category in (
+                self._apps_metadata[constants.APP_METADATA_ORDERED_APPS]
+                .get(constants.APP_METADATA_CLASS, {})
+            ):
+                if app_name in self._apps_metadata[constants.APP_METADATA_ORDERED_APPS][
+                        constants.APP_METADATA_CLASS][category]:
+                    self._apps_metadata[constants.APP_METADATA_ORDERED_APPS][
+                        constants.APP_METADATA_CLASS][category].remove(app_name)
+
+            # Remove from independent_apps
+            if app_name in (
+                self._apps_metadata[constants.APP_METADATA_ORDERED_APPS]
+                .get(constants.APP_METADATA_INDEPENDENT_APPS, {})
+            ):
+                self._apps_metadata[constants.APP_METADATA_ORDERED_APPS][
+                    constants.APP_METADATA_INDEPENDENT_APPS].remove(app_name)
+
+        LOG.info(f"Removed app {app_name} from ordered_apps")
 
     def perform_app_apply(self, rpc_app, mode, lifecycle_hook_info_app_apply, caller=None,
                           is_reapply_process=False):
@@ -2718,8 +2905,37 @@ class AppOperator(object):
         LOG.info("Application %s (%s) apply started." % (app.name, app.version))
 
         ready = True
+
+        # Retrieve the application metadata from the metadata file
+        app_metadata = self.retrieve_application_metadata_from_file(app.sync_metadata_file)
+        # Check if the application has dependent apps missing
+        dependent_apps_missing_list = app_dependents.get_dependent_apps_missing(
+            app_metadata, self._dbapi)
+
         try:
-            # Helm Applciation overrides must be generated first so that any
+            # Check if the application has dependent apps missing of action type 'error'
+            dependent_apps_error_type = app_dependents.get_dependent_apps_by_action(
+                dependent_apps_missing_list, constants.APP_METADATA_DEPENDENT_APPS_ACTION_ERROR)
+
+            if dependent_apps_error_type:
+                # Update the application status to APP_APPLY_FAILURE with a message
+                # indicating that the application has dependent apps missing of
+                # action type 'error'.
+                missing_apps = app_dependents.format_missing_apps_output(dependent_apps_error_type)
+                progress_msg = (
+                    "This app depends on the following missing apps: "
+                    f"{missing_apps}. Please install them and try to apply again."
+                )
+                self._update_app_status(
+                    app, constants.APP_APPLY_FAILURE, progress_msg
+                )
+                LOG.error(
+                    f"Application {app.name} ({app.version}) apply failed "
+                    f"with dependent apps missing: {missing_apps}."
+                )
+                return False
+
+            # Helm Application overrides must be generated first so that any
             # helm overrides, such as enabling a chart will be added to the app
             # object.
             LOG.info("Generating application overrides...")
@@ -2813,14 +3029,39 @@ class AppOperator(object):
                     return True
 
                 if self._make_app_request(app, constants.APP_APPLY_OP, is_reapply_process, caller):
+                    # Check if the application has dependent apps missing of action type 'warn'
+                    dependent_apps_warn_type = app_dependents.get_dependent_apps_by_action(
+                        dependent_apps_missing_list,
+                        constants.APP_METADATA_DEPENDENT_APPS_ACTION_WARN
+                    )
+
+                    progress_msg = constants.APP_PROGRESS_COMPLETED
+                    if dependent_apps_warn_type:
+                        # Update the application status to APP_APPLY_SUCCESS with a message
+                        # indicating that the application has dependent apps missing of
+                        # action type 'warn'.
+                        progress_msg = (
+                            f"{constants.APP_PROGRESS_COMPLETED} - check /var/log/sysinv.log to "
+                            "verify missing dependencies."
+                        )
+
                     self._update_app_releases_version(app.name)
                     self._update_app_status(app,
                                             constants.APP_APPLY_SUCCESS,
-                                            constants.APP_PROGRESS_COMPLETED)
+                                            progress_msg)
                     app.update_active(True)
                     if not caller:
                         self._clear_app_alarm(app.name)
-                    LOG.info("Application %s (%s) apply completed." % (app.name, app.version))
+
+                    if dependent_apps_missing_list and dependent_apps_warn_type:
+                        missing_apps = \
+                            app_dependents.format_missing_apps_output(dependent_apps_warn_type)
+                        LOG.warning(
+                            f"Application {app.name} ({app.version}) apply completed "
+                            f"with dependent apps missing: {missing_apps}."
+                        )
+                    else:
+                        LOG.info(f"Application {app.name} ({app.version}) apply completed.")
 
                     # Perform post apply manifest actions
                     lifecycle_hook_info_app_apply.relative_timing = \
@@ -2927,6 +3168,18 @@ class AppOperator(object):
             self._update_app_status(
                 to_app, new_progress=constants.APP_PROGRESS_UPDATE_STARTING)
 
+            # Check if it's a downgrade operation. If true, create a lifecycle action.
+            if LooseVersion(from_app.version) > LooseVersion(to_app.version):
+                lifecycle_downgrade = copy.deepcopy(lifecycle_hook_info_app_update)
+                lifecycle_downgrade.operation = constants.APP_DOWNGRADE_OP
+                lifecycle_downgrade.relative_timing = LifecycleConstants.APP_LIFECYCLE_TIMING_PRE
+                lifecycle_downgrade.lifecycle_type = LifecycleConstants.APP_LIFECYCLE_TYPE_RESOURCE
+                lifecycle_downgrade[LifecycleConstants.EXTRA][
+                    LifecycleConstants.FROM_APP_VERSION] = from_app.version
+                lifecycle_downgrade[LifecycleConstants.EXTRA][
+                    LifecycleConstants.TO_APP_VERSION] = to_app.version
+                self.app_lifecycle_actions(None, None, from_rpc_app, lifecycle_downgrade)
+
             # Upload new app tarball. The upload will enable the new plugins to
             # generate overrides for images. Disable the plugins for the current
             # application as the new plugin module will have the same name. Only
@@ -2934,7 +3187,16 @@ class AppOperator(object):
             self._plugins.deactivate_plugins(from_app)
 
             to_app = self.perform_app_upload(
-                to_rpc_app, tarfile)
+                to_rpc_app,
+                tarfile,
+                transitory_state=constants.APP_UPDATE_STARTING
+            )
+
+            # Reconcile existing FluxCD's Helm repositories
+            resources_list = \
+                cutils.get_resources_list_via_kubectl_kustomize(from_app.sync_fluxcd_manifest)
+            helm_repos = cutils.filter_helm_repositories(resources_list)
+            helm_utils.call_fluxcd_repository_reconciliation(helm_repos)
 
             lifecycle_hook_info_app_update.operation = constants.APP_UPDATE_OP
 
@@ -2981,6 +3243,12 @@ class AppOperator(object):
                                                      k8s_version)
 
                 self._update_app_status(to_app, constants.APP_UPDATE_IN_PROGRESS)
+
+                lifecycle_hook_info.relative_timing = \
+                   LifecycleConstants.APP_LIFECYCLE_TIMING_PRE
+                lifecycle_hook_info.lifecycle_type = \
+                    LifecycleConstants.APP_LIFECYCLE_TYPE_RESOURCE
+                self.app_lifecycle_actions(None, None, to_rpc_app, lifecycle_hook_info)
 
                 reuse_overrides = \
                     self._get_metadata_value(to_app,
@@ -3732,6 +4000,11 @@ class DockerHelper(object):
                     # So we cannot cache auth info, need refresh it each time.
                     local_registry_auth = cutils.get_local_docker_registry_auth()
                     client.push(img_tag, auth_config=local_registry_auth)
+
+                    # Test inspecting the image. This avoids a scenario where the push command
+                    # returns a false positive result during docker service restarts.
+                    client.inspect_distribution(img_tag, auth_config=local_registry_auth)
+                    LOG.info("Image %s successfully pushed to local registry." % (img_tag))
                 except Exception as e:
                     rc = False
                     LOG.error("Image %s push failed to local registry: %s" % (img_tag, e))
@@ -3821,6 +4094,8 @@ class AppImageParser(object):
                             image.update({'repository': v['repository']})
                         if 'registry' not in keys and 'repository' in keys:
                             image.update({'repository': v['repository']})
+                        if 'registry' in keys and cutils.is_empty_value(v['registry']):
+                            image.update({'registry': v['registry']})
                         if 'tag' in keys:
                             image.update({'tag': v['tag']})
                         if image:
@@ -3888,7 +4163,13 @@ class AppImageParser(object):
                     imgs_dict[k] = v
 
             elif isinstance(v, dict):
-                if "registry" in v and "repository" in v:
+                if ("registry" in v and "repository" in v and
+                        cutils.is_empty_value(v["registry"]) and
+                        constants.DOCKER_REGISTRY_SERVER not in v["repository"]):
+                    v["repository"] = '{}/{}'.format(
+                        constants.DOCKER_REGISTRY_SERVER, v["repository"])
+                elif ("registry" in v and "repository" in v and
+                        constants.DOCKER_REGISTRY_SERVER not in v["repository"]):
                     if (not re.search(r'^.+:.+/', v["registry"]) and ":" not in v["registry"]):
                         v["registry"] = '{}/{}'.format(
                             constants.DOCKER_REGISTRY_SERVER, v["registry"])
@@ -3922,7 +4203,7 @@ class AppImageParser(object):
 
             elif dict_key == 'image':
                 try:
-                    if "registry" in v:
+                    if "registry" in v and not cutils.is_empty_value(v['registry']):
                         img = v['registry'] + '/' + v['repository'] + ':' + v['tag']
                     else:
                         img = v['repository'] + ':' + v['tag']

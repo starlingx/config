@@ -23,8 +23,6 @@ from sysinv.cert_alarm.audit import CertAlarmAudit
 from sysinv.api.controllers.v1 import patch_api
 from sysinv.api.controllers.v1 import vim_api
 
-import tsconfig.tsconfig as tsc
-
 import cgcs_patch.constants as patch_constants
 
 LOG = log.getLogger(__name__)
@@ -378,23 +376,6 @@ class Health(object):
                 continue
         return success, message
 
-    def _check_psp_policies(self):
-        """ Checks for any existing PodSecurityPolicies on the system """
-        psp_list = []
-        active_kube_version = self._kube_operator.kube_get_kubernetes_version()
-
-        # check for policies only if version is less than v1.25
-        if LooseVersion(active_kube_version) >= LooseVersion('v1.25.0'):
-            return True, psp_list
-
-        psp_policies = self._kube_operator.get_psp_resource()
-        if psp_policies:
-            for item in psp_policies:
-                psp_list.append(item.metadata.name)
-            return False, psp_list
-        else:
-            return True, psp_list
-
     def _check_local_issuer_clusterIssuer(self):
         err_msg = ''
         local_ca_issuer = self._kube_operator.get_clusterwide_custom_resource(
@@ -671,15 +652,6 @@ class Health(object):
 
         health_ok = health_ok and success
 
-        success, psp_list = self._check_psp_policies()
-        output += ('All PodSecurityPolicies are removed: [%s]\n') \
-                % (Health.SUCCESS_MSG if success else Health.FAIL_MSG)
-        if not success:
-            output += _('PSP policies exists, please remove them before upgrade: %s\n') \
-                    % ', '.join(psp_list)
-
-        health_ok = health_ok and success
-
         return health_ok, output
 
     def _check_disk_space_on_host(self, host, hostname, min_space_needed, check_free_space):
@@ -774,36 +746,6 @@ class Health(object):
         output += msg
         health_ok = health_ok and success
 
-        loads = self._dbapi.load_get_list()
-        try:
-            imported_load = utils.get_imported_load(loads)
-        except Exception as e:
-            LOG.exception(e)
-            output += _('No imported load found. Unable to test further\n')
-            return health_ok, output
-
-        upgrade_version = imported_load.software_version
-        if imported_load.required_patches:
-            patches = imported_load.required_patches.split('\n')
-        else:
-            patches = []
-
-        success, missing_patches = \
-            self._check_required_patches_are_applied(patches)
-        output += _('Required patches are applied: [%s]\n') \
-            % (Health.SUCCESS_MSG if success else Health.FAIL_MSG)
-        if not success:
-            output += _('Patches not applied: %s\n') \
-                % ', '.join(missing_patches)
-
-        health_ok = health_ok and success
-
-        success = self._check_license(upgrade_version)
-        output += _('License valid for upgrade: [%s]\n') \
-            % (Health.SUCCESS_MSG if success else Health.FAIL_MSG)
-
-        health_ok = health_ok and success
-
         success, message = self._check_bootdevice()
         if not success:
             # Make this an invisible check for the bootdevice and rootfs device.
@@ -856,15 +798,6 @@ class Health(object):
             % (Health.SUCCESS_MSG if success else Health.FAIL_MSG)
 
         health_ok = health_ok and success
-        # TODO (luisbonatti): remove when CentOS to Debian upgrade is deprecated
-        if upgrade_version == tsc.SW_VERSION_22_12:
-            msg, success = self._check_free_space_for_upgrade()
-            output += \
-                _('Disk space requirement: [%s]\n') \
-                % (Health.SUCCESS_MSG if success else Health.FAIL_MSG)
-            if not success:
-                output += msg
-            health_ok = health_ok and success
 
         return health_ok, output
 

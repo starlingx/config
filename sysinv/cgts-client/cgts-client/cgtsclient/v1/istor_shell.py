@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2018 Wind River Systems, Inc.
+# Copyright (c) 2013-2018,2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -8,6 +8,7 @@
 # All Rights Reserved.
 #
 
+import argparse
 from cgtsclient.common import utils
 from cgtsclient import exc
 from cgtsclient.v1 import ihost as ihost_utils
@@ -215,10 +216,14 @@ def do_host_stor_update(cc, args):
 @utils.arg('stor',
            metavar='<stor id or uuid>',
            help="UUID of stor[REQUIRED]")
+@utils.arg('-f', '--force',
+           action='store_true',
+           default=False,
+           help=argparse.SUPPRESS)
 def do_host_stor_delete(cc, args):
     """Delete a stor"""
     try:
-        cc.istor.delete(args.stor)
+        cc.istor.delete(args.stor, args.force)
     except exc.HTTPNotFound:
         raise exc.CommandError('Delete failed, stor: %s not found'
                                % args.stor)

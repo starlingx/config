@@ -6,6 +6,7 @@
 # Copyright (c) 2023 Wind River Systems, Inc.
 #
 
+import datetime
 import jsonpatch
 import pecan
 from pecan import rest
@@ -133,10 +134,15 @@ class Kernel(base.APIBase):
             subfunctions_set.discard(constants.LOWLATENCY)
 
         updated_subfunctions = Kernel._create_subfunctions_str(subfunctions_set)
+        # use time of config in the kernel config status
+        # allows it to expire after a period
+        kernel_config_time = datetime.datetime.now()
+        kernel_config_time_str = \
+            kernel_config_time.strftime(constants.KERNEL_CONFIG_STATUS_FORMAT)
         updates = \
             {
                 constants.SUBFUNCTIONS: updated_subfunctions,
-                'kernel_config_status': constants.KERNEL_CONFIG_STATUS_PENDING
+                'kernel_config_status': kernel_config_time_str
             }
 
         ihost.save_changes(pecan.request.context, updates)

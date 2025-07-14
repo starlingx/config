@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2019 Wind River Systems, Inc.
+# Copyright (c) 2019,2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -202,5 +202,5 @@ class KubeUpgradeTest(test_shell.ShellTest):
     @mock.patch('cgtsclient.v1.kube_upgrade.KubeUpgradeManager.delete')
     def test_kube_upgrade_delete(self, mock_delete):
         self.make_env()
-        results = self.shell("kube-upgrade-delete")
+        results = self.shell("kube-upgrade-delete --yes")
         self.assertIn("Kubernetes upgrade deleted", results)

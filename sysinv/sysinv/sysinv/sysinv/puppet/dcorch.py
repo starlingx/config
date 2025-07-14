@@ -7,7 +7,6 @@
 from sysinv.common import constants
 from sysinv.common import utils
 
-from sysinv.helm import helm
 from sysinv.puppet import openstack
 
 
@@ -190,9 +189,8 @@ class DCOrchPuppet(openstack.OpenstackBasePuppet):
                 for key in keys_to_copy:
                     config[key] = old_config.get(key)
             else:
-                helm_data = helm.HelmOperatorData(self.dbapi)
-                endpoints_data = helm_data.get_keystone_endpoint_data()
-                auth_data = helm_data.get_keystone_auth_data()
+                endpoints_data = self._helm_data.get_keystone_endpoint_data()
+                auth_data = self._helm_data.get_keystone_auth_data()
 
                 app_config = {
                     'dcorch::stx_openstack::'
@@ -236,8 +234,7 @@ class DCOrchPuppet(openstack.OpenstackBasePuppet):
                 for key in keys_to_copy:
                     config[key] = old_config.get(key)
             else:
-                helm_data = helm.HelmOperatorData(self.dbapi)
-                auth_data = helm_data.get_keystone_auth_data()
+                auth_data = self._helm_data.get_keystone_auth_data()
                 app_auth_config = {
                     'dcorch::stx_openstack::'
                     'keystone_admin_password':

@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2024 Wind River Systems, Inc.
+# Copyright (c) 2013-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -161,6 +161,7 @@ class InterfaceNetworkController(rest.RestController):
         self._check_network_type_and_host_type(host, network.type)
         self._check_network_type_and_interface_type(interface_obj, network.type)
         self._check_cluster_host_on_controller(host, interface_obj, network.type)
+        self._check_new_pxeboot_interface_mac(host, interface_obj, network.type)
 
         result = pecan.request.dbapi.interface_network_create(interface_network_dict)
 
@@ -256,20 +257,16 @@ class InterfaceNetworkController(rest.RestController):
                     caddress_pool.add_management_addresses_to_no_proxy_list(addrpools)
                 elif operation == constants.API_DELETE:
                     caddress_pool.remove_management_addresses_from_no_proxy_list(addrpools)
-            dc_role = utils.get_distributed_cloud_role()
-            if dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
-                cutils.update_subcloud_routes(pecan.request.dbapi, [_get_host()])
-            elif dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
-                if operation == constants.API_POST:
-                    cutils.update_system_controller_routes(pecan.request.dbapi,
-                                                           interface_network.interface_id,
-                                                           _get_host())
+            cutils.update_routes_to_system_controller(pecan.request.dbapi, [_get_host()])
+            if operation == constants.API_POST:
+                cutils.update_mgmt_controller_routes(pecan.request.dbapi,
+                                                        interface_network.interface_id,
+                                                        _get_host())
 
         elif interface_network.network_type == constants.NETWORK_TYPE_ADMIN:
             host = _get_host()
             disable = operation == constants.API_DELETE
-            if (utils.get_distributed_cloud_role() == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD):
-                cutils.update_subcloud_routes(pecan.request.dbapi, [host])
+            cutils.update_routes_to_system_controller(pecan.request.dbapi, [host])
             pecan.request.rpcapi.update_admin_config(pecan.request.context, host, disable)
 
         elif interface_network.network_type == constants.NETWORK_TYPE_STORAGE:
@@ -417,6 +414,16 @@ class InterfaceNetworkController(rest.RestController):
                         " cluster-host interface on controller." %
                         interface['ifname'])
                 raise wsme.exc.ClientSideError(msg)
+
+    def _check_new_pxeboot_interface_mac(self, host, interface, network_type):
+        # Ensure the new pxeboot-network assigned interface can execute PXE boot before unlocking
+        mgmt_mac = "00:00:00:00:00:00"
+        if (network_type == constants.NETWORK_TYPE_PXEBOOT and
+                (host['mgmt_mac'] != mgmt_mac and host['mgmt_mac'] != interface['imac'])):
+            msg = _("Warning: Ensure that the interface %s assigned to"
+                    " network type %s can execute PXE boot before unlocking." %
+                    (interface['ifname'], network_type))
+            LOG.warn(msg)
 
     def _get_interface_id(self, interface_uuid):
         interface = pecan.request.dbapi.iinterface_get(interface_uuid)

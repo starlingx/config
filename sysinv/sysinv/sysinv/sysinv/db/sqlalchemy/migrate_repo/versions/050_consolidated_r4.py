@@ -1,6 +1,6 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 #
-# Copyright (c) 2017 Wind River Systems, Inc.
+# Copyright (c) 2017, 2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -13,6 +13,7 @@ from sqlalchemy import Boolean, DateTime, Integer, String, Text
 from sqlalchemy import Column, ForeignKey, MetaData, Table
 from sqlalchemy.dialects import postgresql
 
+from oslo_db.exception import DBNonExistentConstraint
 from oslo_log import log
 from sysinv.common import constants
 
@@ -238,13 +239,18 @@ def upgrade(migrate_engine):
                      mysql_engine=ENGINE, mysql_charset=CHARSET,
                      autoload=True)
 
-        migrate_engine.execute('ALTER TABLE i_pv DROP CONSTRAINT "pvStateEnum"')
+        try:
+            migrate_engine.execute(
+                'ALTER TABLE i_pv DROP CONSTRAINT "pvStateEnum"')
+        except DBNonExistentConstraint:
+            pass
         # In 16.10, as DB changes by PATCH are not supported, we use 'reserve1' instead of
         # 'failed'. Therefore, even though upgrades with PVs in 'failed' state should not
         # be allowed, we still have to guard against them by converting 'reserve1' to
         # 'failed' everywhere.
         LOG.info("Migrate pv_state")
-        migrate_engine.execute('UPDATE i_pv SET pv_state=\'failed\' WHERE pv_state=\'reserve1\'')
+        migrate_engine.execute(
+            'UPDATE i_pv SET pv_state=\'failed\' WHERE pv_state=\'reserve1\'')
 
         pv_state_col = i_pv.c.pv_state
         pv_state_col.alter(Column('pv_state', String(32)))

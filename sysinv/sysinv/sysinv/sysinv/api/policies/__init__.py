@@ -17,11 +17,17 @@
 import itertools
 
 from sysinv.api.policies import base
+from sysinv.api.policies import ihosts
+from sysinv.api.policies import registry_image
 from sysinv.api.policies import service_parameter
+from sysinv.api.policies import certificate
 
 
 def list_rules():
     return itertools.chain(
         base.list_rules(),
-        service_parameter.list_rules()
+        service_parameter.list_rules(),
+        ihosts.list_rules(),
+        registry_image.list_rules(),
+        certificate.list_rules(),
     )

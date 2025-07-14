@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2017-2024 Wind River Systems, Inc.
+# Copyright (c) 2017-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -57,6 +57,7 @@ DHCP_METHOD = 'dhcp'
 NETWORK_CONFIG_RESOURCE = 'platform::network::interfaces::network_config'
 SRIOV_CONFIG_RESOURCE = 'platform::network::interfaces::sriov::sriov_config'
 FPGA_CONFIG_RESOURCE = 'platform::network::interfaces::fpga::fpga_config'
+RATE_LIMIT_CONFIG_RESOURCE = 'platform::network::interfaces::rate_limit::rate_limit_config'
 ADDRESS_CONFIG_RESOURCE = 'platform::network::addresses::address_config'
 ROUTE_CONFIG_RESOURCE = 'platform::network::routes::route_config'
 
@@ -100,17 +101,12 @@ class InterfacePuppet(base.BasePuppet):
             ADDRESS_CONFIG_RESOURCE: {},
             SRIOV_CONFIG_RESOURCE: {},
             FPGA_CONFIG_RESOURCE: {},
+            RATE_LIMIT_CONFIG_RESOURCE: {},
             DATA_IFACE_LIST_RESOURCE: [],
         }
 
-        system = self._get_system()
-        # For AIO-SX subcloud, mgmt n/w will be on a separate
-        # physical interface instead of the loopback interface.
-        if system.system_mode != constants.SYSTEM_MODE_SIMPLEX or \
-                self._distributed_cloud_role() == \
-                constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
-            # Setup the loopback interface first
-            generate_loopback_config(config)
+        # Setup the loopback interface first
+        generate_loopback_config(config)
 
         # Generate the actual interface config resources
         generate_interface_configs(context, config, self.dbapi)
@@ -120,6 +116,9 @@ class InterfacePuppet(base.BasePuppet):
 
         # Generate data iface list configuration
         generate_data_iface_list_config(context, config)
+
+        # Generate data for iface rate limit configuration
+        generate_data_iface_rate_limit(context, config, self.dbapi)
 
         # Update the global context with generated interface context
         self.context.update(context)
@@ -1404,6 +1403,8 @@ def get_interface_network_config(context, iface, network=None, address=None):
     fill_interface_config_option_operation(config['options'], interface_op, accept_ra_off)
     accept_redir_off = 'echo 0 > /proc/sys/net/ipv6/conf/{}/accept_redirects'.format(os_ifname)
     fill_interface_config_option_operation(config['options'], interface_op, accept_redir_off)
+    keep_addr_on_down_on = 'echo 1 > /proc/sys/net/ipv6/conf/{}/keep_addr_on_down'.format(os_ifname)
+    fill_interface_config_option_operation(config['options'], interface_op, keep_addr_on_down_on)
 
     network_type = network.type if network else None
 
@@ -1598,7 +1599,7 @@ def process_interface_labels(config, context):
     # 2) if the interface have more that one label
     #   - if the family is inet
     #       - just keep the labeling
-    #       - DHCPv4 can use a labeled interface (pxebbot for now is only IPv4),
+    #       - DHCPv4 can use a labeled interface (pxeboot for now is only IPv4),
     #         that was not the case when using CentOS
     #   - if the family is inet6
     #       - interface needs to contain the static address that will be used as
@@ -1613,7 +1614,9 @@ def process_interface_labels(config, context):
     #                   - cluster-host
     #                   - pxeboot
     #                   - storage
-    #       - DHCPv6 cannot use label (pxebbot for now is only IPv4, so we don't
+    #               - if a vlan is shared by mgmt and another network,
+    #                 the mgmt interface will not have the address deprecated
+    #       - DHCPv6 cannot use label (pxeboot for now is only IPv4, so we don't
     #         have a use case for now for platform interfaces), move the label
     #         to interface
 
@@ -1640,11 +1643,20 @@ def process_interface_labels(config, context):
             if (intf_data['family'] == 'inet6') and (intf_data['method'] == 'static'):
                 name_net = intf_data['options']['stx-description'].split(',')
                 ifname = (name_net[0].split(":"))[1]
+                net = (name_net[1].split(":"))[1]
                 networktypelist = context['interfaces'][ifname].networktypelist
                 undeprecate = "ip -6 addr replace" + \
                                 f" {intf_data['ipaddress']}/{intf_data['netmask']}" + \
                                 f" dev {intf} preferred_lft forever"
-                if constants.NETWORK_TYPE_OAM in networktypelist:
+                if ('vlan' in label and len(networktypelist) > 1
+                        and constants.NETWORK_TYPE_MGMT in networktypelist):
+                    if net == constants.NETWORK_TYPE_MGMT:
+                        fill_interface_config_option_operation(intf_data['options'],
+                                                            IFACE_POST_UP_OP, undeprecate)
+                        break
+                    else:
+                        continue
+                elif constants.NETWORK_TYPE_OAM in networktypelist:
                     fill_interface_config_option_operation(intf_data['options'],
                                                             IFACE_POST_UP_OP, undeprecate)
                     break
@@ -1901,3 +1913,138 @@ def get_intf_op_name(operation):
              IFACE_POST_DOWN_OP: 'post-down'}
 
     return if_op[operation]
+
+
+def generate_data_iface_rate_limit(context, config, db_api):
+    """
+    Generating the data for the interface rate limit configuration
+    for puppet hieradata.
+    """
+    ip_pool = {}
+    _get_ip_pool(context, db_api, ip_pool)
+    if not ip_pool:
+        LOG.error("Failed to generate interface data for rate limit: ip_pool is empty")
+        return
+
+    try:
+        interfaces = context['interfaces'].values()
+        for iface in interfaces:
+            if check_interface_rate_limit_conditions(iface, db_api):
+                _build_iface_rate_limit_config(context, iface, config, ip_pool)
+    except Exception as e:
+        LOG.error(f"Failed to generate interface data for rate limit: {e}", exc_info=True)
+
+
+def _build_iface_rate_limit_config(context, iface, config, ip_pool):
+    """
+    Function to populate interface data -
+    { max_tx_rate, max_rx_rate, address_pool, and accept_subnet}
+    for rate limit configuration in puppet hieradata.
+    """
+    try:
+        iface_dict = {}
+        # max_tx_rate
+        iface_dict['max_tx_rate'] = iface.get('max_tx_rate', None)
+
+        # max_rx_rate
+        iface_dict['max_rx_rate'] = iface.get('max_rx_rate', None)
+
+        networktypelist = iface.get('networktypelist', [])
+        ifname = iface.get('ifname', None)
+
+        # Handle multiple network types on an interface
+        # with same or different address pools.
+        for network_type in networktypelist:
+            if (network_type in ip_pool):
+                if iface_dict.get('address_pool') is None:
+                    iface_dict['address_pool'] = ip_pool[network_type]
+                elif iface_dict['address_pool'] != ip_pool[network_type]:
+                    iface_dict['address_pool'] = constants.DUAL
+                    break
+
+        if networktypelist and constants.NETWORK_TYPE_MGMT in networktypelist:
+            iface_dict['accept_subnet'] = [constants.NETWORK_TYPE_MGMT]
+        os_ifname = get_interface_os_ifname(context, iface)
+        LOG.info(f"Configuring the rate limit for {ifname} under ifname: {os_ifname}")
+        config[RATE_LIMIT_CONFIG_RESOURCE][os_ifname] = iface_dict
+    except Exception as ex:
+        LOG.error(f"Failed to add rate limit data: {ex}", exc_info=True)
+
+
+def check_interface_rate_limit_conditions(iface, db_api):
+    """
+    Function to check the interface rate limit conditions:-
+    1. Interface class is platform.
+    2. Interface type is ethernet, ae, or vlan.
+    3. Interface has max_tx_rate or max_rx_rate configured.
+    4. Interface networktypes has no internal traffic type.
+    5. If Interface networktype has mgmt, It should be a Distributed Cloud set up.
+       Only in DC setup, mgmt network has both internal and external platform traffic.
+       In other cases it is only internal.
+    6. External networktypes like oam, admin are allowed.
+    """
+    if_class = iface.get('ifclass', None)
+    if_type = iface.get('iftype', None)
+
+    if not (if_class == constants.INTERFACE_CLASS_PLATFORM and
+            if_type in {constants.INTERFACE_TYPE_ETHERNET,
+                        constants.INTERFACE_TYPE_AE,
+                        constants.INTERFACE_TYPE_VLAN}):
+        return False
+
+    if iface.get('max_tx_rate', None) is None and iface.get('max_rx_rate', None) is None:
+        return False
+
+    networktypelist = iface.get('networktypelist', [])
+    ifname = iface.get('ifname', None)
+
+    if not networktypelist:
+        LOG.error(f"iface {ifname} has no networktypes, but rate_limit is configured")
+        return False
+
+    if set(networktypelist).intersection(constants.INTERNAL_NETWORK_TYPES):
+        LOG.error(f"Cannot configure rate limit for iface {ifname}  \
+                internal networktypes {constants.INTERNAL_NETWORK_TYPES} are not supported")
+        return False
+
+    if constants.NETWORK_TYPE_MGMT in networktypelist:
+        system = db_api.isystem_get_one()
+        if not system.distributed_cloud_role:
+            LOG.error(f"Cannot rate-limit iface {ifname},\
+                      has mgmt networktype, But is not of DC system mode")
+            return False
+
+    """
+    returning True if iface networktype has mgmt (valid only in DC Setup) or
+    other external networktypes like oam, admin.
+    internal networktypes are not allowed to be rate-limited.
+    """
+    return True
+
+
+def _get_ip_pool(context, db_api, ip_pool):
+    """
+    Get the ip pool such as ipv6, ipv4, and dual.
+    """
+    try:
+        network_addrpools = db_api.network_addrpool_get_all()
+        for network_addrpool in network_addrpools:
+            network_type = network_addrpool.get('network_type')
+            pool_name = network_addrpool.get('address_pool_name')
+            if not network_type or not pool_name:
+                LOG.info(f"Skipping network_type: {network_type}, pool_name: {pool_name}")
+                continue
+            if network_type == constants.NETWORK_TYPE_PXEBOOT:
+                ip_pool[network_type] = constants.IPV4
+            elif constants.IPV4 in pool_name:
+                if network_type not in ip_pool:
+                    ip_pool[network_type] = constants.IPV4
+                else:
+                    ip_pool[network_type] = constants.DUAL
+            elif constants.IPV6 in pool_name:
+                if network_type not in ip_pool:
+                    ip_pool[network_type] = constants.IPV6
+                else:
+                    ip_pool[network_type] = constants.DUAL
+    except Exception as ex:
+        LOG.error(f"Failed to get the ip pool: {ex}", exc_info=True)

@@ -142,8 +142,12 @@ def validate_metadata_file(path, metadata_file, upgrade_from_release=None):
 
     dependent_apps: - optional: list of dependent apps.
         - name: <app_name>
-          version: <version>
+          version: <regular expression (full match)> e.g: 25.09-\d+
           action: <ignore|warn|error|apply>
+
+    dependent_parent_exceptions: exceptions for parent apps dependencies.
+        - name: <app_name>
+          version: <regular expression (full match)> e.g: 25\.09-1
     """
 
     # Type-level validations:
@@ -369,39 +373,23 @@ def validate_metadata_file(path, metadata_file, upgrade_from_release=None):
                 "corresponding k8s_upgrade:auto_update field was found. Please "
                 "add an 'auto_update' field to the 'k8s_upgrade' section."))
 
-    def validate_dependent_apps_version(parent, key):
-        """ Validate a metadata version string field
+    def validate_regex_field(parent, key):
+        """ Validate a regular expression field
 
-        :param parent: parent section that contains the version string field
-                    to be verified
-        :param key: field name to be validated
-
-        TODO(dbarbosa): support checks if the installed app version should
-        be > or < than the given version string. Exemple: "> 1.0.0" or "< 1.0.0"
+        :param parent: parent section that contains the regular expression field to be verified.
+        :param key: field name to be validated.
         """
 
-        value = None
-
-        error_message = _("Invalid {}: {} should be a valid version string."
-                           .format(metadata_file, key))
-
         try:
-            value = parent[key]
-            if not re.fullmatch(r'^[0-9.-]+$', value):
-                raise exception.SysinvException(
-                    _(error_message)
-                )
-
-            try:
-                LooseVersion(value)
-            except ValueError:
-                raise exception.SysinvException(
-                    _(error_message)
-                )
+            re.compile(parent[key])
+        except re.error:
+            error_message = _("Invalid {}: {} should be a valid regular expression."
+                              .format(metadata_file, key))
+            raise exception.SysinvException(_(error_message))
         except KeyError:
-            pass
-
-        return value
+            error_message = _("Invalid {}: {} is a required regular expression field."
+                              .format(metadata_file, key))
+            raise exception.SysinvException(_(error_message))
 
     def validate_dependent_apps_action(action):
         """ Validate the dependent apps action field
@@ -428,6 +416,21 @@ def validate_metadata_file(path, metadata_file, upgrade_from_release=None):
                 .format(metadata_file,
                         constants.APP_METADATA_CLASS,
                         constants.APP_METADATA_CLASS_TYPES)))
+
+    def validate_dependent_app(dependent_app):
+        """Validate a single dependent app entry (dict)"""
+        validate_dict(dependent_app)
+        validate_string_field(
+            dependent_app,
+            constants.APP_METADATA_DEPENDENT_APPS_NAME)
+        validate_regex_field(
+            dependent_app,
+            constants.APP_METADATA_DEPENDENT_APPS_VERSION)
+        validate_string_field(
+            dependent_app,
+            constants.APP_METADATA_DEPENDENT_APPS_ACTION)
+        validate_dependent_apps_action(
+            dependent_app.get(constants.APP_METADATA_DEPENDENT_APPS_ACTION))
 
     app_name = ''
     app_version = ''
@@ -574,25 +577,36 @@ def validate_metadata_file(path, metadata_file, upgrade_from_release=None):
         dependent_apps = validate_list_field(doc, constants.APP_METADATA_DEPENDENT_APPS)
         if dependent_apps:
             for dependence in dependent_apps:
-                validate_dict(dependence)
-                validate_string_field(
-                    dependence,
-                    constants.APP_METADATA_DEPENDENT_APPS_NAME)
-                validate_string_field(
-                    dependence,
-                    constants.APP_METADATA_DEPENDENT_APPS_VERSION)
-                validate_dependent_apps_version(
-                    dependence,
-                    constants.APP_METADATA_DEPENDENT_APPS_VERSION)
-                validate_string_field(
-                    dependence,
-                    constants.APP_METADATA_DEPENDENT_APPS_ACTION)
-                validate_dependent_apps_action(
-                    dependence.get(constants.APP_METADATA_DEPENDENT_APPS_ACTION))
+                if isinstance(dependence, dict):
+                    validate_dependent_app(dependence)
+                elif isinstance(dependence, list):
+                    # If istead of a dict, it is a list of apps that are mutually
+                    # exclusive, then validate each app in the list.
+                    if len(dependence) < 2:
+                        raise exception.SysinvException(_(
+                            "Invalid dependent_apps entry: "
+                            "must contain at least two mutually exclusive apps."))
+                    for mutually_exclusive_dependence in dependence:
+                        validate_dependent_app(mutually_exclusive_dependence)
+                else:
+                    raise exception.SysinvException(
+                        _("Invalid dependent_apps entry: must be dict or list."))
 
         app_class = validate_string_field(doc, constants.APP_METADATA_CLASS)
         if app_class:
             validate_class_types(app_class)
+
+        dependent_parent_exceptions = \
+            validate_list_field(doc, constants.APP_METADATA_DEPENDENT_PARENT_EXCEPTIONS)
+        if dependent_parent_exceptions:
+            for parent_exception in dependent_parent_exceptions:
+                validate_dict(parent_exception)
+                validate_string_field(
+                    parent_exception,
+                    constants.APP_METADATA_DEPENDENT_APPS_NAME)
+                validate_regex_field(
+                    parent_exception,
+                    constants.APP_METADATA_DEPENDENT_APPS_VERSION)
 
     return app_name, app_version, patches
 
@@ -1001,3 +1015,25 @@ def make_application_query(k8s_ver, include_path=False):
                 compatible_apps.append(app_name)
 
     return compatible_apps
+
+
+def has_after_key_in_apps_metadata(apps_metadata):
+    """
+    Checks if any item in the 'evaluate_reapply' section of the 'behavior'
+    metadata contains the key 'after'.
+    Args:
+        apps_metadata (dict): A dictionary containing application metadata.
+                              Expected to have a 'behavior' key, which may
+                              contain an 'evaluate_reapply' dictionary.
+    Returns:
+        bool: True if any item in the 'evaluate_reapply' dictionary contains
+              the key 'after', False otherwise.
+    """
+
+    return any(
+        constants.APP_METADATA_AFTER
+        in metadata.get(constants.APP_METADATA_BEHAVIOR, {}).get(
+            constants.APP_METADATA_EVALUATE_REAPPLY, {}
+        )
+        for metadata in apps_metadata.values()
+    )

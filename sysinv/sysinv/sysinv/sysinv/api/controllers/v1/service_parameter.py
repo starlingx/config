@@ -658,7 +658,7 @@ class ServiceParameterController(rest.RestController):
 
         try:
             # Pass name to update_service_config only in case the parameters are the Intel
-            # NIC driver version, intel_pstate or sysinv_api_workers.
+            # NIC driver version, intel_pstate or sysinv_api_workers, cli_confirmations
             new_name = None
             if section == constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG and \
                     name == constants.SERVICE_PARAM_NAME_PLAT_CONFIG_INTEL_PSTATE:
@@ -666,6 +666,10 @@ class ServiceParameterController(rest.RestController):
 
             elif section == constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG and \
                     name == constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_API_WORKERS:
+                new_name = name
+
+            if section == constants.SERVICE_PARAM_SECTION_PLATFORM_CLIENT \
+                    and name == constants.SERVICE_PARAM_NAME_PLATFORM_CLI_CONFIRMATIONS:
                 new_name = name
 
             # TODO (kdhokte): Remove this and change the code in sysinv conductor
@@ -825,6 +829,7 @@ class ServiceParameterController(rest.RestController):
 
         # Pass name to update_service_config only in case the parameter is
         # the Intel NIC driver version, intel_pstate or sysinv_api_workers
+        # or cli_confirmations
         name = None
         if parameter.section == constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG and \
                parameter.name == constants.SERVICE_PARAM_NAME_PLAT_CONFIG_INTEL_PSTATE:
@@ -832,6 +837,10 @@ class ServiceParameterController(rest.RestController):
 
         elif parameter.section == constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG and \
                 parameter.name == constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_API_WORKERS:
+            name = parameter.name
+
+        if parameter.section == constants.SERVICE_PARAM_SECTION_PLATFORM_CLIENT \
+                and parameter.name == constants.SERVICE_PARAM_NAME_PLATFORM_CLI_CONFIRMATIONS:
             name = parameter.name
 
         # TODO bqian: remove this if branch for stx-11

@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2023 Wind River Systems, Inc.
+# Copyright (c) 2013-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -11,6 +11,7 @@
 
 from __future__ import absolute_import
 from distutils.version import LooseVersion
+from functools import wraps
 from ipaddress import ip_address
 from ipaddress import IPv4Address
 import json
@@ -38,6 +39,7 @@ from urllib3.exceptions import MaxRetryError
 from oslo_log import log as logging
 from sysinv.common import exception
 from sysinv.common import constants
+from sysinv.common import utils
 from sysinv.common.retrying import retry
 
 K8S_MODULE_MAJOR_VERSION = int(K8S_MODULE_VERSION.split('.')[0])
@@ -146,8 +148,7 @@ KUBE_ROOTCA_UPDATED_HOST_TRUSTNEWCA = 'updated-host-trust-new-ca'
 KUBE_ROOTCA_UPDATING_HOST_TRUSTNEWCA_FAILED = 'updating-host-trust-new-ca-failed'
 
 # Kubeadm and Kubelet initial versions
-# This corresponds to the latest K8s version from the previous release
-K8S_INITIAL_CMD_VERSION = '1.24.4'
+K8S_INITIAL_CMD_VERSION = '1.29.2'
 
 # Kubernetes constants
 MANIFEST_APPLY_TIMEOUT = 60 * 15
@@ -223,7 +224,7 @@ def k8s_health_check(tries=20, try_sleep=5, timeout=5,
     return rc
 
 
-def k8s_wait_for_endpoints_health(tries=20, try_sleep=5, timeout=5):
+def k8s_wait_for_endpoints_health(tries=20, try_sleep=5, timeout=5, quiet=False):
     """ This checks each k8s control-plane endpoint health in parallel
     and waits for each endpoint to be up and running.
 
@@ -233,22 +234,35 @@ def k8s_wait_for_endpoints_health(tries=20, try_sleep=5, timeout=5):
     :param tries: maximum number of tries
     :param try_sleep: sleep interval between tries (seconds)
     :param timeout: timeout waiting for response (seconds)
+    :param quiet: log only failed endpoints if true
+                  log everything if false (default)
 
     :return: True if all endpoints are healthy
              False if at least one of the enpoints is unhealthy
     """
 
-    healthz_endpoints = [constants.APISERVER_READYZ_ENDPOINT,
-                         constants.CONTROLLER_MANAGER_HEALTHZ_ENDPOINT,
+    healthz_endpoints = [constants.CONTROLLER_MANAGER_HEALTHZ_ENDPOINT,
                          constants.SCHEDULER_HEALTHZ_ENDPOINT,
                          constants.KUBELET_HEALTHZ_ENDPOINT]
+
+    if utils.is_kube_apiserver_port_updated():
+        healthz_endpoints.append(constants.APISERVER_READYZ_ENDPOINT)
+    else:
+        # TODO (mdecastr): This code is to support upgrades to stx 11,
+        # it can be removed in later releases.
+        old_readyz_endpoint = constants.APISERVER_READYZ_ENDPOINT.replace(
+                                str(constants.KUBE_APISERVER_INTERNAL_PORT),
+                                str(constants.KUBE_APISERVER_EXTERNAL_PORT))
+        healthz_endpoints.append(old_readyz_endpoint)
 
     threads = {}
     threadpool = greenpool.GreenPool(len(healthz_endpoints))
     result = True
 
+    if not quiet:
+        LOG.info("Checking Kubernetes health...")
+
     # Check endpoints in parallel
-    LOG.info("Checking Kubernetes health...")
     for endpoint in healthz_endpoints:
         threads[endpoint] = threadpool.spawn(k8s_health_check,
                                              tries,
@@ -269,61 +283,88 @@ def k8s_wait_for_endpoints_health(tries=20, try_sleep=5, timeout=5):
     if unhealthy:
         result = False
         LOG.error(f"The following Kubernetes endpoints are unhealthy: {unhealthy}")
-    else:
+    elif not quiet:
         LOG.info("All Kubernetes endpoints are healthy.")
 
     return result
 
 
-def test_k8s_health(function):
-    """Decorator that checks if k8s endpoints are ready before calling the function.
+def test_k8s_health(*dargs, **dkw):
+    """ Decorator function that instantiates the K8sEndpointsCheck object
 
-    param: function: The function to be wrapped.
+    :param *dargs: positional arguments passed to K8sEndpointsCheck object
+    :param **dkw: keyword arguments passed to the K8sEndpointsCheck object
 
-    Returns: The wrapped function that checks Kubernetes health.
+    :return: The resulting call to K8sEndpointsTest.call()
     """
-    def wrapper(*args, **kwargs):
-        if k8s_wait_for_endpoints_health():
-            return function(*args, **kwargs)
+
+    # support both @test_k8s_health and @test_k8s_health() as valid syntax
+    if len(dargs) == 1 and callable(dargs[0]):
+        def wrap_simple(f):
+
+            @wraps(f)
+            def wrapped_f(*args, **kw):
+                return K8sEndpointsTest().call(f, *args, **kw)
+
+            return wrapped_f
+
+        return wrap_simple(dargs[0])
+    else:
+        def wrap(f):
+
+            @wraps(f)
+            def wrapped_f(*args, **kw):
+                return K8sEndpointsTest(*dargs, **dkw).call(f, *args, **kw)
+
+            return wrapped_f
+
+        return wrap
+
+
+class K8sEndpointsTest(object):
+    """ Kubernetes endpoint test wrapper
+
+    :param tries: maximum number of tries
+    :param try_sleep: sleep interval between tries (seconds)
+    :param timeout: timeout waiting for response (seconds)
+    :param quiet: log only failed endpoints if true
+                  log everything if false (default)
+    """
+
+    def __init__(self,
+                 tries=20,
+                 try_sleep=5,
+                 timeout=5,
+                 quiet=False):
+
+        self.tries = tries
+        self.try_sleep = try_sleep
+        self.timeout = timeout
+        self.quiet = quiet
+
+    def call(self, fn, *args, **kwargs):
+        """ Calls the endpoint health check
+
+        :param fn: function to be called if the health check succeeds
+        :param *dargs: positional arguments to be passed to the fn function
+        :param **dkw: keyword arguments to be passed to the the fn function
+
+        :return: The function that checks Kubernetes health.
+        """
+
+        if k8s_wait_for_endpoints_health(tries=self.tries,
+                                             try_sleep=self.try_sleep,
+                                             timeout=self.timeout,
+                                             quiet=self.quiet):
+            return fn(*args, **kwargs)
         else:
             raise Exception("Kubernetes is not responsive.")
-    return wrapper
 
 
 def get_kube_versions():
     """Provides a list of supported kubernetes versions in
        increasing order."""
     return [
-        {'version': 'v1.24.4',
-         'upgrade_from': ['v1.23.1'],
-         'downgrade_to': [],
-         'applied_patches': [],
-         'available_patches': [],
-         },
-        {'version': 'v1.25.3',
-         'upgrade_from': ['v1.24.4'],
-         'downgrade_to': [],
-         'applied_patches': [],
-         'available_patches': [],
-         },
-        {'version': 'v1.26.1',
-         'upgrade_from': ['v1.25.3'],
-         'downgrade_to': [],
-         'applied_patches': [],
-         'available_patches': [],
-         },
-        {'version': 'v1.27.5',
-         'upgrade_from': ['v1.26.1'],
-         'downgrade_to': [],
-         'applied_patches': [],
-         'available_patches': [],
-         },
-        {'version': 'v1.28.4',
-         'upgrade_from': ['v1.27.5'],
-         'downgrade_to': [],
-         'applied_patches': [],
-         'available_patches': [],
-         },
         {'version': 'v1.29.2',
          'upgrade_from': ['v1.28.4'],
          'downgrade_to': [],
@@ -338,6 +379,18 @@ def get_kube_versions():
          },
         {'version': 'v1.31.5',
          'upgrade_from': ['v1.30.6'],
+         'downgrade_to': [],
+         'applied_patches': [],
+         'available_patches': [],
+         },
+        {'version': 'v1.32.2',
+         'upgrade_from': ['v1.31.5'],
+         'downgrade_to': [],
+         'applied_patches': [],
+         'available_patches': [],
+         },
+        {'version': 'v1.33.0',
+         'upgrade_from': ['v1.32.2'],
          'downgrade_to': [],
          'applied_patches': [],
          'available_patches': [],
@@ -1647,22 +1700,6 @@ class KubeOperator(object):
             return 1
 
         return 0
-
-    def get_psp_resource(self):
-        try:
-            # Create an API client
-            c = self._get_kubernetesclient_policy()
-
-            # Retrieve the resource items
-            api_response = c.list_pod_security_policy()
-            LOG.debug("Response: %s" % api_response)
-            items = api_response.items
-
-            # Return the items if present, or False if not found
-            return items if items else False
-        except Exception as e:
-            LOG.exception("Failed to fetch PodSecurityPolicies: %s" % e)
-            raise
 
     def kube_read_clusterrolebinding(self, name):
         """read a clusterrolebinding with data

@@ -23,7 +23,7 @@ POLICY_ROOT = 'config_api:service_parameter:%s'
 service_parameter_rules = [
     policy.DocumentedRuleDefault(
         name=POLICY_ROOT % 'add',
-        check_str='rule:' + base.ADMIN_IN_SYSTEM_PROJECTS,
+        check_str='rule:' + base.ADMIN_OR_CONFIGURATOR,
         description="Add a Service Parameter.",
         operations=[
             {
@@ -34,7 +34,7 @@ service_parameter_rules = [
     ),
     policy.DocumentedRuleDefault(
         name=POLICY_ROOT % 'apply',
-        check_str='rule:' + base.ADMIN_IN_SYSTEM_PROJECTS,
+        check_str='rule:' + base.ADMIN_OR_CONFIGURATOR,
         description="Apply Service Parameters.",
         operations=[
             {
@@ -45,7 +45,7 @@ service_parameter_rules = [
     ),
     policy.DocumentedRuleDefault(
         name=POLICY_ROOT % 'delete',
-        check_str='rule:' + base.ADMIN_IN_SYSTEM_PROJECTS,
+        check_str='rule:' + base.ADMIN_OR_CONFIGURATOR,
         description="Delete a Service Parameter.",
         operations=[
             {
@@ -56,7 +56,7 @@ service_parameter_rules = [
     ),
     policy.DocumentedRuleDefault(
         name=POLICY_ROOT % 'get',
-        check_str='rule:' + base.READER_IN_SYSTEM_PROJECTS,
+        check_str='rule:' + base.READER_OR_OPERATOR_OR_CONFIGURATOR,
         description="Get Service Parameters.",
         operations=[
             {
@@ -71,7 +71,7 @@ service_parameter_rules = [
     ),
     policy.DocumentedRuleDefault(
         name=POLICY_ROOT % 'modify',
-        check_str='rule:' + base.ADMIN_IN_SYSTEM_PROJECTS,
+        check_str='rule:' + base.ADMIN_OR_CONFIGURATOR,
         description="Modify Service Parameter value.",
         operations=[
             {

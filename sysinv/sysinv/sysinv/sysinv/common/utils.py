@@ -18,7 +18,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2024 Wind River Systems, Inc.
+# Copyright (c) 2013-2025 Wind River Systems, Inc.
 #
 
 
@@ -53,6 +53,7 @@ import pyudev
 import pwd
 import random
 import re
+import threading
 import rfc3986
 import shutil
 import signal
@@ -183,6 +184,38 @@ def exception_msg(exception):
     if hasattr(exception, 'message'):
         return str(exception.message)
     return str(exception)
+
+
+def subprocess_open(command, timeout=5):
+    """
+    Helper method to execute a shell command, capture output,
+    and avoid zombie processes.
+
+    :param command: The shell command to execute.
+    :param timeout: Timeout in seconds for the command (default: 5).
+
+    :returns: a tuple: (stdout, stderr) from the command, or ("", "")
+    if an error occurs.
+    """
+    stdout, stderr = "", ""
+
+    try:
+        with subprocess.Popen(command,
+                             stdout=subprocess.PIPE,
+                             shell=True,
+                             universal_newlines=True) as process:
+            stdout, stderr = process.communicate(timeout=timeout)
+
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.communicate()  # Reap the process to avoid zombie
+        LOG.error("Command '%s' timed out", command)
+        return ("", "")
+    except Exception as e:
+        LOG.error("Could not execute command '%s': %s", command, e)
+        return ("", "")
+
+    return (stdout, stderr)
 
 
 def execute(*cmd, **kwargs):
@@ -427,6 +460,24 @@ def is_valid_mac(address):
     m = "[0-9a-f]{2}([-:])[0-9a-f]{2}(\\1[0-9a-f]{2}){4}$"
     if isinstance(address, six.string_types) and re.match(m, address.lower()):
         return True
+    return False
+
+
+def is_empty_value(value):
+    """checks empty or nullish values
+
+    :param value: value to be checked
+    :return bool: True if value is empty or nullish
+    """
+    if not value:
+        return True
+
+    if isinstance(value, str):
+        if len(value.strip()) == 0:
+            return True
+        if value.strip().lower() in ["none", "null"]:
+            return True
+
     return False
 
 
@@ -1783,7 +1834,8 @@ def get_central_cloud_gateway_network_and_addresses(dbapi, primary_only):
     # If the Admin network exists, use its gateway addresses. If not, use Management's instead.
     for networktype in [constants.NETWORK_TYPE_ADMIN, constants.NETWORK_TYPE_MGMT]:
         pools = get_network_address_pools(dbapi, networktype, primary_only)
-        if pools:
+        iface_network_list = dbapi.interface_networks_get_by_network_type(networktype)
+        if pools and iface_network_list:
             gateway_addresses = {}
             for pool in pools:
                 if pool.gateway_address:
@@ -1792,8 +1844,8 @@ def get_central_cloud_gateway_network_and_addresses(dbapi, primary_only):
     return None, {}
 
 
-def update_subcloud_routes(dbapi, hosts=None, primary_only=True):
-    # Add the routes back to the system controller.
+def update_routes_to_system_controller(dbapi, hosts=None, primary_only=True):
+    # Update routes to system controller network.
     # Assumption is we do not have to do any error checking
     # for local & reachable gateway etc, as config_subcloud
     # will have already done these checks before allowing
@@ -1802,7 +1854,7 @@ def update_subcloud_routes(dbapi, hosts=None, primary_only=True):
     cc_network_addr_pools = get_network_address_pools(dbapi,
         constants.NETWORK_TYPE_SYSTEM_CONTROLLER, primary_only)
     if not cc_network_addr_pools:
-        LOG.warning("DC Config: Failed to retrieve central cloud network")
+        LOG.info("DC Config: No entries found for the central cloud network")
         return
 
     if hosts is None:
@@ -1865,8 +1917,8 @@ def update_subcloud_routes(dbapi, hosts=None, primary_only=True):
             LOG.info("DC Config: Added route to system controller: {}".format(route_descr))
 
 
-def update_system_controller_routes(dbapi, mgmt_iface_id, host=None):
-    # Add routes to get from this controller to all the existing subclouds.
+def update_mgmt_controller_routes(dbapi, mgmt_iface_id, host=None):
+    # Mirror the management routes from the mate controller.
     # Do this by copying all the routes configured on the management
     # interface on the mate controller (if it exists).
 
@@ -1875,6 +1927,12 @@ def update_system_controller_routes(dbapi, mgmt_iface_id, host=None):
     else:
         mgmt_iface = dbapi.iinterface_get(mgmt_iface_id)
         host_id = mgmt_iface.forihostid
+        host = dbapi.ihost_get(host_id)
+
+    if host and host.personality != constants.CONTROLLER:
+        LOG.debug("Host ID: {} is {}. Ignore route update for iface id: {}"
+                  .format(host_id, host.personality, mgmt_iface_id))
+        return
 
     controller_hosts = dbapi.ihost_get_by_personality(constants.CONTROLLER)
     mate_controller = None
@@ -1884,7 +1942,8 @@ def update_system_controller_routes(dbapi, mgmt_iface_id, host=None):
             break
 
     if not mate_controller:
-        LOG.info("DC Config: Mate controller for host id %s not found. Routes not added." % host_id)
+        LOG.info("DC Config: Mate controller for host id {} not found."
+                 " Routes not added.".format(host_id))
         return
 
     mate_interfaces = dbapi.iinterface_get_all(forihostid=mate_controller.id)
@@ -1893,7 +1952,8 @@ def update_system_controller_routes(dbapi, mgmt_iface_id, host=None):
             mate_mgmt_iface = interface
             break
     else:
-        LOG.error("Management interface for host %d not found." % mate_controller.hostname)
+        LOG.error("Management interface for host {} not found."
+                  .format(mate_controller.hostname))
         return
 
     routes = dbapi.routes_get_by_interface(mate_mgmt_iface.id)
@@ -1908,8 +1968,9 @@ def update_system_controller_routes(dbapi, mgmt_iface_id, host=None):
         except exception.RouteAlreadyExists:
             LOG.info("DC Config: Attempting to add duplicate route to system controller.")
 
-        LOG.info("DC Config: Added route to subcloud: %s/%s gw:%s on mgmt_iface_id: %s" %
-                 (new_route['network'], new_route['prefix'], new_route['gateway'], mgmt_iface_id))
+        LOG.info("DC Config: Added route to subcloud: {}/{} gw:{} on mgmt_iface_id: {}"
+                 .format(new_route['network'], new_route['prefix'],
+                         new_route['gateway'], mgmt_iface_id))
 
 
 def perform_distributed_cloud_config(dbapi, mgmt_iface_id, host):
@@ -1917,12 +1978,8 @@ def perform_distributed_cloud_config(dbapi, mgmt_iface_id, host):
     Check if we are running in distributed cloud mode and perform any
     necessary configuration.
     """
-    system = dbapi.isystem_get_one()
-    if system.distributed_cloud_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
-        update_system_controller_routes(dbapi, mgmt_iface_id, host)
-    elif (system.distributed_cloud_role == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD and
-            host.personality == constants.CONTROLLER):
-        update_subcloud_routes(dbapi, [host])
+    update_mgmt_controller_routes(dbapi, mgmt_iface_id, host)
+    update_routes_to_system_controller(dbapi, [host])
 
 
 def is_upgrade_in_progress(dbapi):
@@ -1955,6 +2012,13 @@ def _check_upgrade(dbapi, host_obj=None):
         raise wsme.exc.ClientSideError(
             _("ERROR: Disk partition operations are not allowed during a "
               "software upgrade. Try again after the upgrade is completed."))
+
+
+# TODO (mdecastr): This code is to support upgrades to stx 11,
+# it can be removed in later releases.
+def is_kube_apiserver_port_updated():
+    return (os.path.exists(constants.KUBE_APISERVER_PORT_UPDATED) or
+            not os.path.exists(constants.USM_UPGRADE_IN_PROGRESS))
 
 
 def get_dhcp_client_iaid(mac_address):
@@ -2272,19 +2336,15 @@ def verify_checksum(path):
     rc = True
     for f in os.listdir(path):
         if f.endswith('.md5'):
-            cwd = os.getcwd()
-            os.chdir(path)
             with open(os.devnull, "w") as fnull:
                 try:
                     subprocess.check_call(['md5sum', '-c', f],  # pylint: disable=not-callable
-                                          stdout=fnull, stderr=fnull)
+                                          cwd=path, stdout=fnull, stderr=fnull)
                     LOG.info("Checksum file is included and validated.")
+                    return rc
                 except Exception as e:
                     LOG.exception(e)
                     rc = False
-                finally:
-                    os.chdir(cwd)
-                    return rc
     LOG.info("Checksum file is not included, skipping validation.")
     return rc
 
@@ -3809,6 +3869,17 @@ def get_primary_address_by_name(dbapi, db_address_name, networktype, raise_exc=F
 
     :return: the address object if found, None otherwise
     """
+    if is_aio_simplex_system(dbapi) \
+            and db_address_name == f"{constants.CONTROLLER_0_HOSTNAME}-{networktype}":
+        db_address_name = f"{constants.CONTROLLER_HOSTNAME}-{networktype}"
+    else:
+        system = dbapi.isystem_get_one()
+        if (system.capabilities.get('simplex_to_duplex_migration') or
+                system.capabilities.get('simplex_to_duplex-direct_migration')) and \
+                db_address_name == f"{constants.CONTROLLER_0_HOSTNAME}-{networktype}":
+            if len(dbapi.address_get_by_name(db_address_name)) == 0:
+                db_address_name = f"{constants.CONTROLLER_HOSTNAME}-{networktype}"
+
     # first search directly by name
     address = dbapi.address_get_by_name(db_address_name)
     if len(address) == 0:
@@ -3868,6 +3939,17 @@ def get_secondary_address_by_name(dbapi, db_address_name, networktype, raise_exc
     if not db_address_name or not networktype:
         LOG.err(f"no db_address_name={db_address_name} or networktype={networktype} provided")
         return address
+
+    if is_aio_simplex_system(dbapi) \
+            and db_address_name == f"{constants.CONTROLLER_0_HOSTNAME}-{networktype}":
+        db_address_name = f"{constants.CONTROLLER_HOSTNAME}-{networktype}"
+    else:
+        system = dbapi.isystem_get_one()
+        if (system.capabilities.get('simplex_to_duplex_migration') or
+                system.capabilities.get('simplex_to_duplex-direct_migration')) and \
+                db_address_name == f"{constants.CONTROLLER_0_HOSTNAME}-{networktype}":
+            if len(dbapi.address_get_by_name(db_address_name)) == 0:
+                db_address_name = f"{constants.CONTROLLER_HOSTNAME}-{networktype}"
 
     try:
         networks = dbapi.networks_get_by_type(networktype)
@@ -4238,6 +4320,18 @@ def get_resources_list_via_kubectl_kustomize(manifest_dir):
     return resources_list
 
 
+def filter_helm_objects(resources, kind):
+    """
+    Filters the resources to include only those with the parameterized kind".
+
+    param: resources: The list of dictionaries representing the KRM resources.
+
+    Returns: List of dictionaries containing the requested kind.
+    """
+
+    return [resource for resource in resources if resource.get('kind') == kind]
+
+
 def filter_helm_releases(resources):
     """
     Filters the resources to include only those with kind 'HelmRelease'.
@@ -4247,7 +4341,19 @@ def filter_helm_releases(resources):
     Returns: List of dictionaries with kind 'HelmRelease'.
     """
 
-    return [resource for resource in resources if resource.get('kind') == 'HelmRelease']
+    return filter_helm_objects(resources, 'HelmRelease')
+
+
+def filter_helm_repositories(resources):
+    """
+    Filters the resources to include only those with kind 'HelmRepository'.
+
+    param: resources: The list of dictionaries representing the KRM resources.
+
+    Returns: List of dictionaries with kind 'HelmRepository'.
+    """
+
+    return filter_helm_objects(resources, 'HelmRepository')
 
 
 def is_certificate_request_created(name):
@@ -4345,3 +4451,113 @@ def delete_certificate_request(name):
         LOG.error(f"Error trying to delete CertificateRequest resource, reason: {e}")
 
     return False
+
+
+def truncate_message(message, max_length=255):
+    """Truncate a progress message to fit within the database field limit.
+
+    :param message: The progress message to truncate.
+    :param max_length: The maximum allowed length for the message (default is 255).
+    :returns: The truncated message.
+    """
+    if not isinstance(message, str):
+        raise ValueError("Message must be a string.")
+    if max_length <= 0:
+        raise ValueError("Maximum length must be a positive integer.")
+    return (message[:max_length - 3] + '...') if len(message) > max_length else message
+
+
+def update_app_status(rpc_app, new_status=None, new_progress=None):
+    """Update the status and progress of an application in the database.
+
+    :param rpc_app: The application object to update.
+    :param new_status: The new status to set for the application.
+    :param new_progress: The new progress message to set for the application.
+    """
+    if new_status is not None:
+        rpc_app.status = new_status
+
+    # Define a persistent lock object at the module level
+    rpc_app_lock = threading.Lock()
+
+    # New progress info can contain large messages from exceptions raised.
+    # It may need to be truncated to fit the corresponding database field.
+    if new_progress is not None:
+        new_progress = truncate_message(new_progress)
+        rpc_app.progress = new_progress
+
+    with rpc_app_lock:
+        rpc_app.save()
+
+
+def get_app_metadata_from_tarfile(absolute_tarball_path):
+    """Extract metadata from a tar file.
+
+    :params app_name: application name
+    :params tarball_name: absolute path of app tarfile
+    :returns: metadata dictionary
+    """
+    metadata = {}
+    with TempDirectory() as app_path:
+        if not extract_tarfile(app_path, absolute_tarball_path):
+            LOG.error("Failed to extract tar file {}.".format(
+                os.path.basename(absolute_tarball_path)))
+            return None
+        metadata_file = os.path.join(app_path,
+                                     constants.APP_METADATA_FILE)
+
+        if os.path.exists(metadata_file):
+            with io.open(metadata_file, 'r', encoding='utf-8') as f:
+                # The RoundTripLoader removes the superfluous quotes by default.
+                # Set preserve_quotes=True to preserve all the quotes.
+                # The assumption here: there is just one yaml section
+                metadata = yaml.safe_load(f)
+
+    return metadata
+
+
+def compare_lists_of_dict(dependent_parent_list, dependent_parent_exceptions):
+    """
+    Compare two lists of dictionaries to determine if they are equivalent.
+    This function converts the input lists of dictionaries into sets of tuples,
+    where each tuple represents the key-value pairs of a dictionary. It then
+    compares the two sets for equality.
+    Args:
+        dependent_parent_list (list[dict]): A list of dictionaries representing
+            the first set of dependent parents.
+        dependent_parent_exceptions (list[dict]): A list of dictionaries representing
+            the second set of dependent parents to compare against.
+    Returns:
+        bool: True if the two lists are equivalent (contain the same dictionaries),
+              False otherwise.
+    """
+    # Convert both lists to sets of tuples for easier comparison
+    set_parent_list = {tuple(item.items()) for item in dependent_parent_list}
+    set_parent_exceptions = {tuple(item.items()) for item in dependent_parent_exceptions}
+
+    # Compare the sets
+    return set_parent_list == set_parent_exceptions
+
+
+def flatten_nested_lists(nested_lists):
+    """
+    Recursively flattens a nested list structure into a single flat list.
+
+    Args:
+        nested_lists (list): A list which may contain other nested lists at arbitrary depth.
+
+    Returns:
+        list: A flat list containing all the elements from the nested lists.
+
+    Example:
+        >>> flatten_nested_lists([1, [2, [3, 4], 5], 6])
+        [1, 2, 3, 4, 5, 6]
+    """
+
+    flat_list = []
+    for item in nested_lists:
+        if isinstance(item, list):
+            flat_list.extend(flatten_nested_lists(item))
+        else:
+            flat_list.append(item)
+    return flat_list

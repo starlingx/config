@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2023 Wind River Systems, Inc.
+# Copyright (c) 2013-2023, 2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -112,6 +112,13 @@ NETWORK_TYPE_CLUSTER_HOST = 'cluster-host'
 SB_SUPPORTED_NETWORKS = {
     SB_TYPE_CEPH: [NETWORK_TYPE_MGMT, NETWORK_TYPE_CLUSTER_HOST]
 }
+
+# PTP definitions
+PTP_INSTANCE_TYPE_MONITORING = "monitoring"
+PTP_INSTANCE_TYPE_MONITORING_SUPPORTED_PARAMETERS = [
+    "devices", "satellite_count", "signal_quality_db",
+    "cmdline_opts"
+]
 
 EXPIRED = "--expired"
 SOON_TO_EXPIRY = "--soon_to_expiry"

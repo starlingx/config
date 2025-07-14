@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2024 Wind River Systems, Inc.
+# Copyright (c) 2013-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -686,3 +686,17 @@ def do_host_kernel_show(cc, args):
     except exc.HTTPNotFound:
         raise exc.CommandError('Host not found: %s' % args.hostnameorid)
     _print_kernel_show(kernel, args.format)
+
+
+@utils.arg('hostnameorid', metavar='<hostname or id>',
+           help="Name or ID of host")
+def do_vim_host_audit(cc, args):
+    """Perform host audit operation on specified host."""
+    ihost = ihost_utils._find_ihost(cc, args.hostnameorid)
+    try:
+        cc.ihost.vim_host_audit(ihost.uuid)
+        print(f"Host audit initiated successfully: {ihost.hostname}")
+    except exc.HTTPNotFound:
+        print("Host audit failed: host not found")
+    except Exception as e:
+        print(f"Host audit failed: {e}")

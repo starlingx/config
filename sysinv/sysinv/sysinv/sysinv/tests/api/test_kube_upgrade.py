@@ -183,13 +183,6 @@ class TestKubeUpgrade(base.FunctionalTest):
         self.mock_check_kube_control_plane_pods.return_value = (True, [])
         self.addCleanup(p.stop)
 
-        # _check_psp_policies
-        # returns (Success Boolean, List of psp resources [])
-        p = mock.patch.object(health.Health, '_check_psp_policies')
-        self.mock_check_psp_policies = p.start()
-        self.mock_check_psp_policies.return_value = (True, [])
-        self.addCleanup(p.stop)
-
     def _patch_current(self, bool_val=True):
         return {
             'data': [
@@ -378,10 +371,6 @@ class TestPostKubeUpgrade(TestKubeUpgrade,
                                 "0.0",
                                 "0.0")
         mock_get_platform_upgrade.return_value = usm_deploy
-        dbutils.create_test_load(software_version=dbutils.SW_VERSION_NEW,
-                                 compatible_version=dbutils.SW_VERSION,
-                                 state=constants.IMPORTED_LOAD_STATE)
-        dbutils.create_test_upgrade()
 
         create_dict = dbutils.post_get_test_kube_upgrade(to_version='v1.43.2')
         result = self.post_json('/kube_upgrade', create_dict,

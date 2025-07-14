@@ -170,11 +170,6 @@ class RouteTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
         self.assertEqual(response.status_code, status_code)
         self.assertIn(error_message, response.json['error_message'])
 
-    def _create_platform_upgrade(self):
-        self.upgrade = dbutils.create_test_upgrade(
-            state=constants.UPGRADE_STARTING
-        )
-
 
 class TestPost(RouteTestCase):
     def test_create_route(self):
@@ -204,7 +199,6 @@ class TestPostUpgrade(RouteTestCase):
     def setUp(self):
         super(TestPostUpgrade, self).setUp()
         self.dbapi = db_api.get_instance()
-        self._create_platform_upgrade()
 
     @mock.patch('sysinv.common.usm_service.is_usm_authapi_ready', lambda: True)
     def test_create_route_during_disallowed_upgrade_state(self):
@@ -276,7 +270,6 @@ class TestDeleteUpgrade(RouteTestCase):
     def setUp(self):
         super(TestDeleteUpgrade, self).setUp()
         self.dbapi = db_api.get_instance()
-        self._create_platform_upgrade()
 
     @mock.patch('sysinv.common.usm_service.is_usm_authapi_ready', lambda: True)
     def test_delete_route_during_disallowed_upgrade_state(self):

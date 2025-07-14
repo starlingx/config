@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2019-2024 Wind River Systems, Inc.
+# Copyright (c) 2019-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -178,7 +178,7 @@ class HostTest(test_shell.ShellTest):
         self.ihost_manager_kube_upgrade_control_plane_result = \
             ihost(None, FAKE_IHOST_2, True)
 
-        results = self.shell("kube-host-upgrade controller-1 control-plane")
+        results = self.shell("kube-host-upgrade controller-1 control-plane --yes")
 
         self.assertIn(str(FAKE_IHOST_2['id']), results)
         self.assertIn(str(FAKE_IHOST_2['hostname']), results)
@@ -219,7 +219,7 @@ class HostTest(test_shell.ShellTest):
         self.ihost_manager_kube_upgrade_kubelet_result = \
             ihost(None, FAKE_IHOST_2, True)
 
-        results = self.shell("kube-host-upgrade controller-1 kubelet")
+        results = self.shell("kube-host-upgrade controller-1 kubelet --yes")
 
         self.assertIn(str(FAKE_IHOST_2['id']), results)
         self.assertIn(str(FAKE_IHOST_2['hostname']), results)
@@ -250,3 +250,11 @@ class HostTest(test_shell.ShellTest):
                          FAKE_KERNEL['kernel_provisioned'])
         self.assertEqual(kernel['kernel_running'],
                          FAKE_KERNEL['kernel_running'])
+
+    @mock.patch('cgtsclient.v1.ihost.ihostManager.vim_host_audit')
+    def test_vim_host_audit(self, mock_vim_host_audit):
+        self.make_env()
+        mock_vim_host_audit.return_value = None
+        results = self.shell(f"vim-host-audit {FAKE_IHOST['hostname']}")
+        self.assertIn("Host audit initiated successfully", results)
+        mock_vim_host_audit.assert_called_once_with(FAKE_IHOST['uuid'])

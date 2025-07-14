@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2020,2024 Wind River Systems, Inc.
+# Copyright (c) 2020, 2024-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -467,8 +467,8 @@ def _check_capabilities(fs_name, functions, current_fs_list):
     rook_ceph = pecan.request.dbapi.storage_backend_get_list_by_type(
                     backend_type=constants.SB_TYPE_CEPH_ROOK)
     if not rook_ceph:
-        msg = _("HostFs update failed: {} must be configured as the storage backend "
-                "to add/remove the monitor function.") % constants.SB_TYPE_CEPH_ROOK
+        msg = _("HostFs update failed: %s must be configured as the storage backend "
+                "to add/remove the monitor function." % constants.SB_TYPE_CEPH_ROOK)
         raise wsme.exc.ClientSideError(msg)
 
     if not functions:
@@ -501,6 +501,13 @@ def _check_capabilities(fs_name, functions, current_fs_list):
                 "to remove the %s function. Only adding/removing the "
                 "monitor function is supported with this API." %
                     constants.FILESYSTEM_CEPH_FUNCTION_OSD)
+        raise wsme.exc.ClientSideError(msg)
+
+    if (constants.FILESYSTEM_CEPH_FUNCTION_MONITOR in functions and
+            constants.FILESYSTEM_CEPH_FUNCTION_MONITOR not in current_fs_functions and
+            cutils.count_local_monitors_assigned(pecan.request.dbapi) >= constants.FILESYSTEM_CEPH_MONITOR_MAX):
+        msg = _("HostFs update failed: Number of monitors cannot exceed %s." %
+                constants.FILESYSTEM_CEPH_MONITOR_MAX)
         raise wsme.exc.ClientSideError(msg)
 
 
@@ -649,6 +656,11 @@ def _create(host_fs):
     if rook_ceph and host_fs['name'] == constants.FILESYSTEM_NAME_CEPH:
         if parent == 'host_fs':
             capabilities['functions'] = [constants.FILESYSTEM_CEPH_FUNCTION_MONITOR]
+            if cutils.count_local_monitors_assigned(pecan.request.dbapi) >= constants.FILESYSTEM_CEPH_MONITOR_MAX:
+                msg = _("HostFs add failed. Number of monitors cannot exceed %s." %
+                        constants.FILESYSTEM_CEPH_MONITOR_MAX)
+                LOG.warning(msg)
+                raise wsme.exc.ClientSideError(msg)
         elif parent == 'istors':
             capabilities['functions'] = [constants.FILESYSTEM_CEPH_FUNCTION_OSD]
 

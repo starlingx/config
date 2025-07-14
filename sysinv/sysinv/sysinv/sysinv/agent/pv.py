@@ -17,6 +17,7 @@ import sys
 from oslo_log import log as logging
 
 from sysinv.common import constants
+from sysinv.common import utils
 
 LOG = logging.getLogger(__name__)
 
@@ -57,34 +58,20 @@ class PVOperator(object):
             disable_filter = ' --config \'devices/global_filter=["a|.*|"]\''
             pvdisplay_command = pvdisplay_command + disable_filter
 
-        # Execute the command
-        try:
-            pvdisplay_process = subprocess.Popen(pvdisplay_command,
-                                             stdout=subprocess.PIPE,
-                                             shell=True,
-                                             universal_newlines=True)
-            pvdisplay_output = pvdisplay_process.stdout.read()
-        except Exception as e:
-            self.handle_exception("Could not retrieve pvdisplay "
-                                  "information: %s" % e)
-            pvdisplay_output = ""
+        pvdisplay_stdout, pvdisplay_stderr = utils.subprocess_open(command=pvdisplay_command,
+                                                                   timeout=10)
+        pvdisplay_output = pvdisplay_stdout.rstrip()
 
         # Cinder devices are hidden by global_filter on standby controller,
         # list them separately.
         if cinder_device:
             new_global_filer = ' --config \'devices/global_filter=["a|' + \
                                cinder_device + '|","r|.*|"]\''
-            pvdisplay_process = pvdisplay_command + new_global_filer
+            pvdisplay_command = pvdisplay_command + new_global_filer
 
-            try:
-                pvdisplay_process = subprocess.Popen(pvdisplay_process,
-                                                     stdout=subprocess.PIPE,
-                                                     shell=True,
-                                                     universal_newlines=True)
-                pvdisplay_output = pvdisplay_output + pvdisplay_process.stdout.read()
-            except Exception as e:
-                self.handle_exception("Could not retrieve vgdisplay "
-                                      "information: %s" % e)
+            pvdisplay_stdout, pvdisplay_stderr = utils.subprocess_open(command=pvdisplay_command,
+                                                                       timeout=10)
+            pvdisplay_output = pvdisplay_stdout.rstrip()
 
         # parse the output 1 pv/row
         rows = [row for row in pvdisplay_output.split('\n') if row.strip()]

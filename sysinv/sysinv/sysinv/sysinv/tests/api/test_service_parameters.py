@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2019-2023 Wind River Systems, Inc.
+# Copyright (c) 2019-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -559,8 +559,79 @@ class ApiServiceParameterTestCaseMixin(object):
                     ',1.1.1.1'
             )
         },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_PLATFORM_FM,
+            'name': constants.SERVICE_PARAM_NAME_FM_DATABASE_MAX_OVERFLOW_SIZE,
+            'value': '1'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_PLATFORM_FM,
+            'name': constants.SERVICE_PARAM_NAME_FM_DATABASE_MAX_OVERFLOW_SIZE,
+            'value': '10'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_PLATFORM_FM,
+            'name': constants.SERVICE_PARAM_NAME_FM_DATABASE_MAX_POOL_SIZE,
+            'value': '1'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_PLATFORM_FM,
+            'name': constants.SERVICE_PARAM_NAME_FM_DATABASE_MAX_POOL_SIZE,
+            'value': '10'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_PLATFORM_FM,
+            'name': constants.SERVICE_PARAM_NAME_FM_DATABASE_MAX_POOL_TIMEOUT,
+            'value': '1'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_PLATFORM_FM,
+            'name': constants.SERVICE_PARAM_NAME_FM_DATABASE_MAX_POOL_TIMEOUT,
+            'value': '10'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG,
+            'name': constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_OVERFLOW_SIZE,
+            'value': '1'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG,
+            'name': constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_OVERFLOW_SIZE,
+            'value': '10'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG,
+            'name': constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_POOL_SIZE,
+            'value': '1'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG,
+            'name': constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_POOL_SIZE,
+            'value': '10'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG,
+            'name': constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_POOL_TIMEOUT,
+            'value': '1'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG,
+            'name': constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_POOL_TIMEOUT,
+            'value': '10'
+        },
     ]
-
     service_parameter_wildcard = {
         'service': constants.SERVICE_TYPE_PTP,
         'section': constants.SERVICE_PARAM_SECTION_PTP_GLOBAL,
@@ -667,6 +738,87 @@ class ApiServiceParameterTestCaseMixin(object):
                 formatted_data[field] = None
 
         return formatted_data
+
+
+class CLIConfirmationTestHelper(object):
+    def __init__(self, test_case):
+        self.test_case = test_case
+        self.invalid_msg = (
+            "Parameter '%s' value must be either '%s' or '%s'" %
+            (
+                constants.SERVICE_PARAM_NAME_PLATFORM_CLI_CONFIRMATIONS,
+                constants.SERVICE_PARAM_DISABLED,
+                constants.SERVICE_PARAM_ENABLED
+            )
+        )
+        self.cli_confirmations_service_param_test_cases = {
+            "valid_enabled": {
+                "value": "enabled",
+                "expect_error": False
+            },
+            "invalid_yes": {
+                "value": "yes",
+                "expect_error": True,
+                "error_message": self.invalid_msg
+            },
+            "invalid_capital_enabled": {
+                "value": "ENABLED",
+                "expect_error": True,
+                "error_message": self.invalid_msg
+            },
+            "invalid_numeric": {
+                "value": "123",
+                "expect_error": True,
+                "error_message": self.invalid_msg
+            }
+        }
+
+        self.cli_confirmation_base_object = {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_PLATFORM_CLIENT,
+            'name': constants.SERVICE_PARAM_NAME_PLATFORM_CLI_CONFIRMATIONS,
+        }
+
+    def _create_cli_confirmation_object(self, value="enabled"):
+        obj = dict(self.cli_confirmation_base_object)
+        obj["value"] = value
+        return self.test_case._create_db_object(obj)
+
+    def validate_post(self):
+        sorted_cases = sorted(
+             self.cli_confirmations_service_param_test_cases.items(),
+             key=lambda item: not item[1]["expect_error"]
+        )
+        for name, case in sorted_cases:
+            post_object = dict(self.cli_confirmation_base_object)
+            post_object['value'] = case["value"]
+
+            if case["expect_error"]:
+                self.test_case.post(post_object, expect_errors=True,
+                     error_message=case["error_message"])
+            else:
+                self.test_case.post(post_object, expect_errors=False)
+
+    def validate_delete(self):
+        del_obj = self._create_cli_confirmation_object("enabled")
+        uuid = del_obj.uuid
+        response = self.test_case.delete(self.test_case.get_single_url(uuid),
+                   headers=self.test_case.API_HEADERS)
+        self.test_case.assertEqual(response.status_code, http_client.NO_CONTENT)
+
+    def validate_patch(self):
+        self.patch_object = self._create_cli_confirmation_object("enabled")
+        for name, case in self.cli_confirmations_service_param_test_cases.items():
+            patch_data = {'value': case["value"]}
+            if case["expect_error"]:
+                self.test_case.patch(self.patch_object.uuid,
+                    patch_data,
+                    expect_errors=True,
+                    error_message=case["error_message"])
+            else:
+                response = self.test_case.patch(self.patch_object.uuid, patch_data)
+                self.patch_object.update(patch_data)
+                self.test_case.validate_data(self.patch_object, response)
 
 
 class ApiServiceParameterPostTestSuiteMixin(ApiServiceParameterTestCaseMixin):
@@ -858,6 +1010,10 @@ class ApiServiceParameterPostTestSuiteMixin(ApiServiceParameterTestCaseMixin):
             response = self.post(post_object)
             self.validate_data(post_object, response)
 
+    def test_cli_confirmations_post(self):
+        self.cli_helper = CLIConfirmationTestHelper(self)
+        self.cli_helper.validate_post()
+
 
 class ApiServiceParameterDeleteTestSuiteMixin(ApiServiceParameterTestCaseMixin):
     """ Tests deletion.
@@ -883,6 +1039,10 @@ class ApiServiceParameterDeleteTestSuiteMixin(ApiServiceParameterTestCaseMixin):
         results = self.get_list()
         returned_uuids = (result.uuid for result in results)
         self.assertNotIn(uuid, returned_uuids)
+
+    def test_cli_confirmations_delete(self):
+        self.cli_helper = CLIConfirmationTestHelper(self)
+        self.cli_helper.validate_delete()
 
 
 class ApiServiceParameterListTestSuiteMixin(ApiServiceParameterTestCaseMixin):
@@ -930,6 +1090,10 @@ class ApiServiceParameterPatchTestSuiteMixin(ApiServiceParameterTestCaseMixin):
         new_data = {'value': 'a_string'}
         self.patch(self.patch_object.uuid, new_data, expect_errors=True,
                    error_message="must be an integer value")
+
+    def test_cli_confirmations_patch(self):
+        self.cli_helper = CLIConfirmationTestHelper(self)
+        self.cli_helper.validate_patch()
 
 
 class PlatformIPv4ControllerApiServiceParameterDeleteTestCase(ApiServiceParameterDeleteTestSuiteMixin,

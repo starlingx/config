@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2020-2024 Wind River Systems, Inc.
+# Copyright (c) 2020-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -168,6 +168,18 @@ class TestPostMixin(object):
         self.assertEqual(response[self.COMMON_FIELD],
                          ndict[self.COMMON_FIELD])
         return addrpool.id
+
+    def _test_create_network_failed(self, network_type, addrpool, http_error_code):
+        # Test creation of object
+        ndict = self.get_post_object(network_type, addrpool.uuid)
+        response = self.post_json(self.API_PREFIX,
+                                  ndict,
+                                  headers=self.API_HEADERS,
+                                  expect_errors=True)
+
+        # Check HTTP response
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(response.status_code, http_error_code)
 
     def _test_create_network_fail_duplicate(self, name, network_type, subnet):
         # Test creation of object
@@ -344,8 +356,6 @@ class TestPostMixin(object):
                                     'gateway_address_id': 'controller-gateway-mgmt'})
 
     def test_create_success_management_subcloud(self):
-        self._set_dc_role(constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD)
-
         mgmt_pool = self._create_test_address_pool('mgmt', self.mgmt_subnet, link_addresses=True)
         gateway_addr = self.dbapi.address_get(mgmt_pool.gateway_address_id)
         self.dbapi.address_update(gateway_addr.uuid, {'name': 'mgmt-gw'})
@@ -357,7 +367,7 @@ class TestPostMixin(object):
         self.assertEqual(updated_mgmt_pool.gateway_address_id, gateway_addr.id)
 
         updated_addr = self.dbapi.address_get(gateway_addr.id)
-        self.assertEqual('system-controller-gateway-ip-mgmt', updated_addr.name)
+        self.assertEqual('controller-gateway-mgmt', updated_addr.name)
 
     def test_create_success_oam(self):
         addrpool = self._create_test_address_pool('oam', self.oam_subnet, link_addresses=True)
@@ -418,6 +428,19 @@ class TestPostMixin(object):
         addrpool = self._create_test_address_pool('cluster-pod', self.cluster_pod_subnet)
         self._test_create_network_success(constants.NETWORK_TYPE_CLUSTER_POD, addrpool)
 
+    def test_create_success_cluster_pod_with_overlap_cluster_host(self):
+        if self.cluster_pod_subnet.version == 4:
+            cluster_host_subnet = netaddr.IPNetwork('172.16.0.0/24')
+        else:
+            cluster_host_subnet = netaddr.IPNetwork('fd03::/112')
+
+        self.assertTrue(cluster_host_subnet in self.cluster_pod_subnet)
+        self._create_test_network('cluster-host', constants.NETWORK_TYPE_CLUSTER_HOST,
+                                  [cluster_host_subnet])
+
+        addrpool = self._create_test_address_pool('cluster-pod', self.cluster_pod_subnet)
+        self._test_create_network_success(constants.NETWORK_TYPE_CLUSTER_POD, addrpool)
+
     def test_create_success_cluster_service(self):
         addrpool = self._create_test_address_pool('cluster-service', self.cluster_service_subnet)
         self._test_create_network_success(constants.NETWORK_TYPE_CLUSTER_SERVICE, addrpool)
@@ -435,12 +458,40 @@ class TestPostMixin(object):
             cluster_pod_subnet = netaddr.IPNetwork('fd04::/64')
 
         self.assertTrue(self.cluster_service_subnet in cluster_pod_subnet)
-
         self._create_test_network('cluster-pod', constants.NETWORK_TYPE_CLUSTER_POD,
                                   [cluster_pod_subnet])
 
         addrpool = self._create_test_address_pool('cluster-service', self.cluster_service_subnet)
         self._test_create_network_success(constants.NETWORK_TYPE_CLUSTER_SERVICE, addrpool)
+
+    def test_create_success_cluster_service_with_overlap_cluster_host(self):
+
+        if self.cluster_service_subnet.version == 4:
+            cluster_host_subnet = netaddr.IPNetwork('10.96.0.0/10')
+        else:
+            cluster_host_subnet = netaddr.IPNetwork('fd04::/64')
+
+        self.assertTrue(self.cluster_service_subnet in cluster_host_subnet)
+        self._create_test_network('cluster-host', constants.NETWORK_TYPE_CLUSTER_HOST,
+                                  [cluster_host_subnet])
+
+        addrpool = self._create_test_address_pool('cluster-service', self.cluster_service_subnet)
+        self._test_create_network_success(constants.NETWORK_TYPE_CLUSTER_SERVICE, addrpool)
+
+    def test_create_failed_cluster_service_with_overlap_storage(self):
+
+        if self.cluster_service_subnet.version == 4:
+            storage_subnet = netaddr.IPNetwork('10.96.0.0/10')
+        else:
+            storage_subnet = netaddr.IPNetwork('fd04::/64')
+
+        self.assertTrue(self.cluster_service_subnet in storage_subnet)
+        self._create_test_network('test-storage', constants.NETWORK_TYPE_STORAGE,
+                                  [storage_subnet])
+
+        addrpool = self._create_test_address_pool('cluster-service', self.cluster_service_subnet)
+        self._test_create_network_failed(constants.NETWORK_TYPE_CLUSTER_SERVICE, addrpool,
+                                         http_client.CONFLICT)
 
     def test_create_success_storage(self):
         addrpool = self._create_test_address_pool('storage', self.storage_subnet)
@@ -453,8 +504,6 @@ class TestPostMixin(object):
         self.assertIsNone(updated_addrpool.gateway_address)
 
     def test_create_success_admin(self):
-        self._set_dc_role(constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD)
-
         addrpool = self._create_test_address_pool('admin', self.admin_subnet)
         gateway_addr = self.dbapi.address_get_by_address(str(self.admin_subnet[1]))
         self.dbapi.address_update(gateway_addr.uuid, {'name': 'admin-gw',
@@ -468,19 +517,7 @@ class TestPostMixin(object):
                                    {'floating_address_id': 'controller-admin',
                                    'controller0_address_id': 'controller-0-admin',
                                    'controller1_address_id': 'controller-1-admin',
-                                   'gateway_address_id': 'system-controller-gateway-ip-admin'})
-
-    def test_create_success_admin_non_subcloud(self):
-        addrpool = self._create_test_address_pool('admin', self.admin_subnet)
-        p = mock.patch('sysinv.api.controllers.v1.utils.get_distributed_cloud_role')
-        self.mock_utils_get_distributed_cloud_role = p.start()
-        self.mock_utils_get_distributed_cloud_role.return_value = \
-            constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER
-        self.addCleanup(p.stop)
-
-        self._test_create_network_success(
-            constants.NETWORK_TYPE_ADMIN,
-            addrpool)
+                                   'gateway_address_id': 'controller-gateway-admin'})
 
     def test_create_fail_duplicate_pxeboot(self):
         self._test_create_network_fail_duplicate(
@@ -525,7 +562,6 @@ class TestPostMixin(object):
             self.storage_subnet)
 
     def test_create_fail_duplicate_admin(self):
-        self._set_dc_role(constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD)
         self._test_create_network_fail_duplicate(
             'admin',
             constants.NETWORK_TYPE_ADMIN,
@@ -827,12 +863,6 @@ class TestDelete(NetworkTestCase):
     def test_delete_admin_dual_stack(self):
         p = mock.patch('sysinv.conductor.rpcapi.ConductorAPI.update_admin_config')
         self.mock_rpcapi_update_admin_config = p.start()
-        self.addCleanup(p.stop)
-
-        p = mock.patch('sysinv.api.controllers.v1.utils.get_distributed_cloud_role')
-        self.mock_get_distributed_cloud_role = p.start()
-        self.mock_get_distributed_cloud_role.return_value =\
-            constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD
         self.addCleanup(p.stop)
 
         mgmt_network = self._create_test_network(

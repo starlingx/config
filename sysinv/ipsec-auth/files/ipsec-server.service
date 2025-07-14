@@ -6,6 +6,8 @@ After=network-online.target syslog-ng.service sysinv-api.service
 Type=simple
 RemainAfterExit=yes
 User=root
+ExecStartPre=/usr/bin/mkdir -p /var/run/ipsec-server
+Environment=TMPDIR=/var/run/ipsec-server
 ExecStart=/usr/bin/ipsec-server
 PIDFile=/var/run/ipsec-server.pid
 TimeoutStartSec=10s

@@ -1,11 +1,12 @@
 ########################################################################
 #
-# Copyright (c) 2021 Wind River Systems, Inc.
+# Copyright (c) 2021, 2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
 ########################################################################
 
+from cgtsclient.common import constants
 from cgtsclient.common import utils
 from cgtsclient import exc
 from cgtsclient.v1 import ihost as ihost_utils
@@ -60,6 +61,13 @@ def do_ptp_interface_add(cc, args):
     # Check the PTP instance exists
     ptp_instance = ptp_instance_utils._find_ptp_instance(
         cc, args.ptpinstancenameorid)
+
+    # Do not allow for monitoring service type.
+    if ptp_instance.service == constants.PTP_INSTANCE_TYPE_MONITORING:
+        raise exc.CommandError(
+            "PTP instance of monitoring type does not support interface"
+        )
+
     data.update({'ptp_instance_uuid': ptp_instance.uuid})
 
     ptp_interface = cc.ptp_interface.create(**data)

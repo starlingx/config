@@ -15,14 +15,12 @@ from oslo_context import context
 
 from sysinv.agent.manager import AgentManager
 from sysinv.common import constants
-from sysinv.common import exception
 from sysinv.tests import base
 
 
 class FakeConductorAPI(object):
 
     def __init__(self, isystem=None):
-        self.finalize_delete_load = mock.MagicMock()
         self.create_host_filesystems = mock.MagicMock()
         self.update_host_max_cpu_mhz_configured = mock.MagicMock()
         self.is_virtual_system_config_result = False
@@ -473,60 +471,3 @@ class TestHostFileSystems(base.TestCase):
             self.agent_manager._ihost_uuid,
             expected_filesystems)
         self.assertEqual(self.agent_manager._prev_fs, expected_filesystems)
-
-
-@mock.patch('sysinv.agent.manager.os.path.isfile', mock.MagicMock())
-@mock.patch('sysinv.agent.manager.subprocess.check_call', mock.MagicMock())
-class TestLoad(base.TestCase):
-    def setUp(self):
-        super(TestLoad, self).setUp()
-
-        self.version = '1.0'
-        self.fake_uuid = 'FAKEUUID'
-        self.agent_manager = AgentManager('test-host', 'test-topic')
-        self.agent_manager._ihost_uuid = self.fake_uuid
-        self.context = context.get_admin_context()
-
-        conductor = mock.patch('sysinv.agent.manager.conductor_rpcapi.ConductorAPI')
-        self.mock_conductor_api = conductor.start()
-        self.fake_conductor = FakeConductorAPI()
-        self.mock_conductor_api.return_value = self.fake_conductor
-        self.addCleanup(conductor.stop)
-
-    def tearDown(self):
-        super(TestLoad, self).tearDown()
-
-    def test_delete_load(self):
-        self.agent_manager.delete_load(
-            self.context,
-            self.fake_uuid,
-            self.version,
-        )
-
-        self.fake_conductor.finalize_delete_load.assert_called_once()
-
-    def test_delete_load_without_delete_script(self):
-        with mock.patch('sysinv.agent.manager.os.path.isfile') as isfile:
-            isfile.return_value = False
-
-            self.agent_manager.delete_load(
-                self.context,
-                self.fake_uuid,
-                self.version,
-            )
-
-        self.fake_conductor.finalize_delete_load.assert_not_called()
-
-    def test_delete_load_script_exception(self):
-        with mock.patch('sysinv.agent.manager.subprocess.check_call') as check_call:
-            check_call.side_effect = exception.SysinvException()
-
-            self.assertRaises(
-                exception.SysinvException,
-                self.agent_manager.delete_load,
-                self.context,
-                self.fake_uuid,
-                self.version,
-            )
-
-        self.fake_conductor.finalize_delete_load.assert_not_called()

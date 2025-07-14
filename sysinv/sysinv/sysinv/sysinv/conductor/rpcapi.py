@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2024 Wind River Systems, Inc.
+# Copyright (c) 2013-2025 Wind River Systems, Inc.
 #
 
 """
@@ -659,6 +659,22 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.call(context, self.make_msg('update_pcidp_config',
                                                 host_uuid=host_uuid))
 
+    def update_platform_ratelimit_config(self, context, host_uuid):
+        """Synchronously, have a conductor configure platform ratelimit.
+
+        Does the following tasks:
+        - sends a message to conductor
+        - who sends a message to all inventory agents
+        - who each apply the network manifest
+
+        :param context: request context.
+        :param host_uuid: the host unique uuid
+        """
+        LOG.debug("ConductorApi.update_platform_ratelimit_config: sending "
+                  "update_platform_ratelimit_config to conductor")
+        return self.call(context, self.make_msg('update_platform_ratelimit_config',
+                                                host_uuid=host_uuid))
+
     def update_distributed_cloud_role(self, context):
         """Synchronously, have a conductor configure the distributed cloud
            role of the system.
@@ -1285,65 +1301,6 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                          self.make_msg('update_apparmor_config',
                                        ihost_uuid=ihost_uuid))
 
-    def start_import_load(self, context, path_to_iso, path_to_sig,
-                          import_type=None, timeout=180):
-        """Synchronously, mount the ISO and validate the load for import
-
-        :param context: request context.
-        :param path_to_iso: the file path of the iso on this host
-        :param path_to_sig: the file path of the iso's detached signature on
-                            this host
-        :param import_type: the type of the import, the possible values are
-                            constants.ACTIVE_LOAD_IMPORT for active load or
-                            constants.INACTIVE_LOAD_IMPORT for inactive load.
-        :param timeout:       rpc call timeout in seconds
-        :returns: the newly create load object.
-        """
-        return self.call(context,
-                         self.make_msg('start_import_load',
-                                       path_to_iso=path_to_iso,
-                                       path_to_sig=path_to_sig,
-                                       import_type=import_type),
-                         timeout=timeout)
-
-    def import_load(self, context, path_to_iso, new_load,
-                    import_type=None):
-        """Asynchronously, import a load and add it to the database
-
-        :param context: request context.
-        :param path_to_iso: the file path of the iso on this host
-        :param new_load: the load object
-        :param import_type: the type of the import (active or inactive)
-        :returns: none.
-        """
-        return self.cast(context,
-                         self.make_msg('import_load',
-                                       path_to_iso=path_to_iso,
-                                       new_load=new_load,
-                                       import_type=import_type))
-
-    def delete_load(self, context, load_id):
-        """Asynchronously, cleanup a load from both controllers
-
-        :param context: request context.
-        :param load_id: id of load to be deleted
-        :returns: none.
-        """
-        return self.cast(context,
-                         self.make_msg('delete_load',
-                                       load_id=load_id))
-
-    def finalize_delete_load(self, context, sw_version):
-        """Asynchronously, delete the load from the database
-
-        :param context: request context.
-        :param sw_version: software version of load to be deleted
-        :returns: none.
-        """
-        return self.cast(context,
-                         self.make_msg('finalize_delete_load',
-                                       sw_version=sw_version))
-
     def load_update_by_host(self, context, ihost_id, version):
         """Update the host_upgrade table with the running SW_VERSION
 
@@ -1406,15 +1363,6 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         """
         return self.call(context, self.make_msg('abort_upgrade',
                                                 upgrade=upgrade))
-
-    def complete_simplex_backup(self, context, success):
-        """Asynchronously, complete the simplex upgrade start process
-
-        :param context: request context.
-        :param success: If the create_simplex_backup call completed
-                """
-        return self.cast(context, self.make_msg('complete_simplex_backup',
-                                                success=success))
 
     def get_system_health(self, context, force=False, upgrade=False,
                           kube_upgrade=False, kube_rootca_update=False,
@@ -1921,6 +1869,20 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                        rpc_app=rpc_app,
                                        lifecycle_hook_info_app_delete=lifecycle_hook_info))
 
+    def perform_update_in_all_apps(self, context):
+        """
+            Asynchronously triggers the update procedure for all applications.
+            :param context: request context.
+        """
+        return self.cast(context, self.make_msg('perform_update_in_all_apps'))
+
+    def get_apps_update_status(self, context):
+        """
+            Synchronously returns the update applications status.
+            :param context: request context.
+        """
+        return self.call(context, self.make_msg('get_apps_update_status'))
+
     def reconfigure_service_endpoints(self, context, host):
         """Synchronously, reconfigure service endpoints upon the creation of
         initial controller host and management/oam network change during
@@ -2377,3 +2339,13 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         :param context: request context.
         """
         return self.call(context, self.make_msg('get_all_k8s_certs'))
+
+    def configure_stalld(self, context, host_uuid):
+        """Synchronously, have the conductor reconfigure stalld
+           for the specified host.
+
+        :param context: request context
+        :param host_uuid: the uuid of the host
+        """
+        return self.call(context, self.make_msg('configure_stalld',
+                                                host_uuid=host_uuid))

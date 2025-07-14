@@ -57,7 +57,6 @@ class StorageTierIndependentTCs(base.FunctionalTest):
         self.set_is_initial_config_patcher.return_value = True
         self.system = dbutils.create_test_isystem()
         self.cluster = dbutils.create_test_cluster(system_id=self.system.id, name='ceph_cluster')
-        self.load = dbutils.create_test_load()
         self.host = dbutils.create_test_ihost(forisystemid=self.system.id)
 
     def tearDown(self):
@@ -560,7 +559,6 @@ class StorageTierDependentTCs(base.FunctionalTest):
         self.context = context.get_admin_context()
         self.dbapi = dbapi.get_instance()
         self.system = dbutils.create_test_isystem()
-        self.load = dbutils.create_test_load()
         self.host_index = -1
         self.mon_index = -1
 

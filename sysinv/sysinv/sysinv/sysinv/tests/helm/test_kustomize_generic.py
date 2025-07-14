@@ -27,6 +27,7 @@ class TestGenericFluxCDKustomizeOperator(test_base.TestCase):
         # check log
 
     @mock.patch('sysinv.helm.kustomize_base.dbapi')
+    @mock.patch('sysinv.helm.kustomize_base.constants.APP_FLUXCD_BASE_PATH', '/tmp')
     def test_load_fluxcd_test_manifest(self, _):
         self.instance.load(FLUXCD_TEST_MANIFEST)
 

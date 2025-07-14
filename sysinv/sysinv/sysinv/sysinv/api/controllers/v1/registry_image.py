@@ -14,9 +14,11 @@ from oslo_log import log
 from sysinv._i18n import _
 from sysinv.api.controllers.v1 import base
 from sysinv.api.controllers.v1 import collection
+from sysinv.api.policies import registry_image as registry_policy
 from sysinv.common import utils as cutils
+from sysinv.common import exception
+from sysinv.common import policy
 from sysinv.openstack.common.rpc import common as rpc_common
-
 
 LOG = log.getLogger(__name__)
 LOCK_NAME = 'RegistryImageController'
@@ -119,3 +121,15 @@ class RegistryImageController(rest.RestController):
             # come in as RemoteError from the RPC handler
             except rpc_common.RemoteError as e:
                 raise wsme.exc.ClientSideError(_(e.value))
+
+    def enforce_policy(self, method_name, request):
+        """Check policy rules for each action of this controller."""
+        context_dict = request.context.to_dict()
+        if method_name == "delete":
+            policy.authorize(registry_policy.POLICY_ROOT % "delete", {}, context_dict)
+        elif method_name in ["get_all", "get_one"]:
+            policy.authorize(registry_policy.POLICY_ROOT % "get", {}, context_dict)
+        elif method_name == "post":
+            policy.authorize(registry_policy.POLICY_ROOT % "add", {}, context_dict)
+        else:
+            raise exception.PolicyNotFound()

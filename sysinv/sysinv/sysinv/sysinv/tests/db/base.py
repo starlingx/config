@@ -259,7 +259,6 @@ class BaseSystemTestCase(BaseIPv4Mixin, DbTestCase):
 
     def _create_test_common(self):
         self._create_test_system()
-        self._create_test_load()
         self._create_test_drbd()
         self._create_test_remotelogging()
         self._create_test_user()
@@ -276,9 +275,6 @@ class BaseSystemTestCase(BaseIPv4Mixin, DbTestCase):
         self.system = dbutils.create_test_isystem(
             system_type=self.system_type,
             system_mode=self.system_mode)
-
-    def _create_test_load(self):
-        self.load = dbutils.create_test_load()
 
     def _create_test_drbd(self):
         self.drbd = dbutils.create_test_drbd(
@@ -889,18 +885,3 @@ class OpenstackTestCase(AppTestCase):
         with open(os.path.join(os.getcwd(), "sysinv", "tests",
                                "puppet", "fake_hieradata.yaml")) as fake_data:
             self.fake_hieradata = fake_data.read()
-
-
-class PlatformUpgradeTestCase(OpenstackTestCase):
-
-    def _create_platform_upgrade(self):
-        self.upgrade = dbutils.create_test_upgrade(
-            state=constants.UPGRADE_STARTING
-        )
-
-    def setUp(self):
-        super(PlatformUpgradeTestCase, self).setUp()
-        self._create_platform_upgrade()
-
-    def tearDown(self):
-        super(PlatformUpgradeTestCase, self).tearDown()

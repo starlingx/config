@@ -1014,8 +1014,6 @@ class TestPostMixin(NetworkAddrpoolTestCase):
         self._setup_context()
         net_type = constants.NETWORK_TYPE_MGMT
 
-        self._set_dc_role(constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD)
-
         mgmt_subnet = netaddr.IPNetwork('3001::/64')
         ranges = [(str(mgmt_subnet[2]), str(mgmt_subnet[-2]))]
 
@@ -1035,7 +1033,7 @@ class TestPostMixin(NetworkAddrpoolTestCase):
             address="3001::2")
 
         gw_address = dbutils.create_test_address(
-            name=f"{constants.SYSTEM_CONTROLLER_GATEWAY_IP_NAME}-{net_type}",
+            name=f"{constants.CONTROLLER_GATEWAY}-{net_type}",
             family=mgmt_subnet.version, prefix=mgmt_subnet.prefixlen,
             address="3001::1")
 
@@ -1434,8 +1432,6 @@ class TestPostMixin(NetworkAddrpoolTestCase):
         self.assertEqual('controller-1-mgmt', c1_address.name)
 
     def test_success_create_network_addrpool_secondary_admin(self):
-        self._set_dc_role(constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD)
-
         p = mock.patch('sysinv.conductor.rpcapi.ConductorAPI.update_admin_config')
         self.mock_rpcapi_update_admin_config = p.start()
         self.addCleanup(p.stop)

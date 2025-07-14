@@ -13,7 +13,6 @@
         - sysinv-tox-flake8
         - sysinv-tox-pylint
         - sysinv-tox-bandit
-        - controllerconfig-tox-py39
         - controllerconfig-tox-flake8
         - controllerconfig-tox-pylint
         - tsconfig__tox-pylint
@@ -29,7 +28,6 @@
         - sysinv-tox-flake8
         - sysinv-tox-pylint
         - sysinv-tox-bandit
-        - controllerconfig-tox-py39
         - controllerconfig-tox-flake8
         - controllerconfig-tox-pylint
         - tsconfig__tox-pylint
@@ -99,19 +97,6 @@
     vars:
       tox_envlist: bandit
       tox_extra_args: -c sysinv/sysinv/sysinv/tox.ini
-
-- job:
-    name: controllerconfig-tox-py39
-    parent: tox-py39
-    description: Run py39 tests for controllerconfig
-    nodeset: debian-bullseye
-    required-projects:
-      - starlingx/fault
-    files:
-      - controllerconfig/*
-    vars:
-      tox_envlist: py39
-      tox_extra_args: -c controllerconfig/controllerconfig/tox.ini
 
 - job:
     name: controllerconfig-tox-flake8

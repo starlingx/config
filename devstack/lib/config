@@ -110,7 +110,6 @@ function cleanup_sysinv {
     sudo rm -f $SYSINV_ETC_GOENABLEDD/sysinv_goenabled_check.sh
     sudo rm -f $SYSINV_CONF_DIR/policy.yaml
     sudo rm -f $SYSINV_ETC_MOTDD/10-system
-    sudo rm -f $SYSINV_CONF_DIR/upgrades/delete_load.sh
     sudo rm -f $STX_OCF_ROOT/resource.d/platform/sysinv-api
     sudo rm -f $STX_OCF_ROOT/resource.d/platform/sysinv-conductor
     sudo rm -f $STX_SYSCONFDIR/systemd/system/sysinv-api.service
@@ -251,7 +250,6 @@ function install_sysinv {
     sudo install -d -m 755 $SYSINV_ETC_MOTDD
     sudo install -p -D -m 755 $SYSINV_DIR/etc/sysinv/motd-system $SYSINV_ETC_MOTDD/10-system
     sudo install -d -m 755 $SYSINV_CONF_DIR/upgrades
-    sudo install -p -D -m 755 $SYSINV_DIR/etc/sysinv/delete_load.sh $SYSINV_CONF_DIR/upgrades/delete_load.sh
     sudo install -p -D -m 755 $SYSINV_DIR/scripts/sysinv-api $STX_OCF_ROOT/resource.d/platform/sysinv-api
     sudo install -p -D -m 755 $SYSINV_DIR/scripts/sysinv-conductor $STX_OCF_ROOT/resource.d/platform/sysinv-conductor
     sudo install -p -D -m 755 $SYSINV_DIR/scripts/sysinv-api.service $STX_SYSCONFDIR/systemd/system/sysinv-api.service

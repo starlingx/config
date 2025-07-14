@@ -15,7 +15,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2024 Wind River Systems, Inc.
+# Copyright (c) 2013-2025 Wind River Systems, Inc.
 #
 
 """Sysinv test utilities."""
@@ -243,50 +243,6 @@ def update_test_isystem(system_dict):
     """
     dbapi = db_api.get_instance()
     return dbapi.isystem_update(system_dict['uuid'], system_dict)
-
-
-def get_test_load(**kw):
-    load = {
-        "software_version": kw.get("software_version", SW_VERSION),
-        "compatible_version": kw.get("compatible_version", "N/A"),
-        "required_patches": "N/A",
-        "state": kw.get("state", constants.ACTIVE_LOAD_STATE),
-    }
-    return load
-
-
-def create_test_load(**kw):
-    load = get_test_load(**kw)
-    dbapi = db_api.get_instance()
-    return dbapi.load_create(load)
-
-
-def get_test_load_values(**kw):
-    values = {}
-
-    for key, value in kw.items():
-        values[key] = value
-
-    return values
-
-
-def update_test_load(load_id, **kw):
-    values = get_test_load_values(**kw)
-    dbapi = db_api.get_instance()
-    return dbapi.load_update(load_id, values)
-
-
-def get_test_upgrade(**kw):
-    upgrade = {'from_load': kw.get('from_load', 1),
-               'to_load': kw.get('to_load', 2),
-               'state': kw.get('state', constants.UPGRADE_STARTING)}
-    return upgrade
-
-
-def create_test_upgrade(**kw):
-    upgrade = get_test_upgrade(**kw)
-    dbapi = db_api.get_instance()
-    return dbapi.software_upgrade_create(upgrade)
 
 
 def post_get_test_kube_upgrade(**kw):
@@ -1416,7 +1372,8 @@ def get_test_interface(**kw):
         'sriov_vf_driver': kw.get('sriov_vf_driver', None),
         'sriov_vf_pdevice_id': kw.get('sriov_vf_pdevice_id', None),
         'ptp_role': kw.get('ptp_role', None),
-        'max_tx_rate': kw.get('max_tx_rate', None)
+        'max_tx_rate': kw.get('max_tx_rate', None),
+        'max_rx_rate': kw.get('max_rx_rate', None)
     }
     return interface
 

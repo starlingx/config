@@ -1,4 +1,4 @@
-# Copyright 2013-2021 Wind River, Inc
+# Copyright 2013-2025 Wind River, Inc
 # Copyright 2012 OpenStack LLC.
 # All Rights Reserved.
 #
@@ -25,11 +25,14 @@ import argparse
 from collections import OrderedDict
 import copy
 import dateutil
+import json
 import math
 import os
 import prettytable
 import re
+import signal
 import six
+import subprocess  # nosec
 import sys
 import textwrap
 import uuid
@@ -50,6 +53,8 @@ from cgtsclient.common import wrapping_formatters
 from six.moves import input
 from six.moves import map
 from six.moves import zip
+
+CONFIRMATION_YES = "yes"
 
 
 class HelpFormatter(argparse.HelpFormatter):
@@ -131,6 +136,9 @@ def define_command(subparsers, command, callback, cmd_mapper):
     subparser.add_argument('-h', '--help', action='help',
                            help=argparse.SUPPRESS)
 
+    if _is_service_impacting_command(command):
+        subparser.add_argument('--yes', action='store_true', help=f"Automatically confirm the action: {command}")
+        callback = prompt_cli_confirmation(callback)
     # Are we a list command?
     if _does_command_need_no_wrap(callback):
         # then decorate it with wrapping data formatter functionality
@@ -838,3 +846,192 @@ def _get_system_info(cc):
         return system_info.system_type, system_info.system_mode
     else:
         return tsc.system_type, tsc.system_mode
+
+
+def input_with_timeout(prompt, timeout):
+    def timeout_handler(signum, frame):
+        raise TimeoutError
+
+    # Set the timeout handler
+    signal.signal(signal.SIGALRM, timeout_handler)
+    signal.alarm(timeout)  # Set the alarm for the timeout
+
+    try:
+        # Try to get input from the user
+        result = input(prompt)
+        signal.alarm(0)  # Cancel the alarm if input is received in time
+        return result
+    except TimeoutError:
+        print("\nError: No response received within the time limit.")
+        sys.exit(1)
+
+
+def prompt_cli_confirmation(func, timeout=10):
+    """Decorator that asks for user confirmation before running the function."""
+    def wrapper(*args, **kwargs):
+        YELLOW = '\033[93m'
+        RESET = '\033[0m'
+        BOLD = '\033[1m'
+        if not _is_cliconfirmation_param_enabled():
+            return func(*args, **kwargs)
+        if hasattr(args[1], 'yes') and args[1].yes:
+            # Skip confirmation if --yes was passed
+            return func(*args, **kwargs)
+
+        confirmation = input_with_timeout(
+            f"{BOLD}{YELLOW}WARNING: This is a high-risk operation that may cause a "
+            f"service interruption or remove critical resources {RESET}\n"
+            f"{BOLD}{YELLOW}Do you want to continue? ({CONFIRMATION_YES}/No): {RESET}",
+            timeout,
+        )
+        if confirmation is None:
+            print("\nError: No response received within the time limit.")
+            return
+        elif confirmation.lower() != CONFIRMATION_YES:
+            print("Operation cancelled by the user.")
+            sys.exit(1)
+        return func(*args, **kwargs)
+    return wrapper
+
+
+def _is_service_impacting_command(command):
+    service_impacting_system_commands = [
+        "host-lock",
+        "host-power-off",
+        "host-reboot",
+        "host-reinstall",
+        "host-reset",
+        "host-swact",
+        "host-disk-wipe",
+        "host-patch-reboot",
+        "host-downgrade",
+        "host-upgraded",
+        "kube-host-cordon",
+        "kube-host-upgrade",
+        "kube-rootca-host-update",
+        "ca-certificate-install",
+        "ca-certificate-uninstall"
+    ]
+
+    return (
+        command in service_impacting_system_commands or
+        'delete' in command or
+        'remove' in command
+    )
+
+
+def _is_cliconfirmation_param_enabled():
+    return env("CLI_CONFIRMATIONS", default="disabled") == "enabled"
+
+
+def persist_auth_session_keyring(name: str,
+                                 token: str,
+                                 endpoint: str = None,
+                                 timeout: int = None) -> int:
+    """Stores the authentication data into keyring.
+    Authentication data can be retrieved later and reused, avoiding unnecessary calls
+    to identity services. Only the current user's session has access to the stored data.
+    Once the user ends the session the data is lost. It is also possible to set a
+    timeout to automaticaly expire the record.
+
+    :param name: Key name
+    :param token: Authentication token
+    :param endpoint: Endpoint URL
+    :param timeout: Timeout interval in seconds to expire the key. Default: never expires.
+    """
+
+    try:
+        session = {'token': token}
+
+        if endpoint is not None:
+            session['endpoint'] = endpoint
+
+        # Persist the key
+        stdout = subprocess.run(['/usr/bin/keyctl', 'add', 'user', name, json.dumps(session), '@s'],  # nosec
+                                check=True,
+                                capture_output=True).stdout
+
+        keyring_entry_id = stdout.decode('utf-8').strip('\n')
+
+        # Set key timeout
+        if timeout is not None:
+            subprocess.run(['/usr/bin/keyctl', 'timeout', keyring_entry_id, timeout],  # nosec
+                           check=True)
+
+        return keyring_entry_id
+
+    except subprocess.CalledProcessError:
+        pass
+
+
+def load_auth_session_keyring_by_name(key_name: str):
+    """Retrieves the authentication data from keyring using the key name.
+
+    :param key_name: Key name
+    """
+
+    try:
+        # Search for the key
+        stdout = subprocess.run(['/usr/bin/keyctl', 'search', '@s', 'user', key_name],  # nosec
+                                check=True,
+                                capture_output=True).stdout
+
+        keyring_entry_id = stdout.decode('utf-8').strip('\n')
+
+        # Retrieve session data
+        return load_auth_session_keyring_by_id(keyring_entry_id)
+
+    except subprocess.CalledProcessError:
+        return (None, None)
+
+
+def load_auth_session_keyring_by_id(key_id: int):
+    """Retrieves the authentication data from keyring using the key identifier.
+
+    :param key_id: Key Identifier
+    """
+
+    try:
+        # Retrieve session data
+        stdout = subprocess.run(['/usr/bin/keyctl', 'print', key_id],  # nosec
+                                check=True,
+                                capture_output=True).stdout
+
+        session = json.loads(stdout.decode('utf-8').strip('\n'))
+
+        return (session.get('token'), session.get('endpoint'))
+
+    except subprocess.CalledProcessError:
+        return (None, None)
+
+
+def revoke_keyring_by_name(key_name: str):
+    """Deletes a key from keyring using the key name.
+
+    :param key_name: Key name
+    """
+    try:
+        # Search for the key
+        stdout = subprocess.run(['/usr/bin/keyctl', 'search', '@s', 'user', key_name],  # nosec
+                                check=True,
+                                capture_output=True).stdout
+
+        keyring_entry_id = stdout.decode('utf-8').strip('\n')
+        revoke_keyring_by_id(keyring_entry_id)
+
+    except subprocess.CalledProcessError:
+        pass
+
+
+def revoke_keyring_by_id(key_id: int):
+    """Deletes a key from keyring using the key identifier.
+
+    :param key_id: Key Identifier
+    """
+    try:
+        subprocess.run(['/usr/bin/keyctl', 'revoke', key_id],  # nosec
+                       check=True,
+                       capture_output=True).stdout
+
+    except subprocess.CalledProcessError:
+        pass

@@ -197,7 +197,10 @@ class Interface(base.APIBase):
     "The PTP role for this interface"
 
     max_tx_rate = int
-    "The value of configured max tx rate of VF, Mbps"
+    "The value of configured max tx rate, Mbps"
+
+    max_rx_rate = int
+    "The value of configured max rx rate, Mbps"
 
     def __init__(self, **kwargs):
         self.fields = list(objects.interface.fields.keys())
@@ -224,8 +227,8 @@ class Interface(base.APIBase):
                                            'vlan_id', 'uses', 'usesmodify', 'used_by',
                                            'ipv4_mode', 'ipv6_mode', 'ipv4_pool', 'ipv6_pool',
                                            'sriov_numvfs', 'sriov_vf_driver', 'ptp_role',
-                                           'max_tx_rate', 'primary_reselect', 'created_at',
-                                           'updated_at'])
+                                           'max_tx_rate', 'max_rx_rate', 'primary_reselect',
+                                           'created_at', 'updated_at'])
 
         # never expose the ihost_id attribute
         interface.ihost_id = wtypes.Unset
@@ -432,6 +435,7 @@ class InterfaceController(rest.RestController):
         uses = None
         ports = None
         has_ptp_interfaces = False
+        rateLimitRequested = False
         patches_to_remove = []
         for p in patch:
             if '/ifclass' == p['path']:
@@ -459,6 +463,8 @@ class InterfaceController(rest.RestController):
                     pecan.request.dbapi.ptp_interface_assign(values)
                 else:
                     pecan.request.dbapi.ptp_interface_remove(values)
+            elif p['path'] in ['/max_tx_rate', '/max_rx_rate']:
+                rateLimitRequested = True
 
         if has_ptp_interfaces:
             return Interface.convert_with_links(rpc_interface)
@@ -581,7 +587,8 @@ class InterfaceController(rest.RestController):
 
         interface = _check("modify", interface,
                            ports=ports, ifaces=uses,
-                           existing_interface=rpc_interface.as_dict())
+                           existing_interface=rpc_interface.as_dict(),
+                           patch=patch)
 
         # Clear the vf fields if class is not sriov
         if interface['ifclass'] != constants.INTERFACE_CLASS_PCI_SRIOV:
@@ -653,6 +660,10 @@ class InterfaceController(rest.RestController):
                     pecan.request.context,
                     ihost['uuid'])
 
+            if rateLimitRequested:
+                pecan.request.rpcapi.update_platform_ratelimit_config(
+                    pecan.request.context, ihost['uuid'])
+
             return Interface.convert_with_links(new_interface)
         except Exception as e:
             LOG.exception(e)
@@ -705,7 +716,8 @@ def _set_defaults(interface):
                 'sriov_numvfs': 0,
                 'sriov_vf_driver': None,
                 'ptp_role': constants.INTERFACE_PTP_ROLE_NONE,
-                'max_tx_rate': None}
+                'max_tx_rate': None,
+                'max_rx_rate': None}
 
     if interface['ifclass'] == constants.INTERFACE_CLASS_DATA:
         defaults['ipv4_mode'] = constants.IPV4_DISABLED
@@ -1075,51 +1087,50 @@ def _check_network_type_and_port(interface, ihost,
             raise wsme.exc.ClientSideError(msg)
 
 
-def _check_interface_ratelimit(interface):
+def _check_vf_interface_ratelimit(interface):
     # Ensure rate limit is valid for VF interfaces
-    if interface['max_tx_rate'] is not None:
-        if not str(interface['max_tx_rate']).isdigit():
-            msg = _("max_tx_rate must be an integer value.")
+    if interface['max_rx_rate'] is not None:
+        msg = _("max_rx_rate is not applicable for VF interfaces")
+        raise wsme.exc.ClientSideError(msg)
+    if not str(interface['max_tx_rate']).isdigit():
+        msg = _("max_tx_rate must be an integer value.")
+        raise wsme.exc.ClientSideError(msg)
+
+    # check if an overcommitted config
+    max_tx_rate = interface['max_tx_rate']
+
+    ihost_uuid = interface['ihost_uuid']
+    lower_ifname = interface['uses'][0]
+    lower_iface = (
+        pecan.request.dbapi.iinterface_get(lower_ifname, ihost_uuid))
+
+    ports = pecan.request.dbapi.ethernet_port_get_by_interface(
+                                                    lower_iface['uuid'])
+    if len(ports) > 0:
+        if ports[0]['speed'] is None:
+            msg = _("Port speed for %s could not be determined. "
+                    "Check if the port is cabled correctly." %
+                    ports[0]['name'])
             raise wsme.exc.ClientSideError(msg)
-        if interface['iftype'] != constants.INTERFACE_TYPE_VF:
-            msg = _("max_tx_rate is only allowed to be configured for VF interfaces")
+        # keep 10% of the bandwidth for PF traffic
+        total_rate_for_vf = int(ports[0]['speed'] * constants.VF_TOTAL_RATE_RATIO)
+        total_rate_used = 0
+        this_interface_id = interface.get('id', 0)
+        interface_list = pecan.request.dbapi.iinterface_get_all(
+            forihostid=ihost_uuid)
+        for i in interface_list:
+            if (i['iftype'] == constants.INTERFACE_TYPE_VF and
+                    lower_ifname == i['uses'][0] and
+                    i.id != this_interface_id):
+                if i['max_tx_rate'] is not None:
+                    total_rate_used += i['max_tx_rate'] * i['sriov_numvfs']
+
+        vfs_config = interface['sriov_numvfs']
+        if total_rate_used + (max_tx_rate * vfs_config) > total_rate_for_vf:
+            msg = _("Configured (max_tx_rate*sriov_numvfs) exceeds "
+                    "available link speed bandwidth: %d Mbps." %
+                    (total_rate_for_vf - total_rate_used))
             raise wsme.exc.ClientSideError(msg)
-
-        # check if an overcommitted config
-        max_tx_rate = interface['max_tx_rate']
-
-        ihost_uuid = interface['ihost_uuid']
-        lower_ifname = interface['uses'][0]
-        lower_iface = (
-            pecan.request.dbapi.iinterface_get(lower_ifname, ihost_uuid))
-
-        ports = pecan.request.dbapi.ethernet_port_get_by_interface(
-                                                        lower_iface['uuid'])
-        if len(ports) > 0:
-            if ports[0]['speed'] is None:
-                msg = _("Port speed for %s could not be determined. "
-                        "Check if the port is cabled correctly." %
-                        ports[0]['name'])
-                raise wsme.exc.ClientSideError(msg)
-            # keep 10% of the bandwidth for PF traffic
-            total_rate_for_vf = int(ports[0]['speed'] * constants.VF_TOTAL_RATE_RATIO)
-            total_rate_used = 0
-            this_interface_id = interface.get('id', 0)
-            interface_list = pecan.request.dbapi.iinterface_get_all(
-                forihostid=ihost_uuid)
-            for i in interface_list:
-                if (i['iftype'] == constants.INTERFACE_TYPE_VF and
-                        lower_ifname == i['uses'][0] and
-                        i.id != this_interface_id):
-                    if i['max_tx_rate'] is not None:
-                        total_rate_used += i['max_tx_rate'] * i['sriov_numvfs']
-
-            vfs_config = interface['sriov_numvfs']
-            if total_rate_used + (max_tx_rate * vfs_config) > total_rate_for_vf:
-                msg = _("Configured (max_tx_rate*sriov_numvfs) exceeds "
-                        "available link speed bandwidth: %d Mbps." %
-                        (total_rate_for_vf - total_rate_used))
-                raise wsme.exc.ClientSideError(msg)
 
 
 def _check_interface_ptp(interface):
@@ -1476,7 +1487,12 @@ def _check_interface_data(op, interface, ihost, existing_interface,
                     (interface['sriov_numvfs'], avail_vfs, lower_iface['ifname']))
             raise wsme.exc.ClientSideError(msg)
     _check_interface_ptp(interface)
-    _check_interface_ratelimit(interface)
+
+    if interface['max_tx_rate'] is not None or interface['max_rx_rate'] is not None:
+        if iftype == constants.INTERFACE_TYPE_VF:
+            _check_vf_interface_ratelimit(interface)
+        else:
+            _check_platform_interface_ratelimit(interface)
 
     return interface
 
@@ -1949,6 +1965,7 @@ def _create(interface):
             raise e
 
     if (cutils.is_aio_simplex_system(pecan.request.dbapi)
+            and ihost['administrative'] != constants.ADMIN_LOCKED
             and new_interface['iftype'] == constants.INTERFACE_TYPE_VF):
         try:
             pecan.request.rpcapi.update_sriov_vf_config(
@@ -1964,21 +1981,33 @@ def _create(interface):
 
 
 def _check(op, interface, ports=None, ifaces=None, existing_interface=None,
-           datanetworks=None):
+           datanetworks=None, patch=None):
     # Semantic checks
     ihost = pecan.request.dbapi.ihost_get(interface['ihost_uuid']).as_dict()
 
     check_host = True
-    if (cutils.is_aio_simplex_system(pecan.request.dbapi)
-            and interface['ifclass'] == constants.INTERFACE_CLASS_PCI_SRIOV):
-        if (op == 'modify' and interface['iftype'] == constants.INTERFACE_TYPE_ETHERNET
-                and existing_interface['ifclass'] != constants.INTERFACE_CLASS_PCI_SRIOV
-                and existing_interface['iftype'] == constants.INTERFACE_TYPE_ETHERNET):
-            # user can modify interface to SR-IOV PF without host lock in AIO-SX
-            check_host = False
-        elif (op == 'add' and interface['iftype'] == constants.INTERFACE_TYPE_VF):
-            # user can add interface SR-IOV VF without host lock in AIO-SX
-            check_host = False
+    if (cutils.is_aio_simplex_system(pecan.request.dbapi)):
+        if (interface['ifclass'] == constants.INTERFACE_CLASS_PCI_SRIOV):
+            if (op == 'modify' and interface['iftype'] == constants.INTERFACE_TYPE_ETHERNET
+                    and existing_interface['ifclass'] != constants.INTERFACE_CLASS_PCI_SRIOV
+                    and existing_interface['iftype'] == constants.INTERFACE_TYPE_ETHERNET):
+                # user can modify interface to SR-IOV PF without host lock in AIO-SX
+                check_host = False
+            elif (op == 'add' and interface['iftype'] == constants.INTERFACE_TYPE_VF):
+                # user can add interface SR-IOV VF without host lock in AIO-SX
+                check_host = False
+    if op == 'modify' and patch is not None and \
+            (interface['ifclass'] == constants.INTERFACE_CLASS_PLATFORM):
+        if (interface['iftype'] in [constants.INTERFACE_TYPE_ETHERNET,
+                                    constants.INTERFACE_TYPE_AE,
+                                    constants.INTERFACE_TYPE_VLAN]):
+            # Finding a patch request which contains only max_tx_rate or only max_rx_rate or both.
+            # Runtime Modify is allowed for platform interfaces for these two fields only.
+            # Above condition holds true for all system types eg:- AIO-DX, AIO-SX, STD, Subcloud
+            allowed_paths = {'/max_tx_rate', '/max_rx_rate'}
+            patch_paths = {p['path'] for p in patch}
+            if (patch_paths.issubset(allowed_paths) and len(patch_paths) > 0):
+                check_host = False
 
     if check_host:
         _check_host(ihost)
@@ -2223,5 +2252,72 @@ def _is_interface_address_allowed(interface):
     elif interface['ifclass'] == constants.INTERFACE_CLASS_PLATFORM:
         return True
     return False
+
+
+def _check_platform_interface_ratelimit(interface):
+    """
+    Primary goal is to rate_limit External platform traffic.
+    Function to check interface rate_limit conditions below:-.
+    1. Interface class is platform.
+    2. Interface type is ethernet, ae, or vlan.
+    3. Interface networktypes has no internal traffic type.
+    4. If Interface networktype has mgmt, It should be a Distributed Cloud set up.
+       Only in DC setup, mgmt network has both internal and external platform traffic.
+       In other cases it is only internal.
+    5. max_tx_rate and max_rx_rate are non-negative integer values.
+    6. max_tx_rate and max_rx_rate are greater than or equal to
+       PLATFORM_RATELIMIT_LOWER_CUTOFF.
+    """
+    ifname = interface.get('ifname', None)
+    ifclass = interface.get('ifclass', None)
+    iftype = interface.get('iftype', None)
+
+    if not (ifclass == constants.INTERFACE_CLASS_PLATFORM and
+        iftype in {constants.INTERFACE_TYPE_ETHERNET,
+                   constants.INTERFACE_TYPE_AE,
+                   constants.INTERFACE_TYPE_VLAN}):
+        msg = _("max_tx_rate/max_rx_rate modification not allowed for the provided "
+                "interface class {} and interface type {}".format(ifclass, iftype))
+        raise wsme.exc.ClientSideError(msg)
+
+    networktypelist = interface.get('networktypelist', [])
+
+    if networktypelist:
+        if set(networktypelist).intersection(constants.INTERNAL_NETWORK_TYPES):
+            msg = _("Rate limit is not allowed for internal network types {}"
+                    .format(constants.INTERNAL_NETWORK_TYPES))
+            raise wsme.exc.ClientSideError(msg)
+
+        if constants.NETWORK_TYPE_MGMT in networktypelist:
+            if not utils.get_distributed_cloud_role():
+                msg = _("Rate limit for mgmt interfaces is only allowed for DC setups")
+                raise wsme.exc.ClientSideError(msg)
+    else:
+        LOG.info("No network types configured for interface {}. "
+                 "Skipped network checks".format(ifname))
+
+    max_tx_rate = interface.get('max_tx_rate', None)
+    max_rx_rate = interface.get('max_rx_rate', None)
+
+    if max_tx_rate is not None:
+        if not str(max_tx_rate).isdigit():
+            msg = _("max_tx_rate must be an non-negative integer value.")
+            raise wsme.exc.ClientSideError(msg)
+        if (max_tx_rate < constants.PLATFORM_RATELIMIT_LOWER_CUTOFF):
+            msg = _("Value of max_tx_rate shall be greater than or equal to {} Mbps".format(
+                constants.PLATFORM_RATELIMIT_LOWER_CUTOFF))
+            raise wsme.exc.ClientSideError(msg)
+
+    if max_rx_rate is not None:
+        if not str(max_rx_rate).isdigit():
+            msg = _("max_rx_rate must be an non-negative integer value.")
+            raise wsme.exc.ClientSideError(msg)
+        if (max_rx_rate < constants.PLATFORM_RATELIMIT_LOWER_CUTOFF):
+            msg = _("Value of max_rx_rate shall be greater than or equal to {} Mbps".format(
+                constants.PLATFORM_RATELIMIT_LOWER_CUTOFF))
+            raise wsme.exc.ClientSideError(msg)
+
+    LOG.info("validated rate_limit for interface {} with max_tx_rate: {}, max_rx_rate {}".format(
+            ifname, max_tx_rate, max_rx_rate))
 
 # TODO (pbovina): Move utils methods within InterfaceController class

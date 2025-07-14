@@ -67,7 +67,7 @@ class AddressTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
 
     def assert_fields(self, api_object):
         # check the uuid is a uuid
-        assert(uuidutils.is_uuid_like(api_object['uuid']))
+        assert (uuidutils.is_uuid_like(api_object['uuid']))
 
         # Verify that expected attributes are returned
         for field in self.expected_api_fields:
@@ -238,6 +238,75 @@ class TestPostMixin(AddressTestCase):
         self._test_create_address_success('platformtest',
             str(self.oam_subnet[25]), self.oam_subnet.prefixlen,
             None, interface.uuid)
+
+    def test_create_address_data_interface(self):
+        if self.oam_subnet.version == 4:
+            ipv4_mode, ipv6_mode = (constants.IPV4_STATIC, constants.IPV6_DISABLED)
+            addr = ["11.0.0.1", "24"]
+        else:
+            ipv4_mode, ipv6_mode = (constants.IPV4_DISABLED, constants.IPV6_STATIC)
+            addr = ["2001::1", "64"]
+
+        # Create platform interface, patch to make static
+        interface = dbutils.create_test_interface(
+            ifname="dataintf",
+            ifclass=constants.INTERFACE_CLASS_DATA,
+            forihostid=self.worker.id,
+            ihost_uuid=self.worker.uuid)
+        response = self.patch_dict_json(
+                '%s/%s' % (self.IFACE_PREFIX, interface['uuid']),
+                ipv4_mode=ipv4_mode, ipv6_mode=ipv6_mode)
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(response.status_code, http_client.OK)
+        self.assertEqual(response.json['ifclass'], constants.INTERFACE_CLASS_DATA)
+        self.assertEqual(response.json['ipv4_mode'], ipv4_mode)
+        self.assertEqual(response.json['ipv6_mode'], ipv6_mode)
+
+        # Verify an address associated with the interface can be created
+        # equivalent to:
+        # system host-addr-add hostname=[self.worker] ifname=[dataintf] addr[0] addr[1]
+        self._test_create_address_success(None,
+            addr[0], addr[1], None, interface.uuid)
+
+        address0 = self.dbapi.address_get_by_address(addr[0])
+        self.assertEqual(address0.interface_id, interface['id'])
+        self.assertEqual(address0.pool_id, None)
+
+        # if the host is removed the associated interfaces will be removed also
+        self.dbapi.iinterface_destroy(interface['uuid'])
+
+        # The address is without use (no interface and no pool)
+        address1 = self.dbapi.address_get_by_address(addr[0])
+        self.assertEqual(address1.interface_id, None)
+        self.assertEqual(address1.pool_id, None)
+
+        # Create platform interface
+        interface = dbutils.create_test_interface(
+            id=3, ifname="dataintf2", imac="22:22:33:44:55:01",
+            ifclass=constants.INTERFACE_CLASS_DATA,
+            forihostid=self.worker.id,
+            ihost_uuid=self.worker.uuid,
+            ipv4_mode=ipv4_mode, ipv6_mode=ipv6_mode)
+
+        # this request will erase the previous address entry, because is without use (no interface
+        # and no pool)
+        self._test_create_address_success(None,
+            addr[0], addr[1], None, interface.uuid)
+
+        address2 = self.dbapi.address_get_by_address(addr[0])
+        self.assertEqual(address2.interface_id, interface['id'])
+        self.assertEqual(address2.pool_id, None)
+        self.assertNotEqual(address1.uuid, address2.uuid)
+
+        isystem = self.dbapi.isystem_get_one()
+        system_dict = isystem.as_dict()
+        system_dict['capabilities']['sdn_enabled'] = False
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+
+        # if the address is in use (by an interface or pool) reject attempt to recreate
+        self._test_create_address_fail(None, addr[0], addr[1], None, http_client.CONFLICT,
+                                f"Address {addr[0]}/{addr[1]} already exists on this interface.",
+                                interface.uuid)
 
 
 class TestDelete(AddressTestCase):

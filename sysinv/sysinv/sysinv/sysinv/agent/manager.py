@@ -205,6 +205,8 @@ class AgentManager(service.PeriodicService):
         self._prev_lvg = None
         self._prev_pv = None
         self._prev_fs = None
+        self._prev_memory = None
+        self._prev_imsg_dict = None
         self._subfunctions = None
         self._subfunctions_configured = False
         self._first_grub_update = False
@@ -559,9 +561,12 @@ class AgentManager(service.PeriodicService):
                          not os.path.exists(constants.SYSINV_FIRST_REPORT_FLAG)})
 
         try:
-            rpcapi.iplatform_update_by_ihost(context,
-                                             host_uuid,
-                                             msg_dict)
+            if msg_dict and ((self._prev_imsg_dict is None) or
+                             (self._prev_imsg_dict != msg_dict) or
+                             (self._iconfig_read_config_reported is None)):
+                rpcapi.iplatform_update_by_ihost(context, host_uuid, msg_dict)
+                self._prev_imsg_dict = msg_dict
+
             if os.path.exists(FIRST_BOOT_FLAG):
                 # Create volatile first_boot file, that will be checked by agent manager
                 # when it get crashed and restarted, so that it will know this boot is still
@@ -577,7 +582,7 @@ class AgentManager(service.PeriodicService):
             # For compatibility with 15.12
             LOG.warn("platform_update_by_host exception host_uuid=%s msg_dict=%s." %
                      (host_uuid, msg_dict))
-            pass
+            self._prev_imsg_dict = None
 
         LOG.info("Sysinv Agent platform update by host: %s" % msg_dict)
 
@@ -1179,13 +1184,15 @@ class AgentManager(service.PeriodicService):
                                                self._ihost_uuid)
             self._inventoried_initial = True
 
-    def _report_config_applied(self, context, config_dict=None, status=None, error=None):
+    def _report_config_applied(self, context, config_dict=None, status=None, error=None,
+                               config_uuid=None):
         """Report the latest configuration applied for this host to the
         conductor.
         :param context: an admin context
         :param config_dict: configuration applied
         :param status: config status
         :param error: config error
+        :param config_uuid: config uuid to report
         """
         if not context:
             # If context is None, it could indicate a rare issue where context
@@ -1202,7 +1209,8 @@ class AgentManager(service.PeriodicService):
         rpcapi = conductor_rpcapi.ConductorAPI(
             topic=conductor_rpcapi.MANAGER_TOPIC)
 
-        config_uuid = self.iconfig_read_config_applied()
+        if config_uuid is None:
+            config_uuid = self.iconfig_read_config_applied()
         if config_uuid != self._iconfig_read_config_reported:
             LOG.info("Agent config applied  %s" % config_uuid)
 
@@ -1210,7 +1218,8 @@ class AgentManager(service.PeriodicService):
             if config_dict:
                 imsg_dict.update({'config_dict': config_dict,
                                   'status': status,
-                                  'error': error})
+                                  'error': error,
+                                  'puppet_path': config_dict.get('puppet_path')})
             rpcapi.iconfig_update_by_ihost(context,
                                            self._ihost_uuid,
                                            imsg_dict)
@@ -1541,6 +1550,121 @@ class AgentManager(service.PeriodicService):
         else:
             LOG.debug("No divergence found within 'sysadmin' user configuration.")
 
+    def host_memory_update(self, icontext, rpcapi):
+        imemory = self._inode_operator.inodes_get_imemory()
+        if (self._prev_memory is None) or (self._prev_memory != imemory) or \
+           (self.MEMORY not in self._inventory_reported):
+            try:
+                rpcapi.imemory_update_by_ihost(icontext,
+                                               self._ihost_uuid,
+                                               imemory)
+                self._inventory_reported.add(self.MEMORY)
+                self._prev_memory = imemory
+            except exception.SysinvException:
+                LOG.exception("Sysinv Agent exception updating imemory conductor.")
+                self._prev_memory = None
+
+    def host_disk_update(self, icontext, rpcapi):
+        idisk = self._idisk_operator.idisk_get()
+        if (self._prev_disk is None) or (self._prev_disk != idisk) or \
+           (self.DISK not in self._inventory_reported):
+            try:
+                rpcapi.idisk_update_by_ihost(icontext, self._ihost_uuid, idisk)
+                self._inventory_reported.add(self.DISK)
+                self._prev_disk = idisk
+            except exception.SysinvException:
+                LOG.exception("Sysinv Agent exception updating idisk conductor.")
+                self._prev_disk = None
+
+    def host_lvg_update(self, icontext, rpcapi, cinder_device=None):
+        ilvg = self._ilvg_operator.ilvg_get(cinder_device=cinder_device)
+        if (self._prev_lvg is None) or (self._prev_lvg != ilvg) or \
+           (self.LVG not in self._inventory_reported):
+            try:
+                rpcapi.ilvg_update_by_ihost(icontext, self._ihost_uuid, ilvg)
+                self._inventory_reported.add(self.LVG)
+                self._prev_lvg = ilvg
+            except exception.SysinvException:
+                LOG.exception("Sysinv Agent exception updating ilvg conductor.")
+                self._prev_lvg = None
+
+    def host_pv_update(self, icontext, rpcapi, cinder_device=None):
+        ipv = self._ipv_operator.ipv_get(cinder_device=cinder_device)
+        if (self._prev_pv is None) or (self._prev_pv != ipv) or \
+           (self.PV not in self._inventory_reported):
+            try:
+                rpcapi.ipv_update_by_ihost(icontext,
+                                           self._ihost_uuid,
+                                           ipv)
+                self._inventory_reported.add(self.PV)
+                self._prev_pv = ipv
+            except exception.SysinvException:
+                LOG.exception("Sysinv Agent exception updating ipv conductor.")
+                self._prev_pv = None
+
+    def host_filesystem_update(self, icontext, rpcapi):
+        host_fs = self._host_fs_operator.ilv_get_supported_hostfs()
+        if (self._prev_fs is None) or (self._prev_fs != host_fs) or \
+           (self.HOST_FILESYSTEMS not in self._inventory_reported):
+            try:
+                rpcapi.hostfs_update_by_ihost(icontext,
+                                              self._ihost_uuid,
+                                              host_fs)
+                self._inventory_reported.add(self.HOST_FILESYSTEMS)
+                self._prev_fs = host_fs
+            except RemoteError as e:
+                # ignore because active controller is not yet upgraded,
+                # so it's current load may not implement this RPC call
+                if "NameError" in str(e):
+                    LOG.warn("Skip report host filesystems. "
+                             "Upgrade in progress.")
+                    self._inventory_reported.add(self.HOST_FILESYSTEMS)
+                else:
+                    LOG.exception(f"Failed to report host filesystems update: {e}")
+            except exception.SysinvException:
+                LOG.exception("Sysinv Agent exception updating host_fs conductor.")
+                self._prev_fs = None
+
+    def host_pci_update(self, icontext, rpcapi):
+        if os.path.exists(fpga_constants.N3000_RESET_FLAG) and \
+                self._report_to_conductor_fpga_info:
+            LOG.info("Found n3000 reset flag, Updating N3000 PCI info.")
+            pci_device_list = self._ifpga_operator.get_n3000_pci_info()
+            try:
+                if pci_device_list:
+                    LOG.info("reporting N3000 PCI devices for host %s: %s" %
+                             (self._ihost_uuid, pci_device_list))
+
+                    # Don't ask conductor to cleanup stale entries while worker
+                    # manifest is not complete. For N3000 device, it could get rid
+                    # of a valid entry with a different PCI address but restored
+                    # from previous database backup
+                    cleanup_stale = \
+                        os.path.exists(tsc.VOLATILE_WORKER_CONFIG_COMPLETE)
+                    rpcapi.pci_device_update_by_host(icontext,
+                                                     self._ihost_uuid,
+                                                     pci_device_list,
+                                                     cleanup_stale)
+            except Exception:
+                LOG.exception("Exception updating n3000 PCI devices, "
+                              "this will likely cause problems.")
+
+    def host_fpga_update(self, icontext, rpcapi):
+
+        if os.path.exists(fpga_constants.N3000_RESET_FLAG) and \
+                self._report_to_conductor_fpga_info:
+            # Collect FPGA data for this host.
+            fpgainfo_list = self._ifpga_operator.get_fpga_info()
+            LOG.info("reporting FPGA inventory for host %s: %s" %
+                     (self._ihost_uuid, fpgainfo_list))
+            try:
+                rpcapi.fpga_device_update_by_host(icontext,
+                                                  self._ihost_uuid,
+                                                  fpgainfo_list)
+                self._report_to_conductor_fpga_info = False
+            except exception.SysinvException:
+                LOG.exception("Exception updating fpga devices.")
+
     @utils.synchronized(LOCK_AGENT_ACTION, external=False)
     def agent_audit(self, context, host_uuid, force_updates, cinder_device=None):
         # perform inventory audit
@@ -1554,20 +1678,22 @@ class AgentManager(service.PeriodicService):
         if self._ihost_uuid:
             if os.path.isfile(tsc.INITIAL_CONFIG_COMPLETE_FLAG):
                 self._report_config_applied(icontext)
-
         if self._report_to_conductor():
             LOG.info("Sysinv Agent audit running inv_get_and_report.")
             self.ihost_inv_get_and_report(icontext)
 
-        if self._ihost_uuid:
-            try:
-                nova_lvgs = rpcapi.ilvg_get_nova_ilvg_by_ihost(icontext, self._ihost_uuid)
-            except Timeout:
-                LOG.info("ilvg_get_nova_ilvg_by_ihost() Timeout.")
-                nova_lvgs = None
+        if not self._ihost_uuid:
+            return
 
-        if self._ihost_uuid and \
-           os.path.isfile(tsc.INITIAL_CONFIG_COMPLETE_FLAG):
+        try:
+            nova_lvgs = rpcapi.ilvg_get_nova_ilvg_by_ihost(
+                icontext,
+                self._ihost_uuid)
+        except Timeout:
+            LOG.info("ilvg_get_nova_ilvg_by_ihost() Timeout.")
+            nova_lvgs = None
+
+        if os.path.isfile(tsc.INITIAL_CONFIG_COMPLETE_FLAG):
             imsg_dict = {}
             if not self._report_to_conductor_iplatform_avail_flag and \
                not self._wait_for_nova_lvg(icontext, rpcapi, self._ihost_uuid, nova_lvgs):
@@ -1577,16 +1703,7 @@ class AgentManager(service.PeriodicService):
                 imsg_dict.update({'config_applied': config_uuid})
 
                 if self._ihost_personality == constants.CONTROLLER:
-                    idisk = self._idisk_operator.idisk_get()
-                    try:
-                        rpcapi.idisk_update_by_ihost(icontext,
-                                                     self._ihost_uuid,
-                                                     idisk)
-                        self._inventory_reported.add(self.DISK)
-                    except exception.SysinvException:
-                        LOG.exception("Sysinv Agent exception updating idisk "
-                                      "conductor.")
-                        pass
+                    self.host_disk_update(icontext, rpcapi)
 
                 self._report_to_conductor_iplatform_avail()
                 self._iconfig_read_config_reported = config_uuid
@@ -1602,202 +1719,98 @@ class AgentManager(service.PeriodicService):
             if nvme_host_nqn is not None:
                 imsg_dict.update({'nvme_host_nqn': nvme_host_nqn})
 
-            self.platform_update_by_host(rpcapi,
-                                         icontext,
+            self.platform_update_by_host(rpcapi, icontext,
                                          self._ihost_uuid,
                                          imsg_dict)
 
-        if self._ihost_uuid:
-            LOG.debug("SysInv Agent Inventory Audit running.")
+        LOG.debug("SysInv Agent Inventory Audit running.")
 
-            if force_updates:
-                LOG.info("SysInv Agent Inventory Audit force updates: (%s)" %
-                         (', '.join(force_updates)))
+        if force_updates:
+            LOG.info("SysInv Agent Inventory Audit force updates: (%s)" %
+                     (', '.join(force_updates)))
 
-            imemory = self._inode_operator.inodes_get_imemory()
-            rpcapi.imemory_update_by_ihost(icontext,
-                                           self._ihost_uuid,
-                                           imemory)
-            self._inventory_reported.add(self.MEMORY)
+        # if this audit is requested by conductor, clear previous states
+        # for disk, lvg, pv, partition, fs and memory to force an update
+        if force_updates:
+            if constants.DISK_AUDIT_REQUEST in force_updates:
+                self._prev_disk = None
+            if constants.LVG_AUDIT_REQUEST in force_updates:
+                self._prev_lvg = None
+            if constants.PV_AUDIT_REQUEST in force_updates:
+                self._prev_pv = None
+            if constants.PARTITION_AUDIT_REQUEST in force_updates:
+                self._prev_partition = None
+            if constants.FILESYSTEM_AUDIT_REQUEST in force_updates:
+                self._prev_fs = None
+            if constants.MEMORY_AUDIT_REQUEST in force_updates:
+                self._prev_memory = None
 
-            # if this audit is requested by conductor, clear
-            # previous states for disk, lvg, pv and fs to force an update
-            if force_updates:
-                if constants.DISK_AUDIT_REQUEST in force_updates:
-                    self._prev_disk = None
-                if constants.LVG_AUDIT_REQUEST in force_updates:
-                    self._prev_lvg = None
-                if constants.PV_AUDIT_REQUEST in force_updates:
-                    self._prev_pv = None
-                if constants.PARTITION_AUDIT_REQUEST in force_updates:
-                    self._prev_partition = None
-                if constants.FILESYSTEM_AUDIT_REQUEST in force_updates:
-                    self._prev_fs = None
+        # Update memory
+        self.host_memory_update(icontext, rpcapi)
+        # Update disks
+        self.host_disk_update(icontext, rpcapi)
+        # Update disk partitions
+        if self._ihost_personality != constants.STORAGE:
+            self._update_disk_partitions(rpcapi, icontext, self._ihost_uuid)
+        # Update local volume groups
+        self.host_lvg_update(icontext, rpcapi, cinder_device)
+        # Update physical volumes
+        self.host_pv_update(icontext, rpcapi, cinder_device)
+        # Update host filesystems
+        self._create_host_filesystems(rpcapi, icontext)
+        self.host_filesystem_update(icontext, rpcapi)
 
-            # Update disks
-            idisk = self._idisk_operator.idisk_get()
-            if ((self._prev_disk is None) or
-                    (self._prev_disk != idisk)):
-                self._prev_disk = idisk
-                try:
-                    rpcapi.idisk_update_by_ihost(icontext,
-                                                 self._ihost_uuid,
-                                                 idisk)
-                    self._inventory_reported.add(self.DISK)
-                except exception.SysinvException:
-                    LOG.exception("Sysinv Agent exception updating idisk"
-                                  "conductor.")
-                    self._prev_disk = None
+        # Collect FPGA PCI data for this host.
+        # We know that the PCI address of the N3000 can change the first time
+        # We reset it after boot, so we need to gather the new PCI device
+        # information and send it to sysinv-conductor.
+        # This needs to exactly mirror what sysinv-agent does as far as PCI
+        # updates.  We could potentially modify sysinv-agent to do the PCI
+        # updates when triggered by an RPC cast, but we don't need to rescan
+        # all PCI devices, just the N3000 devices.
+        self.host_pci_update(icontext, rpcapi)
+        self.host_fpga_update(icontext, rpcapi)
 
-            # Update disk partitions
-            if self._ihost_personality != constants.STORAGE:
-                self._update_disk_partitions(rpcapi, icontext, self._ihost_uuid)
-
-            # Update local volume groups
-            ilvg = self._ilvg_operator.ilvg_get(cinder_device=cinder_device)
-            if ((self._prev_lvg is None) or
-                    (self._prev_lvg != ilvg)):
-                self._prev_lvg = ilvg
-                try:
-                    rpcapi.ilvg_update_by_ihost(icontext,
-                                                self._ihost_uuid,
-                                                ilvg)
-                    self._inventory_reported.add(self.LVG)
-                except exception.SysinvException:
-                    LOG.exception("Sysinv Agent exception updating ilvg"
-                                  "conductor.")
-                    self._prev_lvg = None
-                    pass
-
-            # Update physical volumes
-            ipv = self._ipv_operator.ipv_get(cinder_device=cinder_device)
-            if ((self._prev_pv is None) or
-                    (self._prev_pv != ipv)):
-                self._prev_pv = ipv
-                try:
-                    rpcapi.ipv_update_by_ihost(icontext,
-                                               self._ihost_uuid,
-                                               ipv)
-                    self._inventory_reported.add(self.PV)
-                except exception.SysinvException:
-                    LOG.exception("Sysinv Agent exception updating ipv"
-                                  "conductor.")
-                    self._prev_pv = None
-                    pass
-
-            self._create_host_filesystems(rpcapi, icontext)
-
-            # Update host filesystems
-            host_fs = self._host_fs_operator.ilv_get_supported_hostfs()
-            if ((self._prev_fs is None) or
-                    (self._prev_fs != host_fs)):
-                self._prev_fs = host_fs
+        if self._report_to_conductor_cstate_info:
             try:
-                rpcapi.hostfs_update_by_ihost(icontext,
-                                              self._ihost_uuid,
-                                              host_fs)
-                self._inventory_reported.add(self.HOST_FILESYSTEMS)
+                self._report_cstates_and_frequency_update(icontext, rpcapi)
+                self._report_to_conductor_cstate_info = False
             except RemoteError as e:
                 # ignore because active controller is not yet upgraded,
                 # so it's current load may not implement this RPC call
-                if "NameError" in str(e):
-                    LOG.warn("Skip report host filesystems. "
-                                "Upgrade in progress.")
-                    self._inventory_reported.add(self.HOST_FILESYSTEMS)
+                if "AttributeError" in str(e):
+                    LOG.warn("Skip report cstates and frequency update. "
+                             "Upgrade in progress.")
                 else:
-                    LOG.exception(f"Failed to report host filesystems update: {e}")
-                pass
-            except exception.SysinvException:
-                LOG.exception("Sysinv Agent exception updating host_fs"
-                                " conductor.")
-                self._prev_fs = None
-                pass
+                    LOG.exception(f"Failed to report cstates and frequency update: {e}")
+            except exception.SysinvException as ex:
+                LOG.exception("Sysinv Agent exception "
+                              f"reporting cstates and frequency update: "
+                              f"{ex}")
 
-            # Collect FPGA PCI data for this host.
-            # We know that the PCI address of the N3000 can change the first time
-            # We reset it after boot, so we need to gather the new PCI device
-            # information and send it to sysinv-conductor.
-            # This needs to exactly mirror what sysinv-agent does as far as PCI
-            # updates.  We could potentially modify sysinv-agent to do the PCI
-            # updates when triggered by an RPC cast, but we don't need to rescan
-            # all PCI devices, just the N3000 devices.
-            if os.path.exists(fpga_constants.N3000_RESET_FLAG) and \
-                    self._report_to_conductor_fpga_info:
-                LOG.info("Found n3000 reset flag, continuing.")
-                LOG.info("Updating N3000 PCI info.")
-                pci_device_list = self._ifpga_operator.get_n3000_pci_info()
-                try:
-                    if pci_device_list:
-                        LOG.info("reporting N3000 PCI devices for host %s: %s" %
-                                (self._ihost_uuid, pci_device_list))
+        # if the platform firewall failed to be applied (by not having kube-api available
+        # during AIO manifest execution or lack of config in the host yaml file) ask for
+        # conductor to reapply
+        if os.path.isfile(constants.PLATFORM_FIREWALL_CONFIG_REQUIRED):
+            try:
+                LOG.info("platform firewall config requested")
+                rpcapi.request_firewall_runtime_update(icontext, self._ihost_uuid)
+            except Exception:
+                LOG.exception("Exception when requesting platform firewall config")
 
-                        # Don't ask conductor to cleanup stale entries while worker
-                        # manifest is not complete. For N3000 device, it could get rid
-                        # of a valid entry with a different PCI address but restored
-                        # from previous database backup
-                        cleanup_stale = \
-                            os.path.exists(tsc.VOLATILE_WORKER_CONFIG_COMPLETE)
-                        rpcapi.pci_device_update_by_host(icontext,
-                                                        self._ihost_uuid,
-                                                        pci_device_list,
-                                                        cleanup_stale)
-                except Exception:
-                    LOG.exception("Exception updating n3000 PCI devices, "
-                                "this will likely cause problems.")
-                    pass
+        # Notify conductor of inventory completion after necessary
+        # inventory reports have been sent to conductor.
+        # This is as defined by _conditions_for_inventory_complete_met().
+        self.notify_initial_inventory_completed(icontext)
 
-                # Collect FPGA data for this host.
-                fpgainfo_list = self._ifpga_operator.get_fpga_info()
-                LOG.info("reporting FPGA inventory for host %s: %s" %
-                        (self._ihost_uuid, fpgainfo_list))
-                try:
-                    rpcapi.fpga_device_update_by_host(icontext, self._ihost_uuid, fpgainfo_list)
-                    self._report_to_conductor_fpga_info = False
-                except exception.SysinvException:
-                    LOG.exception("Exception updating fpga devices.")
-                    pass
+        self._report_config_applied(icontext)
 
-            if self._report_to_conductor_cstate_info:
-                try:
-                    self._report_cstates_and_frequency_update(icontext, rpcapi)
-                    self._report_to_conductor_cstate_info = False
-                except RemoteError as e:
-                    # ignore because active controller is not yet upgraded,
-                    # so it's current load may not implement this RPC call
-                    if "AttributeError" in str(e):
-                        LOG.warn("Skip report cstates and frequency update. "
-                                 "Upgrade in progress.")
-                    else:
-                        LOG.exception(f"Failed to report cstates and frequency update: {e}")
-                except exception.SysinvException as ex:
-                    LOG.exception("Sysinv Agent exception "
-                                  f"reporting cstates and frequency update: "
-                                  f"{ex}")
-
-            # if the platform firewall failed to be applied (by not having kube-api available
-            # during AIO manifest execution or lack of config in the host yaml file) ask for
-            # conductor to reapply
-            if os.path.isfile(constants.PLATFORM_FIREWALL_CONFIG_REQUIRED):
-                try:
-                    LOG.info("platform firewall config requested")
-                    rpcapi.request_firewall_runtime_update(icontext, self._ihost_uuid)
-                except Exception:
-                    LOG.exception("Exception when requesting platform firewall config")
-                    pass
-
-            # Notify conductor of inventory completion after necessary
-            # inventory reports have been sent to conductor.
-            # This is as defined by _conditions_for_inventory_complete_met().
-            self.notify_initial_inventory_completed(icontext)
-
-            self._report_config_applied(icontext)
-
-            if os.path.isfile(tsc.PLATFORM_CONF_FILE):
-                # read the platform config file and check for UUID
-                if 'UUID' not in open(tsc.PLATFORM_CONF_FILE).read():
-                    # the UUID is not in found, append it
-                    with open(tsc.PLATFORM_CONF_FILE, "a") as fd:
-                        fd.write("UUID=" + self._ihost_uuid)
+        if os.path.isfile(tsc.PLATFORM_CONF_FILE):
+            # read the platform config file and check for UUID
+            if 'UUID' not in open(tsc.PLATFORM_CONF_FILE).read():
+                # the UUID is not in found, append it
+                with open(tsc.PLATFORM_CONF_FILE, "a") as fd:
+                    fd.write("UUID=" + self._ihost_uuid)
 
     def configure_lldp_systemname(self, context, systemname):
         """Configure the systemname into the lldp agent with the supplied data.
@@ -2018,21 +2031,23 @@ class AgentManager(service.PeriodicService):
             if not os.path.exists(tsc.PUPPET_PATH):
                 # we must be controller-standby or storage, mount /var/run/platform
                 LOG.info("controller-standby or storage, mount /var/run/platform")
-                remote_dir = "controller-platform-nfs:" + tsc.PLATFORM_PATH
                 local_dir = os.path.join(tsc.VOLATILE_PATH, 'platform')
                 # JK - could also consider mkstemp for atomicity
                 if not os.path.exists(local_dir):
                     LOG.info("create local dir '%s'" % local_dir)
                     os.makedirs(local_dir)
-                hieradata_path = os.path.join(
-                    tsc.PUPPET_PATH.replace(
-                        tsc.PLATFORM_PATH, local_dir),
-                    'hieradata')
-                with utils.mounted(remote_dir, local_dir):
+                remote_puppet_path = "controller-platform-nfs:" + config_dict.get('puppet_path')
+                temp_puppet_path = tempfile.mkdtemp(dir=local_dir, prefix="tmp_puppet_")
+                hieradata_path = os.path.join(temp_puppet_path, 'hieradata')
+                with utils.mounted(remote_puppet_path, temp_puppet_path):
                     self._apply_runtime_manifest(config_dict, hieradata_path=hieradata_path)
+                    LOG.info("Unmounting temporary hieradata directory %s" % temp_puppet_path)
+                shutil.rmtree(temp_puppet_path, ignore_errors=True)
             else:
                 LOG.info("controller-active")
-                self._apply_runtime_manifest(config_dict)
+                temp_puppet_path = config_dict.get('puppet_path')
+                hieradata_path = os.path.join(temp_puppet_path, 'hieradata')
+                self._apply_runtime_manifest(config_dict, hieradata_path=hieradata_path)
         except OSError:
             # race condition on the mount
             if not os.path.exists(local_dir):
@@ -2066,9 +2081,10 @@ class AgentManager(service.PeriodicService):
             LOG.debug("config runtime details: %s." % config_dict)
 
             self._report_config_applied(
-                context, config_dict, status=puppet.REPORT_SUCCESS, error=None)
+                context, config_dict, status=puppet.REPORT_SUCCESS, error=None,
+                config_uuid=config_uuid)
         else:
-            self._report_config_applied(context)
+            self._report_config_applied(context, config_uuid=config_uuid)
 
     def _apply_runtime_manifest(self, config_dict, hieradata_path=PUPPET_HIERADATA_PATH):
 
@@ -2122,11 +2138,6 @@ class AgentManager(service.PeriodicService):
                 # Set ready flag for maintenance to proceed with the unlock of
                 # the initial controller.
                 utils.touch(constants.UNLOCK_READY_FLAG)
-            elif (os.path.isfile(tsc.MGMT_NETWORK_RECONFIGURATION_UNLOCK) and
-                    applied_classes == ['openstack::keystone::endpoint::reconfig']):
-                # Set ready flag for maintenance to proceed with the unlock
-                # after mgmt ip reconfiguration
-                utils.touch(constants.UNLOCK_READY_FLAG)
         except Exception:
             LOG.exception("failed to apply runtime manifest")
             raise
@@ -2135,71 +2146,6 @@ class AgentManager(service.PeriodicService):
             os.remove(tmpfile)
             # Update local puppet cache anyway to be consistent.
             self._update_local_puppet_cache(hieradata_path)
-
-    def delete_load(self, context, host_uuid, software_version):
-        """Remove the specified load
-
-        :param context: request context
-        :param host_uuid: the host uuid
-        :param software_version: the version of the load to remove
-        """
-
-        LOG.debug("AgentManager.delete_load: %s" % (software_version))
-        if self._ihost_uuid and self._ihost_uuid == host_uuid:
-            LOG.info("AgentManager removing load %s" % software_version)
-
-            cleanup_script = constants.DELETE_LOAD_SCRIPT
-            if os.path.isfile(cleanup_script):
-                with open(os.devnull, "w") as fnull:
-                    try:
-                        subprocess.check_call(  # pylint: disable=not-callable
-                            [cleanup_script, software_version],
-                            stdout=fnull, stderr=fnull)
-                    except subprocess.CalledProcessError:
-                        LOG.error("Failure during cleanup script")
-                    else:
-                        rpcapi = conductor_rpcapi.ConductorAPI(
-                            topic=conductor_rpcapi.MANAGER_TOPIC)
-                        rpcapi.finalize_delete_load(context, software_version)
-            else:
-                LOG.error("Cleanup script %s does not exist." % cleanup_script)
-
-        return
-
-    def create_simplex_backup(self, context, software_upgrade):
-        """Creates the upgrade metadata and creates the system backup
-
-        :param context: request context.
-        :param software_upgrade: software_upgrade object
-        :returns: none
-        """
-        try:
-            from controllerconfig.upgrades import \
-                management as upgrades_management
-        except ImportError:
-            LOG.error("Attempt to import during create_simplex_backup failed")
-            return
-
-        if tsc.system_mode != constants.SYSTEM_MODE_SIMPLEX:
-            LOG.error("create_simplex_backup called for non-simplex system")
-            return
-
-        LOG.info("Starting simplex upgrade data collection")
-        success = True
-        try:
-            upgrades_management.create_simplex_backup(software_upgrade)
-        except Exception as ex:
-            LOG.info("Exception during simplex upgrade data collection")
-            LOG.exception(ex)
-            success = False
-        else:
-            LOG.info("Simplex upgrade data collection complete")
-
-        rpcapi = conductor_rpcapi.ConductorAPI(
-            topic=conductor_rpcapi.MANAGER_TOPIC)
-        rpcapi.complete_simplex_backup(context, success=success)
-
-        return
 
     def device_update_image(self, context, host_uuid, pci_addr, filename, transaction_id,
                             retimer_included):
