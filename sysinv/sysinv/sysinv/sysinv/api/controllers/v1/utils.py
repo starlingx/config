@@ -961,7 +961,7 @@ def is_host_lvg_updated(host_fs_list, host_lvg_list):
 
 def get_primary_address_by_name(db_address_name, networktype, raise_exc=False):
     """Search address by database name to retrieve the relevant address from
-       the primary pool, if multipĺe entries for the same name are found, the
+       the primary pool, if multiple entries for the same name are found, the
        query will use the network's pool_uuid to get the address family (IPv4 or
        IPv6) related to the primary.
 
@@ -971,8 +971,13 @@ def get_primary_address_by_name(db_address_name, networktype, raise_exc=False):
 
     :return: the address object if found, None otherwise
     """
-    if get_system_mode() == constants.SYSTEM_MODE_SIMPLEX \
-            and db_address_name == f"{constants.CONTROLLER_0_HOSTNAME}-{networktype}":
+    if (
+        get_system_mode() == constants.SYSTEM_MODE_SIMPLEX
+        and networktype in (constants.NETWORK_TYPE_ADMIN,
+                            constants.NETWORK_TYPE_MGMT,
+                            constants.NETWORK_TYPE_STORAGE)
+        and db_address_name == f"{constants.CONTROLLER_0_HOSTNAME}-{networktype}"
+    ):
         db_address_name = f"{constants.CONTROLLER_HOSTNAME}-{networktype}"
 
     # first search directly by name
