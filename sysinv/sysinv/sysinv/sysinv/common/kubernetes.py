@@ -72,6 +72,9 @@ KUBERNETES_CLUSTER_DEFAULT = "kubernetes"
 
 # Kubernetes symlinks paths
 KUBERNETES_VERSIONED_BINARIES_ROOT = '/usr/local/kubernetes/'
+KUBERNETES_SYMLINKS_ROOT = '/var/lib/kubernetes/'
+KUBERNETES_SYMLINKS_STAGE_1 = os.path.join(KUBERNETES_SYMLINKS_ROOT, 'stage1')
+KUBERNETES_SYMLINKS_STAGE_2 = os.path.join(KUBERNETES_SYMLINKS_ROOT, 'stage2')
 
 # Kubernetes users
 KUBERNETES_ADMIN_USER = "kubernetes-admin"
@@ -793,6 +796,7 @@ class KubeOperator(object):
 
     def __init__(self, host=None):
         self.host = host
+        self._kube_client_apps_v1 = None
         self._kube_client_batch = None
         self._kube_client_core = None
         self._kube_client_policy = None
@@ -817,6 +821,12 @@ class KubeOperator(object):
             c.host = self.host
         Configuration.set_default(c)
         return c
+
+    def _get_kubernetesclient_apps_v1_api(self):
+        if not self._kube_client_apps_v1:
+            self._load_kube_config()
+            self._kube_client_apps_v1 = client.AppsV1Api()
+        return self._kube_client_apps_v1
 
     def _get_kubernetesclient_batch(self):
         if not self._kube_client_batch:
@@ -1202,6 +1212,33 @@ class KubeOperator(object):
         except Exception as e:
             LOG.error("Failed to patch ConfigMap %s under Namespace %s: "
                       "%s" % (body['metadata']['name'], namespace, e))
+            raise
+
+    def kube_patch_service_account(self, name, namespace, body):
+        c = self._get_kubernetesclient_core()
+        try:
+            c.patch_namespaced_service_account(name, namespace, body)
+        except Exception as e:
+            LOG.error("Failed to patch service account %s under Namespace %s: "
+                      "%s" % (name, namespace, e))
+            raise
+
+    def kube_patch_deployment(self, name, namespace, body):
+        c = self._get_kubernetesclient_apps_v1_api()
+        try:
+            c.patch_namespaced_deployment(name, namespace, body)
+        except Exception as e:
+            LOG.error("Failed to patch Deployment %s under Namespace %s: "
+                      "%s" % (name, namespace, e))
+            raise
+
+    def kube_patch_daemon_set(self, name, namespace, body):
+        c = self._get_kubernetesclient_apps_v1_api()
+        try:
+            c.patch_namespaced_daemon_set(name, namespace, body)
+        except Exception as e:
+            LOG.error("Failed to patch Daemonset %s under Namespace %s: "
+                      "%s" % (name, namespace, e))
             raise
 
     def kube_create_config_map(self, namespace, body):
@@ -1750,6 +1787,16 @@ class KubeOperator(object):
         except Exception as e:
             LOG.error("Kubernetes exception in "
                       "kube_get_pods: %s" % e)
+            raise
+
+    def kube_get_all_configmaps(self):
+        c = self._get_kubernetesclient_core()
+        try:
+            api_response = c.list_config_map_for_all_namespaces()
+            return api_response.items
+        except Exception as e:
+            LOG.error("Kubernetes exception in "
+                      "kube_get_all_configmaps: %s" % e)
             raise
 
     def kube_delete_pod(self, name, namespace, **kwargs):

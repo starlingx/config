@@ -11,12 +11,18 @@
 
 """Kubernetes operations on a host """
 
+import datetime
 import os
 import shutil
+import subprocess
+import sys
+import threading
+import tsconfig.tsconfig as tsc
 
 from ruamel import yaml
 
 from oslo_log import log as logging
+from operator import attrgetter
 from sysinv.common import constants
 from sysinv.common import containers
 from sysinv.common import etcd
@@ -28,6 +34,7 @@ LOG = logging.getLogger(__name__)
 
 CONTAINERD_CLEANUP_SCRIPT_PATH = '/usr/sbin/k8s-container-cleanup.sh'
 CONTAINERD_CLEANUP_FORCE_CLEAN_CMD = 'force-clean'
+KUBEADM_UPGRADE_COMMAND_TIMEOUT = 210
 
 
 class ContainerdOperator(object):
@@ -101,8 +108,10 @@ class KubeHostOperator(object):
         self.context = context
         self._host_uuid = host_uuid
         self._host_name = host_name
+        self._system_mode = tsc.system_mode
         self._containerd_operator = ContainerdOperator()
         self._k8s_images = kubernetes.get_k8s_images_for_all_versions()
+        self._kubernetes_operator = kubernetes.KubeOperator()
 
     def _mask_stop_service(self, service, runtime=False, now=False):
         """Mask and stop services
@@ -127,6 +136,83 @@ class KubeHostOperator(object):
             raise exception.SysinvException("Failed to unmask and start service %s. Error: [%s]"
                                             % (service, ex))
 
+    def _update_symlink(self, link, to_kube_version):
+        """Update symlinks to kubernetes binaries
+
+        :param: link: string. Either a stage1 or stage2 link at /var/lib/kubernetes
+        :param: to_kube_version: Kubernetes version to be updated symlinks to...
+        """
+        try:
+            to_kube_version = to_kube_version.strip('v')
+            if link == kubernetes.KUBERNETES_SYMLINKS_STAGE_1:
+                stage_dir_name = 'stage1'
+            else:
+                stage_dir_name = 'stage2'
+            versioned_stage = \
+                    os.path.join(kubernetes.KUBERNETES_VERSIONED_BINARIES_ROOT,
+                                    to_kube_version, stage_dir_name)
+            # Remove symlink for previous kuberbetes version
+            if os.path.islink(link):
+                os.remove(link)
+            os.symlink(versioned_stage, link)
+            LOG.info("Kubernetes symlink [%s] is updated to [%s] "
+                     % (link, versioned_stage))
+        except Exception as ex:
+            raise exception.SysinvException("Failed to update symlink [%s]. Error: [%s]"
+                                            % (link, ex))
+
+    def kubeadm_upgrade_node(self, to_kube_version):
+        """Runs kubeadm upgrade node command on a host.
+
+        The command "kubeadm upgrade node" is used to upgrade both control plane
+        components and kubelet on a kubernetes node.
+
+        :param: to_kube_version: kubernetes version string to be upgraded to.
+
+        :raises: SysinvException in case of failure.
+        """
+        try:
+            process = None
+            to_kube_version = to_kube_version.strip('v')
+            LOG.info("Running command 'kubeadm upgrade node' on this host ...")
+
+            cmd = [constants.KUBEADM_PATH_FORMAT_STR.format(kubeadm_ver=to_kube_version),
+                   "--kubeconfig=%s" % (self._kubeconfig), '-v4', 'upgrade', 'node']
+
+            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                       text=True, bufsize=1)
+
+            def _capture_output():
+                for line in process.stdout:
+                    LOG.info("[kubeadm-upgrade-node]: %s" % line)
+                    # Ensure that the buffer is flushed
+                    sys.stdout.flush()
+
+            t = threading.Thread(target=_capture_output)
+
+            t.start()
+
+            return_code = process.wait(timeout=KUBEADM_UPGRADE_COMMAND_TIMEOUT)
+
+            t.join(timeout=KUBEADM_UPGRADE_COMMAND_TIMEOUT)
+
+            if return_code == 0:
+                LOG.info("Successfully executed command 'kubeadm upgrade node' on this host.")
+            else:
+                raise exception.ProcessExecutionError(
+                    cmd=cmd, exit_code=return_code, stderr=process.stderr.read())
+
+        except exception.ProcessExecutionError as ex:
+            if process:
+                process.kill()
+            raise exception.SysinvException("Command [%s] execution failed with error: [%s] and "
+                                            "return code: [%s]" % (cmd, ex.stderr, ex.exit_code))
+        except Exception as ex:
+            if process:
+                process.kill()
+            raise exception.SysinvException("Kubeadm upgrade node operation failed "
+                                            "with error: [%s]" % (ex))
+
 
 class KubeWorkerOperator(KubeHostOperator):
     '''Class for kubernetes worker operations in Sysinv '''
@@ -147,6 +233,7 @@ class KubeControllerOperator(KubeHostOperator):
                 constants.ETCD_PATH, constants.ETCD_DIR_NAME, etcd.ETCD_DB_FILE_NAME)
         self._etcd_bkp_path = os.path.join(
                 constants.ETCD_PATH, constants.ETCD_DIR_NAME, etcd.ETCD_BACKUP_FILE_NAME)
+        self._kubeconfig = kubernetes.KUBERNETES_ADMIN_CONF
         super().__init__(context, host_uuid, host_name)
 
     def _backup_kubeconfig_files(self):
@@ -480,3 +567,214 @@ class KubeControllerOperator(KubeHostOperator):
         except Exception as ex:
             raise exception.SysinvException("Error performing kubernetes upgrade abort recovery: "
                                             "[%s]" % (ex))
+
+    def kubeadm_upgrade_apply(self, to_kube_version):
+        """Runs kubeadm upgrade apply command on a controller host.
+
+        The command "kubeadm upgrade apply" is used to upgrade first control plane
+        node of the kubernetes cluster.
+
+        :param: to_kube_version: kubernetes version string to be upgraded to.
+
+        :raises: SysinvException in case of failure.
+        """
+        try:
+            process = None
+            to_kube_version = to_kube_version.strip('v')
+            LOG.info("Running command 'kubeadm upgrade apply' on this host ...")
+
+            cmd = [constants.KUBEADM_PATH_FORMAT_STR.format(kubeadm_ver=to_kube_version),
+                   "--kubeconfig=%s" % (self._kubeconfig), '-v4', 'upgrade', 'apply',
+                   to_kube_version, '--allow-experimental-upgrades',
+                   '--allow-release-candidate-upgrades', '-y']
+
+            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                       text=True, bufsize=1)
+
+            def _capture_output():
+                for line in process.stdout:
+                    LOG.info("[kubeadm-upgrade-apply]: %s" % line)
+                    # Ensure that the buffer is flushed
+                    sys.stdout.flush()
+
+            t = threading.Thread(target=_capture_output)
+
+            t.start()
+
+            return_code = process.wait(timeout=KUBEADM_UPGRADE_COMMAND_TIMEOUT)
+
+            t.join(timeout=KUBEADM_UPGRADE_COMMAND_TIMEOUT)
+
+            if return_code == 0:
+                LOG.info("Successfully executed command 'kubeadm upgrade apply' on this host.")
+            else:
+                raise exception.ProcessExecutionError(
+                    cmd=cmd, exit_code=return_code, stderr=process.stderr.read())
+
+        except exception.ProcessExecutionError as ex:
+            if process:
+                process.kill()
+            raise exception.SysinvException("Command [%s] execution failed with error: [%s] and "
+                                            "return code: [%s]"
+                                            % (cmd, ex.stderr, ex.exit_code))
+        except Exception as ex:
+            if process:
+                process.kill()
+            raise exception.SysinvException("Kubeadm upgrade apply operation failed "
+                                            "with error: [%s]" % (ex))
+
+    def _remove_older_kubelet_config_configmaps(self):
+        """Remove all kubelet-config configmaps and just keep the latest one
+        """
+        try:
+            configmaps = self._kubernetes_operator.kube_get_all_configmaps()
+            kubelet_confs = [cm for cm in configmaps if 'kubelet-config' in cm.metadata.name]
+            configmap_to_keep = max(kubelet_confs, key=attrgetter('metadata.creation_timestamp',
+                                                                  'metadata.resource_version'))
+            for cm in kubelet_confs:
+                if cm.metadata.name != configmap_to_keep.metadata.name:
+                    self._kubernetes_operator.kube_delete_config_map(
+                        cm.metadata.name, kubernetes.NAMESPACE_KUBE_SYSTEM)
+        except Exception as ex:
+            raise exception.SysinvException("Failed to remove older kubelet-config configmaps with"
+                                            " error: [%s]" % (ex))
+
+    def _update_kube_proxy_service_account(self):
+        """Update ImagePullSecrets field in kube-proxy in service account
+        """
+        try:
+            patch_kube_proxy_sa = {
+                "imagePullSecrets": [{"name": "registry-local-secret"}]
+            }
+
+            self._kubernetes_operator.kube_patch_service_account(
+                "kube-proxy", kubernetes.NAMESPACE_KUBE_SYSTEM, body=patch_kube_proxy_sa)
+            LOG.info("kube-proxy service account updated successfully.")
+        except Exception as ex:
+            raise exception.SysinvException("Failed to update image pull secrets in kube-proxy "
+                                            "service account with error: [%s]" % (ex))
+
+    def _update_coredns_service_account(self):
+        """Update coredns service account labels and ImagePullSecrets
+        """
+        try:
+            patch_coredns_sa = {
+                "metadata": {
+                    "labels": {
+                        "kubernetes.io/cluster-service": "true",
+                        "addonmanager.kubernetes.io/mode": "Reconcile"
+                    }
+                },
+                "imagePullSecrets": [{
+                    "name": "default-registry-key"
+                }]
+            }
+            self._kubernetes_operator.kube_patch_service_account(
+                "coredns", kubernetes.NAMESPACE_KUBE_SYSTEM, body=patch_coredns_sa)
+            LOG.info("Coredns service account updated successfully.")
+        except Exception as ex:
+            raise exception.SysinvException("Failed to update coredns service account "
+                                            "with error: [%s]" % (ex))
+
+    def _update_coredns_deployment_with_rollout_restart(self):
+        """Update and rollout restart coredns deployment
+        """
+        try:
+            now = datetime.datetime.now()
+            now_iso_format = now.isoformat("T") + "Z"
+            patch_corens_deployment = {
+                "spec": {
+                    "template": {
+                        "spec": {
+                            "nodeSelector": {
+                                "node-role.kubernetes.io/control-plane": ""
+                            },
+                            "affinity": {
+                                "podAntiAffinity": {
+                                    "requiredDuringSchedulingIgnoredDuringExecution": [{
+                                        "labelSelector": {
+                                            "matchExpressions": [{
+                                                "key": "k8s-app",
+                                                "operator": "In",
+                                                "values": ["kube-dns"]
+                                            }]
+                                        },
+                                        "topologyKey": "kubernetes.io/hostname"
+                                    }]
+                                }
+                            }
+                        },
+                        'metadata': {
+                            'annotations': {
+                                'kubectl.kubernetes.io/restartedAt': now_iso_format
+                            }
+                        }
+                    },
+                }
+            }
+
+            if self._system_mode == constants.SYSTEM_MODE_SIMPLEX:
+                patch_corens_deployment['spec'].update({"replicas": 1})
+
+            self._kubernetes_operator.kube_patch_deployment(
+                "coredns", kubernetes.NAMESPACE_KUBE_SYSTEM, body=patch_corens_deployment)
+            LOG.info("Coredns deployment updated and rolllout restarted successfully.")
+        except Exception as ex:
+            raise exception.SysinvException("Failed to update coredns deployment with "
+                                            "error: [%s]" % (ex))
+
+    def _rollout_restart_kube_proxy_daemonset(self):
+        """Rollout restart kube-proxy daemonset
+        """
+        try:
+            now = datetime.datetime.now()
+            now_iso_format = now.isoformat("T") + "Z"
+            patch_kube_proxy_daemonset = {
+                'spec': {
+                    'template': {
+                        'metadata': {
+                            'annotations': {
+                                'kubectl.kubernetes.io/restartedAt': now_iso_format
+                            }
+                        }
+                    }
+                }
+            }
+
+            self._kubernetes_operator.kube_patch_daemon_set(
+                "kube-proxy", kubernetes.NAMESPACE_KUBE_SYSTEM, body=patch_kube_proxy_daemonset)
+
+            LOG.info("Kube-proxy deployment rollout restarted successfully.")
+
+        except Exception as ex:
+            raise exception.SysinvException("Failed to update coredns deployment with "
+                                            "error: [%s]" % (ex))
+
+    def upgrade_control_plane(self, to_kube_version, is_first_master):
+        """Upgrade kubernetes control-plane components on this controller
+
+        :param: to_kube_version: kubernetes version being upgraded to
+        :param: is_first_master: True if this is the first controller being upgraded else False
+        """
+        try:
+            if is_first_master:
+                self.kubeadm_upgrade_apply(to_kube_version)
+            else:
+                self.kubeadm_upgrade_node(to_kube_version)
+
+            if self._system_mode == constants.SYSTEM_MODE_SIMPLEX or not is_first_master:
+
+                self._remove_older_kubelet_config_configmaps()
+
+                self._update_coredns_service_account()
+
+                self._update_kube_proxy_service_account()
+
+                self._update_coredns_deployment_with_rollout_restart()
+
+                self._rollout_restart_kube_proxy_daemonset()
+
+            self._update_symlink(kubernetes.KUBERNETES_SYMLINKS_STAGE_1, to_kube_version)
+
+        except Exception as ex:
+            raise exception.SysinvException("Error upgrading control plane components: %s" % (ex))

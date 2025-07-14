@@ -10640,94 +10640,6 @@ class ConductorManager(service.PeriodicService):
             self.fm_api.clear_fault(fm_constants.FM_ALARM_ID_CONTROLLER_FS_FAILED,
                                     entity_instance_id)
 
-    def handle_k8s_upgrade_control_plane_failure(self, context, kube_upgrade_obj,
-                                        host_uuid, puppet_class):
-        kube_upgrade_obj.recovery_attempts += 1
-        kube_upgrade_obj.save()
-
-        personalities = [constants.CONTROLLER]
-        config_uuid = self._config_update_hosts(context, personalities,
-            [host_uuid])
-
-        # Apply the runtime manifest to upgrade the control plane
-        config_dict = {
-            "personalities": personalities,
-            "host_uuids": [host_uuid],
-            "classes": [puppet_class],
-            puppet_common.REPORT_STATUS_CFG:
-                puppet_common.REPORT_UPGRADE_CONTROL_PLANE
-        }
-        self._config_apply_runtime_manifest(context, config_uuid, config_dict)
-
-    # Retrying a few times and waiting between each retry
-    # In rare cases, restart of one or more of the control-plane pods may be delayed.
-    @retry(retry_on_result=lambda x: x is False,
-           stop_max_attempt_number=10,
-           wait_fixed=1000)
-    def handle_k8s_upgrade_control_plane_success(self, context, kube_upgrade_obj, host_uuid,
-                                          new_state, fail_state):
-
-        def manifest_apply_failed_state(kube_host_upgrade_obj,
-                                        kube_upgrade_obj, fail_state):
-            kube_host_upgrade_obj.status = \
-                kubernetes.KUBE_HOST_UPGRADING_CONTROL_PLANE_FAILED
-            kube_host_upgrade_obj.save()
-            kube_upgrade_obj.state = fail_state
-            kube_upgrade_obj.save()
-
-        def check_alarm_status(host_name, kube_host_upgrade_obj, kube_upgrade_obj,
-                               new_state, fail_state):
-            # Monitor the alarm status in a separate thread and update the
-            # control plane status if no alarm is detected.
-            check_alarm_count = 5
-            while check_alarm_count > 0:
-                try:
-                    alarms = self.fm_api.get_faults_by_id(
-                        fm_constants.FM_ALARM_ID_SYSCONFIG_OUT_OF_DATE)
-                    if not alarms:
-                        # The control plane update was successful
-                        LOG.info("Control plane was updated for host %s" % host_name)
-                        kube_host_upgrade_obj.status = None
-                        kube_host_upgrade_obj.save()
-                        kube_upgrade_obj.state = new_state
-                        kube_upgrade_obj.save()
-                        return
-                except Exception:
-                    LOG.error("Error checking alarm status for host %s:" % host_name)
-                    manifest_apply_failed_state(kube_host_upgrade_obj,
-                                                kube_upgrade_obj, fail_state)
-                    return
-                check_alarm_count -= 1
-                if check_alarm_count > 0:
-                    # Wait a few seconds for the alarm to clear
-                    time.sleep(3)
-            LOG.error("Failed to clear the %s alarm for host %s:"
-                      % (alarms, host_name))
-            manifest_apply_failed_state(kube_host_upgrade_obj,
-                                        kube_upgrade_obj, fail_state)
-            return
-
-        host_obj = objects.host.get_by_uuid(context, host_uuid)
-        host_name = host_obj.hostname
-        kube_host_upgrade_obj = objects.kube_host_upgrade.get_by_host_id(
-            context, host_obj.id)
-        target_version = kube_host_upgrade_obj.target_version
-        kube_operator = kubernetes.KubeOperator()
-        cp_versions = kube_operator.kube_get_control_plane_versions()
-        LOG.info("Checking control plane update on host %s, "
-                "cp_versions = %s, target_version = %s" %
-                (host_name, cp_versions, target_version))
-        if cp_versions.get(host_name, None) != target_version:
-            LOG.warning("Control plane upgrade failed for host %s" %
-                        host_name)
-            manifest_apply_failed_state(kube_host_upgrade_obj,
-                                        kube_upgrade_obj, fail_state)
-            return False
-
-        greenthread.spawn(check_alarm_status, host_name, kube_host_upgrade_obj, kube_upgrade_obj,
-                          new_state, fail_state)
-        return True
-
     def report_config_status(self, context, iconfig, status, error=None):
         """ Callback from Sysinv Agent on manifest apply success or failure
 
@@ -10943,52 +10855,6 @@ class ConductorManager(service.PeriodicService):
             host_uuid = iconfig['host_uuid']
             self.report_apparmor_config_complete(context, host_uuid, status, error)
             success = (status == puppet_common.REPORT_SUCCESS)
-        elif reported_cfg == puppet_common.REPORT_UPGRADE_CONTROL_PLANE:
-            # The agent is reporting the runtime kube_upgrade_control_plane has been applied.
-            kube_upgrade_obj = objects.kube_upgrade.get_one(context)
-            host_obj = objects.host.get_by_uuid(context, host_uuid)
-            if kube_upgrade_obj.state == kubernetes.KUBE_UPGRADING_FIRST_MASTER:
-                puppet_class = 'platform::kubernetes::upgrade_first_control_plane'
-                new_state = kubernetes.KUBE_UPGRADED_FIRST_MASTER
-                fail_state = kubernetes.KUBE_UPGRADING_FIRST_MASTER_FAILED
-            elif kube_upgrade_obj.state == kubernetes.KUBE_UPGRADING_SECOND_MASTER:
-                puppet_class = 'platform::kubernetes::upgrade_control_plane'
-                new_state = kubernetes.KUBE_UPGRADED_SECOND_MASTER
-                fail_state = kubernetes.KUBE_UPGRADING_SECOND_MASTER_FAILED
-            else:
-                # To handle the case during orchestrated k8s upgrade where
-                # where nfv timeout earlier than puppet timeout which updates
-                # k8s upgrade state upgrade-aborted
-                LOG.info("Skipping retry: Kubernetes upgrade state %s is not in %s, or %s"
-                         % (kube_upgrade_obj.state, kubernetes.KUBE_UPGRADING_FIRST_MASTER,
-                           kubernetes.KUBE_UPGRADING_SECOND_MASTER))
-                return
-            if status == puppet_common.REPORT_SUCCESS:
-                # Upgrade control-plane action was successful.
-                success = True
-                try:
-                    self.handle_k8s_upgrade_control_plane_success(context, kube_upgrade_obj,
-                                                                  host_uuid, new_state,
-                                                                  fail_state)
-                except retrying.RetryError:
-                    LOG.info("Retry failed while handling k8s upgrade control plane success")
-            if status == puppet_common.REPORT_FAILURE:
-                # Upgrade control-plane action failed to apply puppet manifest.
-                if kube_upgrade_obj.recovery_attempts < constants.CONTROL_PLANE_RETRY_COUNT:
-                    LOG.info("k8s upgrade control plane failed - retrying attempt %s"
-                                     % kube_upgrade_obj.recovery_attempts)
-                    self.handle_k8s_upgrade_control_plane_failure(context, kube_upgrade_obj,
-                                                           host_uuid, puppet_class)
-                else:
-                    LOG.warning("k8s upgrade control plane failed %s times, giving up"
-                                  % constants.AUTO_RECOVERY_COUNT)
-                    kube_upgrade_obj.state = fail_state
-                    kube_upgrade_obj.save()
-                    kube_host_upgrade_obj = objects.kube_host_upgrade.get_by_host_id(
-                        context, host_obj.id)
-                    kube_host_upgrade_obj.status = \
-                        kubernetes.KUBE_HOST_UPGRADING_CONTROL_PLANE_FAILED
-                    kube_host_upgrade_obj.save()
         else:
             LOG.error("Reported configuration '%(cfg)s' is not handled by"
                       " report_config_status! iconfig: %(iconfig)s" %
@@ -18032,19 +17898,52 @@ class ConductorManager(service.PeriodicService):
                 uncordon_status = kubernetes.KUBE_UPGRADE_UNCORDON_FAILED
             self._kube_upgrade_state_update(context, uncordon_status)
 
+    def report_kube_upgrade_control_plane_result(self, context, host_uuid,
+                                                 to_version, is_first_master, success):
+        """Handle control-plane upgrade result call from Sysinv Agent.
+
+        :param: context: request context
+        :param: host_uuid: UUID of the host reporting status
+        :param: to_version: Kube version to which control plane was being upgraded to
+        :param: is_first_master: True if this was the first master being upgraded, False otherwise
+        :param: success: True if upgrade was successful, False otherwise
+        """
+        host_obj = objects.host.get_by_uuid(context, host_uuid)
+        kube_host_upgrade_obj = objects.kube_host_upgrade.get_by_host_id(context, host_obj.id)
+        kube_upgrade_obj = objects.kube_upgrade.get_one(context)
+
+        if success and is_first_master:
+            upgrade_state = kubernetes.KUBE_UPGRADED_FIRST_MASTER
+            host_state = None
+            LOG.info("Kubernetes control-plane components upgraded successfully to version %s on "
+                     "the first master." % (to_version))
+        elif not success and is_first_master:
+            upgrade_state = kubernetes.KUBE_UPGRADING_FIRST_MASTER_FAILED
+            host_state = kubernetes.KUBE_HOST_UPGRADING_CONTROL_PLANE_FAILED
+            LOG.error("Failed to upgrade kubernetes control-plane components to version %s on "
+                      "the first master. Check sysinv.log on that host for details and "
+                      "retry the operation." % (to_version))
+        elif success and not is_first_master:
+            upgrade_state = kubernetes.KUBE_UPGRADED_SECOND_MASTER
+            host_state = None
+            LOG.info("Kubernetes control-plane components upgraded successfully to version %s on "
+                     "the second master." % (to_version))
+            LOG.info("Kubernetes control-plane upgrade to version %s completed successfully on "
+                     "all controller nodes." % (to_version))
+        elif not success and not is_first_master:
+            upgrade_state = kubernetes.KUBE_UPGRADING_SECOND_MASTER_FAILED
+            host_state = kubernetes.KUBE_HOST_UPGRADING_CONTROL_PLANE_FAILED
+            LOG.error("Failed to upgrade kubernetes control-plane components to version %s on "
+                      "the second master. Check sysinv.log on that host for details and "
+                      "retry the operation." % (to_version))
+
+        kube_host_upgrade_obj.status = host_state
+        kube_host_upgrade_obj.save()
+        kube_upgrade_obj.state = upgrade_state
+        kube_upgrade_obj.save()
+
     def kube_upgrade_control_plane(self, context, host_uuid):
         """Upgrade the kubernetes control plane on this host"""
-
-        def manifest_apply_failed_state(context, fail_state, host_obj):
-            kube_upgrade_obj = objects.kube_upgrade.get_one(context)
-            kube_upgrade_obj.state = fail_state
-            kube_upgrade_obj.save()
-            kube_host_upgrade_obj = objects.kube_host_upgrade.get_by_host_id(
-                context, host_obj.id)
-            kube_host_upgrade_obj.status = \
-                kubernetes.KUBE_HOST_UPGRADING_CONTROL_PLANE_FAILED
-            kube_host_upgrade_obj.save()
-            return
 
         host_obj = objects.host.get_by_uuid(context, host_uuid)
         host_name = host_obj.hostname
@@ -18052,13 +17951,13 @@ class ConductorManager(service.PeriodicService):
             context, host_obj.id)
         target_version = kube_host_upgrade_obj.target_version
         kube_upgrade_obj = objects.kube_upgrade.get_one(context)
-        kube_upgrade_obj.recovery_attempts = 0
         kube_upgrade_obj.save()
         kube_operator = kubernetes.KubeOperator()
         current_versions = kube_operator.kube_get_kubelet_versions()
         system = self.dbapi.isystem_get_one()
 
         if kube_upgrade_obj.state == kubernetes.KUBE_UPGRADING_FIRST_MASTER:
+
             if system.system_mode == constants.SYSTEM_MODE_SIMPLEX:
                 next_versions = kube_operator.kube_get_higher_patch_version(current_versions.get(host_name, None),
                                                                     kube_upgrade_obj.to_version)
@@ -18070,8 +17969,7 @@ class ConductorManager(service.PeriodicService):
                 kube_host_upgrade_obj.target_version = target_version
                 kube_host_upgrade_obj.save()
 
-            puppet_class = 'platform::kubernetes::upgrade_first_control_plane'
-            fail_state = kubernetes.KUBE_UPGRADING_FIRST_MASTER_FAILED
+            is_first_master = True
 
             # Drop any removed/unsupported feature gates before we upgrade to a
             # newer Kubernetes.  If we leave them in we can prevent K8s services
@@ -18108,36 +18006,27 @@ class ConductorManager(service.PeriodicService):
                 rc = 1
 
             if rc == 1:
-                manifest_apply_failed_state(context, fail_state, host_obj)
+                self.report_kube_upgrade_control_plane_result(
+                        context, host_uuid, target_version, is_first_master, False)
                 return
 
         elif kube_upgrade_obj.state == kubernetes.KUBE_UPGRADING_SECOND_MASTER:
-            puppet_class = 'platform::kubernetes::upgrade_control_plane'
-            fail_state = kubernetes.KUBE_UPGRADING_SECOND_MASTER_FAILED
+            is_first_master = False
         else:
             raise exception.SysinvException(_(
                 "Invalid state %s to upgrade control plane." %
                 kube_upgrade_obj.state))
 
-        # Update the config for this host
-        personalities = [host_obj.personality]
-        config_uuid = self._config_update_hosts(context, personalities,
-            [host_uuid])
-
-        # Apply the runtime manifest to upgrade the control plane
-        config_dict = {
-            "personalities": personalities,
-            "host_uuids": [host_uuid],
-            "classes": [puppet_class],
-            puppet_common.REPORT_STATUS_CFG:
-                puppet_common.REPORT_UPGRADE_CONTROL_PLANE
-        }
         try:
-            self._config_apply_runtime_manifest(context, config_uuid, config_dict)
-        except Exception:
-            LOG.error("Manifest apply failed for host %s with config_uuid %s" %
-                      (host_name, config_uuid))
-            manifest_apply_failed_state(context, fail_state, host_obj)
+            agent_api = agent_rpcapi.AgentAPI()
+            agent_api.kube_upgrade_control_plane(
+                    context, host_uuid, target_version, is_first_master)
+        except Exception as ex:
+            # Handle unexpected exception
+            LOG.exception("Kubernetes control-plane upgrade for host %s failed. Error: [%s]"
+                          % (host_name, ex))
+            self.report_kube_upgrade_control_plane_result(
+                    context, host_uuid, target_version, is_first_master, False)
 
     def kube_upgrade_kubelet(self, context, host_uuid):
         """Upgrade the kubernetes kubelet on this host"""
