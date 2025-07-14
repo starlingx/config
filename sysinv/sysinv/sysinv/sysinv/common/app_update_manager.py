@@ -61,18 +61,18 @@ class AppUpdateManager:  # noqa: H238
                 }.
         """
         apps_metadata = app_metadata.get_reorder_apps()
-        ordered_apps = apps_metadata.get('ordered_apps', {})
-        class_apps = ordered_apps.get('class', {})
+        class_apps = apps_metadata.get('class', {})
 
         ordered_apps_metadata = {
             'critical': class_apps.get('critical', []),
             'storage_and_independent_apps': (
-                class_apps.get('storage', []) + ordered_apps.get('independent_apps', [])
+                class_apps.get('storage', []) + apps_metadata.get('independent_apps', [])
             ),
             'discovery': class_apps.get('discovery', []),
             'optional': class_apps.get('optional', []),
             'reporting': class_apps.get('reporting', []),
-            'dependent_apps': ordered_apps.get('dependent_apps', []),
+            'dependent_apps': apps_metadata.get('dependent_apps', []),
+            'unmanaged_apps': apps_metadata.get('unmanaged_apps', set()),
         }
 
         status_to_category = {
@@ -186,6 +186,8 @@ class AppUpdateManager:  # noqa: H238
 
             LOG.info("Starting the update of apps with applied status.")
             for class_type in self.apps_to_update[constants.APP_UPDATE_OP]:
+                if class_type == 'unmanaged_apps':
+                    LOG.info("Starting the update of unmanaged apps with applied status.")
                 self._update_a_list_of_apps(
                     context,
                     class_type['apps'],
