@@ -1563,8 +1563,7 @@ SYSTEMCTL_RUNTIME_FLAG = '--runtime'
 SYSTEMCTL_NOW_FLAG = '--now'
 
 ETCD_PATH = "/opt/etcd"
-# TODO: This will be changed to 'db'.
-ETCD_DIR_NAME = "25.09"
+ETCD_DIR_NAME = "db"
 PLATFORM_PATH = "/opt/platform"
 
 # TIS part number, CPE = combined load, STD = standard load
