@@ -2366,8 +2366,6 @@ ANSIBLE_RESTORE_ROOK_FLAG = os.path.join(tsc.VOLATILE_PATH, ".ansible_restore_ro
 ANSIBLE_PLAYBOOKS_ROOT = "/usr/share/ansible/stx-ansible/playbooks"
 ANSIBLE_PLATFORM_BACKUP_PLAYBOOK = \
     '/usr/share/ansible/stx-ansible/playbooks/backup.yml'
-ANSIBLE_KUBE_STATIC_IMAGES_PLAYBOOK = \
-    '/usr/share/ansible/stx-ansible/playbooks/upgrade-static-images.yml'
 
 # Playbooks path to versioned system-images.yml
 ANSIBLE_KUBE_SYSTEM_IMAGES_PLAYBOOK_ROOT = \

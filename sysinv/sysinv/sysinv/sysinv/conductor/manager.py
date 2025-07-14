@@ -162,9 +162,6 @@ conductor_opts = [
        cfg.IntOpt('managed_app_auto_recovery_interval',
                   default=300,
                   help='Interval to run managed app auto recovery'),
-       cfg.IntOpt('kube_upgrade_downgrade_retry_interval',
-                  default=3600,
-                  help='Interval in seconds between retries to upgrade/downgrade kubernetes components'),
        cfg.IntOpt('fw_update_large_timeout',
                   default=3600,
                   help='Timeout interval in seconds for a large device image'),
@@ -8962,43 +8959,6 @@ class ConductorManager(service.PeriodicService):
                           app, app.mode, lifecycle_hook_info)
         else:
             self.perform_app_apply(context, app, app.mode, lifecycle_hook_info)
-
-    @retry(retry_on_result=lambda x: x is False,
-           wait_fixed=(CONF.conductor.kube_upgrade_downgrade_retry_interval * 1000))
-    @cutils.synchronized(LOCK_IMAGE_PULL)
-    def _upgrade_downgrade_static_images(self):
-        try:
-            # Get the kubernetes version from the upgrade table
-            # if an upgrade exists
-            kube_upgrade = self.dbapi.kube_upgrade_get_one()
-            kube_version = \
-                kubernetes.get_kube_networking_upgrade_version(kube_upgrade)
-        except exception.NotFound:
-            # Not upgrading kubernetes, get the kubernetes version
-            # from the kubeadm config map
-            kube_version = self._kube.kube_get_kubernetes_version()
-
-        if not kube_version:
-            LOG.error("Unable to get the current kubernetes version.")
-            return False
-
-        try:
-            LOG.info("_upgrade_downgrade_kube_static_images executing"
-                     " playbook: %s for version %s" %
-                     (constants.ANSIBLE_KUBE_STATIC_IMAGES_PLAYBOOK, kube_version))
-
-            playbook_cmd = ['ansible-playbook', '-e', 'kubernetes_version=%s' % kube_version,
-                            constants.ANSIBLE_KUBE_STATIC_IMAGES_PLAYBOOK]
-            returncode = cutils.run_playbook(playbook_cmd)
-
-            if returncode:
-                raise Exception("ansible-playbook returned an error: %s" % returncode)
-        except Exception as e:
-            LOG.error("Failed to upgrade/downgrade kubernetes "
-                      "static images: {}".format(e))
-            return False
-
-        return True
 
     def check_nodes_stable(self):
         """Check if the nodes are in a stable state in order to allow apps to be applied"""
