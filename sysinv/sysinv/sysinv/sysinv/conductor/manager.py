@@ -38,6 +38,7 @@ import hashlib
 import io
 import json
 import math
+import netaddr
 import os
 import psutil
 import re
@@ -8961,43 +8962,6 @@ class ConductorManager(service.PeriodicService):
                           app, app.mode, lifecycle_hook_info)
         else:
             self.perform_app_apply(context, app, app.mode, lifecycle_hook_info)
-
-    @retry(retry_on_result=lambda x: x is False,
-           wait_fixed=(CONF.conductor.kube_upgrade_downgrade_retry_interval * 1000))
-    @cutils.synchronized(LOCK_IMAGE_PULL)
-    def _upgrade_downgrade_kube_networking(self):
-        try:
-            # Get the kubernetes version from the upgrade table
-            # if an upgrade exists
-            kube_upgrade = self.dbapi.kube_upgrade_get_one()
-            kube_version = \
-                kubernetes.get_kube_networking_upgrade_version(kube_upgrade)
-        except exception.NotFound:
-            # Not upgrading kubernetes, get the kubernetes version
-            # from the kubeadm config map
-            kube_version = self._kube.kube_get_kubernetes_version()
-
-        if not kube_version:
-            LOG.error("Unable to get the current kubernetes version.")
-            return False
-
-        try:
-            LOG.info("_upgrade_downgrade_kube_networking executing"
-                     " playbook: %s for version %s" %
-                     (constants.ANSIBLE_KUBE_NETWORKING_PLAYBOOK, kube_version))
-
-            playbook_cmd = ['ansible-playbook', '-e', 'kubernetes_version=%s' % kube_version,
-                            constants.ANSIBLE_KUBE_NETWORKING_PLAYBOOK]
-            returncode = cutils.run_playbook(playbook_cmd)
-
-            if returncode:
-                raise Exception("ansible-playbook returned an error: %s" % returncode)
-        except Exception as e:
-            LOG.error("Failed to upgrade/downgrade kubernetes "
-                      "networking images: {}".format(e))
-            return False
-
-        return True
 
     @retry(retry_on_result=lambda x: x is False,
            wait_fixed=(CONF.conductor.kube_upgrade_downgrade_retry_interval * 1000))
@@ -18445,6 +18409,324 @@ class ConductorManager(service.PeriodicService):
         kube_host_upgrade_obj.status = kubernetes.KUBE_HOST_UPGRADED_KUBELET
         kube_host_upgrade_obj.save()
 
+    def _get_kubernetes_system_images(self, kube_version):
+        """Get kubernetes images information for a kubernetes version
+
+        Read system-images.yaml list for the specified kubernetes version and return
+        the parsed yaml
+
+        :return: dict of images
+        :raises: SysinvException is case of error/failure.
+        """
+        try:
+            images = {}
+            images_path = os.path.join(constants.ANSIBLE_KUBE_SYSTEM_IMAGES_PLAYBOOK_ROOT,
+                                       "vars/k8s-%s/system-images.yml" % (kube_version))
+            with open(images_path, 'r') as file:
+                images = yaml.safe_load(file)
+            if not images:
+                raise exception.SysinvException("Image list is not available.")
+        except Exception as ex:
+            raise exception.SysinvException("Failed to get image list for kubernetes version [%s]."
+                                            " Error: [%s] " % (kube_version, ex))
+        return images
+
+    def _generate_k8s_manifests_and_apply(
+            self, full_source_path, full_destination_path, is_template=False, values=None):
+        """Private method to generate k8s manifests and apply them using kubectl
+
+        This method either renders a Jinja template with specified values or
+        copies a manifest file to a specified location and kube apply the
+        copied manifest file
+
+        :param: full_source_path: Full path of either the Jinja template
+                             or the source manifest file itself
+        :param: full_destination_path: Full path to a location where source needs
+                                  to be copied or rendered
+        :param: is_tempate(optional): True if source_path is .j2 (jinja) template
+                                      False otherwise
+        :param: values(optional): dictionary of key:value pairs to be rendered if
+                                  is_template=True
+
+        :returns: True upon success False upon failure.
+        """
+        if not is_template:
+            try:
+                shutil.copy2(full_source_path, full_destination_path)
+            except Exception as e:
+                LOG.error("Failed to copy manifest file from [%s] to [%s] with error: [%s]"
+                          % (full_source_path, full_destination_path, e))
+                return False
+        else:
+            rendered_string = ""
+            try:
+                custom_filters = {'ipv4': netaddr.valid_ipv4, 'ipv6': netaddr.valid_ipv6}
+
+                source_file_name = os.path.basename(full_source_path)
+                source_path = os.path.dirname(full_source_path)
+
+                rendered_string = cutils.render_jinja_template_from_file(
+                    source_path, source_file_name, custom_filters=custom_filters, values=values)
+            except Exception as e:
+                LOG.error(e)
+                return False
+
+            if rendered_string != "":
+                try:
+                    with open(full_destination_path, "w") as file:
+                        file.write(rendered_string + "\n")
+                except Exception as e:
+                    LOG.error("Failed to write rendered jinja template [%s] "
+                              "to the manifest file [%s] with error: [%s]"
+                              % (rendered_string, full_destination_path, e))
+                    return False
+        try:
+            kubernetes.kubectl_apply(full_destination_path)
+        except Exception as ex:
+            LOG.error(ex)
+            return False
+        return True
+
+    def _upgrade_k8s_networking(self, kube_version):
+        """Upgrade kubernetes networking.
+
+        This method downloads network related images and apply manifests of
+        calico, multus, sriov and coredns for new version.
+
+        :kube_version: kubernetes version to be upgraded to
+        :raises: SysinvException in case of failure
+        """
+
+        CALICO_CNI_IMAGE_KEY = 'calico_cni_img'
+        CALICO_NODE_IMAGE_KEY = 'calico_node_img'
+        CALICO_KUBE_CONTROLLERS_KEY = 'calico_kube_controllers_img'
+        MULTUS_KEY = 'multus_img'
+        SRIOV_CNI_KEY = 'sriov_cni_img'
+        SRIOV_NW_DEVICE_KEY = 'sriov_network_device_img'
+
+        try:
+            images = self._get_kubernetes_system_images(kube_version)
+            networking_images = [images[CALICO_CNI_IMAGE_KEY], images[CALICO_NODE_IMAGE_KEY],
+                                 images[CALICO_KUBE_CONTROLLERS_KEY], images[MULTUS_KEY],
+                                 images[SRIOV_CNI_KEY], images[SRIOV_NW_DEVICE_KEY]]
+        except Exception as ex:
+            raise exception.SysinvException("Failed to get networking images information. "
+                                            "Error: [%s] " % (ex))
+
+        start = time.time()
+
+        try:
+            success = self.\
+                download_images_from_upstream_to_local_reg_and_crictl(networking_images)
+        except Exception:
+            success = False
+
+        if not success:
+            raise exception.SysinvException("Failed to download upstream k8s networking images "
+                                            "to the local registry and crictl. ")
+
+        elapsed_time = time.time() - start
+
+        LOG.info("Download of kubernetes networking images for kubernetes version [%s] "
+                 "to local registry and crictl completed successfully in [%s]."
+                 % (kube_version, elapsed_time))
+
+        overrides_file = "/tmp/upgrade_overrides.yaml"
+        try:
+            cmd = [constants.SYSINV_UTILS_PATH, constants.CREATE_HOST_OVERRIDES_COMMAND,
+                   overrides_file]
+            cutils.execute(*cmd, check_exit_code=0)
+        except exception.ProcessExecutionError as e:
+            raise exception.SysinvException("Failed to create host overrides"
+                                            " file. Details: %s" % str(e))
+
+        LOG.info("K8s network upgrade: host overrides file created successfully.")
+
+        overrides = {}
+        try:
+            if os.path.exists(overrides_file):
+                with open(overrides_file, "r") as stream:
+                    overrides = yaml.safe_load(stream)
+        except Exception as e:
+            raise exception.SysinvException("Failed to read host overrides "
+                                            "file. Details: %s" % str(e))
+
+        LOG.debug("host overrides: [%s]" % (overrides))
+
+        cluster_network_ipv4 = cluster_network_ipv6 = None
+        if "cluster_pod_subnet" in overrides:
+            cluster_pod_subnet = overrides["cluster_pod_subnet"]
+            cluster_pod_subnet_ip = cluster_pod_subnet.split('/')[0]
+            if IPAddress(cluster_pod_subnet_ip).version == 4:
+                cluster_network_ipv4 = cluster_pod_subnet
+            elif IPAddress(cluster_pod_subnet_ip).version == 6:
+                cluster_network_ipv6 = cluster_pod_subnet
+            else:
+                raise exception.SysinvException("Invalid value detected for cluster_pod_subnet "
+                                                "in the host overrides file: [%s]"
+                                                % cluster_pod_subnet)
+        else:
+            raise exception.SysinvException("Failed to find cluster_pod_subnet in "
+                                            "the host overrides file. ")
+
+        cluster_host_floating_address = None
+        cluster_floating_address_secondary = None
+        if "cluster_host_floating_address" in overrides:
+            cluster_host_floating_addresses = \
+                overrides["cluster_host_floating_address"].split(',')
+            cluster_host_floating_address = \
+                cluster_host_floating_addresses[0]
+            try:
+                IPAddress(cluster_host_floating_address)
+            except Exception:
+                raise exception.SysinvException("Invalid value detected for "
+                                                "cluster_host_floating_address in the host "
+                                                "overrides file: [%s]"
+                                                % (cluster_host_floating_addresses))
+
+            if len(cluster_host_floating_addresses) == 2:
+                cluster_floating_address_secondary = \
+                    cluster_host_floating_addresses[1]
+                try:
+                    IPAddress(cluster_floating_address_secondary)
+                except Exception:
+                    raise exception.SysinvException("Invalid value detected for "
+                                                    "cluster_host_floating_address in"
+                                                    "the host overrides file: [%s]"
+                                                    % (cluster_floating_address_secondary))
+        else:
+            raise exception.SysinvException("Failed to find cluster_host_floating_address "
+                                            "in the host overrides file.")
+
+        controller_0_cluster_host = None
+        controller_0_cluster_host_secondary = None
+        if "cluster_host_node_0_address" in overrides:
+            controller_0_cluster_hosts = \
+                overrides["cluster_host_node_0_address"].split(',')
+            controller_0_cluster_host = controller_0_cluster_hosts[0]
+            try:
+                IPAddress(controller_0_cluster_host)
+            except Exception:
+                raise exception.SysinvException("Invalid value detected for "
+                                                "cluster_host_node_0_address in the host "
+                                                "overrides file: [%s]"
+                                                % (controller_0_cluster_hosts))
+            if len(controller_0_cluster_hosts) == 2:
+                controller_0_cluster_host_secondary = \
+                    controller_0_cluster_hosts[1]
+                try:
+                    IPAddress(controller_0_cluster_host_secondary)
+                except Exception:
+                    raise exception.SysinvException("Invalid value detected for "
+                                                    "cluster_host_node_0_address in the host "
+                                                    "overrides file: [%s]"
+                                                    % (controller_0_cluster_host_secondary))
+
+        else:
+            raise exception.SysinvException("Failed to find cluster_host_node_0_address "
+                                            "in the host overrides file.")
+
+        calico_cni_template_variables = {
+            'cluster_network_ipv4': cluster_network_ipv4,
+            'cluster_network_ipv6': cluster_network_ipv6,
+            'local_registry': constants.DOCKER_REGISTRY_SERVER,
+            'calico_cni_img': images[CALICO_CNI_IMAGE_KEY],
+            'calico_node_img': images[CALICO_NODE_IMAGE_KEY],
+            'controller_0_cluster_host': controller_0_cluster_host,
+            'controller_0_cluster_host_secondary': controller_0_cluster_host_secondary,
+            'kubelet_cni_bin_dir': constants.KUBELET_CNI_BIN_DIR,
+            'calico_kube_controllers_img': images[CALICO_KUBE_CONTROLLERS_KEY],
+            'calico_chain_insert_mode': constants.CALICO_CHAIN_INSERT_MODE
+        }
+
+        multus_cni_template_variables = {
+            'cluster_network_ipv4': cluster_network_ipv4,
+            'cluster_network_ipv6': cluster_network_ipv6,
+            'local_registry': constants.DOCKER_REGISTRY_SERVER,
+            'multus_img': images[MULTUS_KEY],
+            'kubelet_cni_bin_dir': constants.KUBELET_CNI_BIN_DIR
+        }
+
+        sriov_cni_template_variables = {
+            'local_registry': constants.DOCKER_REGISTRY_SERVER,
+            'sriov_cni_img': images[SRIOV_CNI_KEY],
+            'kubelet_cni_bin_dir': constants.KUBELET_CNI_BIN_DIR
+        }
+
+        sriov_plugin_template_variables = {
+            'local_registry': constants.DOCKER_REGISTRY_SERVER,
+            'sriov_network_device_img': images[SRIOV_NW_DEVICE_KEY]
+        }
+
+        full_template_path = os.path.join(constants.ANSIBLE_PLAYBOOKS_ROOT,
+                                          "roles/common/bringup-kubemaster/templates/")
+
+        version_subpath = f"k8s-{kube_version}"
+
+        dispatch_list = [['coredns.yaml.j2', 'update_coredns.yaml', False,
+                          None],
+                         [f"{version_subpath}/calico-cni.yaml.j2", 'update_calico.yaml', True,
+                          calico_cni_template_variables],
+                         [f"{version_subpath}/multus-cni.yaml.j2", 'update_multus.yaml', True,
+                          multus_cni_template_variables],
+                         [f"{version_subpath}/sriov-cni.yaml.j2", 'update_sriov-cni.yaml', True,
+                          sriov_cni_template_variables],
+                         [f"{version_subpath}/sriov-plugin.yaml.j2",
+                          'update_sriovdp-daemonset.yaml', True,
+                          sriov_plugin_template_variables]]
+
+        for data in dispatch_list:
+            source_template_path = os.path.join(full_template_path, data[0])
+            dest_manifest_path = os.path.join(kubernetes.KUBERNETES_CONF_DIR, data[1])
+            is_template = data[2]
+            values = data[3]
+            if self._generate_k8s_manifests_and_apply(source_template_path, dest_manifest_path,
+                                                      is_template=is_template, values=values):
+                LOG.info("Kubernetes networking component [%s] upgraded successfully."
+                         % (re.split('update_|\.', data[1])[1]))
+            else:
+                raise exception.SysinvException("Failed to upgrade kubernetes networking "
+                                                "component: [%s]"
+                                                % (re.split('update_|\.', data[1])[1]))
+
+        if not cluster_network_ipv4:
+            check_ipv4_pools = True
+            try:
+                cmd = ["kubectl",
+                       f"--kubeconfig={kubernetes.KUBERNETES_ADMIN_CONF}",
+                       "get",
+                       "ippool.crd.projectcalico.org/default-ipv4-ippool"]
+                cutils.execute(*cmd, attempts=5, delay_on_retry=3,
+                               check_exit_code=0)
+            except exception.ProcessExecutionError as e:
+                if "Error from server (NotFound):" in e.stderr:
+                    LOG.info("default-ipv4-ippool does not exists. Nothing to do.")
+                    check_ipv4_pools = False
+                else:
+                    raise exception.SysinvException("Failed to get "
+                                                "ippool.crd.projectcalico.org/default-ipv4-ippool "
+                                                "with error: [%s]" % (e))
+
+            if check_ipv4_pools:
+                try:
+                    cmd = ["kubectl",
+                           f"--kubeconfig={kubernetes.KUBERNETES_ADMIN_CONF}",
+                           "delete",
+                           "ippool.crd.projectcalico.org/default-ipv4-ippool"]
+                    cutils.execute(*cmd, attempts=5, delay_on_retry=3,
+                                   check_exit_code=0)
+                except exception.ProcessExecutionError as e:
+                    raise exception.SysinvException("Error deleting "
+                            "ippool.crd.projectcalico.org/default-ipv4-ippool "
+                            "object. Details: %s" % str(e))
+                LOG.info("ippool.crd.projectcalico.org/default-ipv4-ippool deleted successfully")
+
+        try:
+            os.remove(overrides_file)
+        except Exception as ex:
+            LOG.warning("Failed to remove host overrides file at %s. Error: [%s]. "
+                        "Remove manually to save space." % (overrides_file, ex))
+
     def kube_upgrade_networking(self, context, kube_version):
         """Upgrade kubernetes networking for this kubernetes version"""
         try:
@@ -18456,33 +18738,22 @@ class ConductorManager(service.PeriodicService):
             # Remove any partially created backup
             self.remove_kube_control_plane_backup(context)
             # Update the upgrade state
-            kube_upgrade_obj = objects.kube_upgrade.get_one(context)
-            kube_upgrade_obj.state = \
-                kubernetes.KUBE_UPGRADING_NETWORKING_FAILED
-            kube_upgrade_obj.save()
+            self._kube_upgrade_state_update(
+                    context, kubernetes.KUBE_UPGRADING_NETWORKING_FAILED)
             return
 
-        LOG.info("executing playbook: %s for version %s" %
-                 (constants.ANSIBLE_KUBE_NETWORKING_PLAYBOOK, kube_version))
-
-        playbook_cmd = ['ansible-playbook', '-e', 'kubernetes_version=%s' % kube_version,
-                        constants.ANSIBLE_KUBE_NETWORKING_PLAYBOOK]
-        returncode = cutils.run_playbook(playbook_cmd)
-
-        if returncode:
-            LOG.warning("ansible-playbook returned an error: %s" %
-                        returncode)
+        try:
+            self._upgrade_k8s_networking(kube_version)
+        except Exception as e:
+            LOG.error("Kubernetes networking upgrade failed with error: [%s]" % (e))
             # Update the upgrade state
-            kube_upgrade_obj = objects.kube_upgrade.get_one(context)
-            kube_upgrade_obj.state = \
-                kubernetes.KUBE_UPGRADING_NETWORKING_FAILED
-            kube_upgrade_obj.save()
+            self._kube_upgrade_state_update(
+                    context, kubernetes.KUBE_UPGRADING_NETWORKING_FAILED)
             return
 
         # Indicate that networking upgrade is complete
-        kube_upgrade_obj = objects.kube_upgrade.get_one(context)
-        kube_upgrade_obj.state = kubernetes.KUBE_UPGRADED_NETWORKING
-        kube_upgrade_obj.save()
+        self._kube_upgrade_state_update(context, kubernetes.KUBE_UPGRADED_NETWORKING)
+        LOG.info("Kubernetes networking upgrade completed successfully.")
 
     def kube_upgrade_storage(self, context, kube_version):
         """Upgrade kubernetes storage for this kubernetes version"""

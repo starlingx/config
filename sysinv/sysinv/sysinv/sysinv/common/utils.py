@@ -46,6 +46,7 @@ import itertools as it
 import json
 import keyring
 import math
+import netaddr
 import os
 import pathlib
 import psutil
@@ -73,18 +74,15 @@ import yaml
 
 from eventlet.green import subprocess
 from eventlet import greenthread
-import netaddr
-
+from fm_api import constants as fm_constants
+from jinja2 import Environment
+from jinja2 import FileSystemLoader
 from oslo_concurrency import lockutils
 from oslo_config import cfg
 from oslo_log import log as logging
 from oslo_utils import uuidutils
 from oslo_serialization import base64
-
-from fm_api import constants as fm_constants
-
 from six.moves import range
-
 from sysinv._i18n import _
 from sysinv.common import exception
 from sysinv.common import constants
@@ -4576,3 +4574,33 @@ def flatten_nested_lists(nested_lists):
         else:
             flat_list.append(item)
     return flat_list
+
+
+def render_jinja_template_from_file(path_to_template, template_file_name,
+                                    custom_filters=None, values=None):
+    """ Render a jinja template with values passed
+
+    :param: path_to_template: Full path to the parent directory of .j2 template file
+    :param: template_file_name: .j2 template file name
+    :param: custom_filters: dictionary of custom filters with built-in jinja2 filters as keys
+                            and their equivalent handler methods (either library or custom)
+                            as values
+    :param: values: key-value pairs to be rendered
+    :returns: rendered_string
+    :raises: SysinvEnxception in case of an error
+    """
+    rendered_string = ""
+    try:
+        file_loader = FileSystemLoader(path_to_template)
+        env = Environment(loader=file_loader, autoescape=True)
+        if custom_filters:
+            env.filters.update(custom_filters)
+        template = env.get_template(template_file_name)
+        if not values:
+            values = {}
+        rendered_string = template.render(values)
+    except Exception as e:
+        raise exception.SysinvException("Failed to render jinja template [%s] at [%s] "
+                                        "with values: [%s]. Error: [%s] "
+                                        % (template_file_name, path_to_template, values, e))
+    return rendered_string
