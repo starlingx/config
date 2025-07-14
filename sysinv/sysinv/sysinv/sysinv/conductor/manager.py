@@ -8966,43 +8966,6 @@ class ConductorManager(service.PeriodicService):
     @retry(retry_on_result=lambda x: x is False,
            wait_fixed=(CONF.conductor.kube_upgrade_downgrade_retry_interval * 1000))
     @cutils.synchronized(LOCK_IMAGE_PULL)
-    def _upgrade_downgrade_kube_storage(self):
-        try:
-            # Get the kubernetes version from the upgrade table
-            # if an upgrade exists
-            kube_upgrade = self.dbapi.kube_upgrade_get_one()
-            kube_version = \
-                kubernetes.get_kube_storage_upgrade_version(kube_upgrade)
-        except exception.NotFound:
-            # Not upgrading kubernetes, get the kubernetes version
-            # from the kubeadm config map
-            kube_version = self._kube.kube_get_kubernetes_version()
-
-        if not kube_version:
-            LOG.error("Unable to get the current kubernetes version.")
-            return False
-
-        try:
-            LOG.info("_upgrade_downgrade_kube_storage executing"
-                     " playbook: %s for version %s" %
-                     (constants.ANSIBLE_KUBE_STORAGE_PLAYBOOK, kube_version))
-
-            playbook_cmd = ['ansible-playbook', '-e', 'kubernetes_version=%s' % kube_version,
-                            constants.ANSIBLE_KUBE_STORAGE_PLAYBOOK]
-            returncode = cutils.run_playbook(playbook_cmd)
-
-            if returncode:
-                raise Exception("ansible-playbook returned an error: %s" % returncode)
-        except Exception as e:
-            LOG.error("Failed to upgrade/downgrade kubernetes "
-                      "storage images: {}".format(e))
-            return False
-
-        return True
-
-    @retry(retry_on_result=lambda x: x is False,
-           wait_fixed=(CONF.conductor.kube_upgrade_downgrade_retry_interval * 1000))
-    @cutils.synchronized(LOCK_IMAGE_PULL)
     def _upgrade_downgrade_static_images(self):
         try:
             # Get the kubernetes version from the upgrade table
@@ -18755,29 +18718,90 @@ class ConductorManager(service.PeriodicService):
         self._kube_upgrade_state_update(context, kubernetes.KUBE_UPGRADED_NETWORKING)
         LOG.info("Kubernetes networking upgrade completed successfully.")
 
+    def _upgrade_k8s_storage(self, kube_version):
+        """Upgrade kubernetes storage.
+
+        This method downloads storage related images and apply manifests of
+        volume snapshot controller and its RBAC
+
+        :kube_version: Kubernetes version to be upgraded to.
+
+        :raises: SysinvException upon failure
+        """
+
+        SNPASHOT_CONTROLLER_IMG_KEY = 'snapshot_controller_img'
+
+        try:
+
+            images = self._get_kubernetes_system_images(kube_version)
+            storage_images = [images[SNPASHOT_CONTROLLER_IMG_KEY]]
+        except Exception as ex:
+            raise exception.SysinvException("Failed to get storage images information. "
+                                            "Error: [%s] " % (ex))
+
+        start = time.time()
+
+        try:
+            success = self.\
+                download_images_from_upstream_to_local_reg_and_crictl(storage_images)
+        except Exception as e:
+            LOG.error(e)
+            success = False
+
+        if not success:
+            raise exception.SysinvException("Failed to download upstream k8s storage images "
+                                            "to the local registry and crictl. ")
+
+        elapsed_time = time.time() - start
+
+        LOG.info("Download of kubernetes storage images for version [%s] to the "
+                 "local registry and crictl completed successfully in [%s] seconds."
+                 % (kube_version, elapsed_time))
+
+        snapshot_controller_template_variables = {
+            'local_registry': constants.DOCKER_REGISTRY_SERVER,
+            'snapshot_controller_img': images[SNPASHOT_CONTROLLER_IMG_KEY]
+        }
+
+        full_template_path = os.path.join(constants.ANSIBLE_PLAYBOOKS_ROOT,
+                                          "roles/k8s-storage-backends/snapshot-controller/",
+                                          "templates/k8s-%s/volume-snapshot-controller/"
+                                          % (kube_version))
+
+        dispatch_list = [['rbac-snapshot-controller.yaml.j2',
+                          'update_rbac-volume-snapshot-controller.yaml',
+                          False,
+                          None],
+                         ['volume-snapshot-controller-deployment.yaml.j2',
+                          'update_snapshot-controller.yaml',
+                          True,
+                          snapshot_controller_template_variables]]
+
+        for data in dispatch_list:
+            source_template_path = os.path.join(full_template_path, data[0])
+            dest_manifest_path = os.path.join(kubernetes.KUBERNETES_CONF_DIR, data[1])
+            is_template = data[2]
+            values = data[3]
+            if self._generate_k8s_manifests_and_apply(source_template_path, dest_manifest_path,
+                                                      is_template=is_template, values=values):
+                LOG.info("Kubernetes storage component [%s] upgraded successfully."
+                         % (data[0].split('.')[0]))
+            else:
+                raise exception.SysinvException("Failed to upgrade kubernetes storage "
+                                                "component [%s]" % (data[0].split('.')[0]))
+
     def kube_upgrade_storage(self, context, kube_version):
         """Upgrade kubernetes storage for this kubernetes version"""
-        LOG.info("executing playbook: %s for version %s" %
-                 (constants.ANSIBLE_KUBE_STORAGE_PLAYBOOK, kube_version))
-
-        playbook_cmd = ['ansible-playbook', '-e', 'kubernetes_version=%s' % kube_version,
-                        constants.ANSIBLE_KUBE_STORAGE_PLAYBOOK]
-        returncode = cutils.run_playbook(playbook_cmd)
-
-        if returncode:
-            LOG.warning("ansible-playbook returned an error: %s" %
-                        returncode)
+        try:
+            self._upgrade_k8s_storage(kube_version)
+        except Exception as e:
+            LOG.error("Kubernetes storage upgrade failed with error: [%s]" % (e))
             # Update the upgrade state
-            kube_upgrade_obj = objects.kube_upgrade.get_one(context)
-            kube_upgrade_obj.state = \
-                kubernetes.KUBE_UPGRADING_STORAGE_FAILED
-            kube_upgrade_obj.save()
+            self._kube_upgrade_state_update(context, kubernetes.KUBE_UPGRADING_STORAGE_FAILED)
             return
-
         # Indicate that storage upgrade is complete
-        kube_upgrade_obj = objects.kube_upgrade.get_one(context)
-        kube_upgrade_obj.state = kubernetes.KUBE_UPGRADED_STORAGE
-        kube_upgrade_obj.save()
+        self._kube_upgrade_state_update(context, kubernetes.KUBE_UPGRADED_STORAGE)
+        LOG.info("Kubernetes storage upgrade completed successfully.")
 
     def kube_post_application_update(self, context, k8s_version):
         """ Update applications after Kubernetes is upgraded.
