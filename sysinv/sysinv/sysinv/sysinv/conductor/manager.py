@@ -10640,50 +10640,6 @@ class ConductorManager(service.PeriodicService):
             self.fm_api.clear_fault(fm_constants.FM_ALARM_ID_CONTROLLER_FS_FAILED,
                                     entity_instance_id)
 
-    def handle_upgrade_abort_failure(self, context, kube_upgrade_obj):
-        # Increment the value by 1 to track abort retry count
-        kube_upgrade_obj.recovery_attempts += 1
-        kube_upgrade_obj.save()
-
-        active_controller = utils.HostHelper.get_active_controller(self.dbapi)
-        personalities = [constants.CONTROLLER]
-
-        # Apply the runtime manifest to revert the k8s upgrade process
-        config_dict = {
-            "personalities": personalities,
-            "classes": ['platform::kubernetes::upgrade_abort'],
-            puppet_common.REPORT_STATUS_CFG:
-                puppet_common.REPORT_UPGRADE_ABORT
-        }
-        self._config_apply_runtime_manifest(
-            context, config_uuid=active_controller.config_target, config_dict=config_dict,
-            skip_update_config=True)
-
-    def handle_upgrade_abort_success(self, context, kube_upgrade_obj):
-        controller_hosts = self.dbapi.ihost_get_by_personality(
-            constants.CONTROLLER)
-        for host_obj in controller_hosts:
-            kube_host_upgrade_obj = objects.kube_host_upgrade.get_by_host_id(
-                    context, host_obj.id)
-            kube_host_upgrade_obj.status = None
-            kube_host_upgrade_obj.save()
-        kube_upgrade_obj.state = kubernetes.KUBE_UPGRADE_ABORTED
-        kube_upgrade_obj.save()
-
-    def kube_upgrade_abort_recovery(self, context):
-
-        active_controller = utils.HostHelper.get_active_controller(self.dbapi)
-        personalities = [constants.CONTROLLER]
-
-        # Apply the runtime manifest to revert the k8s upgrade process
-        config_dict = {
-            "personalities": personalities,
-            "classes": ['platform::kubernetes::upgrade_abort_recovery'],
-        }
-        self._config_apply_runtime_manifest(
-            context, config_uuid=active_controller.config_target,
-            config_dict=config_dict, skip_update_config=True)
-
     def handle_k8s_upgrade_control_plane_failure(self, context, kube_upgrade_obj,
                                         host_uuid, puppet_class):
         kube_upgrade_obj.recovery_attempts += 1
@@ -10987,34 +10943,6 @@ class ConductorManager(service.PeriodicService):
             host_uuid = iconfig['host_uuid']
             self.report_apparmor_config_complete(context, host_uuid, status, error)
             success = (status == puppet_common.REPORT_SUCCESS)
-        elif reported_cfg == puppet_common.REPORT_UPGRADE_ABORT:
-            kube_upgrade_obj = objects.kube_upgrade.get_one(context)
-            # The agent is reporting the runtime kube_upgrade_abort has been applied.
-            # Currently kube upgrade abort is only available on AIO-SX,
-            # we may need to change the implementation for multi-node abort.
-            if status == puppet_common.REPORT_SUCCESS:
-                # Upgrade abort action was successful.
-                success = True
-                # below function updates the db with kube_upgrade state
-                # 'upgrade-aborted'
-                self.handle_upgrade_abort_success(context, kube_upgrade_obj)
-            if status == puppet_common.REPORT_FAILURE:
-                # Upgrade abort action failed
-
-                # retry count is incremented in function handle_upgrade_abort_failure
-                # once the retry count reaches AUTO_RECOVERY_COUNT this routine updates
-                # db with state 'upgrade-aborting-failed' until then abort failure handler
-                # is called
-                if kube_upgrade_obj.recovery_attempts < constants.AUTO_RECOVERY_COUNT:
-                    LOG.info("k8s upgrade abort failed - retrying attempt %s"
-                                     % kube_upgrade_obj.recovery_attempts)
-                    self.handle_upgrade_abort_failure(context, kube_upgrade_obj)
-                else:
-                    LOG.warning("k8s upgrade abort failed %s times, giving up"
-                                  % constants.AUTO_RECOVERY_COUNT)
-                    kube_upgrade_obj.state = kubernetes.KUBE_UPGRADE_ABORTING_FAILED
-                    kube_upgrade_obj.save()
-                    self.kube_upgrade_abort_recovery(context)
         elif reported_cfg == puppet_common.REPORT_UPGRADE_CONTROL_PLANE:
             # The agent is reporting the runtime kube_upgrade_control_plane has been applied.
             kube_upgrade_obj = objects.kube_upgrade.get_one(context)
@@ -18078,64 +18006,31 @@ class ConductorManager(service.PeriodicService):
     def kube_host_cordon(self, context, host_name):
         """Cordon the pods to evict on this host"""
 
-        kube_upgrade_obj = objects.kube_upgrade.get_one(context)
         system = self.dbapi.isystem_get_one()
-
         if system.system_mode == constants.SYSTEM_MODE_SIMPLEX:
-            cordon_cmd = ['kubectl', '--kubeconfig=%s' % kubernetes.KUBERNETES_ADMIN_CONF,
-                          'drain', host_name, '--ignore-daemonsets', '--delete-emptydir-data',
-                          '--force', '--skip-wait-for-delete-timeout=1',
-                          '--timeout=150s']
-
-            proc = subprocess.Popen(cordon_cmd, stdout=subprocess.PIPE,
-                                   stderr=subprocess.PIPE, universal_newlines=True)
-            stdout, stderr = proc.communicate()
-            if proc.returncode != 0:
-                LOG.error('Error in executing %s: %s' %
-                        (cordon_cmd, stderr))
-                # Allow the cordon to succeed when pod failed to evict due to
-                # pod disruption budget or when pod failed to evict in the
-                # given timeout.
-                if "violate the pod's disruption budget" in stderr or \
-                        "global timeout reached" in stderr:
-                    cordon_status = kubernetes.KUBE_UPGRADE_CORDON_COMPLETE
-                else:
-                    cordon_status = kubernetes.KUBE_UPGRADE_CORDON_FAILED
-            else:
-                LOG.info('Executed the cordon command %s: %s' %
-                        (cordon_cmd, stdout))
+            try:
+                kubernetes.kube_drain_node_with_options(host_name)
                 cordon_status = kubernetes.KUBE_UPGRADE_CORDON_COMPLETE
-
-            # Update the upgrade state
-            kube_upgrade_obj = objects.kube_upgrade.get_one(context)
-            kube_upgrade_obj.state = cordon_status
-            kube_upgrade_obj.save()
+                LOG.info("Kubernetes host cordon operation successful.")
+            except Exception as ex:
+                LOG.error("Kubernetes host cordon operation failed with error: [%s]" % (ex))
+                cordon_status = kubernetes.KUBE_UPGRADE_CORDON_FAILED
+            self._kube_upgrade_state_update(context, cordon_status)
 
     def kube_host_uncordon(self, context, host_name):
         """Uncordon the evicted pods on this host"""
 
-        kube_upgrade_obj = objects.kube_upgrade.get_one(context)
         system = self.dbapi.isystem_get_one()
 
         if system.system_mode == constants.SYSTEM_MODE_SIMPLEX:
-            uncordon_cmd = ['kubectl', '--kubeconfig=%s' % kubernetes.KUBERNETES_ADMIN_CONF,
-                            'uncordon', host_name]
-            proc = subprocess.Popen(uncordon_cmd, stdout=subprocess.PIPE,
-                                   stderr=subprocess.PIPE, universal_newlines=True)
-            stdout, stderr = proc.communicate()
-            if proc.returncode != 0:
-                LOG.error('Error in executing %s: %s' %
-                        (uncordon_cmd, stderr))
-                uncordon_status = kubernetes.KUBE_UPGRADE_UNCORDON_FAILED
-            else:
-                LOG.info('Executed the uncordon command %s: %s' %
-                        (uncordon_cmd, stdout))
+            try:
+                kubernetes.kube_uncordon_node(host_name)
                 uncordon_status = kubernetes.KUBE_UPGRADE_UNCORDON_COMPLETE
-
-            # Update the upgrade state
-            kube_upgrade_obj = objects.kube_upgrade.get_one(context)
-            kube_upgrade_obj.state = uncordon_status
-            kube_upgrade_obj.save()
+                LOG.info("Kubernetes host uncordon operation successful.")
+            except Exception as ex:
+                LOG.error("Kubernetes host uncordon operation failed with error: [%s]" % (ex))
+                uncordon_status = kubernetes.KUBE_UPGRADE_UNCORDON_FAILED
+            self._kube_upgrade_state_update(context, uncordon_status)
 
     def kube_upgrade_control_plane(self, context, host_uuid):
         """Upgrade the kubernetes control plane on this host"""
@@ -18789,6 +18684,41 @@ class ConductorManager(service.PeriodicService):
                 hook_info_delete.mode = LifecycleConstants.APP_LIFECYCLE_MODE_AUTO
                 self.perform_app_delete(context, app, hook_info_delete)
 
+    def report_kube_upgrade_abort_result(self, context, current_kube_version, back_to_kube_version,
+                                         abort, recovery):
+        """Report kube upgrade abort operation result
+
+        :param: context: context object
+        :param: current_kube_version: current kubernetes version
+        :param: back_to_kube_version: kubernetes version being aborted back to
+        :param: abort: True if abort was successful False otherwise. If this is True,
+                       recovery is False.
+        :param: recovery: True if abort recovery succeeds. If this is True, abort must be False.
+                          False if abort recovery Fails or not required to run.
+        """
+        kube_upgrade_obj = objects.kube_upgrade.get_one(context)
+        if abort:
+            kube_upgrade_obj.state = kubernetes.KUBE_UPGRADE_ABORTED
+            LOG.info("Kubernetes upgrade abort operation from version %s to %s successful."
+                     % (current_kube_version, back_to_kube_version))
+        else:
+            kube_upgrade_obj.state = kubernetes.KUBE_UPGRADE_ABORTING_FAILED
+            if recovery:
+                LOG.error("Kubernetes upgrade abort operation from version %s to %s failed but "
+                          "recovery was successful." % (current_kube_version, back_to_kube_version))
+            else:
+                LOG.error("Kubernetes upgrade abort operation from version %s to %s failed. "
+                          "Abort recovery also failed."
+                          % (current_kube_version, back_to_kube_version))
+        kube_upgrade_obj.save()
+        # Update host upgrade status
+        controller_hosts = self.dbapi.ihost_get_by_personality(constants.CONTROLLER)
+        for host_obj in controller_hosts:
+            kube_host_upgrade_obj = objects.kube_host_upgrade.get_by_host_id(
+                    context, host_obj.id)
+            kube_host_upgrade_obj.status = None
+            kube_host_upgrade_obj.save()
+
     def kube_upgrade_abort(self, context, kube_state):
         """
         This is an abort procedure we call via 'system kube-upgrade-abort'
@@ -18819,41 +18749,22 @@ class ConductorManager(service.PeriodicService):
         """
 
         kube_upgrade_obj = objects.kube_upgrade.get_one(context)
-        kube_upgrade_obj.recovery_attempts = 0
         kube_upgrade_obj.save()
         controller_hosts = self.dbapi.ihost_get_by_personality(
             constants.CONTROLLER)
         system = self.dbapi.isystem_get_one()
-        puppet_class = ['platform::kubernetes::upgrade_first_control_plane']
         if system.system_mode == constants.SYSTEM_MODE_SIMPLEX:
-            # Terminate lingering kubeadm and puppet processes
-            # left-over from timed out operation.
+            # Terminate lingering kubeadm processes left-over from timed out operation.
             try:
                 for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
                     cmdline = proc.info.get('cmdline', [])
                     if any('kubeadm' in line for line in cmdline):
-                        kubeadm_puppet_pid = []
-                        parent_proc = proc.parent()
+                        kubeadm_pid = []
                         proc.kill()
-                        while parent_proc:
-                            parent_cmdline = parent_proc.cmdline()
-                            if any('puppet' in line for line in parent_cmdline):
-                                kubeadm_puppet_pid.append(parent_proc)
-                            else:
-                                break
-                            parent_proc = parent_proc.parent()
-                        for puppet_pid in kubeadm_puppet_pid:
+                        for puppet_pid in kubeadm_pid:
                             puppet_pid.kill()
             except Exception as e:
                 LOG.error("Error in killing process %s" % e)
-            # update runtime config report status for upgrade control plane to failed.
-            pending_runtime_config = self.dbapi.runtime_config_get_all(
-                state=constants.RUNTIME_CONFIG_STATE_PENDING)
-            for rc in pending_runtime_config:
-                config_dict = json.loads(rc.config_dict)
-                if config_dict["classes"][0] in puppet_class:
-                    rc_update_values = {"state": constants.RUNTIME_CONFIG_STATE_FAILED}
-                    self.dbapi.runtime_config_update(rc.id, rc_update_values)
 
             # check for the control plane backup path exists
             if not os.path.exists(kubernetes.KUBE_CONTROL_PLANE_ETCD_BACKUP_PATH) or \
@@ -18877,26 +18788,15 @@ class ConductorManager(service.PeriodicService):
                 return
 
             if kube_upgrade_obj.state == kubernetes.KUBE_UPGRADE_ABORTING:
-                # Update the config for this host
-
-                active_controller = utils.HostHelper.get_active_controller(self.dbapi)
-                personalities = [constants.CONTROLLER]
-                config_uuid = self._config_update_hosts(context, personalities,
-                    [active_controller.uuid])
-
-                # Apply the runtime manifest to revert the k8s upgrade process.
-                # This uses the sysinv REPORT_STATUS callback mechanism to wait
-                # for completion, and handle success or failure. This mechanism
-                # enables failure retry and recovery if there are problems with
-                # the abort process.
-
-                config_dict = {
-                    "personalities": personalities,
-                    "classes": ['platform::kubernetes::upgrade_abort'],
-                    puppet_common.REPORT_STATUS_CFG:
-                        puppet_common.REPORT_UPGRADE_ABORT
-                }
-                self._config_apply_runtime_manifest(context, config_uuid, config_dict)
+                try:
+                    rpcapi = agent_rpcapi.AgentAPI()
+                    rpcapi.kube_upgrade_abort(
+                            context, kube_upgrade_obj.to_version, kube_upgrade_obj.from_version)
+                except Exception as ex:
+                    # Handle unexpected exception
+                    LOG.exception("Kube upgrade abort failed with error: %s" % (ex))
+                    kube_upgrade_obj.state = kubernetes.KUBE_UPGRADE_ABORTING_FAILED
+                    kube_upgrade_obj.save()
 
     def remove_kube_control_plane_backup(self, context):
         """Remove backup of k8s control plane static manifests and etcd data

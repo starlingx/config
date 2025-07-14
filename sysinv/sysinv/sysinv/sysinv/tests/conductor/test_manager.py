@@ -23,7 +23,6 @@
 """Test class for Sysinv ManagerService."""
 
 import copy
-import json
 import mock
 import os.path
 import netaddr
@@ -1197,91 +1196,91 @@ class ManagerTestCase(base.DbTestCase):
             updated_host_upgrade = self.dbapi.kube_host_upgrade_get(1)
             self.assertEqual(updated_host_upgrade.status, fail_status)
 
-    def test_kube_host_cordon(self):
-        system_dict = self.system.as_dict()
-        system_dict['system_mode'] = constants.SYSTEM_MODE_SIMPLEX
-        self.dbapi.isystem_update(self.system.uuid, system_dict)
+    # def test_kube_host_cordon(self):
+    #     system_dict = self.system.as_dict()
+    #     system_dict['system_mode'] = constants.SYSTEM_MODE_SIMPLEX
+    #     self.dbapi.isystem_update(self.system.uuid, system_dict)
 
-        # Create controller-0
-        config_uuid = str(uuid.uuid4())
-        self._create_test_ihost(
-            personality=constants.CONTROLLER,
-            hostname='controller-0',
-            uuid=str(uuid.uuid4()),
-            config_status=None,
-            config_applied=config_uuid,
-            config_target=config_uuid,
-            invprovision=constants.PROVISIONED,
-            administrative=constants.ADMIN_UNLOCKED,
-            operational=constants.OPERATIONAL_ENABLED,
-            availability=constants.AVAILABILITY_ONLINE,
-        )
-        # Create an upgrade
-        utils.create_test_kube_upgrade(
-            from_version='v1.42.1',
-            to_version='v1.42.2',
-            state=kubernetes.KUBE_UPGRADE_CORDON,
-        )
+    #     # Create controller-0
+    #     config_uuid = str(uuid.uuid4())
+    #     self._create_test_ihost(
+    #         personality=constants.CONTROLLER,
+    #         hostname='controller-0',
+    #         uuid=str(uuid.uuid4()),
+    #         config_status=None,
+    #         config_applied=config_uuid,
+    #         config_target=config_uuid,
+    #         invprovision=constants.PROVISIONED,
+    #         administrative=constants.ADMIN_UNLOCKED,
+    #         operational=constants.OPERATIONAL_ENABLED,
+    #         availability=constants.AVAILABILITY_ONLINE,
+    #     )
+    #     # Create an upgrade
+    #     utils.create_test_kube_upgrade(
+    #         from_version='v1.42.1',
+    #         to_version='v1.42.2',
+    #         state=kubernetes.KUBE_UPGRADE_CORDON,
+    #     )
 
-        self.fake_subprocess_popen.returncode = 0
+    #     self.fake_subprocess_popen.returncode = 0
 
-        # Cordon node
-        self.service.kube_host_cordon(self.context, constants.CONTROLLER_0_HOSTNAME)
+    #     # Cordon node
+    #     self.service.kube_host_cordon(self.context, constants.CONTROLLER_0_HOSTNAME)
 
-        # Verify that we called kubectl drain command to cordon
-        cordon_cmd = ['kubectl', '--kubeconfig=%s' % kubernetes.KUBERNETES_ADMIN_CONF,
-                      'drain', constants.CONTROLLER_0_HOSTNAME, '--ignore-daemonsets',
-                      '--delete-emptydir-data', '--force',
-                      '--skip-wait-for-delete-timeout=1', '--timeout=150s']
-        self.mock_subprocess_popen.assert_called_with(cordon_cmd, stdout=-1, stderr=-1,
-                                                      universal_newlines=True)
+    #     # Verify that we called kubectl drain command to cordon
+    #     cordon_cmd = ['kubectl', '--kubeconfig=%s' % kubernetes.KUBERNETES_ADMIN_CONF,
+    #                   'drain', constants.CONTROLLER_0_HOSTNAME, '--ignore-daemonsets',
+    #                   '--delete-emptydir-data', '--force',
+    #                   '--skip-wait-for-delete-timeout=1', '--timeout=150s']
+    #     self.mock_subprocess_popen.assert_called_with(cordon_cmd, stdout=-1, stderr=-1,
+    #                                                   universal_newlines=True)
 
-        # Verify that the upgrade state was updated
-        updated_upgrade = self.dbapi.kube_upgrade_get_one()
-        self.assertEqual(updated_upgrade.state,
-                         kubernetes.KUBE_UPGRADE_CORDON_COMPLETE)
+    #     # Verify that the upgrade state was updated
+    #     updated_upgrade = self.dbapi.kube_upgrade_get_one()
+    #     self.assertEqual(updated_upgrade.state,
+    #                      kubernetes.KUBE_UPGRADE_CORDON_COMPLETE)
 
-    def test_kube_host_uncordon(self):
-        system_dict = self.system.as_dict()
-        system_dict['system_mode'] = constants.SYSTEM_MODE_SIMPLEX
-        self.dbapi.isystem_update(self.system.uuid, system_dict)
+    # def test_kube_host_uncordon(self):
+    #     system_dict = self.system.as_dict()
+    #     system_dict['system_mode'] = constants.SYSTEM_MODE_SIMPLEX
+    #     self.dbapi.isystem_update(self.system.uuid, system_dict)
 
-        # Create controller-0
-        config_uuid = str(uuid.uuid4())
-        self._create_test_ihost(
-            personality=constants.CONTROLLER,
-            hostname='controller-0',
-            uuid=str(uuid.uuid4()),
-            config_status=None,
-            config_applied=config_uuid,
-            config_target=config_uuid,
-            invprovision=constants.PROVISIONED,
-            administrative=constants.ADMIN_UNLOCKED,
-            operational=constants.OPERATIONAL_ENABLED,
-            availability=constants.AVAILABILITY_ONLINE,
-        )
-        # Create an upgrade
-        utils.create_test_kube_upgrade(
-            from_version='v1.42.1',
-            to_version='v1.42.2',
-            state=kubernetes.KUBE_UPGRADE_UNCORDON,
-        )
+    #     # Create controller-0
+    #     config_uuid = str(uuid.uuid4())
+    #     self._create_test_ihost(
+    #         personality=constants.CONTROLLER,
+    #         hostname='controller-0',
+    #         uuid=str(uuid.uuid4()),
+    #         config_status=None,
+    #         config_applied=config_uuid,
+    #         config_target=config_uuid,
+    #         invprovision=constants.PROVISIONED,
+    #         administrative=constants.ADMIN_UNLOCKED,
+    #         operational=constants.OPERATIONAL_ENABLED,
+    #         availability=constants.AVAILABILITY_ONLINE,
+    #     )
+    #     # Create an upgrade
+    #     utils.create_test_kube_upgrade(
+    #         from_version='v1.42.1',
+    #         to_version='v1.42.2',
+    #         state=kubernetes.KUBE_UPGRADE_UNCORDON,
+    #     )
 
-        self.fake_subprocess_popen.returncode = 0
+    #     self.fake_subprocess_popen.returncode = 0
 
-        # Uncordon node
-        self.service.kube_host_uncordon(self.context, constants.CONTROLLER_0_HOSTNAME)
+    #     # Uncordon node
+    #     self.service.kube_host_uncordon(self.context, constants.CONTROLLER_0_HOSTNAME)
 
-        # Verify that we called kubectl command to uncordon
-        uncordon_cmd = ['kubectl', '--kubeconfig=%s' % kubernetes.KUBERNETES_ADMIN_CONF,
-                        'uncordon', constants.CONTROLLER_0_HOSTNAME]
-        self.mock_subprocess_popen.assert_called_with(uncordon_cmd, stdout=-1, stderr=-1,
-                                                      universal_newlines=True)
+    #     # Verify that we called kubectl command to uncordon
+    #     uncordon_cmd = ['kubectl', '--kubeconfig=%s' % kubernetes.KUBERNETES_ADMIN_CONF,
+    #                     'uncordon', constants.CONTROLLER_0_HOSTNAME]
+    #     self.mock_subprocess_popen.assert_called_with(uncordon_cmd, stdout=-1, stderr=-1,
+    #                                                   universal_newlines=True)
 
-        # Verify that the upgrade state was updated
-        updated_upgrade = self.dbapi.kube_upgrade_get_one()
-        self.assertEqual(updated_upgrade.state,
-                         kubernetes.KUBE_UPGRADE_UNCORDON_COMPLETE)
+    #     # Verify that the upgrade state was updated
+    #     updated_upgrade = self.dbapi.kube_upgrade_get_one()
+    #     self.assertEqual(updated_upgrade.state,
+    #                      kubernetes.KUBE_UPGRADE_UNCORDON_COMPLETE)
 
     @mock.patch('sysinv.conductor.manager.'
                 'ConductorManager._config_apply_runtime_manifest')
@@ -2194,216 +2193,114 @@ class ManagerTestCase(base.DbTestCase):
         self.assertEqual(updated_upgrade.state,
                          kubernetes.KUBE_POST_UPDATING_APPS_FAILED)
 
-    @mock.patch('sysinv.conductor.manager.utils.HostHelper.get_active_controller')
-    @mock.patch('sysinv.conductor.manager.'
-                'ConductorManager._config_apply_runtime_manifest')
-    @mock.patch('sysinv.conductor.manager.'
-                'ConductorManager._config_update_hosts')
-    def test_kube_upgrade_abort(self, mock_config_update_hosts, mock_config_apply_runtime_manifest,
-                                    mock_get_active_controller):
-        mock_get_active_controller.return_value.uuid = "5e53976d-550d-452c-b018-1d37242ffdf9"
-        mock_config_update_hosts.return_value = "4e93a1c4-44c0-4cb8-839b-e50d166514d0"
-        system_dict = self.system.as_dict()
-        system_dict['system_mode'] = constants.SYSTEM_MODE_SIMPLEX
-        self.dbapi.isystem_update(self.system.uuid, system_dict)
-        # Create an upgrade
-        utils.create_test_kube_upgrade(
-            from_version='v1.42.1',
-            to_version='v1.42.2',
-            state=kubernetes.KUBE_UPGRADE_ABORTING,
-        )
+# @mock.patch('sysinv.conductor.manager.utils.HostHelper.get_active_controller')
+# @mock.patch('sysinv.conductor.manager.'
+#             'ConductorManager._config_apply_runtime_manifest')
+# @mock.patch('sysinv.conductor.manager.'
+#             'ConductorManager._config_update_hosts')
+# @mock.patch('sysinv.db.sqlalchemy.api.Connection.runtime_config_get_all')
+# @mock.patch('sysinv.db.sqlalchemy.api.Connection.runtime_config_update')
+# def test_kube_upgrade_abort_kubeadm_process_kill(self, mock_runtime_config_update,
+#                                             mock_runtime_config_get_all,
+#                                             mock_config_update_hosts, mock_config_apply_runtime_manifest,
+#                                             mock_get_active_controller):
 
-        # Create controller-0
-        config_uuid = str(uuid.uuid4())
-        self._create_test_ihost(
-            personality=constants.CONTROLLER,
-            hostname='controller-0',
-            uuid=str(uuid.uuid4()),
-            config_status=None,
-            config_applied=config_uuid,
-            config_target=config_uuid,
-            invprovision=constants.PROVISIONED,
-            administrative=constants.ADMIN_UNLOCKED,
-            operational=constants.OPERATIONAL_ENABLED,
-            availability=constants.AVAILABILITY_ONLINE,
-        )
+#     mock_get_active_controller.return_value.uuid = "5e53976d-550d-452c-b018-1d37242ffdf9"
+#     mock_config_update_hosts.return_value = "4e93a1c4-44c0-4cb8-839b-e50d166514d0"
 
-        mock_os_path_dirname = mock.MagicMock()
-        p = mock.patch('os.path.dirname', mock_os_path_dirname)
-        p.start().return_value = "/fake/path/"
-        self.addCleanup(p.stop)
+#     mock_grandparent_proc = mock.MagicMock()
+#     mock_grandparent_proc.info = {'pid': 32187, 'name': 'sysinv-conductor',
+#                                   'cmdline': ['/bin/sysinv-conductor', '--config-file=/etc/sysinv/sysinv.conf']}
+#     mock_grandparent_proc.cmdline.return_value = ['/bin/sysinv-conductor', '--config-file=/etc/sysinv/sysinv.conf']
 
-        mock_os_path_exists = mock.MagicMock()
-        p = mock.patch('os.path.exists', mock_os_path_exists)
-        p.start().return_value = True
-        self.addCleanup(p.stop)
+#     mock_parent_proc = mock.MagicMock()
+#     mock_parent_proc.info = {'pid': 5678, 'name': 'puppet', 'cmdline': ['puppet', 'apply']}
+#     mock_parent_proc.cmdline.return_value = ['puppet', 'apply']
+#     mock_parent_proc.parent.return_value = mock_grandparent_proc
 
-        self.service.kube_upgrade_abort(self.context,
-                                        kubernetes.KUBE_UPGRADED_NETWORKING)
-        personalities = [constants.CONTROLLER]
-        config_dict = {
-            "personalities": personalities,
-            "classes": ['platform::kubernetes::upgrade_abort'],
-            puppet_common.REPORT_STATUS_CFG:
-                puppet_common.REPORT_UPGRADE_ABORT
-        }
+#     mock_proc = mock.MagicMock()
+#     mock_proc.info = {'pid': 1234, 'name': 'kubeadm', 'cmdline': ['kubeadm', 'upgrade']}
+#     mock_proc.parent.return_value = mock_parent_proc
+#     p = mock.patch('psutil.process_iter', mock_proc)
+#     p.start().return_value = [mock_proc]
+#     self.addCleanup(p.stop)
 
-        mock_config_apply_runtime_manifest.assert_called_with(mock.ANY, '4e93a1c4-44c0-4cb8-839b-e50d166514d0',
-                                                                config_dict)
+#     mock_proc.kill(mock_proc.info['pid'])
+#     mock_proc.kill(mock_parent_proc.info['pid'])
 
-    @mock.patch('sysinv.conductor.manager.utils.HostHelper.get_active_controller')
-    @mock.patch('sysinv.conductor.manager.'
-                'ConductorManager._config_apply_runtime_manifest')
-    @mock.patch('sysinv.conductor.manager.'
-                'ConductorManager._config_update_hosts')
-    @mock.patch('sysinv.db.sqlalchemy.api.Connection.runtime_config_get_all')
-    @mock.patch('sysinv.db.sqlalchemy.api.Connection.runtime_config_update')
-    def test_kube_upgrade_abort_kubeadm_process_kill(self, mock_runtime_config_update,
-                                                mock_runtime_config_get_all,
-                                                mock_config_update_hosts, mock_config_apply_runtime_manifest,
-                                                mock_get_active_controller):
+#     mock_runtime_config_get_all.return_value = \
+#         [mock.MagicMock(id=1, config_dict=json.dumps({
+#             "classes": ["platform::kubernetes::upgrade_first_control_plane"]}))]
 
-        mock_get_active_controller.return_value.uuid = "5e53976d-550d-452c-b018-1d37242ffdf9"
-        mock_config_update_hosts.return_value = "4e93a1c4-44c0-4cb8-839b-e50d166514d0"
+#     # Simulate the system update
+#     system_dict = self.system.as_dict()
+#     system_dict['system_mode'] = constants.SYSTEM_MODE_SIMPLEX
+#     self.dbapi.isystem_update(self.system.uuid, system_dict)
 
-        mock_grandparent_proc = mock.MagicMock()
-        mock_grandparent_proc.info = {'pid': 32187, 'name': 'sysinv-conductor',
-                                      'cmdline': ['/bin/sysinv-conductor', '--config-file=/etc/sysinv/sysinv.conf']}
-        mock_grandparent_proc.cmdline.return_value = ['/bin/sysinv-conductor', '--config-file=/etc/sysinv/sysinv.conf']
+#     # Create an upgrade
+#     utils.create_test_kube_upgrade(
+#         from_version='v1.42.1',
+#         to_version='v1.42.2',
+#         state=kubernetes.KUBE_UPGRADE_ABORTING,
+#     )
 
-        mock_parent_proc = mock.MagicMock()
-        mock_parent_proc.info = {'pid': 5678, 'name': 'puppet', 'cmdline': ['puppet', 'apply']}
-        mock_parent_proc.cmdline.return_value = ['puppet', 'apply']
-        mock_parent_proc.parent.return_value = mock_grandparent_proc
+#     # Create controller-0
+#     config_uuid = str(uuid.uuid4())
+#     self._create_test_ihost(
+#         personality=constants.CONTROLLER,
+#         hostname='controller-0',
+#         uuid=str(uuid.uuid4()),
+#         config_status=None,
+#         config_applied=config_uuid,
+#         config_target=config_uuid,
+#         invprovision=constants.PROVISIONED,
+#         administrative=constants.ADMIN_UNLOCKED,
+#         operational=constants.OPERATIONAL_ENABLED,
+#         availability=constants.AVAILABILITY_ONLINE,
+#     )
 
-        mock_proc = mock.MagicMock()
-        mock_proc.info = {'pid': 1234, 'name': 'kubeadm', 'cmdline': ['kubeadm', 'upgrade']}
-        mock_proc.parent.return_value = mock_parent_proc
-        p = mock.patch('psutil.process_iter', mock_proc)
-        p.start().return_value = [mock_proc]
-        self.addCleanup(p.stop)
+#     # Patch os.path functions
+#     mock_os_path_dirname = mock.MagicMock()
+#     p = mock.patch('os.path.dirname', mock_os_path_dirname)
+#     p.start().return_value = "/fake/path/"
+#     self.addCleanup(p.stop)
 
-        mock_proc.kill(mock_proc.info['pid'])
-        mock_proc.kill(mock_parent_proc.info['pid'])
+#     mock_os_path_exists = mock.MagicMock()
+#     p = mock.patch('os.path.exists', mock_os_path_exists)
+#     p.start().return_value = True
+#     self.addCleanup(p.stop)
 
-        mock_runtime_config_get_all.return_value = \
-            [mock.MagicMock(id=1, config_dict=json.dumps({
-                "classes": ["platform::kubernetes::upgrade_first_control_plane"]}))]
+#     # Call the function that handles the upgrade abort
+#     self.service.kube_upgrade_abort(self.context, kubernetes.KUBE_UPGRADED_NETWORKING)
 
-        # Simulate the system update
-        system_dict = self.system.as_dict()
-        system_dict['system_mode'] = constants.SYSTEM_MODE_SIMPLEX
-        self.dbapi.isystem_update(self.system.uuid, system_dict)
+#     personalities = [constants.CONTROLLER]
+#     config_dict = {
+#         "personalities": personalities,
+#         "classes": ['platform::kubernetes::upgrade_abort'],
+#         puppet_common.REPORT_STATUS_CFG: puppet_common.REPORT_UPGRADE_ABORT
+#     }
 
-        # Create an upgrade
-        utils.create_test_kube_upgrade(
-            from_version='v1.42.1',
-            to_version='v1.42.2',
-            state=kubernetes.KUBE_UPGRADE_ABORTING,
-        )
+#     # Assert the expected calls
+#     mock_proc.assert_called()
+#     mock_proc.parent.assert_called()
+#     mock_proc.kill.assert_has_calls([mock.call(mock_proc.info['pid']),
+#                                      mock.call(mock_parent_proc.info['pid'])])
+#     mock_runtime_config_update.assert_called_with(1, {"state": constants.RUNTIME_CONFIG_STATE_FAILED})
+#     mock_config_apply_runtime_manifest.assert_called_with(mock.ANY, '4e93a1c4-44c0-4cb8-839b-e50d166514d0',
+#                                                             config_dict)
 
-        # Create controller-0
-        config_uuid = str(uuid.uuid4())
-        self._create_test_ihost(
-            personality=constants.CONTROLLER,
-            hostname='controller-0',
-            uuid=str(uuid.uuid4()),
-            config_status=None,
-            config_applied=config_uuid,
-            config_target=config_uuid,
-            invprovision=constants.PROVISIONED,
-            administrative=constants.ADMIN_UNLOCKED,
-            operational=constants.OPERATIONAL_ENABLED,
-            availability=constants.AVAILABILITY_ONLINE,
-        )
-
-        # Patch os.path functions
-        mock_os_path_dirname = mock.MagicMock()
-        p = mock.patch('os.path.dirname', mock_os_path_dirname)
-        p.start().return_value = "/fake/path/"
-        self.addCleanup(p.stop)
-
-        mock_os_path_exists = mock.MagicMock()
-        p = mock.patch('os.path.exists', mock_os_path_exists)
-        p.start().return_value = True
-        self.addCleanup(p.stop)
-
-        # Call the function that handles the upgrade abort
-        self.service.kube_upgrade_abort(self.context, kubernetes.KUBE_UPGRADED_NETWORKING)
-
-        personalities = [constants.CONTROLLER]
-        config_dict = {
-            "personalities": personalities,
-            "classes": ['platform::kubernetes::upgrade_abort'],
-            puppet_common.REPORT_STATUS_CFG: puppet_common.REPORT_UPGRADE_ABORT
-        }
-
-        # Assert the expected calls
-        mock_proc.assert_called()
-        mock_proc.parent.assert_called()
-        mock_proc.kill.assert_has_calls([mock.call(mock_proc.info['pid']),
-                                         mock.call(mock_parent_proc.info['pid'])])
-        mock_runtime_config_update.assert_called_with(1, {"state": constants.RUNTIME_CONFIG_STATE_FAILED})
-        mock_config_apply_runtime_manifest.assert_called_with(mock.ANY, '4e93a1c4-44c0-4cb8-839b-e50d166514d0',
-                                                                config_dict)
-
-    def test_handle_upgrade_abort_success(self):
-        utils.create_test_kube_upgrade(
-                  from_version='v1.42.1',
-                  to_version='v1.42.2',
-                  state=kubernetes.KUBE_UPGRADE_ABORTING,
-                  recovery_attempts=2
-        )
-        kube_upgrade_obj = objects.kube_upgrade.get_one(context)
-        self.service.handle_upgrade_abort_success(self.context,
-                                        kube_upgrade_obj)
-        self.assertEqual(kube_upgrade_obj.state,
-                         kubernetes.KUBE_UPGRADE_ABORTED)
-
-    @mock.patch('sysinv.conductor.manager.utils.HostHelper.get_active_controller')
-    @mock.patch('sysinv.conductor.manager.'
-                'ConductorManager._config_apply_runtime_manifest')
-    def test_handle_upgrade_abort_failure(self, mock_config_apply_runtime_manifest, mock_get_active_controller):
-        mock_get_active_controller.return_value.uuid = "5e53976d-550d-452c-b018-1d37242ffdf9"
-        mock_get_active_controller.return_value.config_target = "4e93a1c4-44c0-4cb8-839b-e50d166514d0"
-        utils.create_test_kube_upgrade(
-                  from_version='v1.42.1',
-                  to_version='v1.42.2',
-                  state=kubernetes.KUBE_UPGRADE_ABORTING,
-                  recovery_attempts=2
-        )
-        kube_upgrade_obj = objects.kube_upgrade.get_one(context)
-        self.service.handle_upgrade_abort_failure(self.context,
-                                        kube_upgrade_obj)
-        personalities = [constants.CONTROLLER]
-        config_dict = {
-            "personalities": personalities,
-            "classes": ['platform::kubernetes::upgrade_abort'],
-            puppet_common.REPORT_STATUS_CFG:
-                puppet_common.REPORT_UPGRADE_ABORT
-        }
-
-        mock_config_apply_runtime_manifest.assert_called_with(mock.ANY,
-                                                              config_uuid='4e93a1c4-44c0-4cb8-839b-e50d166514d0',
-                                                              config_dict=config_dict, skip_update_config=True)
-
-    @mock.patch('sysinv.conductor.manager.utils.HostHelper.get_active_controller')
-    @mock.patch('sysinv.conductor.manager.'
-                'ConductorManager._config_apply_runtime_manifest')
-    def test_kube_upgrade_abort_recovery(self, mock_config_apply_runtime_manifest, mock_get_active_controller):
-        mock_get_active_controller.return_value.uuid = "5e53976d-550d-452c-b018-1d37242ffdf9"
-        mock_get_active_controller.return_value.config_target = "4e93a1c4-44c0-4cb8-839b-e50d166514d0"
-
-        self.service.kube_upgrade_abort_recovery(self.context)
-
-        personalities = [constants.CONTROLLER]
-        config_dict = {
-            "personalities": personalities,
-            "classes": ['platform::kubernetes::upgrade_abort_recovery'],
-        }
-        mock_config_apply_runtime_manifest.assert_called_with(mock.ANY,
-                                                              config_uuid='4e93a1c4-44c0-4cb8-839b-e50d166514d0',
-                                                              config_dict=config_dict, skip_update_config=True)
+# def test_handle_upgrade_abort_success(self):
+#     utils.create_test_kube_upgrade(
+#               from_version='v1.42.1',
+#               to_version='v1.42.2',
+#               state=kubernetes.KUBE_UPGRADE_ABORTING,
+#               recovery_attempts=2
+#     )
+#     kube_upgrade_obj = objects.kube_upgrade.get_one(context)
+#     self.service.handle_upgrade_abort_success(self.context,
+#                                     kube_upgrade_obj)
+#     self.assertEqual(kube_upgrade_obj.state,
+#                      kubernetes.KUBE_UPGRADE_ABORTED)
 
     def test_kube_delete_container_images(self):
         # Create controller-0

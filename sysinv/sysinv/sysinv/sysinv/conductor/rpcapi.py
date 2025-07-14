@@ -2009,6 +2009,24 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.cast(context, self.make_msg('kube_upgrade_storage',
                                                 kube_version=kube_version))
 
+    def report_kube_upgrade_abort_result(self, context, current_kube_version, back_to_kube_version,
+                                         abort, recovery):
+        """Asynchronously, report kube upgrade abort operation result
+
+        :param: context: context object
+        :param: host_uuid: uuid of this host
+        :param: current_kube_version: current kubernetes version
+        :param: back_to_kube_version: kubernetes version being aborted back to
+        :param: abort: True if abort was successful False otherwise. If this is True,
+                       recovery is False.
+        :param: recovery: True if abort recovery succeeds. If this is True, abort must be False.
+                          False if abort recovery Fails or not required to run.
+        """
+        return self.cast(context, self.make_msg('report_kube_upgrade_abort_result',
+                                                current_kube_version=current_kube_version,
+                                                back_to_kube_version=back_to_kube_version,
+                                                abort=abort, recovery=recovery))
+
     def kube_upgrade_abort(self, context, kube_state):
         """Asynchronously, have the conductor abort the kubernetes
         upgrade.

@@ -234,6 +234,9 @@ def execute(*cmd, **kwargs):
     :param attempts:           How many times to retry cmd.
     :param run_as_root:        True | False. Defaults to False. If set to True,
                                the command is run with rootwrap.
+    :param timeout             Passed to subprocess.communicate.
+                               timeout in seconds (integer value)
+                               Defaults to None
 
     :raises exception.SysinvException: on receiving unknown arguments
     :raises exception.ProcessExecutionError:
@@ -253,6 +256,13 @@ def execute(*cmd, **kwargs):
     attempts = kwargs.pop('attempts', 1)
     run_as_root = kwargs.pop('run_as_root', False)
     shell = kwargs.pop('shell', False)
+    timeout = kwargs.pop('timeout', None)
+    if timeout:
+        try:
+            timeout = int(timeout)
+        except Exception:
+            raise exception.SysinvException("Invalid value for timeout: [%s]. "
+                                            "Please use a valid integer." % (timeout))
 
     if len(kwargs):
         raise exception.SysinvException(_('Got unknown keyword args '
@@ -285,9 +295,9 @@ def execute(*cmd, **kwargs):
                                    shell=shell)
             result = None
             if process_input is not None:
-                result = obj.communicate(process_input)
+                result = obj.communicate(process_input, timeout=timeout)
             else:
-                result = obj.communicate()
+                result = obj.communicate(timeout=timeout)
             obj.stdin.close()  # pylint: disable=E1101
             _returncode = obj.returncode  # pylint: disable=E1101
             LOG.debug(_('Result was %s') % _returncode)
@@ -306,7 +316,7 @@ def execute(*cmd, **kwargs):
                         stderr=stderr,
                         cmd=' '.join(cmd))
             return result
-        except exception.ProcessExecutionError:
+        except (exception.ProcessExecutionError, Exception):
             if not attempts:
                 raise
             else:
@@ -345,6 +355,125 @@ def trycmd(*args, **kwargs):
         err = ''
 
     return out, err
+
+
+def systemctl_is_active_service(service_name):
+    """Check if a systemd service is active
+
+    :param: service_name: string: Name of the service to be checked
+    :raises: SysinvException
+    """
+    active = True
+    try:
+        cmd = [constants.SYSTEMCTL_PATH, constants.IS_ACTIVE_COMMAND, service_name]
+        execute(*cmd, check_exit_code=0)
+    except exception.ProcessExecutionError:
+        active = False
+    except Exception as ex:
+        raise exception.SysinvException("Failed to check if the service [%s] is active or not. "
+                                        "Error: [%s]" % (service_name, ex))
+    return active
+
+
+def systemctl_is_enabled_service(service_name):
+    """Check if a systemd service is enabled
+
+    :param: service_name: string: Name of the service to be checked
+    :raises: SysinvException
+    """
+    enabled = True
+    try:
+        cmd = [constants.SYSTEMCTL_PATH, constants.IS_ENABLED_COMMAND, service_name]
+        execute(*cmd, check_exit_code=0)
+    except exception.ProcessExecutionError:
+        enabled = False
+    except Exception as ex:
+        raise exception.SysinvException("Failed to check if the service [%s] is enabled or not. "
+                                        "Error: [%s]" % (service_name, ex))
+    return enabled
+
+
+def systemctl_mask_service(service_name, runtime=False, now=False):
+    """Mask a systemd service
+
+    :param: service_name: string: Name of the service to be masked
+    :raises: SysinvException
+    """
+    try:
+        cmd = [constants.SYSTEMCTL_PATH, constants.MASK_COMMAND, service_name]
+        if runtime:
+            cmd.append(constants.SYSTEMCTL_RUNTIME_FLAG)
+        if now:
+            cmd.append(constants.SYSTEMCTL_NOW_FLAG)
+        execute(*cmd, check_exit_code=0)
+        LOG.info("Service %s masked successfully" % (service_name))
+    except Exception as ex:
+        raise exception.SysinvException("Failed to mask the service %s with error: [%s]"
+                                        % (service_name, ex))
+
+
+def systemctl_unmask_service(service_name, runtime=False, now=False):
+    """Unmask a systemd service
+
+    :param: service_name: string: Name of the service to be unmasked
+    :raises: SysinvException
+    """
+    try:
+        cmd = [constants.SYSTEMCTL_PATH, constants.UNMASK_COMMAND, service_name]
+        if runtime:
+            cmd.append(constants.SYSTEMCTL_RUNTIME_FLAG)
+        if now:
+            cmd.append(constants.SYSTEMCTL_NOW_FLAG)
+        execute(*cmd, check_exit_code=0)
+        LOG.info("Service %s unmasked successfully" % (service_name))
+    except Exception as ex:
+        raise exception.SysinvException("Failed to unmask the service %s with error: [%s]"
+                                        % (service_name, ex))
+
+
+def systemctl_start_service(service_name):
+    """Start a service using systemctl
+
+    :param: service_name: string: Name of the service to be started
+    :raises: SysinvException upon failure
+    """
+    try:
+        cmd = [constants.SYSTEMCTL_PATH, constants.START_COMMAND, service_name]
+        execute(*cmd, check_exit_code=0)
+        LOG.info("Service %s started successfully" % (service_name))
+    except Exception as ex:
+        raise exception.SysinvException("Failed to start the service %s with error: [%s]"
+                                        % (service_name, ex))
+
+
+def pmon_start_service(service_name):
+    """Start a systemd service using pmon
+
+    :param: service_name: string: Name of the service to be started
+    :raises: SysinvException upon failure
+    """
+    try:
+        cmd = [constants.PMON_START_FULL_PATH, service_name]
+        execute(*cmd, check_exit_code=0)
+        LOG.info("Service %s pmon-started successfully" % (service_name))
+    except Exception as ex:
+        raise exception.SysinvException("Failed to start the service %s with error: [%s]"
+                                        % (service_name, ex))
+
+
+def pmon_stop_service(service_name):
+    """Stop a systemd service using pmon
+
+    :param: service_name: string: Name of the service to be stopped
+    :raises: SysinvException upon failure
+    """
+    try:
+        cmd = [constants.PMON_STOP_FULL_PATH, service_name]
+        execute(*cmd, check_exit_code=0)
+        LOG.info("Service %s pmon-stopped successfully" % (service_name))
+    except Exception as ex:
+        raise exception.SysinvException("Failed to stop the service %s with error: [%s]"
+                                        % (service_name, ex))
 
 
 # def ssh_connect(connection):

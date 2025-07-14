@@ -2364,3 +2364,36 @@ class AgentManager(service.PeriodicService):
 
             rpcapi = conductor_rpcapi.ConductorAPI(topic=conductor_rpcapi.MANAGER_TOPIC)
             rpcapi.report_download_images_result(context, result)
+
+    def kube_upgrade_abort(self, context, current_kube_version, back_to_kube_version):
+        """Abort a kubernetes upgrade
+
+        Kubernetes upgrade abort on controller hosts.
+
+        :param: context: context object
+        :param: current_kube_version: current kubernetes version
+        :param: back_to_kube_version: kubernetes version to roll back to
+        """
+        if self._ihost_personality == constants.CONTROLLER:
+            LOG.info("Starting kubernetes upgrade abort from version %s to %s"
+                     % (current_kube_version, back_to_kube_version))
+            try:
+                operator = kube_host.KubeControllerOperator(
+                        context, self._ihost_uuid, self._hostname)
+                abort, recovery = operator.upgrade_abort(current_kube_version, back_to_kube_version)
+            except Exception as ex:
+                LOG.exception(ex)
+                abort = False
+                recovery = False
+            if abort:
+                LOG.info("Kubernetes upgrade abort successful on this host.")
+            else:
+                if recovery:
+                    LOG.error("Kubernetes upgrade abort failed on this host but successfully "
+                              "recovered.")
+                else:
+                    LOG.error("Kubernetes upgrade abort and its recovery both failed on this host.")
+
+            rpcapi = conductor_rpcapi.ConductorAPI(topic=conductor_rpcapi.MANAGER_TOPIC)
+            rpcapi.report_kube_upgrade_abort_result(
+                context, current_kube_version, back_to_kube_version, abort, recovery)
