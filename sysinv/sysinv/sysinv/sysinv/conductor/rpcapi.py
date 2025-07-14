@@ -1080,7 +1080,7 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
     def get_k8s_namespaces(self, context):
         """Synchronously, get Kubernetes namespaces
 
-        :returns: list of namespacea
+        :returns: list of namespaces
         """
         return self.call(context,
                          self.make_msg('get_k8s_namespaces'))
@@ -1929,6 +1929,15 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         :return:
         """
         return self.call(context, self.make_msg('store_default_config'))
+
+    def report_download_images_result(self, context, result):
+        """
+        :param context: request context.
+        :param result: True if operation was success False otherwise
+        :return:
+        """
+        return self.cast(context, self.make_msg('report_download_images_result',
+                                                result=result))
 
     def kube_download_images(self, context, kube_version):
         """Asynchronously, have the conductor download the kubernetes images

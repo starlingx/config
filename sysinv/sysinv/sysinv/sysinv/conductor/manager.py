@@ -105,6 +105,7 @@ from sysinv.common import app_update_manager
 from sysinv.common import barbican_config
 from sysinv.common import fpga_constants
 from sysinv.common import constants
+from sysinv.common import containers as containers_util
 from sysinv.common import ceph as cceph
 from sysinv.common import device as dconstants
 from sysinv.common import etcd
@@ -2550,218 +2551,6 @@ class ConductorManager(service.PeriodicService):
             "classes": ['platform::remotelogging::runtime'],
         }
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
-
-    def _docker_registry_tagged_image_list(self):
-        untagged_registry_images = self._docker_registry_image_list()
-        registry_images = list()
-
-        for image in untagged_registry_images:
-            image_tags_response = docker_registry.docker_registry_get(
-                f"{image}/tags/list"
-            )
-            tags = image_tags_response.json()['tags']
-            if tags:
-                for tag in tags:
-                    registry_images.append(f"{image}:{tag}")
-
-        return registry_images
-
-    def _k8s_image_list(self, k8s_version):
-        cmd = [
-            f"/usr/local/kubernetes/{k8s_version}/stage1/usr/bin/kubeadm",
-            "--kubeconfig=/etc/kubernetes/admin.conf",
-            "config", "images", "list",
-            "--kubernetes-version", k8s_version]
-
-        try:
-            output = subprocess.check_output(  # pylint: disable=not-callable
-                cmd, stderr=subprocess.STDOUT, universal_newlines=True
-            )
-
-            # The command returns a list of tagged images with a line break (\n)
-            # between them and after the last element. Because of that, after
-            # removing the line break, the last item in the array is empty.
-            return output.split("\n")[:-1]
-        except json.JSONDecodeError as e:
-            LOG.error(f"Could not parse output, error={e}")
-        except subprocess.CalledProcessError as e:
-            LOG.error(f"Could not list kubernetes images, error={e}")
-        except FileNotFoundError:
-            LOG.error("The specified kubernetes version was not found")
-        except Exception as e:
-            LOG.error(
-                f"An error occurred when retrieving the kubernetes images, error={e}"
-            )
-
-    def _pull_image(self, image, registries_info, docker_client):
-        """Pull an image from a registry based on the service parameters
-
-        :param image: tagged image to download
-        :param registries_info: registries information from service parameters
-        :return: None if the image pull failed or the image if it succeeded
-        """
-
-        target_image = None
-
-        try:
-            LOG.info(f"Image {image} download started from public/private registry")
-
-            target_image, registry_auth = (
-                self._docker._get_img_tag_with_registry(image, registries_info)
-            )
-            docker_client.pull(target_image, auth_config=registry_auth)
-        except Exception:
-            LOG.error(f"Image {image} download failed")
-
-        return target_image
-
-    def _push_images_to_local_registry_and_crictl(
-        self, docker_client, local_registry_auth, crictl_auth, registries_info, image
-    ):
-        """Pushes an image to both local registry and crictl.
-
-        If the image does not exist in local registry, it is downloaded and tagged.
-        Otherwise, it is just pushed to crictl
-
-        :param docker_client: docker's client
-        :param local_registry_auth: authentication for the local registry
-        :param crictl_auth: crictl authentication
-        :param image: tagged image to push
-        :param registries_info: registries information from service parameters
-        :return: True if the operation was successful or False otherwise
-        """
-
-        start = time.time()
-        local_image = None
-
-        if not image.startswith(constants.DOCKER_REGISTRY_SERVER):
-            target_image = self._pull_image(image, registries_info, docker_client)
-
-            if not target_image:
-                LOG.info(f"Retrying the image download for {image}")
-                # If the first request failed, retry the image pull
-                target_image = self._pull_image(image, registries_info, docker_client)
-
-                if not target_image:
-                    LOG.info(
-                        f"Image {image} download failed twice, stopping the execution"
-                    )
-                    return False
-
-            try:
-                LOG.info(f"Image {image} tag and push started")
-
-                # After pulling the image, it needs to be sent to the system's local
-                # registry, so it needs to be tagged to registry.local:9000
-                local_image = f"{constants.DOCKER_REGISTRY_SERVER}/{image}"
-
-                docker_client.tag(target_image, local_image)
-                docker_client.push(local_image, auth_config=local_registry_auth)
-            except Exception as e:
-                LOG.error(f"Image {image} tag and push failed: {e}")
-                return False
-
-            try:
-                LOG.info(
-                    f"Remove images {target_image} and {local_image} after push "
-                    "to local registry"
-                )
-
-                docker_client.remove_image(target_image)
-                docker_client.remove_image(local_image)
-            except Exception as e:
-                LOG.error(f"Image {image} remove failed: {e}")
-                return False
-
-        # After the image was downloaded to local registry, upload it to crictl
-        try:
-            # If the image wasn't originally in the docker registry, it won't contain
-            # the registry.local:9001 at the start, so we need to updated it
-            if local_image:
-                image = local_image
-
-            LOG.info(f"Image {image} push to containerd image cache started")
-
-            subprocess.check_call(  # pylint: disable=not-callable
-                ["crictl", "pull", "--creds", crictl_auth, image]
-            )
-        except Exception as e:
-            LOG.error(f"Image {image} download to crictl failed: {e}")
-            return False
-
-        elapsed_time = time.time() - start
-        LOG.info(
-            f"Image {image} download succeeded in {elapsed_time} seconds"
-        )
-
-        return True
-
-    def push_k8s_images(self, k8s_version):
-        start_time = time.time()
-
-        k8s_version = k8s_version.strip("v")
-        k8s_images = self._k8s_image_list(k8s_version)
-
-        if not k8s_images:
-            # The error logs are provided in _k8s_image_list
-            return False
-
-        registry_images = self._docker_registry_tagged_image_list()
-        crictl_images = self._docker._get_crictl_image_list()
-
-        docker_client = docker.APIClient(timeout=constants.APP_INSTALLATION_TIMEOUT)
-        local_registry_auth = cutils.get_local_docker_registry_auth()
-        crictl_auth = (
-            f"{local_registry_auth['username']}:{local_registry_auth['password']}"
-        )
-        registries = self._docker.retrieve_specified_registries()
-
-        # TODO(rlima): create a method to get elements common to both lists
-        # and skip their check
-        for image in k8s_images:
-            if image in registry_images:
-                image = f"{constants.DOCKER_REGISTRY_SERVER}/{image}"
-                if image in crictl_images:
-                    continue
-
-            success = self._push_images_to_local_registry_and_crictl(
-                docker_client, local_registry_auth, crictl_auth, registries, image
-            )
-            if not success:
-                return False
-
-        LOG.info(
-            f"Image download for {k8s_version} completed in "
-            f"{time.time() - start_time}"
-        )
-
-        return True
-
-    def _docker_registry_image_list(self):
-        try:
-            image_list_response = docker_registry.docker_registry_get("_catalog")
-        except requests.exceptions.SSLError:
-            LOG.exception("Failed to get docker registry catalog")
-            raise exception.DockerRegistrySSLException()
-        except Exception:
-            LOG.exception("Failed to get docker registry catalog")
-            raise exception.DockerRegistryAPIException()
-
-        if image_list_response.status_code != 200:
-            LOG.error(
-                f"Bad response from docker registry: {image_list_response.status_code}"
-            )
-            return []
-
-        image_list_response = image_list_response.json()
-        # responses from the registry looks like this
-        # {u'repositories': [u'meliodas/satesatesate', ...]}
-        # we need to turn that into what we want to return:
-        # [{'name': u'meliodas/satesatesate'}]
-        if 'repositories' not in image_list_response:
-            return []
-
-        return image_list_response['repositories']
 
     def docker_registry_image_list(self, context, filter_out_untagged):
         try:
@@ -18076,6 +17865,211 @@ class ConductorManager(service.PeriodicService):
 
         return success
 
+    def _kube_upgrade_state_update(self, context, new_state):
+        """Upgrade kubernetes upgrade state
+
+        :param: context: context object
+        :param: new_state: Kubernetes upgrade state to be updated
+        """
+        kube_upgrade_obj = objects.kube_upgrade.get_one(context)
+        kube_upgrade_obj.state = new_state
+        kube_upgrade_obj.save()
+
+    def report_download_images_result(self, context, result):
+        """
+        :param context: request context.
+        :param result: True if operation was success False otherwise
+        """
+        # Update the upgrade state
+        if result:
+            state = kubernetes.KUBE_UPGRADE_DOWNLOADED_IMAGES
+            LOG.info("Required kubernetes images downloaded successfully on all controllers.")
+        else:
+            state = kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES_FAILED
+            LOG.error("Kubernetes image download failed on the other controller."
+                      "Check sysinv.log on that controller.")
+        self._kube_upgrade_state_update(context, state)
+
+    @retry(retry_on_result=lambda x: x is None,
+           stop_max_attempt_number=5,
+           wait_fixed=1000)
+    def _pull_image_to_docker(self, image, registries_info, docker_client):
+        """Pull an image from a registry based on the service parameters
+
+        :param: image: tagged image to download
+        :param: registries_info: registries information from service parameters
+        :param: docker_client: docker client object
+
+        :return: None if the image pull failed or the image if it succeeded
+        """
+        target_image = None
+        try:
+            LOG.info("Image [%s] download started from upstream registry." % (image))
+            target_image, registry_auth = (
+                self._docker._get_img_tag_with_registry(image, registries_info)
+            )
+            docker_client.pull(target_image, auth_config=registry_auth)
+            LOG.info("Image [%s] download from upstream public/private registry"
+                     " to docker successful" % (image))
+        except Exception:
+            LOG.error("Failed to download image [%s] from upstream registry." % (image))
+            return None
+        return target_image
+
+    def _pull_image_to_crictl(self, image, crictl_auth):
+        """Pull image into crictl
+
+        Private method to pull an image into crictl
+
+        :param: image: image name
+        :param: crictl_auth: auth credentials for crictl
+
+        :returns: True if successful else False
+        """
+        try:
+            containers_util.pull_image_to_crictl(image, crictl_auth)
+        except exception.SysinvException as e:
+            LOG.error("Failed to download image [%s] to crictl with error: [%s]"
+                      % (image, e))
+            return False
+        return True
+
+    def _pull_image_from_upstream_tag_and_push_to_local_reg(
+        self, docker_client, local_registry_auth, registries_info, image
+    ):
+        """Pull an image from upstream, tags and pushes it to local registry.
+
+        :param: docker_client: docker's client object
+        :param: local_registry_auth: authentication for the local registry
+        :param: registries_info: registries information from service parameters
+        :param: image: image to be pulled, tagged and pushed
+
+        :return: True if the operation was successful or False otherwise
+        """
+        local_image = None
+
+        if not image.startswith(constants.DOCKER_REGISTRY_SERVER):
+            target_image = self._pull_image_to_docker(image, registries_info, docker_client)
+
+            if not target_image:
+                return False
+
+            try:
+                LOG.info("Image tag and push started for [%s]" % (target_image))
+                # After pulling the image, it needs to be sent to the system's local
+                # registry, so it needs to be tagged to registry.local:9000
+                local_image = f"{constants.DOCKER_REGISTRY_SERVER}/{image}"
+                docker_client.tag(target_image, local_image)
+                docker_client.push(local_image, auth_config=local_registry_auth)
+                # Test inspecting the image. This avoids a scenario where the push command
+                # returns a false positive result during docker service restarts.
+                docker_client.inspect_distribution(local_image, auth_config=local_registry_auth)
+                LOG.info("Image tag and push successful for [%s]" % (target_image))
+            except Exception as e:
+                LOG.error("Image tag and push failed for [%s] with error [%s]"
+                         % (target_image, e))
+                return False
+
+            try:
+                LOG.info("Removing images [%s] and [%s] after push to local registry ... "
+                         % (target_image, local_image))
+                docker_client.remove_image(target_image)
+                docker_client.remove_image(local_image)
+                LOG.info("Removal of images [%s] and [%s] from docker successful."
+                         % (target_image, local_image))
+            except Exception as e:
+                # We need not return False from here as our main purpose of tag
+                # and push has been successful but only clean up is failed.
+                LOG.warning("Removal of either [%s] or [%s] from docker failed"
+                            " with error: [%s]. Use docker commands to manually "
+                            "remove them and save disk space."
+                            % (target_image, local_image, e))
+        return True
+
+    def _pull_target_image(self, image, crictl_auth, registries,
+                           local_registry_auth, docker_client):
+        """Worker method to pull an image to both local registry and crictl
+
+        :param: image: image name
+        :param: crictl_auth: auth credentials for containerd
+        :param: registries: registries information from service parameters
+        :param: local_registry_auth: authentication for the local registry
+        :param: docker_client: docker's client object
+
+        :returns: True only if download to both local registry and crictl
+                  successful, False otherwise.
+        """
+        # Retun True only if both methods succeed otherwise return False
+        try:
+            if self._pull_image_from_upstream_tag_and_push_to_local_reg(
+                    docker_client, local_registry_auth, registries, image):
+                image = f"{constants.DOCKER_REGISTRY_SERVER}/{image}"
+                if self._pull_image_to_crictl(image, crictl_auth):
+                    LOG.info("Succesfully pulled image [%s] to the local registry and crictl "
+                             % (image))
+                    return True
+            LOG.error("Failed to pull image: [%s]" % (image))
+            return False
+        except Exception as ex:
+            LOG.error("Failed to pull image [%s] to local registry and crictl "
+                      "with error: [%s]" % (image, ex))
+            return False
+
+    def download_images_from_upstream_to_local_reg_and_crictl(self, images):
+        """Download images from upstream private/public registry to local
+           registry and crictl
+
+        This method retrieves required registry and crictl auth credentials
+        and pulls all images to local registry and crictl concurrently.
+
+        :param: context: context object.
+        :param: images: list of images to be pulled.
+
+        :returns: True if success False otherwise
+        """
+        failed_at_least_one_image = False
+        try:
+            docker_client = docker.APIClient(
+                timeout=constants.IMAGE_DOWNLOAD_TIMEOUT_IN_SECS)
+            local_registry_auth = cutils.get_local_docker_registry_auth()
+            crictl_auth = (
+                f"{local_registry_auth['username']}:{local_registry_auth['password']}"
+            )
+            registries = self._docker.retrieve_specified_registries()
+            try:
+                crictl_images = containers_util.get_crictl_image_list()
+            except exception.SysinvException:
+                # Never mind, still proceed
+                crictl_images = []
+
+            # Skip images that are already present in crictl
+            images_to_be_pulled = []
+            for image in images:
+                if f"{constants.DOCKER_REGISTRY_SERVER}/{image}" in crictl_images:
+                    LOG.info("Image [%s] is already present in crictl. "
+                             "No need to download. Continuing..." % (image))
+                    continue
+                images_to_be_pulled.append(image)
+
+            pull_tasks = []
+            with ThreadPoolExecutor() as executor:
+                for image in images_to_be_pulled:
+                    pull_tasks.append(executor.submit(
+                        self._pull_target_image, image, crictl_auth,
+                        registries, local_registry_auth, docker_client))
+
+            # No need to log the results again as we have already logged them
+            # inside the worker method. Simply check for any failures.
+            if not all([task.result() for task in as_completed(pull_tasks)]):
+                failed_at_least_one_image = True
+
+        except Exception as ex:
+            # Handle an unexpected and unhandled exception
+            LOG.exception("An unknown error occured downloading images: [%s]" % (ex))
+            return False
+
+        return not failed_at_least_one_image
+
     def kube_download_images(self, context, kube_version):
         """Download the kubernetes images for this version"""
 
@@ -18088,83 +18082,63 @@ class ConductorManager(service.PeriodicService):
         else:
             next_versions = [kube_version]
 
+        LOG.info("Downloading images for versions: %s " % (next_versions))
+
         # For simplex systems, disable image garbage collection by kubelet
-        # during the K8s upgrade.  For duplex this will be done on each controller
-        # by the puppet manifest called below.  It wants to be done before we
+        # during the K8s upgrade. It wants to be done before we
         # pull the images so that they can't be garbage collected by kubelet
         # before they're needed.
         if system.system_mode == constants.SYSTEM_MODE_SIMPLEX:
             try:
-                # Call the helper script used by the puppet manifest.
-                subprocess.check_call(  # pylint: disable=not-callable
-                    ["/bin/bash",
-                     "/usr/share/puppet/modules/platform/files/disable_image_gc.sh"],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL)
-            except subprocess.CalledProcessError:
-                LOG.error("Failed to call disable_image_gc.sh, continuing anyway.")
+                kubernetes.disable_kubelet_garbage_collection()
+                cutils.pmon_restart_service(kubernetes.KUBELET_SYSTEMD_SERVICE_NAME)
+                LOG.info("Successfully disabled kubelet image garbage collection.")
+            except Exception:
+                LOG.warning("Failed to disable garbage collection in kubelet, continuing anyway.")
 
+        # Create a consolidated list of images of all "next_versions" so that
+        # all of them can be pulled concurrently
+        target_images = []
         for k8s_version in next_versions:
-            LOG.info(f"Downloading images for version {k8s_version}")
+            k8s_version = k8s_version.strip('v')
+            # TODO(kdhokte): call get_all_supported_k8s_versions inside _start() so all images are
+            # cached for future use and accessed whenever required.
+            images = kubernetes.get_k8s_images(k8s_version)
+            target_images.extend(images.values())
 
-            try:
-                success = self.push_k8s_images(k8s_version)
-            except Exception as e:
-                LOG.error(f"An error ocurred when pushing k8s images: {e}")
-                success = False
+        target_images = list(set(target_images))
 
-            if not success:
-                LOG.warning(
-                    "Image download failed, please check sysinv.log for more details"
-                )
-                # Update the upgrade state
-                kube_upgrade_obj = objects.kube_upgrade.get_one(context)
-                kube_upgrade_obj.state = \
-                    kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES_FAILED
-                kube_upgrade_obj.save()
-                return
+        try:
+            success = self.download_images_from_upstream_to_local_reg_and_crictl(target_images)
+        except Exception:
+            # handle unexpected exception
+            success = False
 
-        if system.system_mode == constants.SYSTEM_MODE_DUPLEX:
-            # Update the config for the controller host(s)
-            personalities = [constants.CONTROLLER]
-            config_uuid = self._config_update_hosts(context, personalities)
+        if not success:
+            LOG.error("Kubernetes image download operation failed.")
+            # Update the upgrade state
+            self._kube_upgrade_state_update(
+                    context, kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES_FAILED)
+            return
 
-            # Apply the runtime manifest to have docker download the images on
-            # each controller.
-            config_dict = {
-                "personalities": personalities,
-                "classes": ['platform::kubernetes::pre_pull_control_plane_images']
-            }
-            self._config_apply_runtime_manifest(context, config_uuid, config_dict)
-
-            # Wait for the manifest(s) to be applied
-            elapsed = 0
-            while elapsed < kubernetes.MANIFEST_APPLY_TIMEOUT:
-                elapsed += kubernetes.MANIFEST_APPLY_INTERVAL
-                greenthread.sleep(kubernetes.MANIFEST_APPLY_INTERVAL)
-                controller_hosts = self.dbapi.ihost_get_by_personality(
-                    constants.CONTROLLER)
-                for host_obj in controller_hosts:
-                    if host_obj.config_target != host_obj.config_applied:
-                        # At least one controller has not been updated yet
-                        LOG.debug("Waiting for config apply on host %s" %
-                                host_obj.hostname)
-                        break
-                else:
-                    LOG.info("Config was applied for all controller hosts")
-                    break
-            else:
-                LOG.warning("Manifest apply failed for a controller host")
-                kube_upgrade_obj = objects.kube_upgrade.get_one(context)
-                kube_upgrade_obj.state = \
-                    kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES_FAILED
-                kube_upgrade_obj.save()
-                return
-
-        # Update the upgrade state
-        kube_upgrade_obj = objects.kube_upgrade.get_one(context)
-        kube_upgrade_obj.state = kubernetes.KUBE_UPGRADE_DOWNLOADED_IMAGES
-        kube_upgrade_obj.save()
+        if system.system_mode == constants.SYSTEM_MODE_SIMPLEX:
+            self._kube_upgrade_state_update(context, kubernetes.KUBE_UPGRADE_DOWNLOADED_IMAGES)
+            LOG.info("Required kubernetes images downloaded successfully.")
+            return
+        else:
+            controller_hosts = self.dbapi.ihost_get_by_personality(constants.CONTROLLER)
+            agent_api = agent_rpcapi.AgentAPI()
+            for host in controller_hosts:
+                if host.uuid == self.host_uuid:
+                    continue
+                try:
+                    LOG.info("Downloading images on %s" % (host.hostname))
+                    agent_api.pull_kubernetes_images(context, host.uuid, target_images)
+                except Exception as ex:
+                    # Handle unexpected exception
+                    LOG.exception("Images download failed on %s. Error: [%s]" % (host.hostname, ex))
+                    self._kube_upgrade_state_update(
+                            context, kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES_FAILED)
 
     def kube_application_update(self,
                                 context,

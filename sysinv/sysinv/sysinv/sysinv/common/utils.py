@@ -4539,6 +4539,21 @@ def compare_lists_of_dict(dependent_parent_list, dependent_parent_exceptions):
     return set_parent_list == set_parent_exceptions
 
 
+def pmon_restart_service(service_name):
+    """Restart a systemd service using pmon
+
+    :param: service_name: string: Name of the service to be restarted
+    :raises: SysinvException upon failure
+    """
+    try:
+        cmd = [constants.PMON_RESTART_FULL_PATH, service_name]
+        execute(*cmd, check_exit_code=0)
+        LOG.info("Service %s pmon-restarted successfully" % (service_name))
+    except Exception as ex:
+        raise exception.SysinvException("Failed to restart the service %s with error: [%s]"
+                                        % (service_name, ex))
+
+
 def flatten_nested_lists(nested_lists):
     """
     Recursively flattens a nested list structure into a single flat list.
