@@ -1098,14 +1098,20 @@ SB_TIER_CEPH_POOLS = [
 # varies greatly in StarlingX and we want to avoid running too low on PGs
 CEPH_TARGET_PGS_PER_OSD = 200
 
-# Dual node and Storage
+# Default replication factor (AIO-SX)
+AIO_SX_CEPH_REPLICATION_FACTOR_DEFAULT = 1
+
+# Default replication factor (non AIO-SX)
 CEPH_REPLICATION_FACTOR_DEFAULT = 2
-CEPH_REPLICATION_FACTOR_SUPPORTED = [2, 3]
+
+# Supported replication factor (AIO-SX)
+AIO_SX_CEPH_REPLICATION_FACTOR_SUPPORTED = [1, 2, 3]
+
+# Supported replication factor (AIO-DX)
 CEPH_CONTROLLER_MODEL_REPLICATION_SUPPORTED = [2]
 
-# Single node
-AIO_SX_CEPH_REPLICATION_FACTOR_DEFAULT = 1
-AIO_SX_CEPH_REPLICATION_FACTOR_SUPPORTED = [1, 2, 3]
+# Supported replication factor (DX+, Standard, Storage)
+CEPH_REPLICATION_FACTOR_SUPPORTED = [2, 3]
 
 CEPH_REPLICATION_MAP_SUPPORTED = {
     1: [1],
