@@ -50,6 +50,10 @@ KUBE_ROOTCA_CERT_SECRET = 'system-kube-rootca-certificate'
 API_RETRY_ATTEMPT_NUMBER = 20
 API_RETRY_INTERVAL = 10 * 1000
 
+# Kubeadm API reference
+KUBEADM_API_V1BETA3 = "kubeadm.k8s.io/v1beta3"
+KUBEADM_API_V1BETA4 = "kubeadm.k8s.io/v1beta4"
+
 
 class KubernetesPuppet(base.BasePuppet):
     """Class to encapsulate puppet operations for kubernetes configuration"""
@@ -346,6 +350,7 @@ class KubernetesPuppet(base.BasePuppet):
                         os.unlink(temp_kubeadm_config_view)
                         raise
                     except subprocess.CalledProcessError as ex:
+                        os.unlink(temp_kubeadm_config_view)
                         raise exception.SysinvException(
                             "kubectl get kubeadm-config failed with error: [%s]" % (ex))
 
@@ -354,38 +359,61 @@ class KubernetesPuppet(base.BasePuppet):
                 key = str(keyring.get_password(CERTIFICATE_KEY_SERVICE,
                         CERTIFICATE_KEY_USER))
 
-                with open(temp_kubeadm_config_view, "a") as f:
-                    f.write("---\r\napiVersion: kubeadm.k8s.io/v1beta3\r\n"
-                            "kind: InitConfiguration\r\ncertificateKey: "
-                            "{}".format(key))
+                # Update API reference to kubeadm.k8s.io/v1beta3 when k8s
+                # version is less than 1.31
+                api_version = (
+                    KUBEADM_API_V1BETA3
+                    if LooseVersion(kubeadm_version) < LooseVersion("1.31.5")
+                    else KUBEADM_API_V1BETA4
+                )
 
-                # Replace API reference of kubeadm.k8s.io/v1beta3 to
-                # kubeadm.k8s.io/v1beta2 for k8s version less than or
-                # equal to 1.21.8
-                if LooseVersion(kubeadm_version) <= LooseVersion("1.21.8"):
-                    with open(temp_kubeadm_config_view, 'r') as f:
-                        kubeadm_config_content = f.read()
-                        update_kubeadm_config = \
-                            kubeadm_config_content.replace('kubeadm.k8s.io/v1beta3',
-                                                           'kubeadm.k8s.io/v1beta2')
-                    with open(temp_kubeadm_config_view, 'w') as f:
-                        f.write(update_kubeadm_config)
+                with open(temp_kubeadm_config_view, "a") as f:
+                    f.write(
+                        "---\n"
+                        f"apiVersion: {api_version}\n"
+                        "kind: InitConfiguration\n"
+                        f"certificateKey: {key}\n"
+                    )
+
                 # Because we're passing in the entire kubeadm config, if we're doing
                 # a K8s upgrade we need to use the "new" version of kubeadm in case
                 # changes have been made to the kubeadm-config ConfigMap that are
                 # not understood by the "old" kubeadm.
                 kubeadm_path = constants.KUBEADM_PATH_FORMAT_STR.format(kubeadm_ver=kubeadm_version)
-                cmd = [kubeadm_path, 'init', 'phase', 'upload-certs', '--upload-certs', '--config',
-                       temp_kubeadm_config_view]
+                cmd = [
+                    kubeadm_path,
+                    'init',
+                    'phase',
+                    'upload-certs',
+                    '--upload-certs',
+                    '--config',
+                    temp_kubeadm_config_view
+                ]
 
                 try:
-                    subprocess.check_call(cmd, timeout=30)  # pylint: disable=not-callable
-                except subprocess.TimeoutExpired:
-                    LOG.error("Command %s: timed out." % cmd)
-                    raise
-                except subprocess.CalledProcessError as ex:
+                    result = subprocess.run(
+                        cmd,
+                        capture_output=True,
+                        text=True,
+                        timeout=30,
+                        check=True
+                    )
+                    LOG.info("Command succeeded: %s", cmd)
+                    LOG.debug("stdout: %s", result.stdout)
+                    LOG.debug("stderr: %s", result.stderr)
+                except subprocess.CalledProcessError as e:
+                    LOG.error("Command failed: %s", cmd)
+                    LOG.error("Return code: %d", e.returncode)
+                    LOG.error("stdout: %s", e.stdout)
+                    LOG.error("stderr: %s", e.stderr)
                     raise exception.SysinvException(
-                        "kubeadm init phase upload-certs failed with error: [%s]" % (ex))
+                        "uploading certificate key to the cluster"
+                        "failed with error: [%s]" % e)
+                except subprocess.TimeoutExpired as e:
+                    LOG.error("Command timed out: %s", cmd)
+                    LOG.error("stdout: %s", e.stdout)
+                    LOG.error("stderr: %s", e.stderr)
+                    raise
                 finally:
                     os.unlink(temp_kubeadm_config_view)
                 join_cmd_additions += \
@@ -402,17 +430,38 @@ class KubernetesPuppet(base.BasePuppet):
                 join_cmd_additions += \
                     " --apiserver-bind-port %s" % str(constants.KUBE_APISERVER_INTERNAL_PORT)
 
-            cmd = ['kubeadm', KUBECONFIG, 'token', 'create', '--print-join-command',
-                   '--description', 'Bootstrap token for %s' % host.hostname]
+            cmd = [
+                  'kubeadm',
+                  KUBECONFIG,
+                  'token',
+                  'create',
+                  '--print-join-command',
+                  '--description', f"Bootstrap token for {host.hostname}"
+            ]
             try:
-                join_cmd = subprocess.check_output(  # pylint: disable=not-callable
-                    cmd, universal_newlines=True, timeout=30)
-            except subprocess.TimeoutExpired:
-                LOG.error("Command %s: timed out." % cmd)
-                raise
-            except subprocess.CalledProcessError as ex:
+                LOG.info("Running command: %s", cmd)
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                    check=True
+                )
+                join_cmd = result.stdout.strip()
+                LOG.debug("stdout: %s", result.stdout)
+                LOG.debug("stderr: %s", result.stderr)
+            except subprocess.CalledProcessError as e:
+                LOG.error("Command failed: %s", cmd)
+                LOG.error("Return code: %d", e.returncode)
+                LOG.error("stdout: %s", e.stdout)
+                LOG.error("stderr: %s", e.stderr)
                 raise exception.SysinvException(
-                    "kubeadm token create failed with error: [%s]" % (ex))
+                    "kubeadm token create failed with error: [%s]" % e)
+            except subprocess.TimeoutExpired as e:
+                LOG.error("Command timed out: %s", cmd)
+                LOG.error("stdout: %s", e.stdout)
+                LOG.error("stderr: %s", e.stderr)
+                raise
             join_cmd_additions += \
                 " --cri-socket /var/run/containerd/containerd.sock"
             join_cmd = join_cmd.strip() + join_cmd_additions
