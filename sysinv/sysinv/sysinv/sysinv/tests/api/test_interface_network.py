@@ -258,14 +258,29 @@ class InterfaceNetworkTestCase(base.FunctionalTest):
 
     def _create_controller_address(self, addrpool, networktype):
         subnet = netaddr.IPNetwork(f"{addrpool.network}/{addrpool.prefix}")
+        if networktype == constants.NETWORK_TYPE_STORAGE:
+            name = 'storage-pool-controller0_address'
+        else:
+            name = 'controller-0-{}'.format(networktype)
         c0_address = dbutils.create_test_address(
             family=addrpool.family,
             address=str(subnet[3]),
             prefix=addrpool.prefix,
-            name='controller-0-{}'.format(networktype),
+            name=name,
             address_pool_id=addrpool.id)
         self.dbapi.address_pool_update(addrpool.uuid, {'controller0_address_id': c0_address.id})
         return c0_address
+
+    def _create_controller_floating_address(self, addrpool, networktype):
+        subnet = netaddr.IPNetwork(f"{addrpool.network}/{addrpool.prefix}")
+        floating_address = dbutils.create_test_address(
+            family=addrpool.family,
+            address=str(subnet[2]),
+            prefix=addrpool.prefix,
+            name='controller-{}'.format(networktype),
+            address_pool_id=addrpool.id)
+        self.dbapi.address_pool_update(addrpool.uuid, {'floating_address_id': floating_address.id})
+        return floating_address
 
     def set_system_mode(self, system_mode):
         system = self.dbapi.isystem_get_one()
@@ -559,7 +574,7 @@ class InterfaceNetworkCreateTestCase(InterfaceNetworkTestCase):
         self._post_and_check(worker_interface_network, expect_errors=False)
 
     def test_create_storage_interface_network(self):
-
+        self.set_system_mode(constants.SYSTEM_MODE_SIMPLEX)
         p = mock.patch('sysinv.conductor.rpcapi.ConductorAPI.update_storage_net_config')
         self.mock_rpcapi_update_storage_net_config = p.start()
         self.addCleanup(p.stop)
@@ -575,10 +590,15 @@ class InterfaceNetworkCreateTestCase(InterfaceNetworkTestCase):
         pool_ipv6 = self._create_secondary_addrpool(constants.NETWORK_TYPE_STORAGE)
         pools = {pool_ipv4.family: pool_ipv4, pool_ipv6.family: pool_ipv6}
 
+        controller_floating_address = {}
+        for family, pool in pools.items():
+            addr = self._create_controller_floating_address(pool, constants.NETWORK_TYPE_STORAGE)
+            controller_floating_address[family] = addr
+
         controller_addresses = {}
         for family, pool in pools.items():
-            controller_addresses[family] = self._create_controller_address(
-                pool, constants.NETWORK_TYPE_STORAGE)
+            addr = self._create_controller_address(pool, constants.NETWORK_TYPE_STORAGE)
+            controller_addresses[family] = addr
 
         controller_interface_network = dbutils.post_get_test_interface_network(
             interface_uuid=controller_interface.uuid,
@@ -589,6 +609,10 @@ class InterfaceNetworkCreateTestCase(InterfaceNetworkTestCase):
 
         for family, address in controller_addresses.items():
             updated_address = self.dbapi.address_get(address.id)
+            self.assertEqual(None, updated_address.interface_id)
+
+        for family, address in controller_floating_address.items():
+            updated_address = self.dbapi.address_get(address.id)
             self.assertEqual(controller_interface.id, updated_address.interface_id)
 
         worker_interface_network = dbutils.post_get_test_interface_network(
@@ -596,8 +620,10 @@ class InterfaceNetworkCreateTestCase(InterfaceNetworkTestCase):
             network_uuid=self.storage_network.uuid)
         self._post_and_check(worker_interface_network, expect_errors=False)
         self.mock_rpcapi_update_storage_net_config.assert_called_once()
+        controller_addresses = self.dbapi.addresses_get_by_interface(controller_interface.id)
 
         worker_addresses = self.dbapi.addresses_get_by_interface(worker_interface.id)
+        self.assertEqual(2, len(controller_addresses))
         self.assertEqual(2, len(worker_addresses))
         for worker_address in worker_addresses:
             self.assertEqual(pools[worker_address.family].uuid, worker_address.pool_uuid)
