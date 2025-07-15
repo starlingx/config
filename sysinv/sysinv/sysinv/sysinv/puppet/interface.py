@@ -112,7 +112,7 @@ class InterfacePuppet(base.BasePuppet):
         generate_interface_configs(context, config, self.dbapi)
 
         # Generate the actual interface config resources
-        generate_address_configs(context, config)
+        generate_address_configs(context, config, self.dbapi)
 
         # Generate data iface list configuration
         generate_data_iface_list_config(context, config)
@@ -1801,11 +1801,15 @@ def get_address_config(context, iface, addresses):
     }
 
 
-def generate_address_configs(context, config):
+def generate_address_configs(context, config, db_api):
     """
     Generate the puppet resource for each of the floating IP addresses
     """
     for networktype, addresses in six.iteritems(context['floatingips']):
+        if utils.is_aio_simplex_system(db_api) and networktype in [constants.NETWORK_TYPE_ADMIN,
+                                                                   constants.NETWORK_TYPE_MGMT,
+                                                                   constants.NETWORK_TYPE_STORAGE]:
+            continue
         iface = find_interface_by_type(context, networktype)
         if iface:
             address_config = get_address_config(context, iface, addresses)
