@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2019-2023 Wind River Systems, Inc.
+# Copyright (c) 2019-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -573,14 +573,12 @@ class KubeUpgradeController(rest.RestController):
                     "in %s" % system.system_mode))
             # Make sure upgrade is in the correct state to cordon
             if kube_upgrade_obj.state not in [
-                    kubernetes.KUBE_UPGRADED_NETWORKING,
                     kubernetes.KUBE_UPGRADED_STORAGE,
                     kubernetes.KUBE_UPGRADE_CORDON_FAILED]:
                 raise wsme.exc.ClientSideError(_(
-                    "Kubernetes upgrade must be in %s, %s or %s state "
+                    "Kubernetes upgrade must be in %s or %s state "
                     "to cordon" %
-                    (kubernetes.KUBE_UPGRADED_NETWORKING,
-                     kubernetes.KUBE_UPGRADED_STORAGE,
+                    (kubernetes.KUBE_UPGRADED_STORAGE,
                      kubernetes.KUBE_UPGRADE_CORDON_FAILED)))
 
             # Update the upgrade state
