@@ -17310,6 +17310,27 @@ class ConductorManager(service.PeriodicService):
             return self._apps_update_operation.status
         return
 
+    # TODO (mbenedit): This method is to support upgrades to stx 11,
+    # it can be removed in later releases.
+    def reconfigure_ipsec(self, context, action):
+        """Update IPsec configuration file to include files at the end of
+        swanctl.conf.
+
+        :param context: request context.
+        :param action: upgrade action.
+        """
+        personalities = [constants.CONTROLLER,
+                            constants.WORKER]
+        config_uuid = self._config_update_hosts(context, personalities)
+        config_dict = {
+            "personalities": personalities,
+        }
+        if action == 'activate':
+            config_dict["classes"] = ['platform::strongswan::include_files']
+        elif action == 'activate-rollback':
+            config_dict["classes"] = ['platform::strongswan::exclude_files']
+        self._config_apply_runtime_manifest(context, config_uuid, config_dict)
+
     # TODO (mdecastr): This method is to support upgrades to stx 11,
     # it can be removed in later releases.
     def flag_k8s_port_update_rollback(self, context):
