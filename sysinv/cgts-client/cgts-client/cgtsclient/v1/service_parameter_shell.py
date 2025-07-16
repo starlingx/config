@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2019,2024 Wind River Systems, Inc.
+# Copyright (c) 2013-2019,2024-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -74,8 +74,13 @@ def do_service_parameter_list(cc, args):
 def do_service_parameter_delete(cc, args):
     """Delete a Service Parameter."""
 
-    cc.service_parameter.delete(args.uuid)
-    print('Deleted service parameter: %s' % args.uuid)
+    try:
+        cc.service_parameter.delete(args.uuid)
+        print('Deleted service parameter: %s' % args.uuid)
+    except exc.HTTPNotFound:
+        raise exc.CommandError('Failed to delete service parameters')
+    except exc.Forbidden:
+        raise exc.CommandError("The requested action is not authorized")
 
 
 def _find_service_parameter(cc, service, section, name):
@@ -134,8 +139,13 @@ def do_service_parameter_modify(cc, args):
                 patch.append({'op': 'replace', 'path': '/personality', 'value': args.personality})
             if args.resource:
                 patch.append({'op': 'replace', 'path': '/resource', 'value': args.resource})
-            parameter = cc.service_parameter.update(service_parameter.uuid, patch)
-            _print_service_parameter_show(parameter, output_format=args.format)
+            try:
+                parameter = cc.service_parameter.update(service_parameter.uuid, patch)
+                _print_service_parameter_show(parameter, output_format=args.format)
+            except exc.HTTPNotFound:
+                raise exc.CommandError("Service parameter not found: %s" % service_parameter.uuid)
+            except exc.Forbidden:
+                raise exc.CommandError("The requested action is not authorized")
 
 
 @utils.arg('service',
@@ -152,6 +162,8 @@ def do_service_parameter_apply(cc, args):
         cc.service_parameter.apply(args.service, args.section)
     except exc.HTTPNotFound:
         raise exc.CommandError('Failed to apply service parameters')
+    except exc.Forbidden:
+        raise exc.CommandError("The requested action is not authorized")
     if args.section is not None:
         print('Applying %s service parameters for section %s' % (args.service, args.section))
     else:
@@ -204,5 +216,7 @@ def do_service_parameter_add(cc, args):
                 parameter = cc.service_parameter.get(uuid)
             except exc.HTTPNotFound:
                 raise exc.CommandError('Service parameter not found: %s' % uuid)
+            except exc.Forbidden:
+                raise exc.CommandError("The requested action is not authorized")
 
             _print_service_parameter_show(parameter)
