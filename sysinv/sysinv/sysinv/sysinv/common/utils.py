@@ -3985,7 +3985,7 @@ def is_bundle_extension_valid(filename):
 
 def get_primary_address_by_name(dbapi, db_address_name, networktype, raise_exc=False):
     """Search address by database name to retrieve the relevant address from
-       the primary pool, if multipĺe entries for the same name are found, the
+       the primary pool, if multiple entries for the same name are found, the
        query will use the network's pool_uuid to get the address family (IPv4 or
        IPv6) related to the primary.
 
@@ -3996,8 +3996,13 @@ def get_primary_address_by_name(dbapi, db_address_name, networktype, raise_exc=F
 
     :return: the address object if found, None otherwise
     """
-    if is_aio_simplex_system(dbapi) \
-            and db_address_name == f"{constants.CONTROLLER_0_HOSTNAME}-{networktype}":
+    if (
+        is_aio_simplex_system(dbapi)
+        and networktype in (constants.NETWORK_TYPE_ADMIN,
+                            constants.NETWORK_TYPE_MGMT,
+                            constants.NETWORK_TYPE_STORAGE)
+        and db_address_name == f"{constants.CONTROLLER_0_HOSTNAME}-{networktype}"
+    ):
         db_address_name = f"{constants.CONTROLLER_HOSTNAME}-{networktype}"
     else:
         system = dbapi.isystem_get_one()
@@ -4049,7 +4054,7 @@ def get_primary_address_by_name(dbapi, db_address_name, networktype, raise_exc=F
 
 def get_secondary_address_by_name(dbapi, db_address_name, networktype, raise_exc=False):
     """Search address by database name to retrieve the relevant address from
-       the secondary pool, if multipĺe entries for the same name are found, the
+       the secondary pool, if multiple entries for the same name are found, the
        query will use the network's pool_uuid to get the address family (IPv4 or
        IPv6) related to the secondary.
 
@@ -4067,8 +4072,11 @@ def get_secondary_address_by_name(dbapi, db_address_name, networktype, raise_exc
         LOG.err(f"no db_address_name={db_address_name} or networktype={networktype} provided")
         return address
 
-    if is_aio_simplex_system(dbapi) \
-            and db_address_name == f"{constants.CONTROLLER_0_HOSTNAME}-{networktype}":
+    if (
+        is_aio_simplex_system(dbapi)
+        and networktype in (constants.NETWORK_TYPE_MGMT)
+        and db_address_name == f"{constants.CONTROLLER_0_HOSTNAME}-{networktype}"
+    ):
         db_address_name = f"{constants.CONTROLLER_HOSTNAME}-{networktype}"
     else:
         system = dbapi.isystem_get_one()
