@@ -342,6 +342,10 @@ class TestPostControllerMixin(object):
 
         self._create_test_host_platform_interface(c1)
 
+        dbutils.create_test_pv(lvm_vg_name='cgts-vg',
+                               forihostid=c1.id,
+                               pv_state='provisioned')
+
         # Unlock
         _ = self._patch_host(c1['hostname'],
                              [{'path': '/action',
@@ -1731,6 +1735,10 @@ class TestSimplexPostKubeUpgrades(TestHost):
             operational=constants.OPERATIONAL_ENABLED,
             availability=constants.AVAILABILITY_DEGRADED)
 
+        dbutils.create_test_pv(lvm_vg_name='cgts-vg',
+                               forihostid=c0.id,
+                               pv_state='provisioned')
+
         # Create the upgrade
         kube_upgrade = dbutils.create_test_kube_upgrade(
             from_version='v1.42.1',
@@ -2470,6 +2478,10 @@ class TestPatch(TestHost):
             availability=constants.AVAILABILITY_ONLINE)
         self._create_test_host_platform_interface(c0_host)
 
+        dbutils.create_test_pv(lvm_vg_name='cgts-vg',
+                               forihostid=c0_host.id,
+                               pv_state='provisioned')
+
         is_host_mock = mock.patch('sysinv.common.usm_service.is_host_next_to_be_deployed')
         is_host = is_host_mock.start()
         is_host.return_value = False
@@ -2513,6 +2525,10 @@ class TestPatch(TestHost):
             availability=constants.AVAILABILITY_OFFLINE)
         self._create_test_host_platform_interface(c0_host)
 
+        dbutils.create_test_pv(lvm_vg_name='cgts-vg',
+                               forihostid=c0_host.id,
+                               pv_state='provisioned')
+
         # Force unlock host
         response = self._patch_host_action(c0_host['hostname'],
                                            constants.FORCE_UNLOCK_ACTION,
@@ -2548,6 +2564,10 @@ class TestPatch(TestHost):
             availability=constants.AVAILABILITY_ONLINE)
         self._create_test_host_platform_interface(c0_host)
 
+        dbutils.create_test_pv(lvm_vg_name='cgts-vg',
+                               forihostid=c0_host.id,
+                               pv_state='provisioned')
+
         # Mock the is_host_next_to_be_deployed method
         is_host_mock = mock.patch('sysinv.common.usm_service.is_host_next_to_be_deployed')
         is_host = is_host_mock.start()
@@ -2576,6 +2596,10 @@ class TestPatch(TestHost):
             operational=constants.OPERATIONAL_ENABLED,
             availability=constants.AVAILABILITY_ONLINE,
             inv_state=None, clock_synchronization=constants.NTP)
+
+        dbutils.create_test_pv(lvm_vg_name='cgts-vg',
+                               forihostid=c0_host.id,
+                               pv_state='provisioned')
 
         # Unlock host
         response = self._patch_host_action(c0_host['hostname'],
@@ -2816,6 +2840,10 @@ class TestPatch(TestHost):
             availability=constants.AVAILABILITY_ONLINE)
         self._create_test_host_platform_interface(c0_host)
 
+        dbutils.create_test_pv(lvm_vg_name='cgts-vg',
+                               forihostid=c0_host.id,
+                               pv_state='provisioned')
+
         # Create a kube upgrade
         dbutils.create_test_kube_upgrade(
             from_version='v1.42.1',
@@ -2845,6 +2873,10 @@ class TestPatch(TestHost):
             operational=constants.OPERATIONAL_ENABLED,
             availability=constants.AVAILABILITY_ONLINE)
         self._create_test_host_platform_interface(c0_host)
+
+        dbutils.create_test_pv(lvm_vg_name='cgts-vg',
+                               forihostid=c0_host.id,
+                               pv_state='provisioned')
 
         # Create a kube upgrade
         dbutils.create_test_kube_upgrade(
@@ -2890,6 +2922,10 @@ class TestPatch(TestHost):
         self._create_test_host_platform_interface(w0_host)
         self._create_test_host_cpus(w0_host, platform=1, vswitch=2, application=12)
         self._create_test_host_addresses(w0_host.hostname)
+
+        dbutils.create_test_pv(lvm_vg_name='cgts-vg',
+                               forihostid=w0_host.id,
+                               pv_state='provisioned')
 
         is_host_mock = mock.patch('sysinv.common.usm_service.is_host_next_to_be_deployed')
         is_host = is_host_mock.start()
@@ -3109,6 +3145,10 @@ class TestPatch(TestHost):
         self._create_test_host_cpus(w0_host, platform=1, vswitch=2, application=12)
         self._create_test_host_addresses(w0_host.hostname)
 
+        dbutils.create_test_pv(lvm_vg_name='cgts-vg',
+                               forihostid=w0_host.id,
+                               pv_state='provisioned')
+
         w0_hostname = w0_host['hostname']
 
         is_host_mock = mock.patch('sysinv.common.usm_service.is_host_next_to_be_deployed')
@@ -3167,6 +3207,10 @@ class TestPatch(TestHost):
         self._create_test_host_cpus(w0_host, platform=1, vswitch=2, application=12)
         self._create_test_host_addresses(w0_host.hostname)
 
+        dbutils.create_test_pv(lvm_vg_name='cgts-vg',
+                               forihostid=w0_host.id,
+                               pv_state='provisioned')
+
         w0_hostname = w0_host['hostname']
 
         is_host_mock = mock.patch('sysinv.common.usm_service.is_host_next_to_be_deployed')
@@ -3211,6 +3255,10 @@ class TestPatch(TestHost):
             availability=constants.AVAILABILITY_ONLINE,
             kernel_config_status=kernel_config_time_str)
 
+        dbutils.create_test_pv(lvm_vg_name='cgts-vg',
+                               forihostid=w0_host.id,
+                               pv_state='provisioned')
+
         self._create_test_host_platform_interface(w0_host)
         self._create_test_host_cpus(w0_host, platform=1, vswitch=2, application=12)
         self._create_test_host_addresses(w0_host.hostname)
@@ -3251,6 +3299,10 @@ class TestPatch(TestHost):
             operational=constants.OPERATIONAL_ENABLED,
             availability=constants.AVAILABILITY_ONLINE,
             kernel_config_status=kernel_config_str)
+
+        dbutils.create_test_pv(lvm_vg_name='cgts-vg',
+                               forihostid=w0_host.id,
+                               pv_state='provisioned')
 
         self._create_test_host_platform_interface(w0_host)
         self._create_test_host_cpus(w0_host, platform=1, vswitch=2, application=12)
@@ -4038,6 +4090,10 @@ class TestHostPTPValidation(TestHost):
         self._create_test_host_cpus(w0_host, platform=1, vswitch=2, application=12)
         self._create_test_host_addresses(w0_host.hostname)
 
+        dbutils.create_test_pv(lvm_vg_name='cgts-vg',
+                               forihostid=w0_host.id,
+                               pv_state='provisioned')
+
         # Host with PTP must have at least one ptp interface
         interface = {
             'forihostid': w0_host['id'],
@@ -4100,6 +4156,10 @@ class TestHostPTPValidation(TestHost):
         self._create_test_host_platform_interface(w0_host)
         self._create_test_host_cpus(w0_host, platform=1, vswitch=2, application=12)
         self._create_test_host_addresses(w0_host.hostname)
+
+        dbutils.create_test_pv(lvm_vg_name='cgts-vg',
+                               forihostid=w0_host.id,
+                               pv_state='provisioned')
 
         # Host with PTP must have at least one ptp interface
         response = self._patch_host_action(

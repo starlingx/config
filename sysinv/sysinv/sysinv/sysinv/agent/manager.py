@@ -544,6 +544,24 @@ class AgentManager(service.PeriodicService):
                 subprocess.call(['ip', 'link', 'set', interface, 'down'])  # pylint: disable=not-callable
                 LOG.info('interface %s disabled after querying LLDP neighbors' % interface)
 
+    def get_ilvg_data(self, cinder_device=None):
+        try:
+            ilvg = self._ilvg_operator.ilvg_get(cinder_device)
+        except Exception as ex:
+            if not self._inventoried_initial:
+                raise exception.SysinvException("Sysinv Agent exception getting ilvg: %s" % ex)
+            pass
+        return ilvg
+
+    def get_ipv_data(self, cinder_device=None):
+        try:
+            ipv = self._ipv_operator.ipv_get(cinder_device)
+        except Exception as ex:
+            if not self._inventoried_initial:
+                raise exception.SysinvException("Sysinv Agent exception getting ipv: %s" % ex)
+            pass
+        return ipv
+
     def platform_update_by_host(self, rpcapi, context, host_uuid, msg_dict):
         """ Update host platform information.
             If this is the first boot (kickstart), then also update the Host
@@ -1041,15 +1059,18 @@ class AgentManager(service.PeriodicService):
         self._update_disk_partitions(rpcapi, icontext,
                                      ihost['uuid'], force_update=True, first_report=True)
 
-        ipv = self._ipv_operator.ipv_get()
-        try:
-            rpcapi.ipv_update_by_ihost(icontext,
-                                       ihost['uuid'],
-                                       ipv)
-            self._inventory_reported.add(self.PV)
-        except exception.SysinvException:
-            LOG.exception("Sysinv Agent exception updating ipv conductor.")
-            pass
+        ipv = self.get_ipv_data()
+        if ipv:
+            try:
+                rpcapi.ipv_update_by_ihost(icontext,
+                                           ihost['uuid'],
+                                           ipv)
+                self._inventory_reported.add(self.PV)
+            except Exception as ex:
+                LOG.exception("Sysinv Agent exception updating ipv conductor: %s" % ex)
+                pass
+        else:
+            LOG.info("ihost_inv_get_and_report - ipv data is empty.")
 
         host_fs = self._host_fs_operator.ilv_get_supported_hostfs()
         try:
@@ -1071,15 +1092,18 @@ class AgentManager(service.PeriodicService):
             LOG.exception("Sysinv Agent exception updating host_fs conductor.")
             pass
 
-        ilvg = self._ilvg_operator.ilvg_get()
-        try:
-            rpcapi.ilvg_update_by_ihost(icontext,
-                                        ihost['uuid'],
-                                        ilvg)
-            self._inventory_reported.add(self.LVG)
-        except exception.SysinvException:
-            LOG.exception("Sysinv Agent exception updating ilvg conductor.")
-            pass
+        ilvg = self.get_ilvg_data()
+        if ilvg:
+            try:
+                rpcapi.ilvg_update_by_ihost(icontext,
+                                            ihost['uuid'],
+                                            ilvg)
+                self._inventory_reported.add(self.LVG)
+            except Exception as ex:
+                LOG.exception("Sysinv Agent exception updating ilvg conductor: %s" % ex)
+                pass
+        else:
+            LOG.info("ihost_inv_get_and_report - ilvg data is empty.")
 
         kernel_running = self._get_kernel_running()
         try:
@@ -1580,20 +1604,25 @@ class AgentManager(service.PeriodicService):
                 self._prev_disk = None
 
     def host_lvg_update(self, icontext, rpcapi, cinder_device=None):
-        ilvg = self._ilvg_operator.ilvg_get(cinder_device=cinder_device)
-        if (self._prev_lvg is None) or (self._prev_lvg != ilvg) or \
+        ilvg = self.get_ilvg_data(cinder_device=cinder_device)
+        if not ilvg:
+            LOG.info("agent_audit - ilvg data is empty.")
+        elif (self._prev_lvg is None) or (self._prev_lvg != ilvg) or \
            (self.LVG not in self._inventory_reported):
             try:
                 rpcapi.ilvg_update_by_ihost(icontext, self._ihost_uuid, ilvg)
                 self._inventory_reported.add(self.LVG)
                 self._prev_lvg = ilvg
-            except exception.SysinvException:
-                LOG.exception("Sysinv Agent exception updating ilvg conductor.")
+            except Exception as ex:
+                LOG.exception("Sysinv Agent exception updating ilvg "
+                              "conductor: %s" % ex)
                 self._prev_lvg = None
 
     def host_pv_update(self, icontext, rpcapi, cinder_device=None):
-        ipv = self._ipv_operator.ipv_get(cinder_device=cinder_device)
-        if (self._prev_pv is None) or (self._prev_pv != ipv) or \
+        ipv = self.get_ipv_data(cinder_device=cinder_device)
+        if not ipv:
+            LOG.info("agent_audit - ipv data is empty.")
+        elif (self._prev_pv is None) or (self._prev_pv != ipv) or \
            (self.PV not in self._inventory_reported):
             try:
                 rpcapi.ipv_update_by_ihost(icontext,
@@ -1601,8 +1630,9 @@ class AgentManager(service.PeriodicService):
                                            ipv)
                 self._inventory_reported.add(self.PV)
                 self._prev_pv = ipv
-            except exception.SysinvException:
-                LOG.exception("Sysinv Agent exception updating ipv conductor.")
+            except Exception as ex:
+                LOG.exception("Sysinv Agent exception updating ipv "
+                              "conductor: %s" % ex)
                 self._prev_pv = None
 
     def host_filesystem_update(self, icontext, rpcapi):
@@ -1683,7 +1713,11 @@ class AgentManager(service.PeriodicService):
                 self._report_config_applied(icontext)
         if self._report_to_conductor():
             LOG.info("Sysinv Agent audit running inv_get_and_report.")
-            self.ihost_inv_get_and_report(icontext)
+            try:
+                self.ihost_inv_get_and_report(icontext)
+            except Exception as ex:
+                LOG.exception("Audit skipped by exception: %s" % ex)
+                return
 
         if not self._ihost_uuid:
             return
@@ -2303,26 +2337,32 @@ class AgentManager(service.PeriodicService):
                               "ipartition conductor.")
 
             # Update local volume groups
-            ilvg = self._ilvg_operator.ilvg_get()
-            try:
-                rpcapi.ilvg_update_by_ihost(context,
-                                            self._ihost_uuid,
-                                            ilvg)
-                self._inventory_reported.add(self.LVG)
-            except exception.SysinvException:
-                LOG.exception("Sysinv Agent exception updating ilvg"
-                              "conductor.")
+            ilvg = self.get_ilvg_data()
+            if ilvg:
+                try:
+                    rpcapi.ilvg_update_by_ihost(context,
+                                                self._ihost_uuid,
+                                                ilvg)
+                    self._inventory_reported.add(self.LVG)
+                except Exception as ex:
+                    LOG.exception("Sysinv Agent exception updating ilvg "
+                                  "conductor: %s" % ex)
+            else:
+                LOG.info("update_host_lvm - ilvg data is empty.")
 
             # Update physical volumes
-            ipv = self._ipv_operator.ipv_get()
-            try:
-                rpcapi.ipv_update_by_ihost(context,
-                                           self._ihost_uuid,
-                                           ipv)
-                self._inventory_reported.add(self.PV)
-            except exception.SysinvException:
-                LOG.exception("Sysinv Agent exception updating ipv"
-                              "conductor.")
+            ipv = self.get_ipv_data()
+            if ipv:
+                try:
+                    rpcapi.ipv_update_by_ihost(context,
+                                               self._ihost_uuid,
+                                               ipv)
+                    self._inventory_reported.add(self.PV)
+                except Exception as ex:
+                    LOG.exception("Sysinv Agent exception updating ipv "
+                                  "conductor: %s" % ex)
+            else:
+                LOG.info("update_host_lvm - ipv data is empty.")
 
     def kube_upgrade_kubelet(self, context, host_uuid, to_kube_version):
         """Upgrade the kubernetes kubelet on this host
