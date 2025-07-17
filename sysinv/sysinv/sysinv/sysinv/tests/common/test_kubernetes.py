@@ -15,6 +15,7 @@ from sysinv.common import kubernetes as kube
 
 from sysinv.tests import base
 from sysinv.common import constants
+from sysinv.common import exception
 import tsconfig.tsconfig as tsc
 
 FAKE_KUBE_VERSIONS = [
@@ -1464,6 +1465,156 @@ class TestKubeOperator(base.TestCase):
             Exception,
             self.kube_operator.kube_patch_clusterrolebinding,
         )
+
+    def test_get_all_supported_k8s_versions_success(self):
+        """Test successful execution of method get_all_supported_k8s_versions()
+        """
+        expected_versions = ['fake_version1', 'fake_version2']
+        mock_os_listdir = mock.MagicMock()
+        p = mock.patch('os.listdir', mock_os_listdir)
+        p.start().return_value = expected_versions
+        self.addCleanup(p.stop)
+
+        actual_versions = kube.get_all_supported_k8s_versions()
+
+        self.assertEqual(expected_versions, actual_versions)
+        mock_os_listdir.assert_called_once()
+
+    def test_get_all_supported_k8s_versions_failure(self):
+        """Test failure of method get_all_supported_k8s_versions()
+        """
+        mock_os_listdir = mock.MagicMock()
+        p = mock.patch('os.listdir', mock_os_listdir)
+        p.start().side_effect = Exception("Fake error")
+        self.addCleanup(p.stop)
+
+        self.assertRaises(exception.SysinvException, kube.get_all_supported_k8s_versions)
+        mock_os_listdir.assert_called_once()
+
+    def test_get_k8s_images_success(self):
+        """Test successful execution of method get_k8s_images()
+        """
+        fake_output = 'fake_registry1/fake_image1:fake_tag1\nfake_registry2/fake_image2:fake_tag2\n'
+        expected_result = {'fake_image1': 'fake_registry1/fake_image1:fake_tag1',
+                           'fake_image2': 'fake_registry2/fake_image2:fake_tag2'}
+
+        mock_utils_execute = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.execute', mock_utils_execute)
+        p.start().return_value = (fake_output, None)
+        self.addCleanup(p.stop)
+
+        actual_result = kube.get_k8s_images('fake_version')
+
+        self.assertEqual(expected_result, actual_result)
+        mock_utils_execute.assert_called_once()
+
+    def test_get_k8s_images_failure(self):
+        """Test failure of method get_k8s_images()
+        """
+        mock_utils_execute = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.execute', mock_utils_execute)
+        p.start().side_effect = Exception("Fake error")
+        self.addCleanup(p.stop)
+
+        self.assertRaises(exception.SysinvException,
+                          kube.get_k8s_images,
+                          'fake_version')
+        mock_utils_execute.assert_called_once()
+
+    def test_get_k8s_images_for_all_versions(self):
+        """Test successful execution of method get_k8s_images_for_all_versions()
+        """
+        fake_versions = ['fake_version1', 'fake_version2']
+        fake_images = {'fake_image1': 'fake_registry1/fake_image1:fake_tag1',
+                           'fake_image2': 'fake_registry2/fake_image2:fake_tag2'}
+        expected_result = {
+            'fake_version1': {'fake_image1': 'fake_registry1/fake_image1:fake_tag1',
+                              'fake_image2': 'fake_registry2/fake_image2:fake_tag2'},
+            'fake_version2': {'fake_image1': 'fake_registry1/fake_image1:fake_tag1',
+                              'fake_image2': 'fake_registry2/fake_image2:fake_tag2'},
+        }
+
+        mock_get_all_supported_k8s_versions = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.get_all_supported_k8s_versions',
+                       mock_get_all_supported_k8s_versions)
+        p.start().return_value = fake_versions
+        self.addCleanup(p.stop)
+
+        mock_get_k8s_images = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.get_k8s_images', mock_get_k8s_images)
+        p.start().return_value = fake_images
+        self.addCleanup(p.stop)
+
+        actual_result = kube.get_k8s_images_for_all_versions()
+
+        self.assertEqual(expected_result, actual_result)
+        mock_get_all_supported_k8s_versions.assert_called_once()
+        self.assertEqual(mock_get_k8s_images.call_count, 2)
+        mock_get_k8s_images.assert_called()
+
+    def test_get_k8s_images_for_all_versions_failure(self):
+        """Test failure of method get_k8s_images_for_all_versions()
+        """
+        fake_versions = ['fake_version1', 'fake_version2']
+
+        mock_get_all_supported_k8s_versions = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.get_all_supported_k8s_versions',
+                       mock_get_all_supported_k8s_versions)
+        p.start().return_value = fake_versions
+        self.addCleanup(p.stop)
+
+        mock_get_k8s_images = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.get_k8s_images', mock_get_k8s_images)
+        p.start().side_effect = Exception("Fake error")
+        self.addCleanup(p.stop)
+
+        self.assertRaises(exception.SysinvException, kube.get_k8s_images_for_all_versions)
+        mock_get_all_supported_k8s_versions.assert_called_once()
+        mock_get_k8s_images.assert_called()
+
+    def test_disable_kubelet_garbage_collection_success(self):
+        """Test successful execution of method disable_kubelet_garbage_collection()
+        """
+        expected_config_update = \
+                'KUBELET_KUBEADM_ARGS="--image-gc-high-threshold 100 --fake-flag=fake_value"\n'
+
+        mock_file_open = mock.mock_open(read_data='KUBELET_KUBEADM_ARGS="--fake-flag=fake_value"\n')
+        p = mock.patch('builtins.open', mock_file_open)
+        p.start()
+        self.addCleanup(p.stop)
+
+        kube.disable_kubelet_garbage_collection()
+
+        mock_file_open.return_value.write.assert_called_with(expected_config_update)
+        self.assertEqual(mock_file_open.call_count, 2)
+
+    def test_disable_kubelet_garbage_collection_success_with_no_prior_config(self):
+        """Test successful execution of method disable_kubelet_garbage_collection() with no prior
+           config flags
+        """
+        expected_config_update = \
+                'KUBELET_KUBEADM_ARGS="--image-gc-high-threshold 100 "\n'
+
+        mock_file_open = mock.mock_open(read_data='KUBELET_KUBEADM_ARGS=""\n')
+        p = mock.patch('builtins.open', mock_file_open)
+        p.start()
+        self.addCleanup(p.stop)
+
+        kube.disable_kubelet_garbage_collection()
+
+        mock_file_open.return_value.write.assert_called_with(expected_config_update)
+        self.assertEqual(mock_file_open.call_count, 2)
+
+    def test_disable_kubelet_garbage_collection_failure(self):
+        """Test failure of method disable_kubelet_garbage_collection()
+        """
+        mock_file_open = mock.mock_open()
+        p = mock.patch('builtins.open', mock_file_open)
+        p.start().return_value.read.side_effect = Exception("Fake error")
+        self.addCleanup(p.stop)
+
+        self.assertRaises(exception.SysinvException, kube.disable_kubelet_garbage_collection)
+        mock_file_open.return_value.write.assert_not_called()
 
 
 class TestKubernetesUtilities(base.TestCase):

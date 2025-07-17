@@ -15,6 +15,7 @@ from oslo_context import context
 
 from sysinv.agent.manager import AgentManager
 from sysinv.common import constants
+from sysinv.common import exception
 from sysinv.tests import base
 
 
@@ -471,3 +472,126 @@ class TestHostFileSystems(base.TestCase):
             self.agent_manager._ihost_uuid,
             expected_filesystems)
         self.assertEqual(self.agent_manager._prev_fs, expected_filesystems)
+
+
+class TestHostKubernetesOperations(base.TestCase):
+
+    def setUp(self):
+        super(TestHostKubernetesOperations, self).setUp()
+
+        # Set up objects for testing
+        self.agent_manager = AgentManager('test-host', 'test-topic')
+        self.agent_manager._ihost_uuid = "FAKEUUID"
+        self.context = context.get_admin_context()
+        self.fake_conductor_api = FakeConductorAPI()
+
+    def tearDown(self):
+        super(TestHostKubernetesOperations, self).tearDown()
+
+    def test_pull_kubernetes_images_success(self):
+        """Test pull kubernetes images: Successful execution
+        """
+        images_to_be_pulled = ['fake_image1', 'fake_image2', 'fake_image3', 'fake_image4']
+        result = True
+
+        mock_disable_kubelet_garbage_collection = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.disable_kubelet_garbage_collection',
+                       mock_disable_kubelet_garbage_collection)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_pmon_restart_service = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.pmon_restart_service', mock_pmon_restart_service)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_pull_images = mock.MagicMock()
+        p = mock.patch('sysinv.agent.kube_host.ContainerdOperator.pull_images', mock_pull_images)
+        p.start().return_value = result
+        self.addCleanup(p.stop)
+
+        mock_report_download_images_result = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.rpcapi.ConductorAPI.report_download_images_result',
+                       mock_report_download_images_result)
+        p.start()
+        self.addCleanup(p.stop)
+
+        self.agent_manager.pull_kubernetes_images(
+            self.context, self.agent_manager._ihost_uuid, images_to_be_pulled)
+
+        mock_disable_kubelet_garbage_collection.assert_called_once()
+        mock_pmon_restart_service.assert_called_once()
+        mock_pull_images.assert_called_once_with(images_to_be_pulled)
+        mock_report_download_images_result.assert_called_once_with(self.context, result)
+
+    def test_pull_kubernetes_images_success_disable_gc_failed(self):
+        """Test pull kubernetes images: Successful execution even though disable GC failed
+        """
+        images_to_be_pulled = ['fake_image1', 'fake_image2', 'fake_image3', 'fake_image4']
+        result = True
+
+        mock_disable_kubelet_garbage_collection = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.disable_kubelet_garbage_collection',
+                       mock_disable_kubelet_garbage_collection)
+        p.start().side_effect = exception.SysinvException("Fake error")
+        self.addCleanup(p.stop)
+
+        mock_pmon_restart_service = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.pmon_restart_service', mock_pmon_restart_service)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_pull_images = mock.MagicMock()
+        p = mock.patch('sysinv.agent.kube_host.ContainerdOperator.pull_images', mock_pull_images)
+        p.start().return_value = result
+        self.addCleanup(p.stop)
+
+        mock_report_download_images_result = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.rpcapi.ConductorAPI.report_download_images_result',
+                       mock_report_download_images_result)
+        p.start()
+        self.addCleanup(p.stop)
+
+        self.agent_manager.pull_kubernetes_images(
+            self.context, self.agent_manager._ihost_uuid, images_to_be_pulled)
+
+        mock_disable_kubelet_garbage_collection.assert_called_once()
+        mock_pmon_restart_service.assert_not_called()
+        mock_pull_images.assert_called_once_with(images_to_be_pulled)
+        mock_report_download_images_result.assert_called_once_with(self.context, result)
+
+    def test_pull_kubernetes_images_failure(self):
+        """Test pull kubernetes images failure: crictl image pull failed
+        """
+        images_to_be_pulled = ['fake_image1', 'fake_image2', 'fake_image3', 'fake_image4']
+        result = False
+
+        mock_disable_kubelet_garbage_collection = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.disable_kubelet_garbage_collection',
+                       mock_disable_kubelet_garbage_collection)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_pmon_restart_service = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.pmon_restart_service', mock_pmon_restart_service)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_pull_images = mock.MagicMock()
+        p = mock.patch('sysinv.agent.kube_host.ContainerdOperator.pull_images', mock_pull_images)
+        p.start().return_value = result
+        self.addCleanup(p.stop)
+
+        mock_report_download_images_result = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.rpcapi.ConductorAPI.report_download_images_result',
+                       mock_report_download_images_result)
+        p.start()
+        self.addCleanup(p.stop)
+
+        self.agent_manager.pull_kubernetes_images(
+            self.context, self.agent_manager._ihost_uuid, images_to_be_pulled)
+
+        mock_disable_kubelet_garbage_collection.assert_called_once()
+        mock_pmon_restart_service.assert_called_once()
+        mock_pull_images.assert_called_once_with(images_to_be_pulled)
+        mock_report_download_images_result.assert_called_once_with(self.context, result)

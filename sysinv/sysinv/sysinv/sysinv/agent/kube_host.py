@@ -87,7 +87,15 @@ class ContainerdOperator(object):
             crictl_auth = self._get_auth()
             if not crictl_auth:
                 return False
-            crictl_images = containers.get_crictl_image_list()
+
+            try:
+                crictl_images = containers.get_crictl_image_list()
+            except Exception as ex:
+                # Ignore and proceed
+                LOG.warning("Failed to get existing crictl image list. Error: [%s]. "
+                            "Proceeding anyways ..." % (ex))
+                crictl_images = []
+
             for image in images:
                 image = f"{constants.DOCKER_REGISTRY_SERVER}/{image}"
                 if image not in crictl_images:
@@ -95,6 +103,7 @@ class ContainerdOperator(object):
                 else:
                     LOG.info("Image [%s] is already present in crictl. "
                              "No need to download. Continuing..." % (image))
+
         except Exception as ex:
             LOG.exception("Failed to pull kubernetes images: [%s]" % (ex))
             return False
