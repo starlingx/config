@@ -324,7 +324,8 @@ class KubernetesPuppet(base.BasePuppet):
                 if kube_upgrade_state:
                     kube_host_upgrade = objects.kube_host_upgrade.get_by_host_id(
                         self.context, host.id)
-                    if 'upgrad' in kube_host_upgrade.status:
+                    if kube_host_upgrade.status is not None and \
+                            'upgrad' in kube_host_upgrade.status:
                         kubeadm_version = kube_host_upgrade.target_version.lstrip('v')
 
                 # We will create a temp file with the kubeadm config
