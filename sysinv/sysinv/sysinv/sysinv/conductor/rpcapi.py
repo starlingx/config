@@ -1883,6 +1883,15 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         """
         return self.call(context, self.make_msg('get_apps_update_status'))
 
+    # TODO (mdecastr): This method is to support upgrades to stx 11,
+    # it can be removed in later releases.
+    def flag_k8s_port_update_rollback(self, context):
+        """Signal upgrade rollback for k8s port update during upgrade
+        :param context: request context.
+        """
+        return self.call(context,
+                         self.make_msg('flag_k8s_port_update_rollback'))
+
     def reconfigure_service_endpoints(self, context, host):
         """Synchronously, reconfigure service endpoints upon the creation of
         initial controller host and management/oam network change during
