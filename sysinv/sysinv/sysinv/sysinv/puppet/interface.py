@@ -1806,9 +1806,16 @@ def generate_address_configs(context, config, db_api):
     Generate the puppet resource for each of the floating IP addresses
     """
     for networktype, addresses in six.iteritems(context['floatingips']):
-        if utils.is_aio_simplex_system(db_api) and networktype in [constants.NETWORK_TYPE_ADMIN,
-                                                                   constants.NETWORK_TYPE_MGMT,
-                                                                   constants.NETWORK_TYPE_STORAGE]:
+        if (
+            utils.is_aio_simplex_system(db_api)
+            and networktype in (
+                constants.NETWORK_TYPE_ADMIN,
+                constants.NETWORK_TYPE_MGMT,
+                constants.NETWORK_TYPE_STORAGE,
+                constants.NETWORK_TYPE_CLUSTER_HOST,
+                constants.NETWORK_TYPE_PXEBOOT,
+            )
+        ):
             continue
         iface = find_interface_by_type(context, networktype)
         if iface:

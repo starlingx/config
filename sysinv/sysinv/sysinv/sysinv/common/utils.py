@@ -4038,6 +4038,7 @@ def get_primary_address_by_name(dbapi, db_address_name, networktype, raise_exc=F
             constants.NETWORK_TYPE_MGMT,
             constants.NETWORK_TYPE_CLUSTER_HOST,
             constants.NETWORK_TYPE_STORAGE,
+            constants.NETWORK_TYPE_PXEBOOT,
         )
         and db_address_name == f"{constants.CONTROLLER_0_HOSTNAME}-{networktype}"
     ):

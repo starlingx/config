@@ -194,6 +194,7 @@ class NetworkingPuppet(base.BasePuppet):
                         constants.NETWORK_TYPE_MGMT,
                         constants.NETWORK_TYPE_CLUSTER_HOST,
                         constants.NETWORK_TYPE_STORAGE,
+                        constants.NETWORK_TYPE_PXEBOOT,
                 )
             ):
                 configdata[family_name].update({'controller0_address': controller_address})
