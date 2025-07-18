@@ -19224,6 +19224,9 @@ class ConductorManager(service.PeriodicService):
         entity_instance_id = "%s=%s" % (fm_constants.FM_ENTITY_TYPE_HOST,
                                         constants.CONTROLLER_HOSTNAME)
 
+        if os.path.isfile(tsc.SKIP_CEPH_OSD_WIPING):
+            self.delete_flag_file(context, tsc.SKIP_CEPH_OSD_WIPING)
+
         self.fm_api.clear_fault(fm_constants.FM_ALARM_ID_RESTORE_IN_PROGRESS, entity_instance_id)
 
         LOG.info("Complete the restore procedure.")
