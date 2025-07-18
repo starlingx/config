@@ -7008,8 +7008,11 @@ class HostController(rest.RestController):
             is_first = True
 
         # Determine target control-plane version for this host
-        cp_versions_next = self._kube_operator.kube_get_higher_patch_version(
-            cp_version, kube_upgrade_obj.to_version)
+        if cp_version == kube_upgrade_obj.to_version:
+            cp_versions_next = [cp_version]
+        else:
+            cp_versions_next = self._kube_operator.kube_get_higher_patch_version(
+                cp_version, kube_upgrade_obj.to_version)
         if cp_versions_next:
             target_version = cp_versions_next[0]
             kubeadm_version = target_version
@@ -7097,11 +7100,12 @@ class HostController(rest.RestController):
 
         # Check the existing control plane version
         if cp_version == kube_upgrade_obj.to_version:
-            # Make sure we are not attempting to upgrade the first upgraded
-            # control plane again
-            if kube_upgrade_obj.state == kubernetes.KUBE_UPGRADED_FIRST_MASTER:
+            # Make sure we are not attempting to upgrade a successfully
+            # upgraded control plane
+            if kube_upgrade_obj.state in [kubernetes.KUBE_UPGRADED_FIRST_MASTER,
+                                          kubernetes.KUBE_UPGRADED_SECOND_MASTER]:
                 raise wsme.exc.ClientSideError(_(
-                    "The first control plane was already upgraded."))
+                    "The control plane was already upgraded."))
 
             # The control plane was already upgraded, but we didn't progress
             # to the next state, so something failed along the way.

@@ -17983,9 +17983,14 @@ class ConductorManager(service.PeriodicService):
             is_first = True
 
         # Determine target control-plane version for this host
-        cp_versions_next = kube_operator.kube_get_higher_patch_version(
-            cp_version,
-            kube_upgrade_obj.to_version)
+        if cp_version == kube_upgrade_obj.to_version:
+            LOG.info("Redoing control plane upgrade for %s from state: %s"
+                % (host_name, kube_upgrade_obj.state))
+            cp_versions_next = [cp_version]
+        else:
+            cp_versions_next = kube_operator.kube_get_higher_patch_version(
+                cp_version,
+                kube_upgrade_obj.to_version)
         if cp_versions_next:
             target_version = cp_versions_next[0]
             kubeadm_version = target_version

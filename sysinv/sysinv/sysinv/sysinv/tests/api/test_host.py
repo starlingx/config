@@ -1153,7 +1153,7 @@ class TestPostKubeUpgrades(TestHost):
         self.assertEqual(result.content_type, 'application/json')
         self.assertEqual(http_client.BAD_REQUEST, result.status_int)
         self.assertTrue(result.json['error_message'])
-        self.assertIn("The first control plane was already upgraded",
+        self.assertIn("The control plane was already upgraded",
                       result.json['error_message'])
 
     def test_kube_upgrade_kubelet_controller_0(self):
