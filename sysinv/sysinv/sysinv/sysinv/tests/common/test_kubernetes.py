@@ -10,12 +10,14 @@ Tests for the kubernetes utilities.
 
 import kubernetes
 import mock
+import subprocess
 
 from sysinv.common import kubernetes as kube
 
 from sysinv.tests import base
 from sysinv.common import constants
 from sysinv.common import exception
+
 import tsconfig.tsconfig as tsc
 
 FAKE_KUBE_VERSIONS = [
@@ -1615,6 +1617,138 @@ class TestKubeOperator(base.TestCase):
 
         self.assertRaises(exception.SysinvException, kube.disable_kubelet_garbage_collection)
         mock_file_open.return_value.write.assert_not_called()
+
+    def test_kubectl_apply_success_integer_timeout(self):
+        """Test kubectl apply successful execution: integer timeout
+        """
+        fake_manifest = "fake manifest"
+        fake_timeout = 150
+        cmd = ["kubectl", f"--kubeconfig={kube.KUBERNETES_ADMIN_CONF}", "apply",
+               "-f", fake_manifest, f"--request-timeout={fake_timeout}s"]
+
+        mock_utils_execute = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.execute', mock_utils_execute)
+        p.start()
+        self.addCleanup(p.stop)
+
+        kube.kubectl_apply(fake_manifest, fake_timeout)
+
+        mock_utils_execute.assert_called_once_with(
+            *cmd, attempts=5, delay_on_retry=True, check_exit_code=0)
+
+    def test_kubectl_apply_success_float_timeout(self):
+        """Test kubectl apply successful execution: float timeout
+        """
+        fake_manifest = "fake manifest"
+        fake_timeout = 150.49345
+        cmd = ["kubectl", f"--kubeconfig={kube.KUBERNETES_ADMIN_CONF}", "apply",
+               "-f", fake_manifest, f"--request-timeout={fake_timeout}s"]
+
+        mock_utils_execute = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.execute', mock_utils_execute)
+        p.start()
+        self.addCleanup(p.stop)
+
+        kube.kubectl_apply(fake_manifest, fake_timeout)
+
+        mock_utils_execute.assert_called_once_with(
+            *cmd, attempts=5, delay_on_retry=True, check_exit_code=0)
+
+    def test_kubectl_apply_success_string_timeout(self):
+        """Test kubectl apply successful execution: valid string input for timeout
+        """
+        fake_manifest = "fake manifest"
+        fake_timeout = '80'
+        cmd = ["kubectl", f"--kubeconfig={kube.KUBERNETES_ADMIN_CONF}", "apply",
+               "-f", fake_manifest, f"--request-timeout={fake_timeout}s"]
+
+        mock_utils_execute = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.execute', mock_utils_execute)
+        p.start()
+        self.addCleanup(p.stop)
+
+        kube.kubectl_apply(fake_manifest, fake_timeout)
+
+        mock_utils_execute.assert_called_once_with(
+            *cmd, attempts=5, delay_on_retry=True, check_exit_code=0)
+
+    def test_kubectl_apply_success_bool_timeout(self):
+        """Test kubectl apply successful execution: bool timeout (invalid input)
+        """
+        fake_manifest = "fake manifest"
+        fake_timeout = True
+        cmd = ["kubectl", f"--kubeconfig={kube.KUBERNETES_ADMIN_CONF}", "apply",
+               "-f", fake_manifest, "--request-timeout=60s"]
+
+        mock_utils_execute = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.execute', mock_utils_execute)
+        p.start()
+        self.addCleanup(p.stop)
+
+        kube.kubectl_apply(fake_manifest, fake_timeout)
+
+        mock_utils_execute.assert_called_once_with(
+            *cmd, attempts=5, delay_on_retry=True, check_exit_code=0)
+
+    def test_kubectl_apply_success_random_invalid_string(self):
+        """Test kubectl apply successful execution: random string (invalid input)
+        """
+        fake_manifest = "fake manifest"
+        fake_timeout = "fake invalid string"
+        cmd = ["kubectl", f"--kubeconfig={kube.KUBERNETES_ADMIN_CONF}", "apply",
+               "-f", fake_manifest, "--request-timeout=60s"]
+
+        mock_utils_execute = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.execute', mock_utils_execute)
+        p.start()
+        self.addCleanup(p.stop)
+
+        kube.kubectl_apply(fake_manifest, fake_timeout)
+
+        mock_utils_execute.assert_called_once_with(
+            *cmd, attempts=5, delay_on_retry=True, check_exit_code=0)
+
+    def test_kubectl_apply_failure(self):
+        """Test kubectl apply failure
+        """
+        fake_manifest = "fake manifest"
+        fake_timeout = 150
+        cmd = ["kubectl", f"--kubeconfig={kube.KUBERNETES_ADMIN_CONF}", "apply",
+               "-f", fake_manifest, f"--request-timeout={fake_timeout}s"]
+
+        mock_utils_execute = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.execute', mock_utils_execute)
+        p.start().side_effect = Exception("fake error")
+        self.addCleanup(p.stop)
+
+        self.assertRaises(exception.SysinvException,
+                          kube.kubectl_apply,
+                          fake_manifest,
+                          fake_timeout)
+
+        mock_utils_execute.assert_called_once_with(
+            *cmd, attempts=5, delay_on_retry=True, check_exit_code=0)
+
+    def test_kubectl_apply_failure_command_timeout(self):
+        """Test kubectl apply failure
+        """
+        fake_manifest = "fake manifest"
+        fake_timeout = 150
+        cmd = ["kubectl", f"--kubeconfig={kube.KUBERNETES_ADMIN_CONF}", "apply",
+               "-f", fake_manifest, f"--request-timeout={fake_timeout}s"]
+
+        mock_utils_execute = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.execute', mock_utils_execute)
+        p.start().side_effect = subprocess.TimeoutExpired(cmd, fake_timeout)
+        self.addCleanup(p.stop)
+
+        self.assertRaises(exception.SysinvException,
+                          kube.kubectl_apply,
+                          fake_manifest,
+                          fake_timeout)
+
+        mock_utils_execute.assert_called_once_with(
+            *cmd, attempts=5, delay_on_retry=True, check_exit_code=0)
 
 
 class TestKubernetesUtilities(base.TestCase):

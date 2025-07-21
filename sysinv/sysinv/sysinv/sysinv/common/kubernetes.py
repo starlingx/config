@@ -735,17 +735,21 @@ def kubectl_apply(manifests_path, timeout=60):
 
     :raises: Raises SysinvException upon failure
     """
-    try:
+
+    if isinstance(timeout, (int, float)) and not isinstance(timeout, bool):
         str_timeout = str(timeout)
-    except Exception:
+    elif isinstance(timeout, str) and timeout.isnumeric():
+        str_timeout = str(timeout)
+    else:
         LOG.warning("Invalid input for kubectl apply timeout. Ignoring and using default 60s.")
         str_timeout = '60'
+
     try:
         request_timeout_str = f"--request-timeout={str_timeout}s"
         cmd = ["kubectl", f"--kubeconfig={KUBERNETES_ADMIN_CONF}", "apply",
                "-f", manifests_path, request_timeout_str]
-        utils.execute(*cmd, attempts=5, delay_on_retry=3, check_exit_code=0)
-    except exception.ProcessExecutionError as e:
+        utils.execute(*cmd, attempts=5, delay_on_retry=True, check_exit_code=0)
+    except Exception as e:
         raise exception.SysinvException("Failed to apply kubernetes manifest(s) at: [%s] "
                                           "with error: [%s]" % (manifests_path, e))
 

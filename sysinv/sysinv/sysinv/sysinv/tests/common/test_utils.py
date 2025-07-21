@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2021-2024 Wind River Systems, Inc.
+# Copyright (c) 2021-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -10,9 +10,10 @@ Tests for the generic utils.
 
 from tempfile import NamedTemporaryFile
 
-import mock
 import fcntl
 import errno
+import mock
+import os
 import subprocess
 
 from sysinv.common import constants
@@ -78,6 +79,8 @@ key4=correct_value4
 [Fourth section]
 key6=correct_value6
 """
+
+TEST_JINJA_TEMPLATES_FULL_PATH = os.path.join(os.path.dirname(__file__), 'data')
 
 
 class TestCommonUtils(base.TestCase):
@@ -534,3 +537,67 @@ class TestCommonUtils(base.TestCase):
                           fake_service_name)
 
         mock_utils_execute.assert_called_once_with(*cmd, check_exit_code=0)
+
+    def test_render_jinja_template_from_file_success_without_values(self):
+        """Test successful rendering of a simple Jinja template: without values and filters
+        """
+        template_path = TEST_JINJA_TEMPLATES_FULL_PATH
+        template_file_name = "simple_jinja_template.yaml.j2"
+        custom_filters = None
+        values = None
+        expected_rendered_string = '---\nfake_field: "fake_value"'
+
+        actual_rendered_string = utils.render_jinja_template_from_file(template_path,
+                                                                       template_file_name,
+                                                                       custom_filters,
+                                                                       values)
+
+        self.assertEqual(actual_rendered_string, expected_rendered_string)
+
+    def test_render_jinja_template_from_file_success_with_values(self):
+        """Test successful rendering of a Jinja template with values
+        """
+        template_path = TEST_JINJA_TEMPLATES_FULL_PATH
+        template_file_name = "jinja_template_with_values.yaml.j2"
+        custom_filters = None
+        values = {"value": "fake_value"}
+        expected_rendered_string = '---\nfake_field: "fake_value"'
+
+        actual_rendered_string = utils.render_jinja_template_from_file(template_path,
+                                                                       template_file_name,
+                                                                       custom_filters,
+                                                                       values)
+
+        self.assertEqual(actual_rendered_string, expected_rendered_string)
+
+    def test_render_jinja_template_from_file_success_with_filters(self):
+        """Test successful rendering of a Jinja template with values and filters
+        """
+        template_path = TEST_JINJA_TEMPLATES_FULL_PATH
+        template_file_name = "jinja_template_with_custom_filters.yaml.j2"
+
+        def fake_custom_filter_handler(value):
+            return "fake_custom_filtered_" + value
+
+        custom_filters = {"fake_filter": fake_custom_filter_handler}
+        values = {"value": "fake_value"}
+        expected_rendered_string = '---\nfake_field: "fake_custom_filtered_fake_value"'
+
+        actual_rendered_string = utils.render_jinja_template_from_file(template_path,
+                                                                       template_file_name,
+                                                                       custom_filters,
+                                                                       values)
+
+        self.assertEqual(actual_rendered_string, expected_rendered_string)
+
+    def test_render_jinja_template_from_file_failure_template_not_found(self):
+        """Test failure: template not found
+        """
+        template_path = TEST_JINJA_TEMPLATES_FULL_PATH
+        template_file_name = "unexisting_template.yaml.j2"
+        custom_filters = None
+        values = None
+
+        self.assertRaises(exception.SysinvException,
+                          utils.render_jinja_template_from_file,
+                          template_path, template_file_name, custom_filters, values)
