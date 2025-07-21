@@ -2064,26 +2064,24 @@ class AgentManager(service.PeriodicService):
         LOG.info("config_apply_runtime_manifest: %s %s %s" % (
             config_uuid, config_dict, self._ihost_personality))
         try:
-
+            # mount /var/run/platform
+            LOG.info("mount /var/run/platform")
+            local_dir = os.path.join(tsc.VOLATILE_PATH, 'platform')
+            if not os.path.exists(local_dir):
+                LOG.info("create local dir '%s'" % local_dir)
+                os.makedirs(local_dir)
+            temp_puppet_path = tempfile.mkdtemp(dir=local_dir, prefix="tmp_puppet_")
+            hieradata_path = os.path.join(temp_puppet_path, 'hieradata')
             if not os.path.exists(tsc.PUPPET_PATH):
-                # we must be controller-standby or storage, mount /var/run/platform
-                LOG.info("controller-standby or storage, mount /var/run/platform")
-                local_dir = os.path.join(tsc.VOLATILE_PATH, 'platform')
-                # JK - could also consider mkstemp for atomicity
-                if not os.path.exists(local_dir):
-                    LOG.info("create local dir '%s'" % local_dir)
-                    os.makedirs(local_dir)
+                # We must be controller-standby or storage, pull hieradata from active controller
+                LOG.info("controller-standby or storage")
                 remote_puppet_path = "controller-platform-nfs:" + config_dict.get('puppet_path')
-                temp_puppet_path = tempfile.mkdtemp(dir=local_dir, prefix="tmp_puppet_")
-                hieradata_path = os.path.join(temp_puppet_path, 'hieradata')
                 with utils.mounted(remote_puppet_path, temp_puppet_path):
                     self._apply_runtime_manifest(config_dict, hieradata_path=hieradata_path)
-                    LOG.info("Unmounting temporary hieradata directory %s" % temp_puppet_path)
-                shutil.rmtree(temp_puppet_path, ignore_errors=True)
             else:
                 LOG.info("controller-active")
-                temp_puppet_path = config_dict.get('puppet_path')
-                hieradata_path = os.path.join(temp_puppet_path, 'hieradata')
+                local_puppet_path = config_dict.get('puppet_path')
+                shutil.copytree(local_puppet_path, temp_puppet_path, dirs_exist_ok=True)
                 self._apply_runtime_manifest(config_dict, hieradata_path=hieradata_path)
         except OSError:
             # race condition on the mount
@@ -2105,6 +2103,10 @@ class AgentManager(service.PeriodicService):
                                             status=puppet.REPORT_FAILURE,
                                             error=error)
             raise
+        finally:
+            if temp_puppet_path and os.path.exists(temp_puppet_path):
+                LOG.info("Removing volatile puppet directory %s" % temp_puppet_path)
+                shutil.rmtree(temp_puppet_path, ignore_errors=True)
 
         if config_dict.get(puppet.REPORT_INVENTORY_UPDATE):
             self._report_inventory(context, config_dict)

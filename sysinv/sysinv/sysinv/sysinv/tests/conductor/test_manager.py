@@ -2168,7 +2168,10 @@ class ManagerTestCase(base.DbTestCase):
 #     self.assertEqual(kube_upgrade_obj.state,
 #                      kubernetes.KUBE_UPGRADE_ABORTED)
 
-    def test_kube_delete_container_images(self):
+    @mock.patch('os.listdir')
+    @mock.patch('os.path.isdir', return_value=True)
+    @mock.patch('sysinv.helm.helm.HelmOperator.discover_plugins', return_value=None)
+    def test_kube_delete_container_images(self, mock_isdir, mock_listdir, mock_discover_plugins):
         # Create controller-0
         config_uuid = str(uuid.uuid4())
         self._create_test_ihost(

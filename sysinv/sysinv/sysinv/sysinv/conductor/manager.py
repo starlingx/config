@@ -10861,10 +10861,6 @@ class ConductorManager(service.PeriodicService):
                       {'iconfig': iconfig, 'cfg': reported_cfg})
 
         if success:
-            temp_puppet_path = iconfig.get('puppet_path')
-            if temp_puppet_path:
-                LOG.info("Removing temporary puppet directory %s" % temp_puppet_path)
-                shutil.rmtree(temp_puppet_path, ignore_errors=True)
             self.check_pending_app_reapply(context)
 
     def verify_k8s_upgrade_not_in_progress(self):
@@ -13957,7 +13953,37 @@ class ConductorManager(service.PeriodicService):
         """Prune runtime_config entries older than 24 hours"""
         cutoff_date = datetime.utcnow() - timedelta(hours=24)
         LOG.info("Pruning runtime_config entries older than %s." % cutoff_date)
+        self._delete_old_temp_hieradata(cutoff_date)
         self.dbapi.runtime_config_prune(cutoff_date)
+
+    def _delete_old_temp_hieradata(self, cutoff_date=None):
+        """Delete temporary puppet directories under tsc.PUPPET_PATH older than cutoff_date."""
+        base_path = tsc.PUPPET_PATH
+        prefix = "tmp_puppet_"
+
+        if not cutoff_date:
+            cutoff_date = datetime.utcnow() - timedelta(hours=24)
+
+        LOG.info("Deleting temp puppet dirs in '%s' older than %s", base_path, cutoff_date)
+
+        if not os.path.exists(base_path):
+            LOG.warning("Base path for puppet temp dirs does not exist: %s", base_path)
+            return
+
+        for entry in os.listdir(base_path):
+            full_path = os.path.join(base_path, entry)
+            if not os.path.isdir(full_path):
+                continue
+            if not entry.startswith(prefix):
+                continue
+
+            try:
+                mtime = datetime.utcfromtimestamp(os.path.getmtime(full_path))
+                if mtime < cutoff_date:
+                    LOG.info("Removing old temp puppet dir: %s (mtime: %s)", full_path, mtime)
+                    shutil.rmtree(full_path, ignore_errors=True)
+            except Exception as e:
+                LOG.warning("Failed to delete temp puppet dir %s: %s", full_path, str(e))
 
     def _create_runtime_config_entries(self, config_uuid, config_dict):
         """Create runtime config entries in the database"""
