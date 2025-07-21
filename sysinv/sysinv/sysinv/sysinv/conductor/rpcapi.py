@@ -1892,6 +1892,15 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.call(context,
                          self.make_msg('flag_k8s_port_update_rollback'))
 
+    # TODO (mdecastr): This method is to support upgrades to stx 11,
+    # it can be removed in later releases.
+    def update_kube_apiserver_cert_sans(self, context):
+        """Update kube-apiserver certificate SANs
+        :param context: request context.
+        """
+        return self.call(context,
+                         self.make_msg('update_kube_apiserver_cert_sans'))
+
     def reconfigure_service_endpoints(self, context, host):
         """Synchronously, reconfigure service endpoints upon the creation of
         initial controller host and management/oam network change during
