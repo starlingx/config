@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2024 Wind River Systems, Inc.
+# Copyright (c) 2013-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -176,6 +176,8 @@ def do_modify(cc, args):
         isystem = cc.isystem.update(isystem.uuid, patch)
     except exc.HTTPNotFound:
         raise exc.CommandError('system not found: %s' % isystem.uuid)
+    except exc.Forbidden:
+        raise exc.CommandError("The requested action is not authorized")
     _print_isystem_show(isystem)
 
     if print_https_warning:
