@@ -17349,6 +17349,19 @@ class ConductorManager(service.PeriodicService):
             context, config_uuid, config_dict, force=True)
         LOG.info("K8s port update rollback flag requested.")
 
+    # TODO (mdecastr): This method is to support upgrades to stx 11,
+    # it can be removed in later releases.
+    def update_kube_apiserver_cert_sans(self, context):
+        personalities = [constants.CONTROLLER]
+        config_uuid = self._config_update_hosts(context, personalities)
+        config_dict = {
+            "personalities": personalities,
+            "classes": ['platform::kubernetes::certsans::runtime']
+        }
+        self._config_apply_runtime_manifest(
+            context, config_uuid, config_dict, force=True)
+        LOG.info("K8s cert sans update requested.")
+
     def reconfigure_service_endpoints(self, context, host):
         """Reconfigure the service endpoints
 
