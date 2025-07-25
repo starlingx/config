@@ -907,8 +907,8 @@ class KubeControllerOperator(KubeHostOperator):
                     from_kube_version, to_kube_version, current_pause_image, target_pause_image)
 
             # GC was disabled during image download to prevent undesirable image removal before
-            # control plane and kubelet upgrade. Re-enable it if to_kube_version is the final
-            # version in the current kubernetes upgrade attempt.
+            # control plane and kubelet upgrade. Reenable if this is the final kubernetes version
+            # in upgrade sequence.
             if is_final_version:
                 kubernetes.enable_kubelet_garbage_collection()
 

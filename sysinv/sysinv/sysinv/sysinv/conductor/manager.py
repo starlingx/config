@@ -18276,9 +18276,7 @@ class ConductorManager(service.PeriodicService):
             except Exception as ex:
                 # Handle unexpected exception
                 LOG.error("Kubelet upgrade failed on host: [%s]. Error: [%s]" % (host_name, ex))
-                self._kube_upgrade_state_update(
-                        context, kubernetes.KUBE_HOST_UPGRADING_KUBELET_FAILED)
-                return
+                self.report_kube_upgrade_kubelet_result(context, host_uuid, to_version, False)
         else:
             raise exception.SysinvException(_(
                 "Invalid personality %s to upgrade kubelet." %
