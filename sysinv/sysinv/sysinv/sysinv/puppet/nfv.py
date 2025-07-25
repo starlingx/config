@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2017-2024 Wind River Systems, Inc.
+# Copyright (c) 2017-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -131,6 +131,7 @@ class NfvPuppet(openstack.OpenstackBasePuppet):
                     'nfv::nfvi::rabbit_userid',
                     'nfv::nfvi::rabbit_password',
                     'nfv::nfvi::compute_rest_api_host',
+                    'nfv::nfvi::infrastructure_rest_api_host',
                 ]
                 for key in keys_to_copy:
                     config[key] = old_config.get(key)
@@ -266,6 +267,8 @@ class NfvPuppet(openstack.OpenstackBasePuppet):
                 # Listen to nova api proxy on management address
                 nova_api_proxy_config = {
                     'nfv::nfvi::compute_rest_api_host':
+                        self._get_management_address(),
+                    'nfv::nfvi::infrastructure_rest_api_host':
                         self._get_management_address(),
                 }
                 config.update(nova_api_proxy_config)
