@@ -395,8 +395,9 @@ class Interfaces(Base):
         lazy="joined",
         join_depth=1)
 
-    host = relationship("ihost", backref="interfaces",
-                        lazy="joined", cascade="all")
+    host = relationship("ihost",
+                        backref=backref("interfaces", cascade="all, delete"),
+                        lazy="joined")
 
     addresses = relationship("Addresses",
                              backref=backref("interface", lazy="joined"),
@@ -517,7 +518,8 @@ class Ports(Base):
     # JSON{'speed':1000,'MTU':9600, 'duplex':'', 'autonegotiation':'false'}
 
     node = relationship("inode", backref="ports", lazy="joined", join_depth=1)
-    host = relationship("ihost", backref="ports", lazy="joined", join_depth=1)
+    host = relationship("ihost", backref=backref("ports", cascade="all, delete"),
+                        lazy="joined", join_depth=1)
     interface = relationship("Interfaces", backref="port",
                              lazy="joined", join_depth=1)
 
@@ -607,7 +609,8 @@ class ilvg(Base):
     forihostid = Column(Integer, ForeignKey('i_host.id',
                                             ondelete='CASCADE'))
 
-    host = relationship("ihost", backref="lvgs", lazy="joined", join_depth=1)
+    host = relationship("ihost", backref=backref("lvgs", cascade="all, delete"),
+                        lazy="joined", join_depth=1)
 
     UniqueConstraint('lvm_vg_name', 'forihostid', name='u_vgnamehost')
 
@@ -650,7 +653,8 @@ class ipv(Base):
     forilvgid = Column(Integer, ForeignKey('i_lvg.id',
                                             ondelete='CASCADE'))
 
-    host = relationship("ihost", backref="pvs", lazy="joined", join_depth=1)
+    host = relationship("ihost", backref=backref("pvs", cascade="all, delete"),
+                        lazy="joined", join_depth=1)
     lvg = relationship("ilvg", backref="pv", lazy="joined", join_depth=1)
 
     UniqueConstraint('lvm_pv_name', 'forihostid', name='u_nodehost')
