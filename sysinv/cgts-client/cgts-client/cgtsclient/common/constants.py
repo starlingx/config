@@ -135,3 +135,7 @@ AUTOMATIC = "Automatic"
 MANUAL = "Manual"
 ISSUER = "Issuer"
 SUBJECT = "Subject"
+
+# sysinv-vim-mtce definitions
+# Host Actions:
+HOST_AUDIT_ACTION = 'host-audit'

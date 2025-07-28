@@ -8,10 +8,10 @@
 #
 
 from cgtsclient.common import base
+from cgtsclient.common import constants
 from cgtsclient.common import utils
 from cgtsclient import exc
 from cgtsclient.v1 import icpu
-from sysinv.common import constants
 
 
 CREATION_ATTRIBUTES = ['hostname', 'personality', 'subfunctions', 'mgmt_mac',
