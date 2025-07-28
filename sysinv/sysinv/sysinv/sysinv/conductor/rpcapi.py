@@ -1883,6 +1883,20 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         """
         return self.call(context, self.make_msg('get_apps_update_status'))
 
+    # TODO (mbenedit): This method is to support upgrades to stx 11,
+    # it can be removed in later releases.
+    def reconfigure_ipsec(self, context, action):
+        """Update IPsec configuration file to include files at the end of
+        swanctl.conf. This function is intent to be used during upgrades.
+
+        :param context: request context.
+        :param action: upgrade action.
+        """
+        return self.call(
+            context,
+            self.make_msg('reconfigure_ipsec', action=action),
+        )
+
     # TODO (mdecastr): This method is to support upgrades to stx 11,
     # it can be removed in later releases.
     def flag_k8s_port_update_rollback(self, context):
