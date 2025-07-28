@@ -3952,6 +3952,25 @@ class DockerHelper(object):
         # must be unauthenticated in this case.)
         return pub_img_tag, None
 
+    def _remove_public_registry_port(self, img_tag):
+            """Fix image tag by removing public registry port when pushing to
+            the local registry.
+
+            image goes from the incorrect format:
+            registry.local:9001/public.example.com:30093/stx/some-image:some-tag
+
+            to the compliant:
+            registry.local:9001/public.example.com/stx/some-image:some-tag
+
+            :param img_tag: str
+            :return: str
+
+            """
+            regex_pattern = r"(?P<url1>.*)\/(?P<url2>.+)(?P<port>:\d+)\/(?P<tag>.+:.+)"
+            substitution_pattern = "\\g<url1>/\\g<url2>/\\g<tag>"
+
+            return re.sub(regex_pattern, substitution_pattern, img_tag, 1)
+
     def download_an_image(self, app, registries_info, img_tag):
 
         rc = True
@@ -4002,6 +4021,7 @@ class DockerHelper(object):
                     return img_tag, rc
 
                 try:
+                    img_tag = self._remove_public_registry_port(img_tag)
                     # Tag and push the image to the local registry
                     client.tag(target_img_tag, img_tag)
                     # admin password may be changed by openstack client cmd in parallel.
