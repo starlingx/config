@@ -1057,6 +1057,13 @@ class ConductorManager(service.PeriodicService):
                     ihost_mtc = host.as_dict()
                     ihost_mtc['operation'] = 'modify'
                     ihost_mtc = cutils.removekeys_nonmtce(ihost_mtc)
+
+                    host_mgmt_ip = cutils.get_host_mgmt_ip(self.dbapi, host)
+                    if host_mgmt_ip:
+                        ihost_mtc['mgmt_ip'] = host_mgmt_ip
+                    else:
+                        LOG.info(f"cannot find mgmt address for host='{host.hostname}'")
+
                     mtce_api.host_modify(
                              self._api_token, self._mtc_address,
                              self._mtc_port, ihost_mtc,
@@ -6970,6 +6977,9 @@ class ConductorManager(service.PeriodicService):
             if ihost.personality:
                 if ihost.administrative == constants.ADMIN_UNLOCKED:
                     ihost_action_str = ihost.ihost_action or ""
+                    host_mgmt_ip = cutils.get_host_mgmt_ip(self.dbapi, ihost)
+                    if not host_mgmt_ip:
+                        LOG.info(f"cannot find mgmt address for host='{ihost.hostname}'")
 
                     if (ihost_action_str.startswith(constants.FORCE_UNSAFE_LOCK_ACTION) or
                             ihost_action_str.startswith(constants.FORCE_LOCK_ACTION) or
@@ -6989,6 +6999,8 @@ class ConductorManager(service.PeriodicService):
                             keepkeys = ['ihost_action', 'vim_progress_status']
                             ihost_mtc = cutils.removekeys_nonmtce(ihost_mtc,
                                                                 keepkeys)
+                            if host_mgmt_ip:
+                                ihost_mtc['mgmt_ip'] = host_mgmt_ip
 
                             if ihost_action_str.startswith(constants.FORCE_LOCK_ACTION):
                                 timeout_in_secs = 6
