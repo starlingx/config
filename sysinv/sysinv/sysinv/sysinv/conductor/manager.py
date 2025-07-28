@@ -5825,8 +5825,15 @@ class ConductorManager(service.PeriodicService):
                             partition.uuid,
                             {'status': constants.PARTITION_IN_USE_STATUS})
                 except exception.DiskPartitionNotFound:
-                    if ipv['lvm_vg_name'] != constants.LVG_CINDER_VOLUMES:
-                        self._check_pv_partition(ipv)
+                    try:
+                        if ipv['lvm_vg_name'] != constants.LVG_CINDER_VOLUMES:
+                            self._check_pv_partition(ipv)
+                    except exception.DiskNotFound:
+                        # Delete the i_pv entry if its disk_or_part_uuid no longer matches any existing
+                        # partition or disk UUID. This ensures the inventory can complete successfully,
+                        # since the i_pv is no longer linked to any valid disk or partition.
+                        self.dbapi.ipv_destroy(ipv['id'])
+                        continue
 
                 # Save the physical PV associated with cinder volumes for use later
                 if ipv['lvm_vg_name'] == constants.LVG_CINDER_VOLUMES:
