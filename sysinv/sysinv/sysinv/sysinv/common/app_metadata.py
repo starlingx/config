@@ -140,9 +140,11 @@ def validate_metadata_file(path, metadata_file, upgrade_from_release=None):
                               to trigger[filter_field] sub-dictionary instead
                               of the root trigger dictionary.
 
+    class: <critical/storage/discovery/optional/reporting> - optional
+
     dependent_apps: - optional: list of dependent apps.
         - name: <app_name>
-          version: <regular expression (full match)> e.g: 25.09-\d+
+          version: <regular expression (full match)> e.g: 25\.09-\d+
           action: <ignore|warn|error|apply>
 
     dependent_parent_exceptions: exceptions for parent apps dependencies.
