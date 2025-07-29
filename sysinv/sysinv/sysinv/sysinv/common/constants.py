@@ -1629,6 +1629,10 @@ PLATFORM_UPGRADE_STATES = [
 RESTORE_STATE_IN_PROGRESS = 'restore-in-progress'
 RESTORE_STATE_COMPLETED = 'restore-completed'
 
+# Rook Ceph recovery status
+ROOK_CEPH_RECOVERY_COMPLETED = 'recovery-completed'
+ROOK_CEPH_RECOVERY_FAILED = 'recovery-failed'
+
 # Restore progress constants
 RESTORE_PROGRESS_ALREADY_COMPLETED = "Restore procedure already completed"
 RESTORE_PROGRESS_STARTED = "Restore procedure started"
