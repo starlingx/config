@@ -1915,6 +1915,9 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.call(context,
                          self.make_msg('update_kube_apiserver_cert_sans'))
 
+    def rollback_all_apps(self, context):
+        return self.cast(context, self.make_msg('rollback_all_apps'))
+
     def reconfigure_service_endpoints(self, context, host):
         """Synchronously, reconfigure service endpoints upon the creation of
         initial controller host and management/oam network change during

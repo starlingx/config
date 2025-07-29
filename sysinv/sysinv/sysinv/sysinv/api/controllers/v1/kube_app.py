@@ -121,7 +121,9 @@ class KubeAppController(rest.RestController):
     _custom_actions = {
         'update': ['POST'],
         'update_all': ['POST'],
-        'get_apps_update_status': ['GET']
+        'get_apps_update_status': ['GET'],
+        'rollback_all_apps': ['POST'],
+        'get_all_apps_by_status': ['GET']
     }
 
     def __init__(self, parent=None, **kwargs):
@@ -207,6 +209,19 @@ class KubeAppController(rest.RestController):
     def get_one(self, app_name):
         """Retrieve a single application."""
         return self._get_one(app_name)
+
+    @wsme_pecan.wsexpose([KubeApp], wtypes.text)
+    def get_all_apps_by_status(self, status):
+        """Retrieve all applications by status."""
+        if status not in constants.APP_STATUS_LIST:
+            raise wsme.exc.ClientSideError(_(
+                "get_all_apps_by_status rejected: "
+                "status {} is not valid.".format(status)))
+
+        apps = pecan.request.dbapi.kube_app_get_all_by_status(status)
+        result = [KubeApp.convert_with_links(n) for n in apps]
+
+        return result
 
     def _app_lifecycle_actions(self, db_app, hook_info):
         """Perform lifecycle actions for application
@@ -627,6 +642,13 @@ class KubeAppController(rest.RestController):
         response = pecan.request.rpcapi.get_apps_update_status(pecan.request.context)
         if response:
             return AppsUpdateStatus(**response)
+
+    @cutils.synchronized(LOCK_NAME)
+    @wsme_pecan.wsexpose(None)
+    def rollback_all_apps(self):
+        self._check_k8s_health(constants.APP_UPDATE_OP)
+        pecan.request.rpcapi.rollback_all_apps(pecan.request.context)
+        return
 
 
 class KubeAppHelper(object):

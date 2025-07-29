@@ -4741,3 +4741,26 @@ def render_jinja_template_from_file(path_to_template, template_file_name,
                                         "with values: [%s]. Error: [%s] "
                                         % (template_file_name, path_to_template, values, e))
     return rendered_string
+
+
+def verify_activate_rollback_in_progress(dbapi):
+    """
+    Check if a platform upgrade is currently in the 'activate rollback' state.
+
+    Args:
+        dbapi: Database API object used to access upgrade information.
+
+    Returns:
+        bool: True if an activate rollback is in progress, False otherwise.
+    """
+
+    result = False
+    try:
+        upgrade = usm_service.get_platform_upgrade(dbapi)
+    except exception.NotFound:
+        pass
+    else:
+        if upgrade.state in [constants.DEPLOY_STATE_ACTIVATE_ROLLBACK]:
+            result = True
+
+    return result

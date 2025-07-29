@@ -207,3 +207,100 @@ class AppUpdateManager:  # noqa: H238
         except Exception as e:
             self._status = AppsUpdateStatus.FAILED
             LOG.error(e)
+
+    def rollback_apps(self, context):
+        """
+            Executes the rollback process for applications based on their current statuses:
+                - Rolling back apps with 'uploaded' status
+                - Attempting rollback on apps with 'apply-failed' status
+                - Rolling back apps with 'applied' status
+            The rollback order is determined by `_get_apps_update_order_to_rollback_op`,
+            and each group is processed using `_update_a_list_of_apps`.
+            The overall rollback status is stored in `self._status`.
+        :param context: The request context.
+        """
+
+        try:
+            self._get_apps_update_order_to_rollback_op()
+            LOG.info("Starting to rollback apps in uploaded status.")
+            self._update_a_list_of_apps(
+                context,
+                self.apps_to_update[constants.APP_UPLOAD_OP],
+                constants.APP_UPLOAD_OP,
+                async_upload=False,
+                skip_validations=True
+            )
+
+            LOG.info("Attempting to rollback apps in apply-failed status.")
+            self._update_a_list_of_apps(
+                context,
+                self.apps_to_update[constants.APP_RECOVER_UPDATE_OP],
+                constants.APP_RECOVER_UPDATE_OP
+            )
+
+            LOG.info("Starting to rollback apps in applied status.")
+            self._update_a_list_of_apps(
+                context,
+                self.apps_to_update[constants.APP_UPDATE_OP],
+                constants.APP_UPDATE_OP,
+                async_update=False,
+                skip_validations=True,
+            )
+            self._status = AppsUpdateStatus.COMPLETED
+        except Exception as e:
+            self._status = AppsUpdateStatus.FAILED
+            LOG.error(e)
+
+    def _get_apps_update_order_to_rollback_op(self):
+        """
+            Determines the rollback operation order for applications based on their current status.
+            Maps application statuses to corresponding rollback operations:
+                - Successful apply maps to update operation
+                - Failed apply maps to recover update operation
+                - Successful upload maps to upload operation
+                - Failed upload maps to upload operation
+            Populates `self.apps_to_update` with app names grouped by their rollback operation.
+            This method retrieves all apps from the database and categorizes them accordingly.
+        """
+        # TODO(edias): This function will no longer be necessary in future releases and should be
+        # deleted. Future releases will use the new inter-app dependency feature, which will allow
+        # rollback operations to use the _get_apps_update_order method instead.
+
+        # Clear previous state for apps to update
+        self.apps_to_update = {
+            constants.APP_UPDATE_OP: [],
+            constants.APP_UPLOAD_OP: [],
+            constants.APP_RECOVER_UPDATE_OP: [],
+        }
+
+        # Get the ordered list of apps for rollback
+        ordered_apps = app_metadata.get_reorder_apps(isPlatformRollback=True)
+        # Get all apps from the database
+        db_apps = self._db_handler.kube_app_get_all()
+
+        # Create a list to hold ordered database apps
+        ordered_db_apps = []
+        # Add db apps in the order specified by ordered_apps
+        for app_name in ordered_apps:
+            for db_app in db_apps:
+                if db_app.name == app_name:
+                    ordered_db_apps.append(db_app)
+                    break
+        # Add unmanaged apps (not in ordered_apps) at the end
+        for db_app in db_apps:
+            if db_app.name not in ordered_apps:
+                ordered_db_apps.append(db_app)
+
+        # Map statuses to operations
+        status_to_operation = {
+            constants.APP_APPLY_SUCCESS: constants.APP_UPDATE_OP,
+            constants.APP_APPLY_FAILURE: constants.APP_RECOVER_UPDATE_OP,
+            constants.APP_UPLOAD_SUCCESS: constants.APP_UPLOAD_OP,
+            constants.APP_UPLOAD_FAILURE: constants.APP_UPLOAD_OP,
+        }
+
+        # Populate apps_to_update with ordered apps and their corresponding operations
+        for db_app in ordered_db_apps:
+            operation = status_to_operation.get(db_app.status)
+            if operation:
+                self.apps_to_update[operation].append(db_app.name)
