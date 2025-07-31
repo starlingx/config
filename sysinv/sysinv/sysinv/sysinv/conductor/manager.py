@@ -14114,6 +14114,14 @@ class ConductorManager(service.PeriodicService):
                 if host.personality in personalities:
                     if host.sw_version == tsc.SW_VERSION:
                         host_uuids.append(host.uuid)
+                        # Disable route optimization if host is not unlocked or operational
+                        if (host.administrative != constants.ADMIN_UNLOCKED or
+                              host.operational != constants.OPERATIONAL_ENABLED):
+                            config_dict['generate_optimized_hieradata'] = False
+                            LOG.info(
+                                f"Disabling route optimization for host {host.hostname} "
+                                f"(UUID: {host.uuid}): not unlocked or enabled"
+                            )
                     else:
                         LOG.info("Skip applying manifest for host: %s. Version %s mismatch." %
                                  (host.hostname, host.sw_version))
