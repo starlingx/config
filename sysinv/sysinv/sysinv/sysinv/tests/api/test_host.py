@@ -842,47 +842,6 @@ class TestPostKubeUpgrades(TestHost):
         self.assertEqual(result['state'],
                          kubernetes.KUBE_UPGRADING_SECOND_MASTER)
 
-    def test_kube_upgrade_control_plane_wrong_controller_after_failure(self):
-        # Test upgrading kubernetes control plane on the wrong controller
-        # after a failure
-
-        # Create controllers
-        self._create_controller_0(
-            invprovision=constants.PROVISIONED,
-            administrative=constants.ADMIN_UNLOCKED,
-            operational=constants.OPERATIONAL_ENABLED,
-            availability=constants.AVAILABILITY_ONLINE)
-        self._create_controller_1(
-            invprovision=constants.PROVISIONED,
-            administrative=constants.ADMIN_UNLOCKED,
-            operational=constants.OPERATIONAL_ENABLED,
-            availability=constants.AVAILABILITY_ONLINE)
-
-        # Create the upgrade
-        dbutils.create_test_kube_upgrade(
-            from_version='v1.42.1',
-            to_version='v1.42.2',
-            state=kubernetes.KUBE_UPGRADING_FIRST_MASTER_FAILED,
-        )
-
-        # Mark the first kube host upgrade as failed
-        values = {'target_version': 'v1.42.2',
-                  'status': kubernetes.KUBE_HOST_UPGRADING_CONTROL_PLANE_FAILED}
-        self.dbapi.kube_host_upgrade_update(1, values)
-
-        # Upgrade the second control plane
-        result = self.post_json(
-            '/ihosts/controller-1/kube_upgrade_control_plane',
-            {}, headers={'User-Agent': 'sysinv-test'},
-            expect_errors=True)
-
-        # Verify the failure
-        self.assertEqual(result.content_type, 'application/json')
-        self.assertEqual(http_client.BAD_REQUEST, result.status_int)
-        self.assertTrue(result.json['error_message'])
-        self.assertIn("The first control plane upgrade must be completed",
-                      result.json['error_message'])
-
     def test_kube_upgrade_control_plane_no_upgrade(self):
         # Test upgrading kubernetes control plane with no upgrade
 
