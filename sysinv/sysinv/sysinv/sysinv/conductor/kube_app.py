@@ -600,6 +600,8 @@ class AppOperator(object):
                               .format(chart.name))
                 elif chart.filesystem_location not in chart_files_in_use:
                     os.remove(chart.filesystem_location)
+                    LOG.info("Chart {} deleted from repository.".
+                             format(chart.filesystem_location))
                     repo_set.add(os.path.dirname(chart.filesystem_location))
             except OSError:
                 LOG.error("Error while removing chart {} from repository".
@@ -3335,7 +3337,7 @@ class AppOperator(object):
 
             # App apply/rollback succeeded or it failed but skip_recovery was set
             # Starting cleanup old application
-            from_app.charts = self._get_list_of_charts(from_app)
+            from_app.charts = self._get_list_of_charts(from_app, include_disabled=True)
             to_app_charts = [c.release for c in to_app.charts]
             deployed_releases = helm_utils.retrieve_helm_releases()
             charts_to_delete = []
@@ -3346,6 +3348,7 @@ class AppOperator(object):
                         from_chart.release in deployed_releases):
 
                     # Deletes secrets that are not in the n+1 app
+                    LOG.info("Uninstalling resources from %s" % (from_chart.chart_os_path))
                     self._fluxcd.run_kubectl_kustomize(constants.KUBECTL_KUSTOMIZE_DELETE,
                                                        from_chart.chart_os_path)
 
@@ -3363,11 +3366,14 @@ class AppOperator(object):
                     LOG.info("Helm release %s for Application %s (%s) deleted"
                              % (from_chart.release, from_app.name,
                                 from_app.version))
+
+                # Look for charts that need to be removed from the repo
                 for to_app_chart in to_app.charts:
-                    if from_chart.chart_label == to_app_chart.chart_label \
-                            and from_chart.chart_version \
-                            != to_app_chart.chart_version:
-                        charts_to_delete.append(from_chart)
+                    if from_chart.chart_label == to_app_chart.chart_label and \
+                            from_chart.chart_version == to_app_chart.chart_version:
+                        break
+                else:
+                    charts_to_delete.append(from_chart)
 
             self._remove_app_charts_from_repo(from_app._kube_app.id,
                                               charts_to_delete)
