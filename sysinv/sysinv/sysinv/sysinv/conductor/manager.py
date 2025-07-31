@@ -18252,6 +18252,9 @@ class ConductorManager(service.PeriodicService):
     def kube_upgrade_kubelet(self, context, host_uuid):
         """Upgrade the kubernetes kubelet on this host"""
 
+        kube_upgrade_obj = objects.kube_upgrade.get_one(context)
+        final_kube_version = kube_upgrade_obj.to_version
+
         host_obj = objects.host.get_by_uuid(context, host_uuid)
         host_name = host_obj.hostname
         kube_host_upgrade_obj = objects.kube_host_upgrade.get_by_host_id(
@@ -18261,7 +18264,8 @@ class ConductorManager(service.PeriodicService):
         if host_obj.personality in (constants.CONTROLLER, constants.WORKER):
             agent_api = agent_rpcapi.AgentAPI()
             try:
-                agent_api.kube_upgrade_kubelet(context, host_uuid, to_version)
+                is_final_version = (to_version == final_kube_version)
+                agent_api.kube_upgrade_kubelet(context, host_uuid, to_version, is_final_version)
             except Exception as ex:
                 # Handle unexpected exception
                 LOG.error("Kubelet upgrade failed on host: [%s]. Error: [%s]" % (host_name, ex))

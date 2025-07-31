@@ -2366,7 +2366,7 @@ class AgentManager(service.PeriodicService):
             else:
                 LOG.info("update_host_lvm - ipv data is empty.")
 
-    def kube_upgrade_kubelet(self, context, host_uuid, to_kube_version):
+    def kube_upgrade_kubelet(self, context, host_uuid, to_kube_version, is_final_version):
         """Upgrade the kubernetes kubelet on this host
 
         Upgrade kubelet on controller or worker host.
@@ -2374,6 +2374,8 @@ class AgentManager(service.PeriodicService):
         :param: context: context object
         :param: host_uuid: A host UUID string.
         :param: to_kube_version: kubernetes version being upgraded to
+        :param: is_final_version: True if to_kube_version is the final version in the
+                                  current kubernetes upgrade attempt else False
         """
         if self._ihost_personality in (constants.WORKER, constants.CONTROLLER):
 
@@ -2390,7 +2392,7 @@ class AgentManager(service.PeriodicService):
                 else:
                     operator = kube_host.KubeWorkerOperator(context, host_uuid, self._hostname)
 
-                operator.upgrade_kubelet(from_kube_version, to_kube_version)
+                operator.upgrade_kubelet(from_kube_version, to_kube_version, is_final_version)
 
                 LOG.info("Kubelet upgrade successful from version %s to %s on this host."
                          % (from_kube_version, to_kube_version))
