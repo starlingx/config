@@ -1915,6 +1915,15 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.call(context,
                          self.make_msg('update_kube_apiserver_cert_sans'))
 
+    # TODO (mdecastr): This method is to support upgrades to stx 11,
+    # it can be removed in later releases.
+    def run_kubernetes_health_audit(self, context):
+        """Execute audit for kubernetes cluster health
+        :param context: request context.
+        """
+        return self.call(context,
+                         self.make_msg('run_kubernetes_health_audit'))
+
     def rollback_all_apps(self, context):
         return self.cast(context, self.make_msg('rollback_all_apps'))
 
