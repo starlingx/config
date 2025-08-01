@@ -17913,17 +17913,15 @@ class ConductorManager(service.PeriodicService):
 
         LOG.info("Downloading images for versions: %s " % (next_versions))
 
-        # For simplex systems, disable image garbage collection by kubelet
-        # during the K8s upgrade. It wants to be done before we
-        # pull the images so that they can't be garbage collected by kubelet
-        # before they're needed.
-        if system.system_mode == constants.SYSTEM_MODE_SIMPLEX:
-            try:
-                kubernetes.disable_kubelet_garbage_collection()
-                cutils.pmon_restart_service(kubernetes.KUBELET_SYSTEMD_SERVICE_NAME)
-                LOG.info("Successfully disabled kubelet image garbage collection.")
-            except Exception:
-                LOG.warning("Failed to disable garbage collection in kubelet, continuing anyway.")
+        # Disable image garbage collection by kubelet during the K8s upgrade.
+        # It wants to be done before we pull the images so that they can't be garbage
+        # collected by kubelet before they're needed.
+        try:
+            kubernetes.disable_kubelet_garbage_collection()
+            cutils.pmon_restart_service(kubernetes.KUBELET_SYSTEMD_SERVICE_NAME)
+            LOG.info("Successfully disabled kubelet image garbage collection.")
+        except Exception:
+            LOG.warning("Failed to disable garbage collection in kubelet, continuing anyway.")
 
         # Create a consolidated list of images of all "next_versions" so that
         # all of them can be pulled concurrently
