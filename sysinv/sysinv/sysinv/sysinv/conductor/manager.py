@@ -9865,7 +9865,8 @@ class ConductorManager(service.PeriodicService):
                             'platform::haproxy::runtime',
                             'platform::ntp::server',
                             'platform::dockerdistribution::config',
-                            'platform::dockerdistribution::runtime'],
+                            'platform::dockerdistribution::runtime',
+                            'platform::certalarm::reload'],
                 puppet_common.REPORT_STATUS_CFG:
                     puppet_common.REPORT_OPENSTACK_ENDPOINTS_CONFIG_REQUESTED
             }
