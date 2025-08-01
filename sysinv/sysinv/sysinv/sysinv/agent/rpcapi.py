@@ -292,7 +292,7 @@ class AgentAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                        retimer_included=retimer_included),
                          topic=topic)
 
-    def kube_upgrade_kubelet(self, context, host_uuid, to_kube_version):
+    def kube_upgrade_kubelet(self, context, host_uuid, to_kube_version, is_final_version):
         """Asynchronously, upgrade kubelet on this host.
 
         Upgrade kubelet on controller and worker hosts.
@@ -300,11 +300,14 @@ class AgentAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         :param: context: context object
         :param: from_kube_version: current kubernetes version
         :param: to_kube_version: kubernetes version being upgraded to
+        :param: is_final_version: True if to_kube_version is the final version in the
+                                  current kubernetes upgrade attempt else False
         """
         return self.cast(context,
                          self.make_msg("kube_upgrade_kubelet",
                                         host_uuid=host_uuid,
-                                        to_kube_version=to_kube_version))
+                                        to_kube_version=to_kube_version,
+                                        is_final_version=is_final_version))
 
     def report_initial_inventory(self, context, host_uuid):
         """ Synchronously, request the agent to re-report initial inventory

@@ -270,13 +270,15 @@ class KubeWorkerOperator(KubeHostOperator):
         self._kubeconfig = kubernetes.KUBERNETES_KUBELET_CONF
         super().__init__(context, host_uuid, host_name)
 
-    def upgrade_kubelet(self, from_kube_version, to_kube_version):
+    def upgrade_kubelet(self, from_kube_version, to_kube_version, is_final_version):
         """Upgrade the kubernetes kubelet on this worker
 
         Upgrade kubelet on worker hosts.
 
         :param: from_kube_version: current kubernetes version
         :param: to_kube_version: kubernetes version being upgraded to
+        :param: is_final_version: True if to_kube_version is the final version in the
+                                  current kubernetes upgrade attempt else False
         """
         try:
             from_kube_version = from_kube_version.strip('v')
@@ -869,7 +871,7 @@ class KubeControllerOperator(KubeHostOperator):
         except Exception as ex:
             raise exception.SysinvException("Error upgrading control plane components: %s" % (ex))
 
-    def upgrade_kubelet(self, from_kube_version, to_kube_version):
+    def upgrade_kubelet(self, from_kube_version, to_kube_version, is_final_version):
         """Upgrade the kubernetes kubelet on this controller
 
         Upgrade kubelet on controller hosts.
@@ -879,6 +881,8 @@ class KubeControllerOperator(KubeHostOperator):
 
         :param: from_kube_version: current kubernetes version
         :param: to_kube_version: kubernetes version being upgraded to
+        :param: is_final_version: True if to_kube_version is the final version in the
+                                  current kubernetes upgrade attempt else False
         """
         try:
             from_kube_version = from_kube_version.strip('v')
@@ -894,8 +898,10 @@ class KubeControllerOperator(KubeHostOperator):
                     from_kube_version, to_kube_version, current_pause_image, target_pause_image)
 
             # GC was disabled during image download to prevent undesirable image removal before
-            # control plane and kubelet upgrade. Re-enable it now.
-            kubernetes.enable_kubelet_garbage_collection()
+            # control plane and kubelet upgrade. Re-enable it if to_kube_version is the final
+            # version in the current kubernetes upgrade attempt.
+            if is_final_version:
+                kubernetes.enable_kubelet_garbage_collection()
 
             utils.pmon_restart_service(kubernetes.KUBELET_SYSTEMD_SERVICE_NAME)
 
