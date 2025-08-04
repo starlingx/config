@@ -378,11 +378,14 @@ class ConductorManager(service.PeriodicService):
         # Guard for a function that should run only once per conductor start
         self._has_loaded_missing_apps_metadata = False
 
-        self.apps_metadata = {constants.APP_METADATA_APPS: {},
-                              constants.APP_METADATA_PLATFORM_MANAGED_APPS: {},
-                              constants.APP_METADATA_DESIRED_STATES: {},
-                              constants.APP_METADATA_ORDERED_APPS: {},
-                              constants.APP_METADATA_ORDERED_APPS_BY_AFTER_KEY: []}
+        self.apps_metadata = {
+            constants.APP_METADATA_APPS: {},
+            constants.APP_METADATA_PLATFORM_MANAGED_APPS: {},
+            constants.APP_METADATA_DESIRED_STATES: {},
+            constants.APP_METADATA_ORDERED_APPS: {},
+            constants.APP_METADATA_ORDERED_APPS_BY_AFTER_KEY: [],
+            constants.APP_METADATA_CYCLIC_DEPENDENCIES: []
+        }
 
         self._backup_action_map = dict()
         for action in [constants.BACKUP_ACTION_SEMANTIC_CHECK,

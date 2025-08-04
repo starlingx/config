@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2023-2024 Wind River Systems, Inc.
+# Copyright (c) 2023-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -7,6 +7,8 @@
 # All Rights Reserved.
 #
 
+from collections import defaultdict
+from collections import deque
 import io
 import glob
 import os
@@ -827,12 +829,12 @@ def extract_bundle_metadata(file_path):
         LOG.exception(e)
 
 
-def load_metadata_of_apps(apps_metadata, isPlatformRollback=False):
+def load_metadata_of_apps(apps_metadata, is_platform_rollback=False):
     """ Extracts the tarball and loads the metadata of the
     loaded/applied applications.
 
     :param apps_metadata: metadata dictionary of the applications
-    :param isPlatformRollback (bool): If True, the app order calculation is performed using
+    :param is_platform_rollback (bool): If True, the app order calculation is performed using
         the ostree folder containing old versions of the tarballs (used during platform rollback).
     """
 
@@ -854,7 +856,7 @@ def load_metadata_of_apps(apps_metadata, isPlatformRollback=False):
 
     # Determine the applications path based on whether this is a rollback process
     apps_path = (f'{constants.ROLLBACK_OSTREE_PATH}{constants.HELM_APP_ISO_INSTALL_PATH}'
-                 if isPlatformRollback
+                 if is_platform_rollback
                  else constants.HELM_APP_ISO_INSTALL_PATH)
 
     for app_bundle in os.listdir(apps_path):
@@ -910,7 +912,100 @@ def load_metadata_of_apps(apps_metadata, isPlatformRollback=False):
                         apps_metadata, name, metadata)
 
 
-def get_reorder_apps(isPlatformRollback=False):
+def order_dependencies_by_topological_sorting(dependencies: dict):
+    """
+    Performs topological sorting on a dependency graph.
+    Given a dictionary where keys are nodes (e.g., app names) and values are lists
+    of dependencies, returns the nodes sorted in an order that satisfies all dependencies.
+    Also detects and returns any nodes involved in cyclic dependencies.
+
+    :params dependencies (dict): dictionary representing the dependency graph. Each key is a node,
+                                 and its value is a list of other nodes it depends on.
+    :return (tuple):
+            - sorted_deps (list): list of nodes in topologically sorted order.
+            - cyclic_dependencies (list): list of nodes that are part of a cycle and
+                                          couldn't be sorted.
+    """
+
+    # Initialize data structures:
+    # - sorted_deps will hold the final sorted order.
+    # - graph represents the reversed dependency graph.
+    # - in_degree keeps count of how many dependencies each node has.
+    sorted_deps = []
+    graph = defaultdict(list)
+    in_degree = defaultdict(int)
+
+    for node in dependencies:
+        in_degree[node] = 0
+
+    # Build the graph and calculate in-degree for each node. We are not taking in count,
+    # dependencies that it's not listed in the dependencies dict.
+    for node, deps in dependencies.items():
+        for dependency in deps:
+            if dependency in dependencies:
+                graph[dependency].append(node)
+                in_degree[node] += 1
+
+    # Identify nodes with no dependencies. These will be the starting points for topological
+    # sorting.
+    queue = deque([root for root in dependencies if in_degree[root] == 0])
+    found = set()
+
+    # Perform topological sort using Kahn's algorithm. Repeatedly remove nodes with in-degree 0
+    # and update neighbors.
+    while queue:
+        current = queue.popleft()
+        sorted_deps.append(current)
+        found.add(current)
+
+        # For each node that depends on the current node, reduce its in-degree and add to queue if
+        # it has no more dependencies
+        for neighbor in graph[current]:
+            in_degree[neighbor] -= 1
+            if in_degree[neighbor] == 0:
+                queue.append(neighbor)
+
+    # After sorting, any node not in 'found' must be part of a cycle. These could not be sorted
+    # and are considered cyclic dependencies.
+    cyclic_dependencies = [node for node in dependencies if node not in found]
+
+    return sorted_deps, cyclic_dependencies
+
+
+def get_apps_dependency_map(apps: list, apps_metadata: dict) -> dict:
+    """
+    Builds a mapping of apps to their declared dependencies.
+    Iterates through the list of apps and extracts their dependencies from the corresponding
+    metadata.
+    :param apps (list): list of apps with declared dependencies.
+    :param apps_metadata (dict): dictionary containing metadata for each app.
+    :return (dict): dictionary where keys are app names and values are lists of dependent app names.
+    """
+    dependent_apps = {}
+    for app in apps:
+        metadata = apps_metadata[app]
+        dependencies_metadata = metadata.get(constants.APP_METADATA_DEPENDENT_APPS, [])
+
+        dependencies = []
+        for metadata in dependencies_metadata:
+            # The app may have a dependency structure using OR logic. In this case, the
+            # metadata variable is not a dictionary, but a yaml seq.
+            if not isinstance(metadata, dict):
+                for dep_metadata in metadata:
+                    dep_name = dep_metadata.get('name')
+                    if dep_name:
+                        dependencies.append(dep_name)
+                continue
+
+            dep_name = metadata.get('name')
+            if dep_name:
+                dependencies.append(dep_name)
+
+        dependent_apps[app] = dependencies
+    return dependent_apps
+
+
+def get_reorder_apps(is_platform_rollback=False):
     """Reorders apps based on the metadata.yaml presenting the application tarball
 
     The purpose of this function is to print the updated apps
@@ -924,20 +1019,27 @@ def get_reorder_apps(isPlatformRollback=False):
         Array: String array representing the mandatory installation order
         of applications
     """
-    apps_metadata = {constants.APP_METADATA_APPS: {},
-                     constants.APP_METADATA_PLATFORM_MANAGED_APPS: {},
-                     constants.APP_METADATA_DESIRED_STATES: {},
-                     constants.APP_METADATA_ORDERED_APPS: {},
-                     constants.APP_METADATA_ORDERED_APPS_BY_AFTER_KEY: [],
-                     constants.APP_METADATA_PLATFORM_UNMANAGED_APPS: set()}
+    apps_metadata = {
+        constants.APP_METADATA_APPS: {},
+        constants.APP_METADATA_PLATFORM_MANAGED_APPS: {},
+        constants.APP_METADATA_DESIRED_STATES: {},
+        constants.APP_METADATA_ORDERED_APPS: {},
+        constants.APP_METADATA_ORDERED_APPS_BY_AFTER_KEY: [],
+        constants.APP_METADATA_PLATFORM_UNMANAGED_APPS: set(),
+        constants.APP_METADATA_CYCLIC_DEPENDENCIES: []
+    }
 
-    load_metadata_of_apps(apps_metadata, isPlatformRollback)
+    load_metadata_of_apps(apps_metadata, is_platform_rollback)
 
     if isinstance(apps_metadata[constants.APP_METADATA_ORDERED_APPS], dict):
         apps_metadata[constants.APP_METADATA_ORDERED_APPS]['unmanaged_apps'] = \
             apps_metadata[constants.APP_METADATA_PLATFORM_UNMANAGED_APPS]
 
-    if isPlatformRollback:
+        apps_metadata[constants.APP_METADATA_ORDERED_APPS][
+            constants.APP_METADATA_CYCLIC_DEPENDENCIES] = \
+                apps_metadata[constants.APP_METADATA_CYCLIC_DEPENDENCIES]
+
+    if is_platform_rollback:
         return apps_metadata[constants.APP_METADATA_ORDERED_APPS_BY_AFTER_KEY]
 
     return apps_metadata[constants.APP_METADATA_ORDERED_APPS]

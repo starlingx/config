@@ -2416,10 +2416,10 @@ class AppOperator(object):
         # and categorize them based on their metadata
         for app_name in apps_metadata_dict[constants.APP_METADATA_PLATFORM_MANAGED_APPS]:
 
-            app_metadata = apps_metadata_dict[constants.APP_METADATA_APPS][app_name]
-            app_class = app_metadata.get(constants.APP_METADATA_CLASS, None)
+            metadata = apps_metadata_dict[constants.APP_METADATA_APPS][app_name]
+            app_class = metadata.get(constants.APP_METADATA_CLASS, None)
 
-            if app_metadata.get(constants.APP_METADATA_DEPENDENT_APPS, None):
+            if metadata.get(constants.APP_METADATA_DEPENDENT_APPS, None):
                 # This app has dependent apps
                 ordered_apps[constants.APP_METADATA_DEPENDENT_APPS].append(app_name)
 
@@ -2432,8 +2432,19 @@ class AppOperator(object):
                 # This app is independent
                 ordered_apps[constants.APP_METADATA_INDEPENDENT_APPS].append(app_name)
 
-        # Sort the dependent apps
-        ordered_apps[constants.APP_METADATA_DEPENDENT_APPS].sort()
+        dependent_apps = app_metadata.get_apps_dependency_map(
+            apps=ordered_apps.get(constants.APP_METADATA_DEPENDENT_APPS, []),
+            apps_metadata=apps_metadata_dict[constants.APP_METADATA_APPS]
+        )
+
+        ordered_dependent_apps, cyclic_dependencies = \
+            app_metadata.order_dependencies_by_topological_sorting(dependent_apps)
+        if cyclic_dependencies:
+            apps_metadata_dict[constants.APP_METADATA_CYCLIC_DEPENDENCIES] = cyclic_dependencies
+
+        if ordered_dependent_apps:
+            ordered_apps[constants.APP_METADATA_DEPENDENT_APPS] = ordered_dependent_apps
+
         # Sort the independent apps
         ordered_apps[constants.APP_METADATA_INDEPENDENT_APPS].sort()
 

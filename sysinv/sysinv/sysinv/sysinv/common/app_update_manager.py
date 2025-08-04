@@ -22,6 +22,7 @@ class AppUpdateManager:  # noqa: H238
         self._db_handler = db_handler
         self._update_strategy_fn = update_strategy_fn
         self._status: AppsUpdateStatus = AppsUpdateStatus.IN_PROGRESS
+        self._cyclic_dependencies: list = []
         self.failed_apps: list = []
         self.apps_to_retry: list = []
         self.successfully_updated: list = []
@@ -68,6 +69,12 @@ class AppUpdateManager:  # noqa: H238
         }
 
         apps_metadata = app_metadata.get_reorder_apps()
+
+        if apps_metadata.get(constants.APP_METADATA_CYCLIC_DEPENDENCIES):
+            self._cyclic_dependencies = apps_metadata.get(
+                constants.APP_METADATA_CYCLIC_DEPENDENCIES
+            )
+
         class_apps = apps_metadata.get('class', {})
 
         ordered_apps_metadata = {
@@ -175,6 +182,13 @@ class AppUpdateManager:  # noqa: H238
         """
         try:
             self._get_apps_update_order()
+
+            if self._cyclic_dependencies:
+                LOG.error(
+                    f"The following apps won't be updated due to cyclic dependencies: \
+                    {', '.join(self._cyclic_dependencies)}."
+                )
+
             LOG.info("Starting the update of apps with uploaded status.")
             self._update_a_list_of_apps(
                 context,
@@ -222,6 +236,13 @@ class AppUpdateManager:  # noqa: H238
 
         try:
             self._get_apps_update_order_to_rollback_op()
+
+            if self._cyclic_dependencies:
+                LOG.error(
+                    f"The following apps won't be reverted due to cyclic dependencies: \
+                    {', '.join(self._cyclic_dependencies)}."
+                )
+
             LOG.info("Starting to rollback apps in uploaded status.")
             self._update_a_list_of_apps(
                 context,
@@ -274,7 +295,7 @@ class AppUpdateManager:  # noqa: H238
         }
 
         # Get the ordered list of apps for rollback
-        ordered_apps = app_metadata.get_reorder_apps(isPlatformRollback=True)
+        ordered_apps = app_metadata.get_reorder_apps(is_platform_rollback=True)
         # Get all apps from the database
         db_apps = self._db_handler.kube_app_get_all()
 
