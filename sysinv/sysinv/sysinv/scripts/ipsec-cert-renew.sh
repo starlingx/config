@@ -106,7 +106,9 @@ fi
 
 # Raise alarm if anyting goes wrong.
 if [ ${ERR_RENEW} -ne 0 ]; then
-    /usr/local/bin/fmClientCli -c "### ###250.004###set###host###host=${HOSTNAME}### ###major###IPsec certificates renewal failed.###operational-violation### ###Check cron.log and ipsec-auth.log, fix the issue and rerun $NAME.### ### ###"
+    /usr/local/bin/fmClientCli -c "### ###250.004###set###host###host=${HOSTNAME}### \
+    ###major###IPsec certificates renewal failed.###operational-violation### ###Check \
+    cron.log and ipsec-auth.log, fix the issue and rerun $NAME.### ###True###True###False###"
 else
     /usr/local/bin/fmClientCli -A "250.004" &> /dev/null
     if [ $? -eq 0 ]; then
