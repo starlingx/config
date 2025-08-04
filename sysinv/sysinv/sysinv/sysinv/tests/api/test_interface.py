@@ -2697,6 +2697,7 @@ class FakeConductorAPI(object):
     def __init__(self):
         self.update_sriov_config = mock.MagicMock()
         self.update_sriov_vf_config = mock.MagicMock()
+        self.update_pcidp_config = mock.MagicMock()
 
 
 class TestAIOUnlockedPost(InterfaceTestCase):
@@ -2794,6 +2795,7 @@ class TestAIOUnlockedPost(InterfaceTestCase):
                         sriov_numvfs=1)
         # system host-if-delete controller-0 sriov_vf
         self._delete_and_check(sriov_vf.uuid, expect_errors=False)
+        self.fake_conductor_api.update_pcidp_config.assert_not_called()
 
     def test_non_aiosx_del_interface_sriov_vf(self):
         self.mock_utils_is_aio_simplex_system.return_value = False
@@ -2809,6 +2811,27 @@ class TestAIOUnlockedPost(InterfaceTestCase):
         self._delete_and_check(sriov_vf.uuid, expect_errors=True,
                     error_message="Host must be locked")
         self.mock_utils_is_aio_simplex_system.return_value = True
+        self.fake_conductor_api.update_pcidp_config.assert_not_called()
+
+    def test_del_interface_sriov_vf_with_interface_datanetwork(self):
+        sriov_vf = dbutils.create_test_interface(
+                        ifname='sriov_vf', id=3,
+                        uses=[self.interfaces['sriov'].ifname],
+                        ifclass=constants.INTERFACE_CLASS_PCI_SRIOV,
+                        iftype=constants.INTERFACE_TYPE_VF,
+                        forihostid=self.controller.id,
+                        ihost_uuid=self.controller.uuid,
+                        sriov_numvfs=1)
+
+        self._create_datanetworks()
+        self.datanetwork = self.dbapi.datanetwork_get_by_name(
+            'group0-data0')
+        dbutils.create_test_interface_datanetwork(
+            interface_id=3,
+            datanetwork_id=self.datanetwork.id)
+
+        self._delete_and_check(sriov_vf.uuid, expect_errors=False)
+        self.fake_conductor_api.update_pcidp_config.assert_called()
 
 
 class TestAIOUnlockedPatch(InterfaceTestCase):

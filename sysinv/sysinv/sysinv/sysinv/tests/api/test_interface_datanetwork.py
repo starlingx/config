@@ -174,3 +174,40 @@ class InterfaceDataNetworkMultipleCreateTestCase(InterfaceDataNetworkTestCase):
         self.delete('/interface_datanetworks/%s'
                     % if_dn_list['interface_datanetworks'][0]['uuid'],
                     expect_errors=False)
+
+
+class InterfaceDataNetworkDeleteTestCase(InterfaceDataNetworkTestCase):
+    def setUp(self):
+        super(InterfaceDataNetworkDeleteTestCase, self).setUp()
+
+    def test_delete_interface_datanetwork(self):
+        with mock.patch(
+            'sysinv.conductor.rpcapi.ConductorAPI.update_pcidp_config'
+        ) as mock_update:
+            sriov0_assign_dn = dbutils.post_get_test_interface_datanetwork(
+                interface_uuid=self.if_sriov0.uuid,
+                datanetwork_uuid=self.datanetwork0.uuid)
+            self._post_and_check(sriov0_assign_dn, expect_errors=False)
+
+            if_dn_list = self.get_json(
+                '/ihosts/%s/interface_datanetworks' % self.controller.uuid,
+                expect_errors=False)
+            self.assertEqual(1, len(if_dn_list['interface_datanetworks']))
+            self.assertEqual(mock_update.call_count, 1)
+            mock_update.reset_mock()
+
+            if_dn_uuid = if_dn_list['interface_datanetworks'][0]['uuid']
+            self.delete(
+                '/interface_datanetworks/%s' % if_dn_uuid,
+                expect_errors=False)
+
+            if_dn_list_after = self.get_json(
+                '/ihosts/%s/interface_datanetworks' % self.controller.uuid,
+                expect_errors=False)
+
+            self.assertEqual(0, len(if_dn_list_after['interface_datanetworks']))
+            self.assertEqual(mock_update.call_count, 1)
+
+    def test_delete_interface_datanetwork_invalid_uuid(self):
+        self.delete('/interface_datanetworks/invalid-uuid-123',
+                    expect_errors=True)
