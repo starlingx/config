@@ -17461,6 +17461,12 @@ class ConductorManager(service.PeriodicService):
             context, config_uuid, config_dict, force=True)
         LOG.info("K8s cert sans update requested.")
 
+    # TODO (mdecastr): This method is to support upgrades to stx 11,
+    # it can be removed in later releases.
+    def run_kubernetes_health_audit(self, context):
+        LOG.info("Running kubernetes audit manually.")
+        self._audit_kubernetes_cluster_health(context)
+
     def reconfigure_service_endpoints(self, context, host):
         """Reconfigure the service endpoints
 
