@@ -45,6 +45,9 @@ KNOWN_PCI_DEVICES = [{"vendor_id": constants.NOVA_PCI_ALIAS_QAT_PF_VENDOR,
                       "class_id": constants.PCI_ALIAS_QAT_CLASS},
                      {"vendor_id": constants.PCI_ALIAS_QAT_VENDOR,
                       "device_id": constants.PCI_ALIAS_QAT_401XX_PF_DEVICE,
+                      "class_id": constants.PCI_ALIAS_QAT_CLASS},
+                     {"vendor_id": constants.PCI_ALIAS_QAT_VENDOR,
+                      "device_id": constants.PCI_ALIAS_QAT_420XX_PF_DEVICE,
                       "class_id": constants.PCI_ALIAS_QAT_CLASS}]
 
 # PCI-SIG 0x06 bridge devices to not inventory.
