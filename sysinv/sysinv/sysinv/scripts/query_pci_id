@@ -5,10 +5,10 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-import sys
 import json
-import subprocess
 import os
+import subprocess
+import sys
 from argparse import ArgumentParser
 from typing import List
 
