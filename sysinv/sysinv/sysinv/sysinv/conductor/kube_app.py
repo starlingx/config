@@ -1898,6 +1898,25 @@ class AppOperator(object):
                         if self._fluxcd.verify_pods_status_for_release(chart_obj):
                             charts.pop(release_name)
                             last_successful_chart = chart_obj["chart_label"]
+
+                            # lifecycle to handle custom k8s services from apps
+                            # that need to be checked after helmrelease is installed
+                            try:
+                                lifecycle_hook_info.relative_timing = \
+                                    LifecycleConstants.APP_LIFECYCLE_TIMING_STATUS
+                                lifecycle_hook_info.lifecycle_type = \
+                                    LifecycleConstants.APP_LIFECYCLE_TYPE_FLUXCD_REQUEST
+                                lifecycle_hook_info[
+                                        LifecycleConstants.EXTRA][LifecycleConstants.RELEASE] = \
+                                    release_name
+                                self.app_lifecycle_actions(None,
+                                                           None,
+                                                           app._kube_app,
+                                                           lifecycle_hook_info)
+                            except exception.LifecycleStatusCheckNotReady as e:
+                                LOG.exception("Status lifecycle failed for release {} from {} app:"
+                                              " {}".format(release_name, app.name, e))
+                                return False
                     else:
                         # Noisy log, so make it debug only, but good for debugging apps dev.
                         LOG.debug("Application {}: release {}: Helm release "
@@ -1906,17 +1925,6 @@ class AppOperator(object):
 
                 # wait a bit to check again if the charts are ready
                 time.sleep(5)
-
-                # lifecycle to handle custom k8s services from apps
-                # that need to be checked after helmrelease is installed
-                try:
-                    lifecycle_hook_info.relative_timing = \
-                        LifecycleConstants.APP_LIFECYCLE_TIMING_STATUS
-                    lifecycle_hook_info.lifecycle_type = \
-                        LifecycleConstants.APP_LIFECYCLE_TYPE_FLUXCD_REQUEST
-                    self.app_lifecycle_actions(None, None, app._kube_app, lifecycle_hook_info)
-                except exception.LifecycleStatusCheckNotReady:
-                    return False
 
             return True
 
