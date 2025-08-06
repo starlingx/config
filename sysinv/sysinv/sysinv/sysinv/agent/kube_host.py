@@ -14,9 +14,6 @@
 import datetime
 import os
 import shutil
-import subprocess
-import sys
-import threading
 import tsconfig.tsconfig as tsc
 
 from ruamel import yaml
@@ -154,11 +151,15 @@ class KubeHostOperator(object):
             to_kube_version = to_kube_version.strip('v')
             if link == kubernetes.KUBERNETES_SYMLINKS_STAGE_1:
                 stage_dir_name = 'stage1'
-            else:
+            elif link == kubernetes.KUBERNETES_SYMLINKS_STAGE_2:
                 stage_dir_name = 'stage2'
+            else:
+                raise exception.SysinvException("Invalid link path: %s" % (link))
+
             versioned_stage = \
                     os.path.join(kubernetes.KUBERNETES_VERSIONED_BINARIES_ROOT,
                                     to_kube_version, stage_dir_name)
+
             # Remove symlink for previous kuberbetes version
             if os.path.islink(link):
                 os.remove(link)
@@ -180,45 +181,21 @@ class KubeHostOperator(object):
         :raises: SysinvException in case of failure.
         """
         try:
-            process = None
             to_kube_version = to_kube_version.strip('v')
-            LOG.info("Running command 'kubeadm upgrade node' on this host ...")
+
+            LOG.info("Performing 'kubeadm upgrade node' operation on host: [%s]..."
+                     % (self._host_name))
 
             cmd = [constants.KUBEADM_PATH_FORMAT_STR.format(kubeadm_ver=to_kube_version),
                    "--kubeconfig=%s" % (self._kubeconfig), '-v4', 'upgrade', 'node']
 
-            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                       text=True, bufsize=1)
+            utils.execute_and_watch(
+                cmd, timeout=KUBEADM_UPGRADE_COMMAND_TIMEOUT, log_prefix="kubeadm-upgrade-node")
 
-            def _capture_output():
-                for line in process.stdout:
-                    LOG.info("[kubeadm-upgrade-node]: %s" % line)
-                    # Ensure that the buffer is flushed
-                    sys.stdout.flush()
+            LOG.info("'kubeadm upgrade node' operation successful on host: %s" % (self._host_name))
 
-            t = threading.Thread(target=_capture_output)
-
-            t.start()
-
-            return_code = process.wait(timeout=KUBEADM_UPGRADE_COMMAND_TIMEOUT)
-
-            t.join(timeout=KUBEADM_UPGRADE_COMMAND_TIMEOUT)
-
-            if return_code == 0:
-                LOG.info("Successfully executed command 'kubeadm upgrade node' on this host.")
-            else:
-                raise exception.ProcessExecutionError(
-                    cmd=cmd, exit_code=return_code, stderr=process.stderr.read())
-
-        except exception.ProcessExecutionError as ex:
-            if process:
-                process.kill()
-            raise exception.SysinvException("Command [%s] execution failed with error: [%s] and "
-                                            "return code: [%s]" % (cmd, ex.stderr, ex.exit_code))
         except Exception as ex:
-            if process:
-                process.kill()
-            raise exception.SysinvException("Kubeadm upgrade node operation failed "
+            raise exception.SysinvException("'kubeadm upgrade node' operation failed "
                                             "with error: [%s]" % (ex))
 
     def _update_pause_image_in_containerd(self, current_pause_image, target_pause_image):
@@ -712,50 +689,23 @@ class KubeControllerOperator(KubeHostOperator):
         :raises: SysinvException in case of failure.
         """
         try:
-            process = None
-
             to_kube_version = to_kube_version.strip('v')
 
-            LOG.info("Running command 'kubeadm upgrade apply' on this host ...")
+            LOG.info("Performing 'kubeadm upgrade apply' operation on host: [%s] ..."
+                     % (self._host_name))
 
             cmd = [constants.KUBEADM_PATH_FORMAT_STR.format(kubeadm_ver=to_kube_version),
                    "--kubeconfig=%s" % (self._kubeconfig), '-v4', 'upgrade', 'apply',
                    to_kube_version, '--allow-experimental-upgrades',
                    '--allow-release-candidate-upgrades', '-y']
 
-            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                       text=True, bufsize=1)
+            utils.execute_and_watch(
+                cmd, timeout=KUBEADM_UPGRADE_COMMAND_TIMEOUT, log_prefix="kubeadm-upgrade-apply")
 
-            def _capture_output():
-                for line in process.stdout:
-                    LOG.info("[kubeadm-upgrade-apply]: %s" % line)
-                    # Ensure that the buffer is flushed
-                    sys.stdout.flush()
+            LOG.info("'kubeadm upgrade apply' operation successful on host: %s" % (self._host_name))
 
-            t = threading.Thread(target=_capture_output)
-
-            t.start()
-
-            return_code = process.wait(timeout=KUBEADM_UPGRADE_COMMAND_TIMEOUT)
-
-            t.join(timeout=KUBEADM_UPGRADE_COMMAND_TIMEOUT)
-
-            if return_code == 0:
-                LOG.info("Successfully executed command 'kubeadm upgrade apply' on this host.")
-            else:
-                raise exception.ProcessExecutionError(
-                    cmd=cmd, exit_code=return_code, stderr=process.stderr.read())
-
-        except exception.ProcessExecutionError as ex:
-            if process:
-                process.kill()
-            raise exception.SysinvException("Command [%s] execution failed with error: [%s] and "
-                                            "return code: [%s]"
-                                            % (cmd, ex.stderr, ex.exit_code))
         except Exception as ex:
-            if process:
-                process.kill()
-            raise exception.SysinvException("Kubeadm upgrade apply operation failed "
+            raise exception.SysinvException("'kubeadm upgrade apply' operation failed "
                                             "with error: [%s]" % (ex))
 
     def _remove_older_kubelet_config_configmaps(self):
@@ -876,7 +826,7 @@ class KubeControllerOperator(KubeHostOperator):
                 }
             }
 
-            self._kubernetes_operator.kube_patch_daemon_set(
+            self._kubernetes_operator.kube_patch_daemonset(
                 "kube-proxy", kubernetes.NAMESPACE_KUBE_SYSTEM, body=patch_kube_proxy_daemonset)
 
             LOG.info("Kube-proxy deployment rollout restarted successfully.")

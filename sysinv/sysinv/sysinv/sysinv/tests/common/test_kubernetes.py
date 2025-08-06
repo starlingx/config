@@ -1778,6 +1778,181 @@ class TestKubeOperator(base.TestCase):
         mock_utils_execute.assert_called_once_with(
             *cmd, attempts=5, delay_on_retry=True, check_exit_code=0)
 
+    def test_kube_patch_service_account_success(self):
+        """Test successful execution of kube_patch_service_account
+        """
+        mock_patch_namespaced_service_account = mock.MagicMock()
+        p = mock.patch('kubernetes.client.CoreV1Api.patch_namespaced_service_account',
+                        mock_patch_namespaced_service_account)
+        p.start()
+        self.addCleanup(p.stop)
+
+        fake_service_account_name = "fake_name"
+        fake_namespace_name = "fake_namespace"
+        fake_body = {"fake_key": "fake_value"}
+
+        self.kube_operator.kube_patch_service_account(fake_service_account_name,
+                                                      fake_namespace_name,
+                                                      fake_body)
+        mock_patch_namespaced_service_account.assert_called_once_with(fake_service_account_name,
+                                                                      fake_namespace_name,
+                                                                      fake_body)
+
+    def test_kube_patch_service_account_exception(self):
+        """Test failed execution of kube_patch_service_account
+        """
+        mock_patch_namespaced_service_account = mock.MagicMock()
+        p = mock.patch('kubernetes.client.CoreV1Api.patch_namespaced_service_account',
+                        mock_patch_namespaced_service_account)
+        p.start().side_effect = Exception("Fake error")
+        self.addCleanup(p.stop)
+
+        fake_service_account_name = "fake_name"
+        fake_namespace_name = "fake_namespace"
+        fake_body = {"fake_key": "fake_value"}
+
+        self.assertRaises(Exception,  # noqa: H202
+                          self.kube_operator.kube_patch_service_account,
+                          fake_service_account_name,
+                          fake_namespace_name,
+                          fake_body)
+        mock_patch_namespaced_service_account.assert_called_once_with(fake_service_account_name,
+                                                                      fake_namespace_name,
+                                                                      fake_body)
+
+    def test_kube_patch_deployment_success(self):
+        """Test successful execution of kube_patch_deployment
+        """
+        mock_patch_namespaced_deployment = mock.MagicMock()
+        p = mock.patch('kubernetes.client.AppsV1Api.patch_namespaced_deployment',
+                        mock_patch_namespaced_deployment)
+        p.start()
+        self.addCleanup(p.stop)
+
+        fake_deployment_name = "fake_name"
+        fake_namespace_name = "fake_namespace"
+        fake_body = {"fake_key": "fake_value"}
+
+        self.kube_operator.kube_patch_deployment(fake_deployment_name,
+                                                 fake_namespace_name,
+                                                 fake_body)
+        mock_patch_namespaced_deployment.assert_called_once_with(fake_deployment_name,
+                                                                 fake_namespace_name,
+                                                                 fake_body)
+
+    def test_kube_patch_deployment_exception(self):
+        """Test failed execution of kube_patch_service_account
+        """
+        mock_patch_namespaced_deployment = mock.MagicMock()
+        p = mock.patch('kubernetes.client.AppsV1Api.patch_namespaced_deployment',
+                        mock_patch_namespaced_deployment)
+        p.start().side_effect = Exception("Fake error")
+        self.addCleanup(p.stop)
+
+        fake_deployment_name = "fake_name"
+        fake_namespace_name = "fake_namespace"
+        fake_body = {"fake_key": "fake_value"}
+
+        self.assertRaises(Exception,  # noqa: H202
+                          self.kube_operator.kube_patch_deployment,
+                          fake_deployment_name,
+                          fake_namespace_name,
+                          fake_body)
+        mock_patch_namespaced_deployment.assert_called_once_with(fake_deployment_name,
+                                                                      fake_namespace_name,
+                                                                      fake_body)
+
+    def test_kube_patch_daemonset_success(self):
+        """Test successful execution of kube_patch_daemonset
+        """
+        mock_patch_namespaced_daemonset = mock.MagicMock()
+        p = mock.patch('kubernetes.client.AppsV1Api.patch_namespaced_daemon_set',
+                        mock_patch_namespaced_daemonset)
+        p.start()
+        self.addCleanup(p.stop)
+
+        fake_deployment_name = "fake_name"
+        fake_namespace_name = "fake_namespace"
+        fake_body = {"fake_key": "fake_value"}
+
+        self.kube_operator.kube_patch_daemonset(fake_deployment_name,
+                                                fake_namespace_name,
+                                                fake_body)
+        mock_patch_namespaced_daemonset.assert_called_once_with(fake_deployment_name,
+                                                                fake_namespace_name,
+                                                                fake_body)
+
+    def test_kube_patch_daemonset_exception(self):
+        """Test failed execution of kube_patch_daemonset
+        """
+        mock_patch_namespaced_daemonset = mock.MagicMock()
+        p = mock.patch('kubernetes.client.AppsV1Api.patch_namespaced_daemon_set',
+                        mock_patch_namespaced_daemonset)
+        p.start().side_effect = Exception("Fake error")
+        self.addCleanup(p.stop)
+
+        fake_deployment_name = "fake_name"
+        fake_namespace_name = "fake_namespace"
+        fake_body = {"fake_key": "fake_value"}
+
+        self.assertRaises(Exception,  # noqa: H202
+                          self.kube_operator.kube_patch_daemonset,
+                          fake_deployment_name,
+                          fake_namespace_name,
+                          fake_body)
+        mock_patch_namespaced_daemonset.assert_called_once_with(fake_deployment_name,
+                                                                fake_namespace_name,
+                                                                fake_body)
+
+    def test_kube_get_all_configmaps_success(self):
+        """Test successful execution of kube_get_all_configmaps
+        """
+        configmap1 = kubernetes.client.V1ConfigMap(
+                        kind="ConfigMap",
+                        metadata=kubernetes.client.V1ObjectMeta(
+                            name='fake_name',
+                            namespace='fake_namespace',
+                            resource_version='1614'
+                        ),
+                    )
+
+        configmap2 = kubernetes.client.V1ConfigMap(
+                        kind="ConfigMap",
+                        metadata=kubernetes.client.V1ObjectMeta(
+                            name='fake_name2',
+                            namespace='fake_namespace',
+                            resource_version='1614'
+                        ),
+                    )
+
+        all_configmaps = kubernetes.client.V1ConfigMapList(kind='ConfigMapList',
+                                                           api_version='v1',
+                                                           metadata=kubernetes.client.V1ObjectMeta(
+                                                                resource_version='1614'),
+                                                           items=[configmap1, configmap2])
+
+        mock_list_config_map_for_all_namespaces = mock.MagicMock()
+        p = mock.patch('kubernetes.client.CoreV1Api.list_config_map_for_all_namespaces',
+                        mock_list_config_map_for_all_namespaces)
+        p.start().return_value = all_configmaps
+        self.addCleanup(p.stop)
+
+        result = self.kube_operator.kube_get_all_configmaps()
+        self.assertEqual(all_configmaps.items, result)
+        mock_list_config_map_for_all_namespaces.assert_called_once()
+
+    def test_kube_get_all_configmaps_exception(self):
+        """Test failed execution of kube_get_all_configmaps
+        """
+        mock_list_config_map_for_all_namespaces = mock.MagicMock()
+        p = mock.patch('kubernetes.client.CoreV1Api.list_config_map_for_all_namespaces',
+                        mock_list_config_map_for_all_namespaces)
+        p.start().side_effect = Exception("Fake error")
+        self.addCleanup(p.stop)
+
+        self.assertRaises(Exception, self.kube_operator.kube_get_all_configmaps)  # noqa: H202
+        mock_list_config_map_for_all_namespaces.assert_called_once()
+
 
 class TestKubernetesUtilities(base.TestCase):
     def test_is_kube_version_supported(self):

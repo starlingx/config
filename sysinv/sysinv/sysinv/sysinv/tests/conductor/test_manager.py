@@ -4470,8 +4470,1770 @@ class ManagerTestCase(base.DbTestCase):
 
         mock_kube_upgrade_kubelet.assert_not_called()
 
+    def test_kube_upgrade_control_plane_simplex_success_single_version(self):
+        """Test successful execution of control-plane upgrade on simplex systems (single version)
+        """
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_SIMPLEX
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+
+        # Create controller-0
+        config_uuid = str(uuid.uuid4())
+        controller0_host_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname=constants.CONTROLLER_0_HOSTNAME,
+            uuid=controller0_host_uuid,
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            mgmt_mac='00:11:22:33:44:55'
+        )
+
+        # Create a kubernetes upgrade
+        utils.create_test_kube_upgrade(
+            from_version='v1.29.2',
+            to_version='v1.30.6',
+            state=kubernetes.KUBE_UPGRADING_FIRST_MASTER,
+        )
+
+        # Set mock outputs. This reflects the current environment (i.e. control-plane and kubelet
+        # versions on all hosts).
+        current_control_plane_versions = {'controller-0': 'v1.29.2'}
+        current_kubelet_versions = {'controller-0': 'v1.29.2'}
+        # This is what is inside the load.
+        get_kube_versions_output = [
+            {'version': 'v1.29.2'},
+            {'version': 'v1.30.6'},
+            {'version': 'v1.31.5'},
+            {'version': 'v1.32.2'},
+            {'version': 'v1.33.0'},
+        ]
+
+        # set expectations: argument values to assert sysinv-agent API call with
+        upgrade_control_plane_to_version = 'v1.30.6'
+        is_first = True
+
+        self.service._kube = kubernetes.KubeOperator()
+
+        mock_kube_get_control_plane_versions = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.KubeOperator.kube_get_control_plane_versions',
+                       mock_kube_get_control_plane_versions)
+        p.start().return_value = current_control_plane_versions
+        self.addCleanup(p.stop)
+
+        mock_kube_get_kubelet_versions = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.KubeOperator.kube_get_kubelet_versions',
+                       mock_kube_get_kubelet_versions)
+        p.start().return_value = current_kubelet_versions
+        self.addCleanup(p.stop)
+
+        mock_get_kube_versions = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.common.kubernetes.get_kube_versions',
+            mock_get_kube_versions)
+        p.start().return_value = get_kube_versions_output
+        self.addCleanup(p.stop)
+
+        mock_sanitize_kubeadm_configmap = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.manager.ConductorManager.sanitize_kubeadm_configmap',
+                       mock_sanitize_kubeadm_configmap)
+        p.start().return_value = 0
+        self.addCleanup(p.stop)
+
+        mock_kubeadm_configmap_reformat = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.KubeOperator.kubeadm_configmap_reformat',
+                       mock_kubeadm_configmap_reformat)
+        p.start().return_value = 0
+        self.addCleanup(p.stop)
+
+        mock_upgrade_control_plane_agent_api = mock.MagicMock()
+        p = mock.patch.object(agent_rpcapi.AgentAPI, 'kube_upgrade_control_plane',
+                              mock_upgrade_control_plane_agent_api)
+        p.start()
+        self.addCleanup(p.stop)
+
+        self.service.kube_upgrade_control_plane(self.context, controller0_host_uuid)
+
+        mock_kube_get_control_plane_versions.assert_called_once()
+        mock_kube_get_kubelet_versions.assert_called_once()
+        mock_get_kube_versions.assert_called_once()
+        mock_sanitize_kubeadm_configmap.assert_called_once()
+        mock_kubeadm_configmap_reformat.assert_called_once()
+        mock_upgrade_control_plane_agent_api.assert_called_once_with(
+            self.context, controller0_host_uuid, upgrade_control_plane_to_version, is_first)
+
+    def test_kube_upgrade_control_plane_simplex_success_single_version_patch_version(self):
+        """Test successful execution of control-plane upgrade on simplex systems: patch version
+        """
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_SIMPLEX
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+
+        # Create controller-0
+        config_uuid = str(uuid.uuid4())
+        controller0_host_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname=constants.CONTROLLER_0_HOSTNAME,
+            uuid=controller0_host_uuid,
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            mgmt_mac='00:11:22:33:44:55'
+        )
+
+        # Create an upgrade
+        utils.create_test_kube_upgrade(
+            from_version='v1.29.2',
+            to_version='v1.29.3',
+            state=kubernetes.KUBE_UPGRADING_FIRST_MASTER,
+        )
+
+        # Set mock outputs. This reflects the current environment (i.e. control-plane and kubelet
+        # versions on all hosts).
+        current_control_plane_versions = {'controller-0': 'v1.29.2'}
+        current_kubelet_versions = {'controller-0': 'v1.29.3'}
+        # This is what is inside the load.
+        get_kube_versions_output = [
+            {'version': 'v1.29.2'},
+            {'version': 'v1.29.3'},
+            {'version': 'v1.30.6'},
+            {'version': 'v1.31.5'},
+            {'version': 'v1.32.2'},
+            {'version': 'v1.33.0'},
+        ]
+
+        # Set expectations. argument values to assert sysinv-agent API call with
+        upgrade_control_plane_to_version = 'v1.29.3'
+        is_first = True
+
+        self.service._kube = kubernetes.KubeOperator()
+
+        mock_kube_get_control_plane_versions = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.KubeOperator.kube_get_control_plane_versions',
+                       mock_kube_get_control_plane_versions)
+        p.start().return_value = current_control_plane_versions
+        self.addCleanup(p.stop)
+
+        mock_kube_get_kubelet_versions = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.KubeOperator.kube_get_kubelet_versions',
+                       mock_kube_get_kubelet_versions)
+        p.start().return_value = current_kubelet_versions
+        self.addCleanup(p.stop)
+
+        mock_get_kube_versions = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.common.kubernetes.get_kube_versions',
+            mock_get_kube_versions)
+        p.start().return_value = get_kube_versions_output
+        self.addCleanup(p.stop)
+
+        mock_sanitize_kubeadm_configmap = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.manager.ConductorManager.sanitize_kubeadm_configmap',
+                       mock_sanitize_kubeadm_configmap)
+        p.start().return_value = 0
+        self.addCleanup(p.stop)
+
+        mock_kubeadm_configmap_reformat = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.KubeOperator.kubeadm_configmap_reformat',
+                       mock_kubeadm_configmap_reformat)
+        p.start().return_value = 0
+        self.addCleanup(p.stop)
+
+        mock_upgrade_control_plane_agent_api = mock.MagicMock()
+        p = mock.patch.object(agent_rpcapi.AgentAPI, 'kube_upgrade_control_plane',
+                              mock_upgrade_control_plane_agent_api)
+        p.start()
+        self.addCleanup(p.stop)
+
+        self.service.kube_upgrade_control_plane(self.context, controller0_host_uuid)
+
+        mock_kube_get_control_plane_versions.assert_called_once()
+        mock_kube_get_kubelet_versions.assert_called_once()
+        mock_get_kube_versions.assert_called_once()
+        mock_sanitize_kubeadm_configmap.assert_called_once()
+        mock_kubeadm_configmap_reformat.assert_called_once()
+        mock_upgrade_control_plane_agent_api.assert_called_once_with(
+            self.context, controller0_host_uuid, upgrade_control_plane_to_version, is_first)
+
+    def test_kube_upgrade_control_plane_simplex_success_multi_version(self):
+        """Test successful execution of control-plane upgrade on simplex systems (multi-version)
+        """
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_SIMPLEX
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+
+        # Create controller-0
+        config_uuid = str(uuid.uuid4())
+        controller0_host_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname=constants.CONTROLLER_0_HOSTNAME,
+            uuid=controller0_host_uuid,
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            mgmt_mac='00:11:22:33:44:55'
+        )
+
+        # Create an upgrade
+        utils.create_test_kube_upgrade(
+            from_version='v1.29.2',
+            to_version='v1.33.0',
+            state=kubernetes.KUBE_UPGRADING_FIRST_MASTER,
+        )
+
+        # Set mock outputs. This reflects the current environment (i.e. control-plane and kubelet
+        # versions on all hosts).
+        current_control_plane_versions = {'controller-0': 'v1.29.2'}
+        current_kubelet_versions = {'controller-0': 'v1.29.2'}
+        # This is what is inside the load.
+        get_kube_versions_output = [
+            {'version': 'v1.29.2'},
+            {'version': 'v1.30.6'},
+            {'version': 'v1.31.5'},
+            {'version': 'v1.32.2'},
+            {'version': 'v1.33.0'},
+        ]
+
+        # Set expectations: argument values to assert sysinv-agent API call with
+        upgrade_control_plane_to_version = 'v1.30.6'
+        is_first = True
+
+        self.service._kube = kubernetes.KubeOperator()
+
+        mock_kube_get_control_plane_versions = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.KubeOperator.kube_get_control_plane_versions',
+                       mock_kube_get_control_plane_versions)
+        p.start().return_value = current_control_plane_versions
+        self.addCleanup(p.stop)
+
+        mock_kube_get_kubelet_versions = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.KubeOperator.kube_get_kubelet_versions',
+                       mock_kube_get_kubelet_versions)
+        p.start().return_value = current_kubelet_versions
+        self.addCleanup(p.stop)
+
+        mock_get_kube_versions = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.common.kubernetes.get_kube_versions',
+            mock_get_kube_versions)
+        p.start().return_value = get_kube_versions_output
+        self.addCleanup(p.stop)
+
+        mock_sanitize_kubeadm_configmap = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.manager.ConductorManager.sanitize_kubeadm_configmap',
+                       mock_sanitize_kubeadm_configmap)
+        p.start().return_value = 0
+        self.addCleanup(p.stop)
+
+        mock_kubeadm_configmap_reformat = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.KubeOperator.kubeadm_configmap_reformat',
+                       mock_kubeadm_configmap_reformat)
+        p.start().return_value = 0
+        self.addCleanup(p.stop)
+
+        mock_upgrade_control_plane_agent_api = mock.MagicMock()
+        p = mock.patch.object(agent_rpcapi.AgentAPI, 'kube_upgrade_control_plane',
+                              mock_upgrade_control_plane_agent_api)
+        p.start()
+        self.addCleanup(p.stop)
+
+        self.service.kube_upgrade_control_plane(self.context, controller0_host_uuid)
+
+        mock_kube_get_control_plane_versions.assert_called_once()
+        mock_kube_get_kubelet_versions.assert_called_once()
+        mock_get_kube_versions.assert_called_once()
+        mock_sanitize_kubeadm_configmap.assert_called_once()
+        mock_kubeadm_configmap_reformat.assert_called_once()
+        mock_upgrade_control_plane_agent_api.assert_called_once_with(
+            self.context, controller0_host_uuid, upgrade_control_plane_to_version, is_first)
+
+    def test_kube_upgrade_control_plane_simplex_success_multi_version_intermediate_versions(self):
+        """Test successful execution of control-plane upgrade on simplex systems (multi-version)
+
+        Both FROM_VERSION and TO_VERSION are intermediate versions supported
+        """
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_SIMPLEX
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+
+        # Create controller-0
+        config_uuid = str(uuid.uuid4())
+        controller0_host_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname=constants.CONTROLLER_0_HOSTNAME,
+            uuid=controller0_host_uuid,
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            mgmt_mac='00:11:22:33:44:55'
+        )
+
+        # Create an upgrade
+        utils.create_test_kube_upgrade(
+            from_version='v1.30.6',
+            to_version='v1.32.2',
+            state=kubernetes.KUBE_UPGRADING_FIRST_MASTER,
+        )
+
+        # Set mock outputs. This reflects the current environment (i.e. control-plane and kubelet
+        # versions on all hosts).
+        current_control_plane_versions = {'controller-0': 'v1.30.6'}
+        current_kubelet_versions = {'controller-0': 'v1.30.6'}
+        # This is what is inside the load.
+        get_kube_versions_output = [
+            {'version': 'v1.29.2'},
+            {'version': 'v1.30.6'},
+            {'version': 'v1.31.5'},
+            {'version': 'v1.32.2'},
+            {'version': 'v1.33.0'},
+        ]
+
+        # Set expectations: argument values to assert sysinv-agent API call with
+        upgrade_control_plane_to_version = 'v1.31.5'
+        is_first = True
+
+        self.service._kube = kubernetes.KubeOperator()
+
+        mock_kube_get_control_plane_versions = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.KubeOperator.kube_get_control_plane_versions',
+                       mock_kube_get_control_plane_versions)
+        p.start().return_value = current_control_plane_versions
+        self.addCleanup(p.stop)
+
+        mock_kube_get_kubelet_versions = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.KubeOperator.kube_get_kubelet_versions',
+                       mock_kube_get_kubelet_versions)
+        p.start().return_value = current_kubelet_versions
+        self.addCleanup(p.stop)
+
+        mock_get_kube_versions = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.common.kubernetes.get_kube_versions',
+            mock_get_kube_versions)
+        p.start().return_value = get_kube_versions_output
+        self.addCleanup(p.stop)
+
+        mock_sanitize_kubeadm_configmap = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.manager.ConductorManager.sanitize_kubeadm_configmap',
+                       mock_sanitize_kubeadm_configmap)
+        p.start().return_value = 0
+        self.addCleanup(p.stop)
+
+        mock_kubeadm_configmap_reformat = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.KubeOperator.kubeadm_configmap_reformat',
+                       mock_kubeadm_configmap_reformat)
+        p.start().return_value = 0
+        self.addCleanup(p.stop)
+
+        mock_upgrade_control_plane_agent_api = mock.MagicMock()
+        p = mock.patch.object(agent_rpcapi.AgentAPI, 'kube_upgrade_control_plane',
+                              mock_upgrade_control_plane_agent_api)
+        p.start()
+        self.addCleanup(p.stop)
+
+        self.service.kube_upgrade_control_plane(self.context, controller0_host_uuid)
+
+        mock_kube_get_control_plane_versions.assert_called_once()
+        mock_kube_get_kubelet_versions.assert_called_once()
+        mock_get_kube_versions.assert_called_once()
+        mock_sanitize_kubeadm_configmap.assert_called_once()
+        mock_kubeadm_configmap_reformat.assert_called_once()
+        mock_upgrade_control_plane_agent_api.assert_called_once_with(
+            self.context, controller0_host_uuid, upgrade_control_plane_to_version, is_first)
+
+    def test_kube_upgrade_control_plane_simplex_success_with_skew_policy_exact_skew(self):
+        """Test successful execution of control-plane upgrade on simplex systems with version skew policy: exact skew
+        """
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_SIMPLEX
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+
+        # Create controller-0
+        config_uuid = str(uuid.uuid4())
+        controller0_host_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname=constants.CONTROLLER_0_HOSTNAME,
+            uuid=controller0_host_uuid,
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            mgmt_mac='00:11:22:33:44:55'
+        )
+
+        # Create an upgrade
+        utils.create_test_kube_upgrade(
+            from_version='v1.29.2',
+            to_version='v1.33.0',
+            state=kubernetes.KUBE_UPGRADING_FIRST_MASTER,
+        )
+
+        # Set mock outputs. This reflects the current environment (i.e. control-plane and kubelet
+        # versions on all hosts).
+        # Make the control plane upgrade pass, with 3 kubelet skew
+        # e.g., 32 - 29 = 3 (exact tolerance)
+        current_control_plane_versions = {'controller-0': 'v1.31.5'}
+        current_kubelet_versions = {'controller-0': 'v1.29.2'}
+        # This is what is inside the load.
+        get_kube_versions_output = [
+            {'version': 'v1.29.2'},
+            {'version': 'v1.30.6'},
+            {'version': 'v1.31.5'},
+            {'version': 'v1.32.2'},
+            {'version': 'v1.33.0'},
+        ]
+
+        # Set expectations: argument values to assert sysinv-agent API call with
+        upgrade_control_plane_to_version = 'v1.32.2'
+        is_first = True
+
+        self.service._kube = kubernetes.KubeOperator()
+
+        mock_kube_get_control_plane_versions = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.KubeOperator.kube_get_control_plane_versions',
+                       mock_kube_get_control_plane_versions)
+        p.start().return_value = current_control_plane_versions
+        self.addCleanup(p.stop)
+
+        mock_kube_get_kubelet_versions = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.KubeOperator.kube_get_kubelet_versions',
+                       mock_kube_get_kubelet_versions)
+        p.start().return_value = current_kubelet_versions
+        self.addCleanup(p.stop)
+
+        mock_get_kube_versions = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.common.kubernetes.get_kube_versions',
+            mock_get_kube_versions)
+        p.start().return_value = get_kube_versions_output
+        self.addCleanup(p.stop)
+
+        mock_sanitize_kubeadm_configmap = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.manager.ConductorManager.sanitize_kubeadm_configmap',
+                       mock_sanitize_kubeadm_configmap)
+        p.start().return_value = 0
+        self.addCleanup(p.stop)
+
+        mock_kubeadm_configmap_reformat = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.KubeOperator.kubeadm_configmap_reformat',
+                       mock_kubeadm_configmap_reformat)
+        p.start().return_value = 0
+        self.addCleanup(p.stop)
+
+        mock_upgrade_control_plane_agent_api = mock.MagicMock()
+        p = mock.patch.object(agent_rpcapi.AgentAPI, 'kube_upgrade_control_plane',
+                              mock_upgrade_control_plane_agent_api)
+        p.start()
+        self.addCleanup(p.stop)
+
+        self.service.kube_upgrade_control_plane(self.context, controller0_host_uuid)
+
+        mock_kube_get_control_plane_versions.assert_called_once()
+        mock_kube_get_kubelet_versions.assert_called_once()
+        mock_get_kube_versions.assert_called_once()
+        mock_sanitize_kubeadm_configmap.assert_called_once()
+        mock_kubeadm_configmap_reformat.assert_called_once()
+        mock_upgrade_control_plane_agent_api.assert_called_once_with(
+            self.context, controller0_host_uuid, upgrade_control_plane_to_version, is_first)
+
+    def test_kube_upgrade_control_plane_simplex_failure_with_skew_policy_exceeded(self):
+        """Test failed execution of control-plane upgrade on simplex systems with version skew policy exceeded
+        """
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_SIMPLEX
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+
+        # Create controller-0
+        config_uuid = str(uuid.uuid4())
+        controller0_host_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname=constants.CONTROLLER_0_HOSTNAME,
+            uuid=controller0_host_uuid,
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            mgmt_mac='00:11:22:33:44:55'
+        )
+
+        # Create an upgrade
+        utils.create_test_kube_upgrade(
+            from_version='v1.29.2',
+            to_version='v1.33.0',
+            state=kubernetes.KUBE_UPGRADING_FIRST_MASTER,
+        )
+
+        # Set mock outputs. This reflects the current environment (i.e. control-plane and kubelet
+        # versions on all hosts).
+        # Make the control plane upgrade fail, one node has large kubelet skew,
+        # e.g., 33 - 29 = 4 (>3 tolerance)
+        current_control_plane_versions = {'controller-0': 'v1.32.2'}
+        current_kubelet_versions = {'controller-0': 'v1.29.2'}
+        # This is what is inside the load.
+        get_kube_versions_output = [
+            {'version': 'v1.29.2'},
+            {'version': 'v1.30.6'},
+            {'version': 'v1.31.5'},
+            {'version': 'v1.32.2'},
+            {'version': 'v1.33.0'},
+        ]
+
+        self.service._kube = kubernetes.KubeOperator()
+
+        mock_kube_get_control_plane_versions = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.KubeOperator.kube_get_control_plane_versions',
+                       mock_kube_get_control_plane_versions)
+        p.start().return_value = current_control_plane_versions
+        self.addCleanup(p.stop)
+
+        mock_kube_get_kubelet_versions = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.KubeOperator.kube_get_kubelet_versions',
+                       mock_kube_get_kubelet_versions)
+        p.start().return_value = current_kubelet_versions
+        self.addCleanup(p.stop)
+
+        mock_get_kube_versions = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.common.kubernetes.get_kube_versions',
+            mock_get_kube_versions)
+        p.start().return_value = get_kube_versions_output
+        self.addCleanup(p.stop)
+
+        mock_sanitize_kubeadm_configmap = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.manager.ConductorManager.sanitize_kubeadm_configmap',
+                       mock_sanitize_kubeadm_configmap)
+        p.start().return_value = 0
+        self.addCleanup(p.stop)
+
+        mock_kubeadm_configmap_reformat = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.KubeOperator.kubeadm_configmap_reformat',
+                       mock_kubeadm_configmap_reformat)
+        p.start().return_value = 0
+        self.addCleanup(p.stop)
+
+        mock_upgrade_control_plane_agent_api = mock.MagicMock()
+        p = mock.patch.object(agent_rpcapi.AgentAPI, 'kube_upgrade_control_plane',
+                              mock_upgrade_control_plane_agent_api)
+        p.start()
+        self.addCleanup(p.stop)
+
+        self.service.kube_upgrade_control_plane(self.context, controller0_host_uuid)
+
+        mock_kube_get_control_plane_versions.assert_called_once()
+        mock_kube_get_kubelet_versions.assert_called_once()
+        mock_get_kube_versions.assert_called_once()
+        mock_sanitize_kubeadm_configmap.assert_not_called()
+        mock_kubeadm_configmap_reformat.assert_not_called()
+        mock_upgrade_control_plane_agent_api.assert_not_called()
+
+        updated_upgrade = self.dbapi.kube_upgrade_get_one()
+        self.assertEqual(updated_upgrade.state, kubernetes.KUBE_UPGRADING_FIRST_MASTER_FAILED)
+
+    def test_kube_upgrade_control_plane_simplex_failure_with_invalid_state(self):
+        """Test successful execution of control-plane upgrade on simplex systems with invalid state
+
+        Invalid state: KUBE_UPGRADING_KUBELETS. Should be either KUBE_UPGRADING_FIRST_MASTER
+        or KUBE_UPGRADING_SECOND_MASTER
+        """
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_SIMPLEX
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+
+        # Create controller-0
+        config_uuid = str(uuid.uuid4())
+        controller0_host_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname=constants.CONTROLLER_0_HOSTNAME,
+            uuid=controller0_host_uuid,
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            mgmt_mac='00:11:22:33:44:55'
+        )
+
+        # Create an upgrade
+        utils.create_test_kube_upgrade(
+            from_version='v1.29.2',
+            to_version='v1.33.0',
+            state=kubernetes.KUBE_UPGRADING_KUBELETS,
+        )
+
+        self.service._kube = kubernetes.KubeOperator()
+
+        mock_kube_get_control_plane_versions = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.KubeOperator.kube_get_control_plane_versions',
+                       mock_kube_get_control_plane_versions)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_kube_get_kubelet_versions = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.KubeOperator.kube_get_kubelet_versions',
+                       mock_kube_get_kubelet_versions)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_get_kube_versions = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.common.kubernetes.get_kube_versions',
+            mock_get_kube_versions)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_sanitize_kubeadm_configmap = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.manager.ConductorManager.sanitize_kubeadm_configmap',
+                       mock_sanitize_kubeadm_configmap)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_kubeadm_configmap_reformat = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.KubeOperator.kubeadm_configmap_reformat',
+                       mock_kubeadm_configmap_reformat)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_upgrade_control_plane_agent_api = mock.MagicMock()
+        p = mock.patch.object(agent_rpcapi.AgentAPI, 'kube_upgrade_control_plane',
+                              mock_upgrade_control_plane_agent_api)
+        p.start()
+        self.addCleanup(p.stop)
+
+        self.assertRaises(exception.SysinvException,
+                          self.service.kube_upgrade_control_plane,
+                          self.context,
+                          controller0_host_uuid)
+
+        mock_kube_get_control_plane_versions.assert_not_called()
+        mock_kube_get_kubelet_versions.assert_not_called()
+        mock_get_kube_versions.assert_not_called()
+        mock_sanitize_kubeadm_configmap.assert_not_called()
+        mock_kubeadm_configmap_reformat.assert_not_called()
+        mock_upgrade_control_plane_agent_api.assert_not_called()
+
+    def test_kube_upgrade_control_plane_duplex_success_first_master(self):
+        """Test successful execution of control-plane upgrade on Duplex systems: first master
+        """
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_DUPLEX
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+
+        # Create controller-0
+        config_uuid = str(uuid.uuid4())
+        controller0_host_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname=constants.CONTROLLER_0_HOSTNAME,
+            uuid=controller0_host_uuid,
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            mgmt_mac='00:11:22:33:44:55'
+        )
+
+        # Create controller-1
+        config_uuid = str(uuid.uuid4())
+        controller1_host_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname=constants.CONTROLLER_1_HOSTNAME,
+            uuid=controller1_host_uuid,
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            mgmt_mac='00:11:22:33:44:56'
+        )
+
+        # Create an upgrade
+        utils.create_test_kube_upgrade(
+            from_version='v1.29.2',
+            to_version='v1.30.6',
+            state=kubernetes.KUBE_UPGRADING_FIRST_MASTER,
+        )
+
+        # Set mock outputs. This reflects the current environment (i.e. control-plane and kubelet
+        # versions on all hosts).
+        current_control_plane_versions = {'controller-0': 'v1.29.2',
+                                          'controller-1': 'v1.29.2'}
+        current_kubelet_versions = {'controller-0': 'v1.29.2',
+                                    'controller-1': 'v1.29.2'}
+        # This is what is inside the load.
+        get_kube_versions_output = [
+            {'version': 'v1.29.2'},
+            {'version': 'v1.30.6'},
+            {'version': 'v1.31.5'},
+            {'version': 'v1.32.2'},
+            {'version': 'v1.33.0'},
+        ]
+
+        # Set expectations. argument values to assert sysinv-agent API call with
+        upgrade_control_plane_to_version = 'v1.30.6'
+        is_first = True
+
+        self.service._kube = kubernetes.KubeOperator()
+
+        mock_kube_get_control_plane_versions = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.KubeOperator.kube_get_control_plane_versions',
+                       mock_kube_get_control_plane_versions)
+        p.start().return_value = current_control_plane_versions
+        self.addCleanup(p.stop)
+
+        mock_kube_get_kubelet_versions = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.KubeOperator.kube_get_kubelet_versions',
+                       mock_kube_get_kubelet_versions)
+        p.start().return_value = current_kubelet_versions
+        self.addCleanup(p.stop)
+
+        mock_get_kube_versions = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.common.kubernetes.get_kube_versions',
+            mock_get_kube_versions)
+        p.start().return_value = get_kube_versions_output
+        self.addCleanup(p.stop)
+
+        mock_sanitize_kubeadm_configmap = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.manager.ConductorManager.sanitize_kubeadm_configmap',
+                       mock_sanitize_kubeadm_configmap)
+        p.start().return_value = 0
+        self.addCleanup(p.stop)
+
+        mock_kubeadm_configmap_reformat = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.KubeOperator.kubeadm_configmap_reformat',
+                       mock_kubeadm_configmap_reformat)
+        p.start().return_value = 0
+        self.addCleanup(p.stop)
+
+        mock_upgrade_control_plane_agent_api = mock.MagicMock()
+        p = mock.patch.object(agent_rpcapi.AgentAPI, 'kube_upgrade_control_plane',
+                              mock_upgrade_control_plane_agent_api)
+        p.start()
+        self.addCleanup(p.stop)
+
+        self.service.kube_upgrade_control_plane(self.context, controller0_host_uuid)
+
+        mock_kube_get_control_plane_versions.assert_called_once()
+        mock_kube_get_kubelet_versions.assert_called_once()
+        mock_sanitize_kubeadm_configmap.assert_called_once()
+        mock_kubeadm_configmap_reformat.assert_called_once()
+        mock_upgrade_control_plane_agent_api.assert_called_once_with(
+            self.context, controller0_host_uuid, upgrade_control_plane_to_version, is_first)
+
+    def test_kube_upgrade_control_plane_duplex_success_second_master(self):
+        """Test successful execution of control-plane upgrade on Duplex systems: second master
+        """
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_DUPLEX
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+
+        # Create controller-0
+        config_uuid = str(uuid.uuid4())
+        controller0_host_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname=constants.CONTROLLER_0_HOSTNAME,
+            uuid=controller0_host_uuid,
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            mgmt_mac='00:11:22:33:44:55'
+        )
+
+        # Create controller-1
+        config_uuid = str(uuid.uuid4())
+        controller1_host_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname=constants.CONTROLLER_1_HOSTNAME,
+            uuid=controller1_host_uuid,
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            mgmt_mac='00:11:22:33:44:56'
+        )
+
+        # Create an upgrade
+        utils.create_test_kube_upgrade(
+            from_version='v1.29.2',
+            to_version='v1.30.6',
+            state=kubernetes.KUBE_UPGRADING_SECOND_MASTER,
+        )
+
+        # Set mock outputs. This reflects the current environment (i.e. control-plane and kubelet
+        # versions on all hosts).
+        current_control_plane_versions = {'controller-0': 'v1.30.6',
+                                          'controller-1': 'v1.29.2'}
+        current_kubelet_versions = {'controller-0': 'v1.29.2',
+                                    'controller-1': 'v1.29.2'}
+        # This is what is inside the load.
+        get_kube_versions_output = [
+            {'version': 'v1.29.2'},
+            {'version': 'v1.30.6'},
+            {'version': 'v1.31.5'},
+            {'version': 'v1.32.2'},
+            {'version': 'v1.33.0'},
+        ]
+
+        # Set expectations. argument values to assert sysinv-agent API call with
+        upgrade_control_plane_to_version = 'v1.30.6'
+        is_first = False
+
+        self.service._kube = kubernetes.KubeOperator()
+
+        mock_kube_get_control_plane_versions = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.KubeOperator.kube_get_control_plane_versions',
+                       mock_kube_get_control_plane_versions)
+        p.start().return_value = current_control_plane_versions
+        self.addCleanup(p.stop)
+
+        mock_kube_get_kubelet_versions = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.KubeOperator.kube_get_kubelet_versions',
+                       mock_kube_get_kubelet_versions)
+        p.start().return_value = current_kubelet_versions
+        self.addCleanup(p.stop)
+
+        mock_get_kube_versions = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.common.kubernetes.get_kube_versions',
+            mock_get_kube_versions)
+        p.start().return_value = get_kube_versions_output
+        self.addCleanup(p.stop)
+
+        mock_sanitize_kubeadm_configmap = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.manager.ConductorManager.sanitize_kubeadm_configmap',
+                       mock_sanitize_kubeadm_configmap)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_kubeadm_configmap_reformat = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.KubeOperator.kubeadm_configmap_reformat',
+                       mock_kubeadm_configmap_reformat)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_upgrade_control_plane_agent_api = mock.MagicMock()
+        p = mock.patch.object(agent_rpcapi.AgentAPI, 'kube_upgrade_control_plane',
+                              mock_upgrade_control_plane_agent_api)
+        p.start()
+        self.addCleanup(p.stop)
+
+        self.service.kube_upgrade_control_plane(self.context, controller1_host_uuid)
+
+        mock_kube_get_control_plane_versions.assert_called_once()
+        mock_kube_get_kubelet_versions.assert_called_once()
+        mock_sanitize_kubeadm_configmap.assert_not_called()
+        mock_kubeadm_configmap_reformat.assert_not_called()
+        mock_upgrade_control_plane_agent_api.assert_called_once_with(
+            self.context, controller1_host_uuid, upgrade_control_plane_to_version, is_first)
+
+    def test_kube_upgrade_control_plane_duplex_success_second_master_patch_version(self):
+        """Test successful execution of control-plane upgrade on duplex systems: second master
+
+        Patch version upgrade type for second master
+        """
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_DUPLEX
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+
+        # Create controller-0
+        config_uuid = str(uuid.uuid4())
+        controller0_host_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname=constants.CONTROLLER_0_HOSTNAME,
+            uuid=controller0_host_uuid,
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            mgmt_mac='00:11:22:33:44:55'
+        )
+
+        # Create controller-1
+        config_uuid = str(uuid.uuid4())
+        controller1_host_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname=constants.CONTROLLER_1_HOSTNAME,
+            uuid=controller1_host_uuid,
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            mgmt_mac='00:11:22:33:44:56'
+        )
+
+        # Create an upgrade
+        utils.create_test_kube_upgrade(
+            from_version='v1.29.2',
+            to_version='v1.29.3',
+            state=kubernetes.KUBE_UPGRADING_SECOND_MASTER,
+        )
+
+        # Set mock outputs. This reflects the current environment (i.e. control-plane and kubelet
+        # versions on all hosts).
+        current_control_plane_versions = {'controller-0': 'v1.29.3',
+                                          'controller-1': 'v1.29.2'}
+        current_kubelet_versions = {'controller-0': 'v1.29.2',
+                                    'controller-1': 'v1.29.2'}
+        # This is what is inside the load.
+        get_kube_versions_output = [
+            {'version': 'v1.29.2'},
+            {'version': 'v1.29.3'},
+            {'version': 'v1.30.6'},
+            {'version': 'v1.31.5'},
+            {'version': 'v1.32.2'},
+            {'version': 'v1.33.0'},
+        ]
+
+        # Set expectations: argument values with which Sysinv-agent API call is expected to be made
+        upgrade_control_plane_to_version = 'v1.29.3'
+        is_first = False
+
+        self.service._kube = kubernetes.KubeOperator()
+
+        mock_kube_get_control_plane_versions = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.KubeOperator.kube_get_control_plane_versions',
+                       mock_kube_get_control_plane_versions)
+        p.start().return_value = current_control_plane_versions
+        self.addCleanup(p.stop)
+
+        mock_kube_get_kubelet_versions = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.KubeOperator.kube_get_kubelet_versions',
+                       mock_kube_get_kubelet_versions)
+        p.start().return_value = current_kubelet_versions
+        self.addCleanup(p.stop)
+
+        mock_get_kube_versions = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.common.kubernetes.get_kube_versions',
+            mock_get_kube_versions)
+        p.start().return_value = get_kube_versions_output
+        self.addCleanup(p.stop)
+
+        mock_sanitize_kubeadm_configmap = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.manager.ConductorManager.sanitize_kubeadm_configmap',
+                       mock_sanitize_kubeadm_configmap)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_kubeadm_configmap_reformat = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.KubeOperator.kubeadm_configmap_reformat',
+                       mock_kubeadm_configmap_reformat)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_upgrade_control_plane_agent_api = mock.MagicMock()
+        p = mock.patch.object(agent_rpcapi.AgentAPI, 'kube_upgrade_control_plane',
+                              mock_upgrade_control_plane_agent_api)
+        p.start()
+        self.addCleanup(p.stop)
+
+        self.service.kube_upgrade_control_plane(self.context, controller1_host_uuid)
+
+        mock_kube_get_control_plane_versions.assert_called_once()
+        mock_kube_get_kubelet_versions.assert_called_once()
+        mock_sanitize_kubeadm_configmap.assert_not_called()
+        mock_kubeadm_configmap_reformat.assert_not_called()
+        mock_upgrade_control_plane_agent_api.assert_called_once_with(
+            self.context, controller1_host_uuid, upgrade_control_plane_to_version, is_first)
+
+    def test_kube_upgrade_control_plane_duplex_with_worker_success_with_skew_reached(self):
+        """Test successful execution of control-plane upgrade on duplex systems: first master
+
+        """
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_DUPLEX
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+
+        # Create controller-0
+        config_uuid = str(uuid.uuid4())
+        controller0_host_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname=constants.CONTROLLER_0_HOSTNAME,
+            uuid=controller0_host_uuid,
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            mgmt_mac='00:11:22:33:44:55'
+        )
+
+        # Create controller-1
+        config_uuid = str(uuid.uuid4())
+        controller1_host_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname=constants.CONTROLLER_1_HOSTNAME,
+            uuid=controller1_host_uuid,
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            mgmt_mac='00:11:22:33:44:56'
+        )
+
+        # Create compute-0
+        config_uuid = str(uuid.uuid4())
+        compute0_host_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.WORKER,
+            hostname='compute-0',
+            uuid=compute0_host_uuid,
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            mgmt_mac='00:11:22:33:44:57')
+
+        # Create an upgrade
+        utils.create_test_kube_upgrade(
+            from_version='v1.29.2',
+            to_version='v1.33.0',
+            state=kubernetes.KUBE_UPGRADING_FIRST_MASTER,
+        )
+
+        # Set mock outputs This reflects the current environment (i.e. control-plane and kubelet
+        # versions on all hosts).
+        # Make the control plane upgrade pass, with 3 kubelet skew
+        # e.g., 32 - 29 = 3 (exact tolerance)
+        current_control_plane_versions = {'controller-0': 'v1.31.5',
+                                          'controller-1': 'v1.31.5'}
+        current_kubelet_versions = {'controller-0': 'v1.31.5',
+                                    'controller-1': 'v1.31.5',
+                                    'compute-0': 'v1.29.2'}
+        # This is what is inside the load.
+        get_kube_versions_output = [
+            {'version': 'v1.29.2'},
+            {'version': 'v1.30.6'},
+            {'version': 'v1.31.5'},
+            {'version': 'v1.32.2'},
+            {'version': 'v1.33.0'},
+        ]
+
+        # Set expectations: argument values with which Sysinv-agent API call is expected to be made
+        upgrade_control_plane_to_version = 'v1.32.2'
+        is_first = True
+
+        self.service._kube = kubernetes.KubeOperator()
+
+        mock_kube_get_control_plane_versions = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.KubeOperator.kube_get_control_plane_versions',
+                       mock_kube_get_control_plane_versions)
+        p.start().return_value = current_control_plane_versions
+        self.addCleanup(p.stop)
+
+        mock_kube_get_kubelet_versions = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.KubeOperator.kube_get_kubelet_versions',
+                       mock_kube_get_kubelet_versions)
+        p.start().return_value = current_kubelet_versions
+        self.addCleanup(p.stop)
+
+        mock_get_kube_versions = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.common.kubernetes.get_kube_versions',
+            mock_get_kube_versions)
+        p.start().return_value = get_kube_versions_output
+        self.addCleanup(p.stop)
+
+        mock_sanitize_kubeadm_configmap = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.manager.ConductorManager.sanitize_kubeadm_configmap',
+                       mock_sanitize_kubeadm_configmap)
+        p.start().return_value = 0
+        self.addCleanup(p.stop)
+
+        mock_kubeadm_configmap_reformat = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.KubeOperator.kubeadm_configmap_reformat',
+                       mock_kubeadm_configmap_reformat)
+        p.start().return_value = 0
+        self.addCleanup(p.stop)
+
+        mock_upgrade_control_plane_agent_api = mock.MagicMock()
+        p = mock.patch.object(agent_rpcapi.AgentAPI, 'kube_upgrade_control_plane',
+                              mock_upgrade_control_plane_agent_api)
+        p.start()
+        self.addCleanup(p.stop)
+
+        self.service.kube_upgrade_control_plane(self.context, controller0_host_uuid)
+
+        mock_kube_get_control_plane_versions.assert_called_once()
+        mock_kube_get_kubelet_versions.assert_called_once()
+        mock_get_kube_versions.assert_called_once()
+        mock_sanitize_kubeadm_configmap.assert_called_once()
+        mock_kubeadm_configmap_reformat.assert_called_once()
+        mock_upgrade_control_plane_agent_api.assert_called_once_with(
+            self.context, controller0_host_uuid, upgrade_control_plane_to_version, is_first)
+
+    def test_kube_upgrade_control_plane_duplex_with_worker_failure_with_skew_exceeded(self):
+        """Test failed execution of control-plane upgrade on duplex systems: first master
+
+        Skew policy exceeded
+        """
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_DUPLEX
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+
+        # Create controller-0
+        config_uuid = str(uuid.uuid4())
+        controller0_host_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname=constants.CONTROLLER_0_HOSTNAME,
+            uuid=controller0_host_uuid,
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            mgmt_mac='00:11:22:33:44:55'
+        )
+
+        # Create controller-1
+        config_uuid = str(uuid.uuid4())
+        controller1_host_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname=constants.CONTROLLER_1_HOSTNAME,
+            uuid=controller1_host_uuid,
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            mgmt_mac='00:11:22:33:44:56'
+        )
+
+        # Create compute-0
+        config_uuid = str(uuid.uuid4())
+        compute0_host_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.WORKER,
+            hostname='compute-0',
+            uuid=compute0_host_uuid,
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            mgmt_mac='00:11:22:33:44:57')
+
+        # Create an upgrade
+        utils.create_test_kube_upgrade(
+            from_version='v1.29.2',
+            to_version='v1.33.0',
+            state=kubernetes.KUBE_UPGRADING_FIRST_MASTER,
+        )
+
+        # Set mock outputs This reflects the current environment (i.e. control-plane and kubelet
+        # versions on all hosts).
+        # Make the control plane upgrade fail, one node has large kubelet skew,
+        # e.g., 33 - 29 = 4 (>3 tolerance)
+        current_control_plane_versions = {'controller-0': 'v1.32.2',
+                                          'controller-1': 'v1.32.2'}
+        current_kubelet_versions = {'controller-0': 'v1.32.2',
+                                    'controller-1': 'v1.32.2',
+                                    'compute-0': 'v1.29.2'}
+        # This is what is inside the load.
+        get_kube_versions_output = [
+            {'version': 'v1.29.2'},
+            {'version': 'v1.30.6'},
+            {'version': 'v1.31.5'},
+            {'version': 'v1.32.2'},
+            {'version': 'v1.33.0'},
+        ]
+
+        self.service._kube = kubernetes.KubeOperator()
+
+        mock_kube_get_control_plane_versions = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.KubeOperator.kube_get_control_plane_versions',
+                       mock_kube_get_control_plane_versions)
+        p.start().return_value = current_control_plane_versions
+        self.addCleanup(p.stop)
+
+        mock_kube_get_kubelet_versions = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.KubeOperator.kube_get_kubelet_versions',
+                       mock_kube_get_kubelet_versions)
+        p.start().return_value = current_kubelet_versions
+        self.addCleanup(p.stop)
+
+        mock_get_kube_versions = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.common.kubernetes.get_kube_versions',
+            mock_get_kube_versions)
+        p.start().return_value = get_kube_versions_output
+        self.addCleanup(p.stop)
+
+        mock_sanitize_kubeadm_configmap = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.manager.ConductorManager.sanitize_kubeadm_configmap',
+                       mock_sanitize_kubeadm_configmap)
+        p.start().return_value = 0
+        self.addCleanup(p.stop)
+
+        mock_kubeadm_configmap_reformat = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.KubeOperator.kubeadm_configmap_reformat',
+                       mock_kubeadm_configmap_reformat)
+        p.start().return_value = 0
+        self.addCleanup(p.stop)
+
+        mock_upgrade_control_plane_agent_api = mock.MagicMock()
+        p = mock.patch.object(agent_rpcapi.AgentAPI, 'kube_upgrade_control_plane',
+                              mock_upgrade_control_plane_agent_api)
+        p.start()
+        self.addCleanup(p.stop)
+
+        self.service.kube_upgrade_control_plane(self.context, controller0_host_uuid)
+
+        mock_kube_get_control_plane_versions.assert_called_once()
+        mock_kube_get_kubelet_versions.assert_called_once()
+        mock_get_kube_versions.assert_called_once()
+        mock_sanitize_kubeadm_configmap.assert_not_called()
+        mock_kubeadm_configmap_reformat.assert_not_called()
+        mock_upgrade_control_plane_agent_api.assert_not_called()
+
+        updated_upgrade = self.dbapi.kube_upgrade_get_one()
+        self.assertEqual(updated_upgrade.state, kubernetes.KUBE_UPGRADING_FIRST_MASTER_FAILED)
+
+    def test_kube_upgrade_control_plane_duplex_failure_with_first_and_second_master_skew(self):
+        """Test failed execution of control-plane upgrade on duplex systems: first master
+
+        With first master on N+1 and second on N, Trying to upgrade first master to N+2 before
+        upgrading second to N+1 should fail
+        """
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_DUPLEX
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+
+        # Create controller-0
+        config_uuid = str(uuid.uuid4())
+        controller0_host_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname=constants.CONTROLLER_0_HOSTNAME,
+            uuid=controller0_host_uuid,
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            mgmt_mac='00:11:22:33:44:55'
+        )
+
+        # Create controller-1
+        config_uuid = str(uuid.uuid4())
+        controller1_host_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname=constants.CONTROLLER_1_HOSTNAME,
+            uuid=controller1_host_uuid,
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            mgmt_mac='00:11:22:33:44:56'
+        )
+
+        # Create an upgrade
+        utils.create_test_kube_upgrade(
+            from_version='v1.29.2',
+            to_version='v1.33.0',
+            state=kubernetes.KUBE_UPGRADING_FIRST_MASTER,
+        )
+
+        # Set mock outputs This reflects the current environment (i.e. control-plane and kubelet
+        # versions on all hosts).
+        current_control_plane_versions = {'controller-0': 'v1.30.6',
+                                          'controller-1': 'v1.29.2'}
+        current_kubelet_versions = {'controller-0': 'v1.29.2',
+                                    'controller-1': 'v1.29.2'}
+        # This is what is inside the load.
+        get_kube_versions_output = [
+            {'version': 'v1.29.2'},
+            {'version': 'v1.30.6'},
+            {'version': 'v1.31.5'},
+            {'version': 'v1.32.2'},
+            {'version': 'v1.33.0'},
+        ]
+
+        self.service._kube = kubernetes.KubeOperator()
+
+        mock_kube_get_control_plane_versions = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.KubeOperator.kube_get_control_plane_versions',
+                       mock_kube_get_control_plane_versions)
+        p.start().return_value = current_control_plane_versions
+        self.addCleanup(p.stop)
+
+        mock_kube_get_kubelet_versions = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.KubeOperator.kube_get_kubelet_versions',
+                       mock_kube_get_kubelet_versions)
+        p.start().return_value = current_kubelet_versions
+        self.addCleanup(p.stop)
+
+        mock_get_kube_versions = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.common.kubernetes.get_kube_versions',
+            mock_get_kube_versions)
+        p.start().return_value = get_kube_versions_output
+        self.addCleanup(p.stop)
+
+        mock_sanitize_kubeadm_configmap = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.manager.ConductorManager.sanitize_kubeadm_configmap',
+                       mock_sanitize_kubeadm_configmap)
+        p.start().return_value = 0
+        self.addCleanup(p.stop)
+
+        mock_kubeadm_configmap_reformat = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.KubeOperator.kubeadm_configmap_reformat',
+                       mock_kubeadm_configmap_reformat)
+        p.start().return_value = 0
+        self.addCleanup(p.stop)
+
+        mock_upgrade_control_plane_agent_api = mock.MagicMock()
+        p = mock.patch.object(agent_rpcapi.AgentAPI, 'kube_upgrade_control_plane',
+                              mock_upgrade_control_plane_agent_api)
+        p.start()
+        self.addCleanup(p.stop)
+
+        self.service.kube_upgrade_control_plane(self.context, controller0_host_uuid)
+
+        mock_kube_get_control_plane_versions.assert_called_once()
+        mock_kube_get_kubelet_versions.assert_called_once()
+        mock_get_kube_versions.assert_called_once()
+        mock_sanitize_kubeadm_configmap.assert_not_called()
+        mock_kubeadm_configmap_reformat.assert_not_called()
+        mock_upgrade_control_plane_agent_api.assert_not_called()
+
+        updated_upgrade = self.dbapi.kube_upgrade_get_one()
+        self.assertEqual(updated_upgrade.state, kubernetes.KUBE_UPGRADING_FIRST_MASTER_FAILED)
+
+    def test_kube_upgrade_control_plane_duplex_failure_call_first_master_with_wrong_state(self):
+        """Test failed execution of control-plane upgrade on duplex systems: first master
+
+        Upgrading first master with wrong state kubernetes.KUBE_UPGRADING_SECOND_MASTER
+        """
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_DUPLEX
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+
+        # Create controller-0
+        config_uuid = str(uuid.uuid4())
+        controller0_host_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname=constants.CONTROLLER_0_HOSTNAME,
+            uuid=controller0_host_uuid,
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            mgmt_mac='00:11:22:33:44:55'
+        )
+
+        # Create controller-1
+        config_uuid = str(uuid.uuid4())
+        controller1_host_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname=constants.CONTROLLER_1_HOSTNAME,
+            uuid=controller1_host_uuid,
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            mgmt_mac='00:11:22:33:44:56'
+        )
+
+        # Create an upgrade
+        utils.create_test_kube_upgrade(
+            from_version='v1.29.2',
+            to_version='v1.33.0',
+            state=kubernetes.KUBE_UPGRADING_SECOND_MASTER,
+        )
+
+        # Set mock outputs This reflects the current environment (i.e. control-plane and kubelet
+        # versions on all hosts).
+        current_control_plane_versions = {'controller-0': 'v1.29.2',
+                                          'controller-1': 'v1.29.2'}
+        current_kubelet_versions = {'controller-0': 'v1.29.2',
+                                    'controller-1': 'v1.29.2'}
+        # This is what is inside the load.
+        get_kube_versions_output = [
+            {'version': 'v1.29.2'},
+            {'version': 'v1.30.6'},
+            {'version': 'v1.31.5'},
+            {'version': 'v1.32.2'},
+            {'version': 'v1.33.0'},
+        ]
+
+        self.service._kube = kubernetes.KubeOperator()
+
+        mock_kube_get_control_plane_versions = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.KubeOperator.kube_get_control_plane_versions',
+                       mock_kube_get_control_plane_versions)
+        p.start().return_value = current_control_plane_versions
+        self.addCleanup(p.stop)
+
+        mock_kube_get_kubelet_versions = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.KubeOperator.kube_get_kubelet_versions',
+                       mock_kube_get_kubelet_versions)
+        p.start().return_value = current_kubelet_versions
+        self.addCleanup(p.stop)
+
+        mock_get_kube_versions = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.common.kubernetes.get_kube_versions',
+            mock_get_kube_versions)
+        p.start().return_value = get_kube_versions_output
+        self.addCleanup(p.stop)
+
+        mock_sanitize_kubeadm_configmap = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.manager.ConductorManager.sanitize_kubeadm_configmap',
+                       mock_sanitize_kubeadm_configmap)
+        p.start().return_value = 0
+        self.addCleanup(p.stop)
+
+        mock_kubeadm_configmap_reformat = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.KubeOperator.kubeadm_configmap_reformat',
+                       mock_kubeadm_configmap_reformat)
+        p.start().return_value = 0
+        self.addCleanup(p.stop)
+
+        mock_upgrade_control_plane_agent_api = mock.MagicMock()
+        p = mock.patch.object(agent_rpcapi.AgentAPI, 'kube_upgrade_control_plane',
+                              mock_upgrade_control_plane_agent_api)
+        p.start()
+        self.addCleanup(p.stop)
+
+        # Upgrading control plane with controller0_host_uuid when state is
+        # KUBE_UPGRADING_SECOND_MASTER
+        self.service.kube_upgrade_control_plane(self.context, controller0_host_uuid)
+
+        mock_kube_get_control_plane_versions.assert_called_once()
+        mock_kube_get_kubelet_versions.assert_called_once()
+        mock_get_kube_versions.assert_called_once()
+        mock_sanitize_kubeadm_configmap.assert_not_called()
+        mock_kubeadm_configmap_reformat.assert_not_called()
+        mock_upgrade_control_plane_agent_api.assert_not_called()
+
+        updated_upgrade = self.dbapi.kube_upgrade_get_one()
+        self.assertEqual(updated_upgrade.state, kubernetes.KUBE_UPGRADING_FIRST_MASTER_FAILED)
+
+    def test_kube_upgrade_control_plane_duplex_failure_kubeadm_configmap_reformat_error(self):
+        """Test failed execution of control-plane upgrade on DX systems: configmap reformat error
+
+        """
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_DUPLEX
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+
+        # Create controller-0
+        config_uuid = str(uuid.uuid4())
+        controller0_host_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname=constants.CONTROLLER_0_HOSTNAME,
+            uuid=controller0_host_uuid,
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            mgmt_mac='00:11:22:33:44:55'
+        )
+
+        # Create controller-1
+        config_uuid = str(uuid.uuid4())
+        controller1_host_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname=constants.CONTROLLER_1_HOSTNAME,
+            uuid=controller1_host_uuid,
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            mgmt_mac='00:11:22:33:44:56'
+        )
+
+        # Create an upgrade
+        utils.create_test_kube_upgrade(
+            from_version='v1.29.2',
+            to_version='v1.30.6',
+            state=kubernetes.KUBE_UPGRADING_FIRST_MASTER,
+        )
+
+        # Set mock outputs. This reflects the current environment (i.e. control-plane and kubelet
+        # versions on all hosts).
+        current_control_plane_versions = {'controller-0': 'v1.29.2',
+                                          'controller-1': 'v1.29.2'}
+        current_kubelet_versions = {'controller-0': 'v1.29.2',
+                                    'controller-1': 'v1.29.2'}
+        # This is what is inside the load.
+        get_kube_versions_output = [
+            {'version': 'v1.29.2'},
+            {'version': 'v1.30.6'},
+            {'version': 'v1.31.5'},
+            {'version': 'v1.32.2'},
+            {'version': 'v1.33.0'},
+        ]
+
+        self.service._kube = kubernetes.KubeOperator()
+
+        mock_kube_get_control_plane_versions = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.KubeOperator.kube_get_control_plane_versions',
+                       mock_kube_get_control_plane_versions)
+        p.start().return_value = current_control_plane_versions
+        self.addCleanup(p.stop)
+
+        mock_kube_get_kubelet_versions = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.KubeOperator.kube_get_kubelet_versions',
+                       mock_kube_get_kubelet_versions)
+        p.start().return_value = current_kubelet_versions
+        self.addCleanup(p.stop)
+
+        mock_get_kube_versions = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.common.kubernetes.get_kube_versions',
+            mock_get_kube_versions)
+        p.start().return_value = get_kube_versions_output
+        self.addCleanup(p.stop)
+
+        mock_sanitize_kubeadm_configmap = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.manager.ConductorManager.sanitize_kubeadm_configmap',
+                       mock_sanitize_kubeadm_configmap)
+        p.start().return_value = 0
+        self.addCleanup(p.stop)
+
+        mock_kubeadm_configmap_reformat = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.KubeOperator.kubeadm_configmap_reformat',
+                       mock_kubeadm_configmap_reformat)
+        p.start().return_value = 1
+        self.addCleanup(p.stop)
+
+        mock_upgrade_control_plane_agent_api = mock.MagicMock()
+        p = mock.patch.object(agent_rpcapi.AgentAPI, 'kube_upgrade_control_plane',
+                              mock_upgrade_control_plane_agent_api)
+        p.start()
+        self.addCleanup(p.stop)
+
+        self.service.kube_upgrade_control_plane(self.context, controller0_host_uuid)
+
+        mock_kube_get_control_plane_versions.assert_called_once()
+        mock_kube_get_kubelet_versions.assert_called_once()
+        mock_get_kube_versions.assert_called_once()
+        mock_sanitize_kubeadm_configmap.assert_called_once()
+        mock_kubeadm_configmap_reformat.assert_called_once()
+        mock_upgrade_control_plane_agent_api.assert_not_called()
+
+        updated_upgrade = self.dbapi.kube_upgrade_get_one()
+        self.assertEqual(updated_upgrade.state, kubernetes.KUBE_UPGRADING_FIRST_MASTER_FAILED)
+
+    def test_kube_upgrade_control_plane_duplex_failure_sysinv_agent_api_unexpected_exception(self):
+        """Test failed execution of control-plane upgrade on DX systems: unexpected error
+
+        """
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_DUPLEX
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+
+        # Create controller-0
+        config_uuid = str(uuid.uuid4())
+        controller0_host_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname=constants.CONTROLLER_0_HOSTNAME,
+            uuid=controller0_host_uuid,
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            mgmt_mac='00:11:22:33:44:55'
+        )
+
+        # Create controller-1
+        config_uuid = str(uuid.uuid4())
+        controller1_host_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname=constants.CONTROLLER_1_HOSTNAME,
+            uuid=controller1_host_uuid,
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            mgmt_mac='00:11:22:33:44:56'
+        )
+
+        # Create an upgrade
+        utils.create_test_kube_upgrade(
+            from_version='v1.29.2',
+            to_version='v1.30.6',
+            state=kubernetes.KUBE_UPGRADING_SECOND_MASTER,
+        )
+
+        # Set mock outputs. This reflects the current environment (i.e. control-plane and kubelet
+        # versions on all hosts).
+        current_control_plane_versions = {'controller-0': 'v1.30.6',
+                                          'controller-1': 'v1.29.2'}
+        current_kubelet_versions = {'controller-0': 'v1.29.2',
+                                    'controller-1': 'v1.29.2'}
+        # This is what is inside the load.
+        get_kube_versions_output = [
+            {'version': 'v1.29.2'},
+            {'version': 'v1.30.6'},
+            {'version': 'v1.31.5'},
+            {'version': 'v1.32.2'},
+            {'version': 'v1.33.0'},
+        ]
+
+        # Set expectations: argument values with which Sysinv-agent API call is expected to be made
+        upgrade_control_plane_to_version = 'v1.30.6'
+        is_first = False
+
+        self.service._kube = kubernetes.KubeOperator()
+
+        mock_kube_get_control_plane_versions = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.KubeOperator.kube_get_control_plane_versions',
+                       mock_kube_get_control_plane_versions)
+        p.start().return_value = current_control_plane_versions
+        self.addCleanup(p.stop)
+
+        mock_kube_get_kubelet_versions = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.KubeOperator.kube_get_kubelet_versions',
+                       mock_kube_get_kubelet_versions)
+        p.start().return_value = current_kubelet_versions
+        self.addCleanup(p.stop)
+
+        mock_get_kube_versions = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.common.kubernetes.get_kube_versions',
+            mock_get_kube_versions)
+        p.start().return_value = get_kube_versions_output
+        self.addCleanup(p.stop)
+
+        mock_sanitize_kubeadm_configmap = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.manager.ConductorManager.sanitize_kubeadm_configmap',
+                       mock_sanitize_kubeadm_configmap)
+        p.start().return_value = 0
+        self.addCleanup(p.stop)
+
+        mock_kubeadm_configmap_reformat = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.KubeOperator.kubeadm_configmap_reformat',
+                       mock_kubeadm_configmap_reformat)
+        p.start().return_value = 0
+        self.addCleanup(p.stop)
+
+        mock_upgrade_control_plane_agent_api = mock.MagicMock()
+        p = mock.patch.object(agent_rpcapi.AgentAPI, 'kube_upgrade_control_plane',
+                              mock_upgrade_control_plane_agent_api)
+        p.start().side_effect = Exception("Fake error")
+        self.addCleanup(p.stop)
+
+        self.service.kube_upgrade_control_plane(self.context, controller1_host_uuid)
+
+        mock_kube_get_control_plane_versions.assert_called_once()
+        mock_kube_get_kubelet_versions.assert_called_once()
+        mock_get_kube_versions.assert_called_once()
+        mock_sanitize_kubeadm_configmap.assert_not_called()
+        mock_kubeadm_configmap_reformat.assert_not_called()
+        mock_upgrade_control_plane_agent_api.assert_called_once_with(
+            self.context, controller1_host_uuid, upgrade_control_plane_to_version, is_first)
+
+        updated_upgrade = self.dbapi.kube_upgrade_get_one()
+        self.assertEqual(updated_upgrade.state, kubernetes.KUBE_UPGRADING_SECOND_MASTER_FAILED)
+
     # def test_kube_host_uncordon(self):
     #     system_dict = self.system.as_dict()
+
     #     system_dict['system_mode'] = constants.SYSTEM_MODE_SIMPLEX
     #     self.dbapi.isystem_update(self.system.uuid, system_dict)
 
@@ -4511,334 +6273,6 @@ class ManagerTestCase(base.DbTestCase):
     #     updated_upgrade = self.dbapi.kube_upgrade_get_one()
     #     self.assertEqual(updated_upgrade.state,
     #                      kubernetes.KUBE_UPGRADE_UNCORDON_COMPLETE)
-
-#    @mock.patch('sysinv.conductor.manager.'
-#                'ConductorManager._config_apply_runtime_manifest')
-#    @mock.patch('sysinv.conductor.manager.'
-#                'ConductorManager._config_update_hosts')
-#    def test_kube_upgrade_control_plane_first_master_patch_version(self,
-#            mock_config_update_hosts, mock_config_apply_runtime_manifest):
-#        mock_config_update_hosts.return_value = "6c5aa183-4884-46e6-b86a-b29e6b08dedb"
-#        # Create an upgrade
-#        utils.create_test_kube_upgrade(
-#            from_version='v1.42.1',
-#            to_version='v1.42.2',
-#            state=kubernetes.KUBE_UPGRADING_FIRST_MASTER,
-#        )
-#        # Create controller-0
-#        config_uuid = str(uuid.uuid4())
-#        c0 = self._create_test_ihost(
-#            personality=constants.CONTROLLER,
-#            hostname='controller-0',
-#            uuid=str(uuid.uuid4()),
-#            config_status=None,
-#            config_applied=config_uuid,
-#            config_target=config_uuid,
-#            invprovision=constants.PROVISIONED,
-#            administrative=constants.ADMIN_UNLOCKED,
-#            operational=constants.OPERATIONAL_ENABLED,
-#            availability=constants.AVAILABILITY_ONLINE,
-#        )
-#        # Set the target version for controller-0
-#        self.dbapi.kube_host_upgrade_update(1, {'target_version': 'v1.42.2'})
-#        # Make the control plane upgrade pass
-#        self.kube_get_control_plane_versions_result = {
-#            'controller-0': 'v1.42.1',
-#            'controller-1': 'v1.42.1',
-#            'worker-0': 'v1.42.1'}
-#
-#        mock_sanitize_kubeadm_configmap = mock.MagicMock()
-#        p2 = mock.patch(
-#            'sysinv.conductor.manager.ConductorManager.sanitize_kubeadm_configmap',
-#            mock_sanitize_kubeadm_configmap)
-#        p2.start().return_value = 0
-#        self.addCleanup(p2.stop)
-#
-#        self.service._kube = FakeKubeOperator()
-#
-#        # Speed up the test
-#        kubernetes.MANIFEST_APPLY_INTERVAL = 1
-#        kubernetes.POD_START_INTERVAL = 1
-#
-#        # Upgrade the control plane
-#        self.service.kube_upgrade_control_plane(self.context, c0.uuid)
-#
-#        personalities = [constants.CONTROLLER]
-#        config_dict = {
-#            "personalities": personalities,
-#            "host_uuids": [c0.uuid],
-#            "classes": ['platform::kubernetes::upgrade_first_control_plane'],
-#            puppet_common.REPORT_STATUS_CFG:
-#                puppet_common.REPORT_UPGRADE_CONTROL_PLANE
-#        }
-#
-#        mock_config_apply_runtime_manifest.assert_called_with(mock.ANY,
-#            '6c5aa183-4884-46e6-b86a-b29e6b08dedb', config_dict)
-
-#    @mock.patch('sysinv.conductor.manager.'
-#                'ConductorManager._config_apply_runtime_manifest')
-#    @mock.patch('sysinv.conductor.manager.'
-#                'ConductorManager._config_update_hosts')
-#    def test_kube_upgrade_control_plane_first_master_minor_version(self,
-#            mock_config_update_hosts, mock_config_apply_runtime_manifest):
-#        mock_config_update_hosts.return_value = "6c5aa183-4884-46e6-b86a-b29e6b08dedb"
-#        # Create an upgrade
-#        utils.create_test_kube_upgrade(
-#            from_version='v1.41.5',
-#            to_version='v1.42.2',
-#            state=kubernetes.KUBE_UPGRADING_FIRST_MASTER,
-#        )
-#        # Create controller-0
-#        config_uuid = str(uuid.uuid4())
-#        c0 = self._create_test_ihost(
-#            personality=constants.CONTROLLER,
-#            hostname='controller-0',
-#            uuid=str(uuid.uuid4()),
-#            config_status=None,
-#            config_applied=config_uuid,
-#            config_target=config_uuid,
-#            invprovision=constants.PROVISIONED,
-#            administrative=constants.ADMIN_UNLOCKED,
-#            operational=constants.OPERATIONAL_ENABLED,
-#            availability=constants.AVAILABILITY_ONLINE,
-#        )
-#        # Set the target version for controller-0
-#        self.dbapi.kube_host_upgrade_update(1, {'target_version': 'v1.42.2'})
-#        # Make the control plane upgrade pass
-#        self.kube_get_control_plane_versions_result = {
-#            'controller-0': 'v1.41.5',
-#            'controller-1': 'v1.41.5',
-#            'worker-0': 'v1.41.5'}
-#        self.kube_get_kubelet_versions_result = {
-#            'controller-0': 'v1.41.5',
-#            'controller-1': 'v1.41.5',
-#            'worker-0': 'v1.41.5'}
-#
-#        mock_sanitize_kubeadm_configmap = mock.MagicMock()
-#        p2 = mock.patch(
-#            'sysinv.conductor.manager.ConductorManager.sanitize_kubeadm_configmap',
-#            mock_sanitize_kubeadm_configmap)
-#        p2.start().return_value = 0
-#        self.addCleanup(p2.stop)
-#
-#        self.service._kube = FakeKubeOperator()
-#
-#        # Speed up the test
-#        kubernetes.MANIFEST_APPLY_INTERVAL = 1
-#        kubernetes.POD_START_INTERVAL = 1
-#
-#        # Upgrade the control plane
-#        self.service.kube_upgrade_control_plane(self.context, c0.uuid)
-#
-#        personalities = [constants.CONTROLLER]
-#        config_dict = {
-#            "personalities": personalities,
-#            "host_uuids": [c0.uuid],
-#            "classes": ['platform::kubernetes::upgrade_first_control_plane'],
-#            puppet_common.REPORT_STATUS_CFG:
-#                puppet_common.REPORT_UPGRADE_CONTROL_PLANE
-#        }
-#
-#        mock_config_apply_runtime_manifest.assert_called_with(mock.ANY,
-#            '6c5aa183-4884-46e6-b86a-b29e6b08dedb', config_dict)
-
-#    @mock.patch('sysinv.conductor.manager.'
-#                'ConductorManager._config_apply_runtime_manifest')
-#    @mock.patch('sysinv.conductor.manager.'
-#                'ConductorManager._config_update_hosts')
-#    def test_kube_upgrade_control_plane_first_master_fail_skew_fail(self,
-#            mock_config_update_hosts, mock_config_apply_runtime_manifest):
-#        mock_config_update_hosts.return_value = "6c5aa183-4884-46e6-b86a-b29e6b08dedb"
-#        # Create an upgrade
-#        utils.create_test_kube_upgrade(
-#            from_version='v1.41.5',
-#            to_version='v1.42.2',
-#            state=kubernetes.KUBE_UPGRADING_FIRST_MASTER,
-#        )
-#        # Create controller-0
-#        config_uuid = str(uuid.uuid4())
-#        c0 = self._create_test_ihost(
-#            personality=constants.CONTROLLER,
-#            hostname='controller-0',
-#            uuid=str(uuid.uuid4()),
-#            config_status=None,
-#            config_applied=config_uuid,
-#            config_target=config_uuid,
-#            invprovision=constants.PROVISIONED,
-#            administrative=constants.ADMIN_UNLOCKED,
-#            operational=constants.OPERATIONAL_ENABLED,
-#            availability=constants.AVAILABILITY_ONLINE,
-#        )
-#        # Set the target version for controller-0
-#        self.dbapi.kube_host_upgrade_update(1, {'target_version': 'v1.42.2'})
-#        # Make the control plane upgrade fail, one node has large kubelet skew,
-#        # e.g., 42 - 38 = 4 (>3 tolerance)
-#        self.kube_get_control_plane_versions_result = {
-#            'controller-0': 'v1.41.5',
-#            'controller-1': 'v1.41.5',
-#            'worker-0': 'v1.41.5'}
-#        self.kube_get_kubelet_versions_result = {
-#            'controller-0': 'v1.41.5',
-#            'controller-1': 'v1.41.5',
-#            'worker-0': 'v1.38.5'}
-#
-#        mock_sanitize_kubeadm_configmap = mock.MagicMock()
-#        p2 = mock.patch(
-#            'sysinv.conductor.manager.ConductorManager.sanitize_kubeadm_configmap',
-#            mock_sanitize_kubeadm_configmap)
-#        p2.start().return_value = 0
-#        self.addCleanup(p2.stop)
-#
-#        self.service._kube = FakeKubeOperator()
-#
-#        # Speed up the test
-#        kubernetes.MANIFEST_APPLY_INTERVAL = 1
-#        kubernetes.POD_START_INTERVAL = 1
-#
-#        # Upgrade the control plane; fails policy skew semantic check
-#        self.service.kube_upgrade_control_plane(self.context, c0.uuid)
-#        mock_config_apply_runtime_manifest.assert_not_called()
-
-#    @mock.patch('sysinv.conductor.manager.'
-#                'ConductorManager._config_apply_runtime_manifest')
-#    @mock.patch('sysinv.conductor.manager.'
-#                'ConductorManager._config_update_hosts')
-#    def test_kube_upgrade_control_plane_first_master_fail_skew_exact(self,
-#            mock_config_update_hosts, mock_config_apply_runtime_manifest):
-#        mock_config_update_hosts.return_value = "6c5aa183-4884-46e6-b86a-b29e6b08dedb"
-#        # Create an upgrade
-#        utils.create_test_kube_upgrade(
-#            from_version='v1.41.5',
-#            to_version='v1.42.2',
-#            state=kubernetes.KUBE_UPGRADING_FIRST_MASTER,
-#        )
-#        # Create controller-0
-#        config_uuid = str(uuid.uuid4())
-#        c0 = self._create_test_ihost(
-#            personality=constants.CONTROLLER,
-#            hostname='controller-0',
-#            uuid=str(uuid.uuid4()),
-#            config_status=None,
-#            config_applied=config_uuid,
-#            config_target=config_uuid,
-#            invprovision=constants.PROVISIONED,
-#            administrative=constants.ADMIN_UNLOCKED,
-#            operational=constants.OPERATIONAL_ENABLED,
-#            availability=constants.AVAILABILITY_ONLINE,
-#        )
-#        # Set the target version for controller-0
-#        self.dbapi.kube_host_upgrade_update(1, {'target_version': 'v1.42.2'})
-#        # Make the control plane upgrade pass, with 3 kubelet skew
-#        # e.g., 42 - 39 = 3 (exact tolerance)
-#        self.kube_get_control_plane_versions_result = {
-#            'controller-0': 'v1.41.5',
-#            'controller-1': 'v1.41.5',
-#            'worker-0': 'v1.41.5'}
-#        self.kube_get_kubelet_versions_result = {
-#            'controller-0': 'v1.41.5',
-#            'controller-1': 'v1.41.5',
-#            'worker-0': 'v1.39.5'}
-#
-#        mock_sanitize_kubeadm_configmap = mock.MagicMock()
-#        p2 = mock.patch(
-#            'sysinv.conductor.manager.ConductorManager.sanitize_kubeadm_configmap',
-#            mock_sanitize_kubeadm_configmap)
-#        p2.start().return_value = 0
-#        self.addCleanup(p2.stop)
-#
-#        self.service._kube = FakeKubeOperator()
-#
-#        # Speed up the test
-#        kubernetes.MANIFEST_APPLY_INTERVAL = 1
-#        kubernetes.POD_START_INTERVAL = 1
-#
-#        # Upgrade the control plane
-#        self.service.kube_upgrade_control_plane(self.context, c0.uuid)
-#
-#        personalities = [constants.CONTROLLER]
-#        config_dict = {
-#            "personalities": personalities,
-#            "host_uuids": [c0.uuid],
-#            "classes": ['platform::kubernetes::upgrade_first_control_plane'],
-#            puppet_common.REPORT_STATUS_CFG:
-#                puppet_common.REPORT_UPGRADE_CONTROL_PLANE
-#        }
-#
-#        mock_config_apply_runtime_manifest.assert_called_with(mock.ANY,
-#            '6c5aa183-4884-46e6-b86a-b29e6b08dedb', config_dict)
-
-#    @mock.patch('sysinv.conductor.manager.'
-#                'ConductorManager._config_apply_runtime_manifest')
-#    @mock.patch('sysinv.conductor.manager.'
-#                'ConductorManager._config_update_hosts')
-#    def test_kube_upgrade_control_plane_second_master(self, mock_config_update_hosts,
-#                                                  mock_config_apply_runtime_manifest):
-#        mock_config_update_hosts.return_value = "6c5aa183-4884-46e6-b86a-b29e6b08dedb"
-#        # Create an upgrade
-#        utils.create_test_kube_upgrade(
-#            from_version='v1.42.1',
-#            to_version='v1.42.2',
-#            state=kubernetes.KUBE_UPGRADING_SECOND_MASTER,
-#        )
-#        # Create controller-0
-#        config_uuid = str(uuid.uuid4())
-#        self._create_test_ihost(
-#            personality=constants.CONTROLLER,
-#            hostname='controller-0',
-#            uuid=str(uuid.uuid4()),
-#            config_status=None,
-#            config_applied=config_uuid,
-#            config_target=config_uuid,
-#            invprovision=constants.PROVISIONED,
-#            administrative=constants.ADMIN_UNLOCKED,
-#            operational=constants.OPERATIONAL_ENABLED,
-#            availability=constants.AVAILABILITY_ONLINE,
-#            mgmt_mac='00:11:22:33:44:55',
-#        )
-#        # Set the target version for controller-0
-#        self.dbapi.kube_host_upgrade_update(1, {'target_version': 'v1.42.2'})
-#        # Create controller-1
-#        config_uuid = str(uuid.uuid4())
-#        c1 = self._create_test_ihost(
-#            personality=constants.CONTROLLER,
-#            hostname='controller-1',
-#            uuid=str(uuid.uuid4()),
-#            config_status=None,
-#            config_applied=config_uuid,
-#            config_target=config_uuid,
-#            invprovision=constants.PROVISIONED,
-#            administrative=constants.ADMIN_UNLOCKED,
-#            operational=constants.OPERATIONAL_ENABLED,
-#            availability=constants.AVAILABILITY_ONLINE,
-#            mgmt_mac='00:11:22:33:44:56',
-#            mgmt_ip='1.2.3.5',
-#        )
-#        # Set the target version for controller-1
-#        self.dbapi.kube_host_upgrade_update(2, {'target_version': 'v1.42.2'})
-#        # Make the control plane upgrade pass
-#        self.kube_get_control_plane_versions_result = {
-#            'controller-0': 'v1.42.2',
-#            'controller-1': 'v1.42.1',
-#            'worker-0': 'v1.42.1'}
-#
-#        # Speed up the test
-#        kubernetes.MANIFEST_APPLY_INTERVAL = 1
-#        kubernetes.POD_START_INTERVAL = 1
-#
-#        # Upgrade the control plane
-#        self.service.kube_upgrade_control_plane(self.context, c1.uuid)
-#
-#        personalities = [constants.CONTROLLER]
-#        config_dict = {
-#            "personalities": personalities,
-#            "host_uuids": [c1.uuid],
-#            "classes": ['platform::kubernetes::upgrade_control_plane'],
-#            puppet_common.REPORT_STATUS_CFG:
-#                puppet_common.REPORT_UPGRADE_CONTROL_PLANE
-#        }
-#
-#        mock_config_apply_runtime_manifest.assert_called_with(mock.ANY,
-#            '6c5aa183-4884-46e6-b86a-b29e6b08dedb', config_dict)
 
     def test_backup_kube_control_plane(self):
         """ The unit test covers the success path of the method

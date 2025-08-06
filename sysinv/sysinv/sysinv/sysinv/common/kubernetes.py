@@ -1266,7 +1266,7 @@ class KubeOperator(object):
                       "%s" % (name, namespace, e))
             raise
 
-    def kube_patch_daemon_set(self, name, namespace, body):
+    def kube_patch_daemonset(self, name, namespace, body):
         c = self._get_kubernetesclient_apps_v1_api()
         try:
             c.patch_namespaced_daemon_set(name, namespace, body)

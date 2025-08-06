@@ -18296,8 +18296,7 @@ class ConductorManager(service.PeriodicService):
             cp_versions_next = [cp_version]
         else:
             cp_versions_next = kube_operator.kube_get_higher_patch_version(
-                cp_version,
-                kube_upgrade_obj.to_version)
+                cp_version, kube_upgrade_obj.to_version)
         if cp_versions_next:
             target_version = cp_versions_next[0]
             kubeadm_version = target_version
