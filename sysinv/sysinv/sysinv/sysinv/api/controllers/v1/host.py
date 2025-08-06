@@ -6999,7 +6999,6 @@ class HostController(rest.RestController):
         host_obj = objects.host.get_by_uuid(pecan.request.context, uuid)
         kube_host_upgrade_obj = objects.kube_host_upgrade.get_by_host_id(
             pecan.request.context, host_obj.id)
-        system = pecan.request.dbapi.isystem_get_one()
 
         # The kubernetes upgrade must have been started
         try:
@@ -7035,6 +7034,9 @@ class HostController(rest.RestController):
                 for ver in cp_versions.values()):
             is_first = True
 
+        # Determine whether control-plane(s) are the same version
+        all_equal = len(set(cp_versions.values())) == 1
+
         # Determine target control-plane version for this host
         if cp_version == kube_upgrade_obj.to_version:
             cp_versions_next = [cp_version]
@@ -7052,12 +7054,15 @@ class HostController(rest.RestController):
             check_upgraded_state = [
                 kubernetes.KUBE_UPGRADED_STORAGE,
                 kubernetes.KUBE_UPGRADED_FIRST_MASTER,
+                kubernetes.KUBE_UPGRADING_FIRST_MASTER_FAILED,
                 kubernetes.KUBE_UPGRADE_CORDON_COMPLETE]
         else:
             check_upgraded_state = [
                 kubernetes.KUBE_UPGRADED_STORAGE,
                 kubernetes.KUBE_UPGRADED_FIRST_MASTER,
-                kubernetes.KUBE_UPGRADED_SECOND_MASTER]
+                kubernetes.KUBE_UPGRADING_FIRST_MASTER_FAILED,
+                kubernetes.KUBE_UPGRADED_SECOND_MASTER,
+                kubernetes.KUBE_UPGRADING_SECOND_MASTER_FAILED]
 
         # Verify the upgrade is in the correct state
         if kube_upgrade_obj.state in check_upgraded_state:
@@ -7070,17 +7075,6 @@ class HostController(rest.RestController):
                 cp_version == kube_upgrade_obj.to_version:
             raise wsme.exc.ClientSideError(_(
                     "The control plane is already running the target version."))
-        elif kube_upgrade_obj.state in [
-                kubernetes.KUBE_UPGRADING_FIRST_MASTER_FAILED,
-                kubernetes.KUBE_UPGRADING_SECOND_MASTER_FAILED]:
-            # We are re-attempting the upgrade of a control plane. Make sure
-            # this really is a re-attempt.
-            if kube_host_upgrade_obj.target_version != \
-                        kube_upgrade_obj.to_version and \
-                        system.system_mode != constants.SYSTEM_MODE_SIMPLEX:
-                raise wsme.exc.ClientSideError(_(
-                    "The first control plane upgrade must be completed before "
-                    "upgrading the second control plane."))
         else:
             raise wsme.exc.ClientSideError(_(
                 "The kubernetes upgrade is not in a valid state to "
@@ -7109,16 +7103,9 @@ class HostController(rest.RestController):
                         "Update kubelet on %s before updating control plane "
                         "again." % old_hosts))
 
-            # Infer whether this is first control-plane being upgraded
-            is_first = False
-            if all(LooseVersion(cp_version) >= LooseVersion(ver)
-                    for ver in cp_versions.values()):
-                is_first = True
-
             # Evaluate control-plane version skew. Prevent kubeadm upgrade of
             # first master unless all control-planes are the same version.
             # The client and server will exceed minor version skew of +/- 1.
-            all_equal = len(set(cp_versions.values())) == 1
             if is_first and not all_equal:
                 LOG.error("Kubernetes minor version skew exceeds +/-1 tolerance. "
                           "second control-plane upgrade %s is mandatory.")
