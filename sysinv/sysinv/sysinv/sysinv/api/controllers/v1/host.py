@@ -5586,6 +5586,10 @@ class HostController(rest.RestController):
                     _("%s : Rejected: Can not lock an active "
                       "controller.") % hostupdate.ihost_orig['hostname'])
 
+        # Prevent locking controller hosts during certain states of the upgrade, except forcefully
+        if not force:
+            self._check_lock_controller_during_upgrade(hostupdate.ihost_orig['hostname'])
+
         ceph_rook_backend = StorageBackendConfig.get_backend_conf(
             pecan.request.dbapi,
             target=constants.SB_TYPE_CEPH_ROOK
@@ -5692,8 +5696,6 @@ class HostController(rest.RestController):
                 elif "0" != error_code:
                     raise wsme.exc.ClientSideError(
                         _("%s" % response['error_details']))
-
-            self._check_lock_controller_during_upgrade(hostupdate.ihost_orig['hostname'])
 
     @staticmethod
     def _check_lock_controller_during_upgrade(hostname):
