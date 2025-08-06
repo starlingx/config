@@ -1,6 +1,6 @@
 #!/usr/bin/python
 #
-# Copyright (c) 2018-2023 Wind River Systems, Inc.
+# Copyright (c) 2018-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -8,13 +8,44 @@
 import sys
 import json
 import subprocess
+import os
 from argparse import ArgumentParser
+from typing import List
 
 
-def main():
-    ''' The goal of this script is to discover if the supplied PCI device is
-    supported by the vswitch as an accelerated NIC.'''
+def discover_pmd_libraries(base_dir: str = "/usr/lib/x86_64-linux-gnu/dpdk") -> List[str]:
+    """Return a list of full paths to static PMD libraries under *base_dir*.
+    Only regular, non-symlinked shared objects whose names start with
+    ``librte_`` **and** contain ``.so.`` are considered.
+    """
+    libraries: List[str] = []
 
+    if not os.path.exists(base_dir):
+        return libraries
+
+    for subdir in os.listdir(base_dir):
+        if not subdir.startswith("pmds-"):
+            continue
+
+        pmds_path = os.path.join(base_dir, subdir)
+        if not os.path.isdir(pmds_path):
+            continue
+
+        for lib in os.listdir(pmds_path):
+            if lib.startswith("librte_") and ".so." in lib:
+                lib_path = os.path.join(pmds_path, lib)
+                if os.path.isfile(lib_path) and not os.path.islink(lib_path):
+                    libraries.append(lib_path)
+
+    return libraries
+
+
+def main() -> int:
+    """Parses the command-line arguments, inspects the primary *ELF* binary
+    (usually *ovs-vswitchd*) using *dpdk-pmdinfo*, and if necessary falls
+    back to individual PMD shared libraries to determine support for the
+    supplied PCI Vendor/Device IDs.
+    """
     parser = ArgumentParser(description="Query vswitch NIC support")
 
     parser.add_argument("-v", "--vendor", dest="vid",
@@ -37,27 +68,35 @@ def main():
                         type=str, action='store')
     args = parser.parse_args()
 
-    cmd = "python {} -r {}".format(args.pmdinfo, args.elf)
-    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, shell=True,
-            universal_newlines=True)
-    out, err = p.communicate()
-    result = out.split('\n')
+    targets: List[str] = [args.elf]
 
-    for line in result:
-        if not line:
-            continue
+    for i, target in enumerate(targets):
+        cmd = "python {} -r {}".format(args.pmdinfo, target)
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, shell=True,
+                universal_newlines=True)
+        out, err = p.communicate()
+        result = out.split('\n')
 
-        pmd_info = json.loads(line)
-        supported_devices = pmd_info['pci_ids']
+        if i == 0 and not any(line.strip() for line in result):
+            targets.extend(discover_pmd_libraries())
 
-        for supported_device in supported_devices:
-            vid = hex(supported_device[0])
-            did = hex(supported_device[1])
+        for line in result:
+            if not line:
+                continue
+            try:
+                pmd_info = json.loads(line)
+                supported_devices = pmd_info['pci_ids']
 
-            if vid == args.vid and did == args.did:
-                print("Vendor ID: %s Device ID: %s is supported" %
-                     (args.vid, args.did))
-                return 0
+                for supported_device in supported_devices:
+                    vid = hex(supported_device[0])
+                    did = hex(supported_device[1])
+
+                    if vid == args.vid and did == args.did:
+                        print("Vendor ID: %s Device ID: %s is supported" %
+                             (args.vid, args.did))
+                        return 0
+            except (json.JSONDecodeError, KeyError):
+                continue
 
     print("Vendor ID: %s Device ID: %s is not supported" %
          (args.vid, args.did))
