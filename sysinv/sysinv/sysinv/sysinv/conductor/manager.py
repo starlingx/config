@@ -16995,17 +16995,6 @@ class ConductorManager(service.PeriodicService):
                     LOG.error(f"Error uploading dependent app {dependent_app['name']}: {e}")
                     upload_apps_failed_list.append(dependent_app)
 
-        # Check for circular dependencies. If circular dependencies are found,
-        # log an error and return False. The application will not be applied.
-        if app_dependents.has_circular_dependency(rpc_app,
-                                                  upload_apps_succeeded_list,
-                                                  self.dbapi):
-            LOG.error(
-                f"Circular dependency detected: {dependent_apps_apply_type}. "
-                f"Application {rpc_app.name} - {rpc_app.app_version} cannot be applied."
-            )
-            return False
-
         if mutually_exclusive_apps_lists:
             # If there are mutually exclusive apps, filter out the ones that failed to upload.
             upload_failed_app_names = {app['name'] for app in upload_apps_failed_list}
@@ -17125,6 +17114,21 @@ class ConductorManager(service.PeriodicService):
         except Exception as e:
             LOG.error("Error performing app_lifecycle_actions %s" % str(e))
 
+        # check if the application has circular dependencies
+        if rpc_app.name in self.apps_metadata[constants.APP_METADATA_CYCLIC_DEPENDENCIES]:
+            LOG.error(
+                f"Circular dependency detected for application {rpc_app.name} - "
+                f"{rpc_app.app_version}. Application cannot be applied."
+            )
+            cutils.update_app_status(rpc_app,
+                                    constants.APP_APPLY_FAILURE,
+                                    "Circular dependency detected.")
+            raise exception.KubeAppApplyFailure(
+                name=rpc_app.name,
+                version=rpc_app.app_version,
+                reason="Circular dependency detected."
+            )
+
         # Check if the application has dependent apps missing
         dependent_apps_missing_list = app_dependents.get_dependent_apps_missing(
             rpc_app.app_metadata, self.dbapi)
@@ -17197,6 +17201,50 @@ class ConductorManager(service.PeriodicService):
 
         # get the app metadata from the tarfile
         to_app_metadata = cutils.get_app_metadata_from_tarfile(tarfile)
+
+        # Update the apps_metadata registry with the new application metadata
+        # This ensures the circular dependency detection list is current for validation checks
+        self._app.update_and_process_app_metadata(
+            self.apps_metadata, to_rpc_app.name, to_app_metadata, overwrite=True)
+
+        # check if the application has circular dependencies
+        if to_rpc_app.name in self.apps_metadata[constants.APP_METADATA_CYCLIC_DEPENDENCIES]:
+            LOG.error(
+                f"Circular dependency detected for application {to_rpc_app.name} - "
+                f"{to_rpc_app.app_version}. Application cannot be updated."
+            )
+
+            # Set the status for the new app to inactive
+            cutils.update_app_status(
+                to_rpc_app, constants.APP_INACTIVE_STATE
+            )
+
+            # Update the status of the from_rpc_app to indicate the update was aborted
+            progress_msg = (
+                constants.APP_PROGRESS_UPDATE_ABORTED.format(
+                    from_rpc_app.app_version, to_rpc_app.app_version
+                ) + constants.APP_PROGRESS_RECOVER_COMPLETED.format(
+                    from_rpc_app.app_version
+                ) + "Circular dependency detected."
+            )
+            cutils.update_app_status(
+                from_rpc_app,
+                constants.APP_APPLY_SUCCESS,
+                progress_msg
+            )
+
+            # Destroy the new app
+            self.dbapi.kube_app_destroy(to_rpc_app.name,
+                                        version=to_rpc_app.app_version,
+                                        inactive=True)
+
+            raise exception.KubeAppUpdateFailure(
+                name=to_rpc_app.name,
+                from_version=from_rpc_app.app_version,
+                to_version=to_rpc_app.app_version,
+                reason="Circular dependency detected."
+            )
+
         # Check if the application has dependent apps missing
         dependent_apps_missing_list = app_dependents.get_dependent_apps_missing(
             to_app_metadata, self.dbapi)

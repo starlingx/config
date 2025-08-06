@@ -1522,6 +1522,11 @@ class KubeAppApplyFailure(SysinvException):
     message = _("Deployment of application %(name)s (%(version)s) failed: %(reason)s")
 
 
+class KubeAppUpdateFailure(SysinvException):
+    message = _("Update of application %(name)s (from_version: %(from_version)s "
+                "to_version: %(to_version)s) failed: %(reason)s")
+
+
 class KubeAppDeleteFailure(SysinvException):
     message = _("Delete of application %(name)s (%(version)s) failed: %(reason)s")
 
