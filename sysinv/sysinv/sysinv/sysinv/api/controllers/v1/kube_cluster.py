@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2021-2024 Wind River Systems, Inc.
+# Copyright (c) 2021-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -104,7 +104,18 @@ class KubeClusterController(rest.RestController):
         # Build public endpoint from private endpoint
         endpoint_parsed = urlparse(cluster_config.host)
         endpoint_host = utils.format_url_address(self._get_oam_address())
-        endpoint_netloc = "{}:{}".format(endpoint_host, endpoint_parsed.port)
+
+        # TODO(mdecastr): support for upgrade to stx11. After stx11 branchs out
+        # of master, we can remove the verfication for the port update
+        if utils.is_kube_apiserver_port_updated():
+            # External requests go through haproxy, which uses REST API/GUI cert.
+            # cluster_ca_cert then needs to be the RCA certificate that anchors it.
+            _, _, cluster_ca_cert = utils.\
+                get_certificate_from_secret(constants.RESTAPI_CERT_SECRET_NAME,
+                                            constants.CERT_NAMESPACE_PLATFORM_CERTS)
+
+        endpoint_netloc = "{}:{}".format(endpoint_host,
+                                         constants.KUBE_APISERVER_EXTERNAL_PORT)
         cluster_api_endpoint = endpoint_parsed._replace(
             netloc=endpoint_netloc).geturl()
 

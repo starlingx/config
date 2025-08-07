@@ -255,6 +255,7 @@ RESTART_SYSINV=0
 RESTART_CERT_MON=0
 RESTART_DC_CERT_MON=0
 RESTART_ETCD=0
+RESTART_HAPROXY=0
 
 # Fist check the validity of the Root CAs in /etc/kubernetes/pki/ca.crt and /etc/etcd/ca.crt
 # If they are expired the process should not continue
@@ -302,11 +303,13 @@ if [ ${ERR} -eq 0 ]; then
 fi
 # Renew certs in admin.conf
 if [ ${ERR} -eq 0 ]; then
-    renew_cert 'admin.conf'
+    renew_cert 'admin.conf' &&
+    python /usr/share/puppet/modules/platform/files/parse_k8s_admin_client_credentials.py --output_file /etc/kubernetes/pki/haproxy_client.pem
     result=$?
     if [ ${result} -eq 0 ]; then
         RESTART_SYSINV=1
         RESTART_CERT_MON=1
+        RESTART_HAPROXY=1
         # dccertmon is only provisioned in DC systems, so there
         # won't be any impacts if it is restarted in AIO as well.
         RESTART_DC_CERT_MON=1
@@ -513,6 +516,14 @@ if [ ${RESTART_ETCD} -eq 1 ]; then
     sm-restart-safe service etcd
     if [ $? -ne 0 ]; then
         ERR_REASON="Failed to restart etcd service."
+        ERR=2
+    fi
+fi
+# Restart haproxy
+if [ ${RESTART_HAPROXY} -eq 1 ]; then
+    sm-restart-safe service haproxy
+    if [ $? -ne 0 ]; then
+        ERR_REASON="Failed to restart haproxy service."
         ERR=2
     fi
 fi
