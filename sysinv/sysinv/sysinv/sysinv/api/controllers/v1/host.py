@@ -2605,22 +2605,25 @@ class HostController(rest.RestController):
 
             raise exception.HostLocked(action=constants.DELETE_ACTION, host=host)
 
-        if StorageBackendConfig.has_backend_configured(pecan.request.dbapi,
-                                                       constants.SB_TYPE_CEPH_ROOK):
-            hostfs_list = pecan.request.dbapi.host_fs_get_by_ihost(ihost.id)
-            istors = pecan.request.dbapi.istor_get_by_ihost(ihost.uuid)
+        if StorageBackendConfig.has_backend(pecan.request.dbapi,
+                                            constants.SB_TYPE_CEPH_ROOK):
+            host_fs, functions = None, []
+            try:
+                host_fs = pecan.request.dbapi.host_fs_get_by_name_ihost(ihost.uuid,
+                                                                        constants.FILESYSTEM_NAME_CEPH)
+                functions = host_fs['capabilities']['functions']
+            except exception.HostFSNameNotFound:
+                pass
 
-            for host_fs in hostfs_list:
-                if (host_fs.name == constants.FILESYSTEM_NAME_CEPH and
-                        host_fs.state == constants.HOST_FS_STATUS_IN_USE):
-                    raise wsme.exc.ClientSideError(_("host-delete rejected: not allowed when "
-                                                     "the host has host-fs ceph with in-use state"))
-
-            for stor in istors:
-                if (stor.function == constants.STOR_FUNCTION_OSD and
-                        (stor.state == constants.SB_STATE_CONFIGURED)):
-                    raise wsme.exc.ClientSideError(_("host-delete rejected: not allowed when "
-                                                     "the host has OSD with configured state"))
+            # If the host-fs is in the "Reconfigure with App" state, it means the monitor can still be
+            # assigned on the host. And if the host-fs has functions, it means the host has either a
+            # Monitor or OSD assigned.
+            if host_fs:
+                if host_fs.state == constants.HOST_FS_STATUS_RECONFIGURE_WITH_APP or functions:
+                    msg = _("host-delete rejected: not allowed when "
+                            "the host has host-fs ceph in %s state "
+                            "with functions %s" % (host_fs.state, functions))
+                    raise wsme.exc.ClientSideError(msg)
 
         if not self._check_host_delete_during_upgrade():
             raise wsme.exc.ClientSideError(_(
