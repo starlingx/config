@@ -2207,6 +2207,7 @@ def _delete(interface):
 
     # Delete interface
     try:
+        requires_pcidp_update = False
         primary_ifclass = interface['ifclass']
         if primary_ifclass == constants.INTERFACE_CLASS_PLATFORM:
             ifnets = pecan.request.dbapi.interface_network_get_by_interface(interface['uuid'])
@@ -2219,7 +2220,17 @@ def _delete(interface):
                     pecan.request.dbapi.addresses_remove_interface_by_interface(
                         interface['id']
                     )
+        elif primary_ifclass == constants.INTERFACE_CLASS_PCI_SRIOV:
+            requires_pcidp_update = bool(
+                pecan.request.dbapi.interface_datanetwork_get_by_interface(
+                    interface['uuid']))
+
         pecan.request.dbapi.iinterface_destroy(interface['uuid'])
+
+        if requires_pcidp_update:
+            pecan.request.rpcapi.update_pcidp_config(pecan.request.context,
+                                                     ihost['uuid'])
+
         # Clear outstanding alarms that were raised by the neutron vswitch
         # agent against interface
         _clear_interface_state_fault(ihost['hostname'], interface['uuid'])
