@@ -176,6 +176,13 @@ class TestKubeCluster(base.FunctionalTest):
             mock_kube_get_service_account_token)
         self.mocked_kube_get_service_account_token.start()
 
+        def mock_utils_get_certificate_from_secret(name, namespace):
+            return '', '', FAKE_CA_CERT
+        self.mocked_utils_get_certificate_from_secret = mock.patch(
+            'sysinv.common.utils.get_certificate_from_secret',
+            mock_utils_get_certificate_from_secret)
+        self.mocked_utils_get_certificate_from_secret.start()
+
     def tearDown(self):
         super(TestKubeCluster, self).tearDown()
         self.ssl_ca_file.close()
@@ -184,6 +191,7 @@ class TestKubeCluster(base.FunctionalTest):
         self.mocked_kube_get_kubernetes_version.stop()
         self.mocked_kube_get_kubernetes_config.stop()
         self.mocked_kube_get_service_account_token.stop()
+        self.mocked_utils_get_certificate_from_secret.stop()
 
     def _get_cluster_api_endpoint(self):
         endpoint_host = utils.format_url_address(self.oam_subnet[2])
