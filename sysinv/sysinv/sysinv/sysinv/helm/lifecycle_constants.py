@@ -30,6 +30,7 @@ class LifecycleConstants(object):
     ABORTED_OP = 'aborted_op'
     FROM_APP_VERSION = 'from_app_version'
     TO_APP_VERSION = 'to_app_version'
+    RELEASE = 'release'
 
     APP_LIFECYCLE_TIMING_PRE = 'pre'
     APP_LIFECYCLE_TIMING_STATUS = 'status'
