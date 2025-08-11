@@ -2429,6 +2429,21 @@ class ManagerTestCase(base.DbTestCase):
         p.start()
         self.addCleanup(p.stop)
 
+        captured_calico_ctx = {}
+        orig_gen = self.service._generate_k8s_manifests_and_apply
+
+        def _gen_wrapper(source_template_path, dest_manifest_path, *, is_template=False, values=None):
+            # Sufficient to assert values only for calico.
+            if os.path.basename(str(dest_manifest_path)) == 'update_calico.yaml':
+                captured_calico_ctx['ctx'] = values
+            # Invoke the actual method to maintain the normal flow
+            return orig_gen(source_template_path, dest_manifest_path,
+                            is_template=is_template, values=values)
+
+        p = mock.patch.object(self.service, '_generate_k8s_manifests_and_apply', side_effect=_gen_wrapper)
+        p.start()
+        self.addCleanup(p.stop)
+
         self.service.kube_upgrade_networking(self.context, TO_VERSION)
 
         mock_sanitize_kubeadm_configmap.assert_called_once()
@@ -2461,6 +2476,12 @@ class ManagerTestCase(base.DbTestCase):
 
         updated_upgrade = self.dbapi.kube_upgrade_get_one()
         self.assertEqual(updated_upgrade.state, kubernetes.KUBE_UPGRADED_NETWORKING)
+
+        self.assertIn('ctx', captured_calico_ctx, "No context captured for update_calico.yaml")
+        ctx = captured_calico_ctx['ctx']
+        self.assertIsInstance(ctx, dict, "Calico context is not a dict")
+        self.assertEqual(ctx.get('cluster_network_ipv4'), '172.16.0.0/16')
+        self.assertEqual(ctx.get('cluster_network_ipv6'), None)
 
     def test_kube_upgrade_networking_success_ipv6(self):
         """Test successful execution of kubernetes networking upgrade (ipv6)
@@ -2568,6 +2589,20 @@ class ManagerTestCase(base.DbTestCase):
         p.start()
         self.addCleanup(p.stop)
 
+        captured_calico_ctx = {}
+        orig_gen = self.service._generate_k8s_manifests_and_apply
+
+        def _gen_wrapper(source_template_path, dest_manifest_path, *, is_template=False, values=None):
+            # Sufficient to assert values only for calico.
+            if os.path.basename(str(dest_manifest_path)) == 'update_calico.yaml':
+                captured_calico_ctx['ctx'] = values
+            # Invoke the actual method to maintain the normal flow
+            return orig_gen(source_template_path, dest_manifest_path,
+                            is_template=is_template, values=values)
+
+        p = mock.patch.object(self.service, '_generate_k8s_manifests_and_apply', side_effect=_gen_wrapper)
+        p.start()
+        self.addCleanup(p.stop)
         self.service.kube_upgrade_networking(self.context, TO_VERSION)
 
         mock_sanitize_kubeadm_configmap.assert_called_once()
@@ -2600,6 +2635,175 @@ class ManagerTestCase(base.DbTestCase):
 
         updated_upgrade = self.dbapi.kube_upgrade_get_one()
         self.assertEqual(updated_upgrade.state, kubernetes.KUBE_UPGRADED_NETWORKING)
+
+        self.assertIn('ctx', captured_calico_ctx, "No context captured for update_calico.yaml")
+        ctx = captured_calico_ctx['ctx']
+        self.assertIsInstance(ctx, dict, "Calico context is not a dict")
+        self.assertEqual(ctx.get('cluster_network_ipv4'), None)
+        self.assertEqual(ctx.get('cluster_network_ipv6'), '::ffff:ac10:0/16')
+
+    def test_kube_upgrade_networking_success_dual_stack(self):
+        """Test successful execution of kubernetes networking upgrade (dual-stack)."""
+
+        # Create controller-0
+        config_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname='controller-0',
+            uuid=str(uuid.uuid4()),
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+        )
+
+        FROM_VERSION = 'v1.29.2'
+        TO_VERSION = 'v1.30.6'
+        network_images = {'calico_cni_img': 'fake_calico_cni_img',
+                           'calico_node_img': 'fake_calico_node_img',
+                           'calico_kube_controllers_img': 'fake_calico_kube_controllers_img',
+                           'multus_img': 'fake_multus_img',
+                           'sriov_cni_img': 'fake_sriov_cni_img',
+                           'sriov_network_device_img': 'fake_sriov_network_device_img'}
+        image_download_result = True
+        upgrade_overrides_file_exists = True
+        upgrade_overrides = {
+            "cluster_pod_subnet": "aefd:206::/64,172.16.0.0/16",
+            "cluster_host_floating_address": "::ffff:c0a8:ce01",
+            "cluster_host_node_0_address": "::ffff:c0a8:ce02"
+        }
+
+        # Create an upgrade
+        utils.create_test_kube_upgrade(
+            from_version=FROM_VERSION,
+            to_version=TO_VERSION,
+            state=kubernetes.KUBE_UPGRADING_NETWORKING,
+        )
+
+        mock_sanitize_kubeadm_configmap = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.manager.ConductorManager.sanitize_kubeadm_configmap',
+                       mock_sanitize_kubeadm_configmap)
+        p.start().return_value = 0
+        self.addCleanup(p.stop)
+
+        mock_backup_kube_control_plane = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.manager.ConductorManager.backup_kube_control_plane',
+                       mock_backup_kube_control_plane)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_get_kubernetes_system_images = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.manager.ConductorManager._get_kubernetes_system_images',
+                       mock_get_kubernetes_system_images)
+        p.start().return_value = network_images
+        self.addCleanup(p.stop)
+
+        mock_download_images_from_upstream_to_local_reg_and_crictl = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.conductor.manager.ConductorManager.'
+            'download_images_from_upstream_to_local_reg_and_crictl',
+            mock_download_images_from_upstream_to_local_reg_and_crictl)
+        p.start().return_value = image_download_result
+        self.addCleanup(p.stop)
+
+        mock_utils_execute = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.execute', mock_utils_execute)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_os_path_exists = mock.MagicMock()
+        p = mock.patch('os.path.exists', mock_os_path_exists)
+        p.start().return_value = upgrade_overrides_file_exists
+        self.addCleanup(p.stop)
+
+        mock_open = mock.mock_open()
+        p = mock.patch('builtins.open', mock_open)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_ruamel_yaml_safe_load = mock.MagicMock()
+        p = mock.patch('ruamel.yaml.safe_load', mock_ruamel_yaml_safe_load)
+        p.start().return_value = upgrade_overrides
+        self.addCleanup(p.stop)
+
+        mock_shutil_copy2 = mock.MagicMock()
+        p = mock.patch('shutil.copy2', mock_shutil_copy2)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_render_jinja_template_from_file = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.render_jinja_template_from_file',
+                       mock_render_jinja_template_from_file)
+        p.start().return_value = "fake_rendered_string"
+        self.addCleanup(p.stop)
+
+        mock_kubectl_apply = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.kubectl_apply', mock_kubectl_apply)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_os_remove = mock.MagicMock()
+        p = mock.patch('os.remove', mock_os_remove)
+        p.start()
+        self.addCleanup(p.stop)
+
+        captured_calico_ctx = {}
+        orig_gen = self.service._generate_k8s_manifests_and_apply
+
+        def _gen_wrapper(source_template_path, dest_manifest_path, *, is_template=False, values=None):
+            # Sufficient to assert values only for calico.
+            if os.path.basename(str(dest_manifest_path)) == 'update_calico.yaml':
+                captured_calico_ctx['ctx'] = values
+            # Invoke the actual method to maintain the normal flow
+            return orig_gen(source_template_path, dest_manifest_path,
+                            is_template=is_template, values=values)
+
+        p = mock.patch.object(self.service, '_generate_k8s_manifests_and_apply', side_effect=_gen_wrapper)
+        p.start()
+        self.addCleanup(p.stop)
+
+        self.service.kube_upgrade_networking(self.context, TO_VERSION)
+
+        mock_sanitize_kubeadm_configmap.assert_called_once()
+        mock_backup_kube_control_plane.assert_called_once()
+        mock_get_kubernetes_system_images.assert_called_once_with(TO_VERSION)
+        mock_download_images_from_upstream_to_local_reg_and_crictl.assert_called_once()
+        mock_utils_execute.assert_called()
+        mock_os_path_exists.assert_called()
+        mock_open.assert_called()
+        mock_ruamel_yaml_safe_load.assert_called_once()
+        mock_shutil_copy2.assert_called_once()
+
+        mock_render_jinja_template_from_file.assert_called()
+        self.assertEqual(mock_render_jinja_template_from_file.call_count, 4)
+
+        expected_apply_calls = [mock.call(os.path.join(kubernetes.KUBERNETES_CONF_DIR,
+                                                       'update_coredns.yaml')),
+                                mock.call(os.path.join(kubernetes.KUBERNETES_CONF_DIR,
+                                                       'update_calico.yaml')),
+                                mock.call(os.path.join(kubernetes.KUBERNETES_CONF_DIR,
+                                                       'update_multus.yaml')),
+                                mock.call(os.path.join(kubernetes.KUBERNETES_CONF_DIR,
+                                                       'update_sriov-cni.yaml')),
+                                mock.call(os.path.join(kubernetes.KUBERNETES_CONF_DIR,
+                                                       'update_sriovdp-daemonset.yaml'))]
+
+        mock_kubectl_apply.assert_has_calls(expected_apply_calls)
+        self.assertEqual(mock_kubectl_apply.call_count, 5)
+
+        mock_os_remove.assert_called_once()
+
+        updated_upgrade = self.dbapi.kube_upgrade_get_one()
+        self.assertEqual(updated_upgrade.state, kubernetes.KUBE_UPGRADED_NETWORKING)
+
+        self.assertIn('ctx', captured_calico_ctx, "No context captured for update_calico.yaml")
+        ctx = captured_calico_ctx['ctx']
+        self.assertIsInstance(ctx, dict, "Calico context is not a dict")
+        self.assertEqual(ctx.get('cluster_network_ipv4'), '172.16.0.0/16')
+        self.assertEqual(ctx.get('cluster_network_ipv6'), 'aefd:206::/64')
 
     def test_kube_upgrade_networking_success_multiple_ip_addresses(self):
         """Test successful execution of kubernetes networking upgrade (multiple IP addresses)

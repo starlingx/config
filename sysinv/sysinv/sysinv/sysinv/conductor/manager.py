@@ -18497,15 +18497,18 @@ class ConductorManager(service.PeriodicService):
         cluster_network_ipv4 = cluster_network_ipv6 = None
         if "cluster_pod_subnet" in overrides:
             cluster_pod_subnet = overrides["cluster_pod_subnet"]
-            cluster_pod_subnet_ip = cluster_pod_subnet.split('/')[0]
-            if IPAddress(cluster_pod_subnet_ip).version == 4:
-                cluster_network_ipv4 = cluster_pod_subnet
-            elif IPAddress(cluster_pod_subnet_ip).version == 6:
-                cluster_network_ipv6 = cluster_pod_subnet
-            else:
-                raise exception.SysinvException("Invalid value detected for cluster_pod_subnet "
-                                                "in the host overrides file: [%s]"
-                                                % cluster_pod_subnet)
+            cidrs = [cidr.strip() for cidr in cluster_pod_subnet.split(',')]
+            for cidr in cidrs:
+                ip = IPNetwork(cidr).ip
+                if ip.version == 4:
+                    cluster_network_ipv4 = cidr
+                elif ip.version == 6:
+                    cluster_network_ipv6 = cidr
+                else:
+                    raise exception.SysinvException(
+                        "Invalid value detected for cluster_pod_subnet "
+                        "in the host overrides file: [%s]" % cluster_pod_subnet
+                    )
         else:
             raise exception.SysinvException("Failed to find cluster_pod_subnet in "
                                             "the host overrides file. ")
