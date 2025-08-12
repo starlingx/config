@@ -6799,12 +6799,13 @@ class ConductorManager(service.PeriodicService):
 
         return False
 
-    def _is_upgrade_in_progress(self):
+    def _upgrade_in_progress(self):
+        upgrade = None
         try:
-            usm_service.get_platform_upgrade(self.dbapi)
-            return True
+            upgrade = usm_service.get_platform_upgrade(self.dbapi)
+            return upgrade
         except exception.NotFound:
-            return False
+            return upgrade
 
     @periodic_task.periodic_task(
         spacing=CONF.conductor_periodic_task_intervals.controller_config_active_apply)
@@ -6822,8 +6823,13 @@ class ConductorManager(service.PeriodicService):
         if not self._controller_config_active_check():
             return  # already finalized on this active controller
 
-        if self._is_upgrade_in_progress():
-            LOG.info("Skipped _controller_config_active_apply while upgrading")
+        upgrade = self._upgrade_in_progress()
+        if upgrade and upgrade.state not in [constants.DEPLOY_STATE_ACTIVATE_DONE,
+                                             constants.DEPLOY_STATE_ACTIVATE_FAILED,
+                                             constants.DEPLOY_STATE_ACTIVATE_ROLLBACK_DONE,
+                                             constants.DEPLOY_STATE_ACTIVATE_ROLLBACK_FAILED]:
+            LOG.info("Skipped _controller_config_active_apply during "
+                     "upgrade for state: %s", str(upgrade.state))
             return
 
         try:
