@@ -3665,6 +3665,211 @@ class ManagerTestCase(base.DbTestCase):
         updated_upgrade = self.dbapi.kube_upgrade_get_one()
         self.assertEqual(updated_upgrade.state, kubernetes.KUBE_UPGRADING_NETWORKING_FAILED)
 
+    def test_kube_upgrade_storage_success(self):
+        """Test successful execution of kubernetes storage upgrade
+        """
+        # Create controller-0
+        config_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname='controller-0',
+            uuid=str(uuid.uuid4()),
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+        )
+
+        FROM_VERSION = 'v1.29.2'
+        TO_VERSION = 'v1.30.6'
+        storage_images = {'snapshot_controller_img': 'fake_snapshot_controller_img'}
+        image_download_result = True
+        manifest_apply_result = True
+
+        # Create an upgrade
+        utils.create_test_kube_upgrade(
+            from_version=FROM_VERSION,
+            to_version=TO_VERSION,
+            state=kubernetes.KUBE_UPGRADING_STORAGE,
+        )
+
+        mock_get_kubernetes_system_images = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.manager.ConductorManager._get_kubernetes_system_images',
+                       mock_get_kubernetes_system_images)
+        p.start().return_value = storage_images
+        self.addCleanup(p.stop)
+
+        mock_download_images_from_upstream_to_local_reg_and_crictl = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.conductor.manager.ConductorManager.'
+            'download_images_from_upstream_to_local_reg_and_crictl',
+            mock_download_images_from_upstream_to_local_reg_and_crictl)
+        p.start().return_value = image_download_result
+        self.addCleanup(p.stop)
+
+        mock_generate_manifests_and_apply = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.manager.ConductorManager._generate_k8s_manifests_and_apply',
+                       mock_generate_manifests_and_apply)
+        p.start().return_value = manifest_apply_result
+        self.addCleanup(p.stop)
+
+        self.service.kube_upgrade_storage(self.context, TO_VERSION)
+
+        mock_get_kubernetes_system_images.assert_called_once_with(TO_VERSION)
+        mock_download_images_from_upstream_to_local_reg_and_crictl.assert_called_once()
+
+        expected_apply_calls = [
+            mock.call(mock.ANY,
+                      os.path.join(kubernetes.KUBERNETES_CONF_DIR,
+                                   'update_rbac-volume-snapshot-controller.yaml'),
+                      is_template=False,
+                      values=mock.ANY),
+            mock.call(mock.ANY,
+                      os.path.join(kubernetes.KUBERNETES_CONF_DIR,
+                                   'update_snapshot-controller.yaml'),
+                      is_template=True,
+                      values=mock.ANY)]
+        mock_generate_manifests_and_apply.assert_has_calls(expected_apply_calls, any_order=True)
+        self.assertEqual(mock_generate_manifests_and_apply.call_count, 2)
+
+        updated_upgrade = self.dbapi.kube_upgrade_get_one()
+        self.assertEqual(updated_upgrade.state, kubernetes.KUBE_UPGRADED_STORAGE)
+
+    def test_kube_upgrade_storage_failure_image_download_failed(self):
+        """Test failed execution of kubernetes storage upgrade (Image download failed)
+        """
+        # Create controller-0
+        config_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname='controller-0',
+            uuid=str(uuid.uuid4()),
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+        )
+
+        FROM_VERSION = 'v1.29.2'
+        TO_VERSION = 'v1.30.6'
+        storage_images = {'snapshot_controller_img': 'fake_snapshot_controller_img'}
+        image_download_result = False
+
+        # Create an upgrade
+        utils.create_test_kube_upgrade(
+            from_version=FROM_VERSION,
+            to_version=TO_VERSION,
+            state=kubernetes.KUBE_UPGRADING_STORAGE,
+        )
+
+        mock_get_kubernetes_system_images = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.manager.ConductorManager._get_kubernetes_system_images',
+                       mock_get_kubernetes_system_images)
+        p.start().return_value = storage_images
+        self.addCleanup(p.stop)
+
+        mock_download_images_from_upstream_to_local_reg_and_crictl = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.conductor.manager.ConductorManager.'
+            'download_images_from_upstream_to_local_reg_and_crictl',
+            mock_download_images_from_upstream_to_local_reg_and_crictl)
+        p.start().return_value = image_download_result
+        self.addCleanup(p.stop)
+
+        mock_generate_manifests_and_apply = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.manager.ConductorManager.'
+                       '_generate_k8s_manifests_and_apply',
+                       mock_generate_manifests_and_apply)
+        p.start()
+        self.addCleanup(p.stop)
+
+        self.service.kube_upgrade_storage(self.context, TO_VERSION)
+
+        mock_get_kubernetes_system_images.assert_called_once_with(TO_VERSION)
+        mock_download_images_from_upstream_to_local_reg_and_crictl.assert_called_once()
+        mock_generate_manifests_and_apply.assert_not_called()
+
+        updated_upgrade = self.dbapi.kube_upgrade_get_one()
+        self.assertEqual(updated_upgrade.state, kubernetes.KUBE_UPGRADING_STORAGE_FAILED)
+
+    def test_kube_upgrade_storage_failure_manifests_apply_failure(self):
+        """Test failed execution of kubernetes storage upgrade (Manifests apply failure)
+        """
+        # Create controller-0
+        config_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname='controller-0',
+            uuid=str(uuid.uuid4()),
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+        )
+
+        FROM_VERSION = 'v1.29.2'
+        TO_VERSION = 'v1.30.6'
+        storage_images = {'snapshot_controller_img': 'fake_snapshot_controller_img'}
+        image_download_result = True
+
+        # Create an upgrade
+        utils.create_test_kube_upgrade(
+            from_version=FROM_VERSION,
+            to_version=TO_VERSION,
+            state=kubernetes.KUBE_UPGRADING_STORAGE,
+        )
+
+        mock_get_kubernetes_system_images = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.manager.ConductorManager._get_kubernetes_system_images',
+                       mock_get_kubernetes_system_images)
+        p.start().return_value = storage_images
+        self.addCleanup(p.stop)
+
+        mock_download_images_from_upstream_to_local_reg_and_crictl = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.conductor.manager.ConductorManager.'
+            'download_images_from_upstream_to_local_reg_and_crictl',
+            mock_download_images_from_upstream_to_local_reg_and_crictl)
+        p.start().return_value = image_download_result
+        self.addCleanup(p.stop)
+
+        mock_generate_manifests_and_apply = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.manager.ConductorManager.'
+                       '_generate_k8s_manifests_and_apply',
+                       mock_generate_manifests_and_apply)
+        p.start().side_effect = [True, False]
+        self.addCleanup(p.stop)
+
+        self.service.kube_upgrade_storage(self.context, TO_VERSION)
+
+        mock_get_kubernetes_system_images.assert_called_once_with(TO_VERSION)
+        mock_download_images_from_upstream_to_local_reg_and_crictl.assert_called_once()
+        expected_apply_calls = [
+            mock.call(mock.ANY,
+                      os.path.join(kubernetes.KUBERNETES_CONF_DIR,
+                                   'update_rbac-volume-snapshot-controller.yaml'),
+                      is_template=False,
+                      values=mock.ANY),
+            mock.call(mock.ANY,
+                      os.path.join(kubernetes.KUBERNETES_CONF_DIR,
+                                   'update_snapshot-controller.yaml'),
+                      is_template=True,
+                      values=mock.ANY)]
+        mock_generate_manifests_and_apply.assert_has_calls(expected_apply_calls, any_order=True)
+        self.assertEqual(mock_generate_manifests_and_apply.call_count, 2)
+
+        updated_upgrade = self.dbapi.kube_upgrade_get_one()
+        self.assertEqual(updated_upgrade.state, kubernetes.KUBE_UPGRADING_STORAGE_FAILED)
+
     # def test_kube_host_uncordon(self):
     #     system_dict = self.system.as_dict()
     #     system_dict['system_mode'] = constants.SYSTEM_MODE_SIMPLEX

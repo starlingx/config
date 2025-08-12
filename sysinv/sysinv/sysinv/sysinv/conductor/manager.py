@@ -18386,7 +18386,7 @@ class ConductorManager(service.PeriodicService):
                              or the source manifest file itself
         :param: full_destination_path: Full path to a location where source needs
                                   to be copied or rendered
-        :param: is_tempate(optional): True if source_path is .j2 (jinja) template
+        :param: is_template(optional): True if source_path is .j2 (jinja) template
                                       False otherwise
         :param: values(optional): dictionary of key:value pairs to be rendered if
                                   is_template=True
@@ -18709,12 +18709,12 @@ class ConductorManager(service.PeriodicService):
         :raises: SysinvException upon failure
         """
 
-        SNPASHOT_CONTROLLER_IMG_KEY = 'snapshot_controller_img'
+        SNAPSHOT_CONTROLLER_IMG_KEY = 'snapshot_controller_img'
 
         try:
 
             images = self._get_kubernetes_system_images(kube_version)
-            storage_images = [images[SNPASHOT_CONTROLLER_IMG_KEY]]
+            storage_images = [images[SNAPSHOT_CONTROLLER_IMG_KEY]]
         except Exception as ex:
             raise exception.SysinvException("Failed to get storage images information. "
                                             "Error: [%s] " % (ex))
@@ -18740,7 +18740,7 @@ class ConductorManager(service.PeriodicService):
 
         snapshot_controller_template_variables = {
             'local_registry': constants.DOCKER_REGISTRY_SERVER,
-            'snapshot_controller_img': images[SNPASHOT_CONTROLLER_IMG_KEY]
+            'snapshot_controller_img': images[SNAPSHOT_CONTROLLER_IMG_KEY]
         }
 
         full_template_path = os.path.join(constants.ANSIBLE_PLAYBOOKS_ROOT,
