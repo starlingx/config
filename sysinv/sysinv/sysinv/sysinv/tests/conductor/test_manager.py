@@ -43,6 +43,7 @@ from sysinv.common import exception
 from sysinv.common import kubernetes
 from sysinv.common import utils as cutils
 from sysinv.common import usm_service
+from sysinv.conductor import kube_app
 from sysinv.conductor import manager
 from sysinv.db import api as dbapi
 from sysinv.tests.db import utils as dbutils
@@ -247,6 +248,7 @@ class ManagerTestCase(base.DbTestCase):
         # Set up objects for testing
         self.service = manager.ConductorManager('test-host', 'test-topic')
         self.service.dbapi = dbapi.get_instance()
+        self.service._docker = kube_app.DockerHelper(self.service.dbapi)
         self.context = context.get_admin_context()
         self.dbapi = dbapi.get_instance()
         self.system = utils.create_test_isystem()
@@ -1194,6 +1196,1000 @@ class ManagerTestCase(base.DbTestCase):
             updated_host_upgrade = self.dbapi.kube_host_upgrade_get(1)
             self.assertEqual(updated_host_upgrade.status, fail_status)
 
+    def test_kube_download_images_simplex_single_version_success(self):
+        """Test download images on simplex and for single-version kubernetes upgrade
+        """
+        # Create controller-0
+        config_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname='controller-0',
+            uuid=str(uuid.uuid4()),
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+        )
+
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_SIMPLEX
+        utils.update_test_isystem(system_dict)
+
+        FROM_VERSION = 'v1.29.2'
+        TO_VERSION = 'v1.30.6'
+        NEXT_VERSIONS = ['v1.30.6']
+        # Create an upgrade
+        utils.create_test_kube_upgrade(
+            from_version=FROM_VERSION,
+            to_version=TO_VERSION,
+            state=kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES,
+        )
+
+        mock_kube_get_higher_equal_versions = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.common.kubernetes.KubeOperator.kube_get_higher_patch_version',
+            mock_kube_get_higher_equal_versions)
+        p.start().return_value = NEXT_VERSIONS
+        self.addCleanup(p.stop)
+
+        mock_disable_kubelet_garbage_collection = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.disable_kubelet_garbage_collection',
+                       mock_disable_kubelet_garbage_collection)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_pmon_restart_service = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.pmon_restart_service', mock_pmon_restart_service)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_get_k8s_images = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.get_k8s_images', mock_get_k8s_images)
+        p.start().return_value = {'fake_key': 'fake_image'}
+        self.addCleanup(p.stop)
+
+        mock_download_images_from_upstream_to_local_reg_and_crictl = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.conductor.manager.ConductorManager.'
+            'download_images_from_upstream_to_local_reg_and_crictl',
+            mock_download_images_from_upstream_to_local_reg_and_crictl)
+        p.start().return_value = True
+        self.addCleanup(p.stop)
+
+        # Download images
+        self.service.kube_download_images(self.context, TO_VERSION)
+
+        mock_kube_get_higher_equal_versions.assert_called_once_with(FROM_VERSION, TO_VERSION)
+        mock_disable_kubelet_garbage_collection.assert_called()
+        mock_pmon_restart_service.assert_called()
+        self.assertEqual(mock_get_k8s_images.call_count, len(NEXT_VERSIONS))
+        mock_download_images_from_upstream_to_local_reg_and_crictl.assert_called_with(
+                                                                                    ['fake_image'])
+        updated_upgrade = self.dbapi.kube_upgrade_get_one()
+        self.assertEqual(updated_upgrade.state, kubernetes.KUBE_UPGRADE_DOWNLOADED_IMAGES)
+
+    def test_kube_download_images_simplex_multi_version_success(self):
+        """Test download images on simplex and for multi-version kubernetes upgrade
+        """
+        # Create controller-0
+        config_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname='controller-0',
+            uuid=str(uuid.uuid4()),
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+        )
+
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_SIMPLEX
+        utils.update_test_isystem(system_dict)
+
+        FROM_VERSION = 'v1.29.2'
+        TO_VERSION = 'v1.32.2'
+        NEXT_VERSIONS = ['v1.30.6', 'v1.31.5', 'v1.32.2']
+        # Create an upgrade
+        utils.create_test_kube_upgrade(
+            from_version=FROM_VERSION,
+            to_version=TO_VERSION,
+            state=kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES,
+        )
+
+        mock_kube_get_higher_equal_versions = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.common.kubernetes.KubeOperator.kube_get_higher_patch_version',
+            mock_kube_get_higher_equal_versions)
+        p.start().return_value = NEXT_VERSIONS
+        self.addCleanup(p.stop)
+
+        mock_disable_kubelet_garbage_collection = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.disable_kubelet_garbage_collection',
+                       mock_disable_kubelet_garbage_collection)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_pmon_restart_service = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.pmon_restart_service', mock_pmon_restart_service)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_get_k8s_images = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.get_k8s_images', mock_get_k8s_images)
+        p.start().return_value = {'fake_key': 'fake_image'}
+        self.addCleanup(p.stop)
+
+        mock_download_images_from_upstream_to_local_reg_and_crictl = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.conductor.manager.ConductorManager.'
+            'download_images_from_upstream_to_local_reg_and_crictl',
+            mock_download_images_from_upstream_to_local_reg_and_crictl)
+        p.start().return_value = True
+        self.addCleanup(p.stop)
+
+        # Download images
+        self.service.kube_download_images(self.context, TO_VERSION)
+
+        mock_kube_get_higher_equal_versions.assert_called_once_with(FROM_VERSION, TO_VERSION)
+        mock_disable_kubelet_garbage_collection.assert_called()
+        mock_pmon_restart_service.assert_called()
+        self.assertEqual(mock_get_k8s_images.call_count, len(NEXT_VERSIONS))
+        mock_download_images_from_upstream_to_local_reg_and_crictl.assert_called_with(
+                                                                                    ['fake_image'])
+        updated_upgrade = self.dbapi.kube_upgrade_get_one()
+        self.assertEqual(updated_upgrade.state, kubernetes.KUBE_UPGRADE_DOWNLOADED_IMAGES)
+
+    def test_kube_download_images_simplex_fail(self):
+        """Test download images on simplex: failure case
+        """
+        # Create controller-0
+        config_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname='controller-0',
+            uuid=str(uuid.uuid4()),
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+        )
+
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_SIMPLEX
+        utils.update_test_isystem(system_dict)
+
+        FROM_VERSION = 'v1.29.2'
+        TO_VERSION = 'v1.30.6'
+        NEXT_VERSIONS = ['v1.30.6']
+        # Create an upgrade
+        utils.create_test_kube_upgrade(
+            from_version=FROM_VERSION,
+            to_version=TO_VERSION,
+            state=kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES,
+        )
+
+        mock_kube_get_higher_equal_versions = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.common.kubernetes.KubeOperator.kube_get_higher_patch_version',
+            mock_kube_get_higher_equal_versions)
+        p.start().return_value = NEXT_VERSIONS
+        self.addCleanup(p.stop)
+
+        mock_disable_kubelet_garbage_collection = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.disable_kubelet_garbage_collection',
+                       mock_disable_kubelet_garbage_collection)
+        # Include a test where GC failed so we need not seperatly test that path.
+        p.start().side_effect = Exception("Fake Error")
+        self.addCleanup(p.stop)
+
+        mock_pmon_restart_service = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.pmon_restart_service', mock_pmon_restart_service)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_get_k8s_images = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.get_k8s_images', mock_get_k8s_images)
+        p.start().return_value = {'fake_key': 'fake_image'}
+        self.addCleanup(p.stop)
+
+        mock_download_images_from_upstream_to_local_reg_and_crictl = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.conductor.manager.ConductorManager.'
+            'download_images_from_upstream_to_local_reg_and_crictl',
+            mock_download_images_from_upstream_to_local_reg_and_crictl)
+        p.start().return_value = False
+        self.addCleanup(p.stop)
+
+        # Download images
+        self.service.kube_download_images(self.context, TO_VERSION)
+
+        mock_kube_get_higher_equal_versions.assert_called_once_with(FROM_VERSION, TO_VERSION)
+        mock_disable_kubelet_garbage_collection.assert_called()
+        mock_pmon_restart_service.assert_not_called()
+        self.assertEqual(mock_get_k8s_images.call_count, len(NEXT_VERSIONS))
+        mock_get_k8s_images.assert_called()
+        mock_download_images_from_upstream_to_local_reg_and_crictl.assert_called_with(
+                                                                                    ['fake_image'])
+        updated_upgrade = self.dbapi.kube_upgrade_get_one()
+        self.assertEqual(updated_upgrade.state, kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES_FAILED)
+
+    def test_kube_download_images_duplex_success(self):
+        """Test download images on duplex and for single-version kubernetes upgrade success case
+        """
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_DUPLEX
+        utils.update_test_isystem(system_dict)
+
+        # Create controller-0
+        config_uuid = str(uuid.uuid4())
+        controller0_host_uuid = str(uuid.uuid4())
+        controller0 = self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname='controller-0',
+            uuid=controller0_host_uuid,
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            mgmt_mac='00:11:22:33:44:55'
+        )
+
+        # Create controller-1
+        config_uuid = str(uuid.uuid4())
+        controller1_host_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname='controller-1',
+            uuid=controller1_host_uuid,
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            mgmt_mac='00:11:22:33:44:56'
+        )
+
+        FROM_VERSION = 'v1.29.2'
+        TO_VERSION = 'v1.30.6'
+        NEXT_VERSIONS = ['v1.30.6']
+        FAKE_IMAGE_LIST = ['fake_image']
+        # Create an upgrade
+        utils.create_test_kube_upgrade(
+            from_version=FROM_VERSION,
+            to_version=TO_VERSION,
+            state=kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES,
+        )
+
+        mock_get_active_controller = mock.MagicMock()
+        p = mock.patch('sysinv.api.controllers.v1.utils.HostHelper.get_active_controller',
+                       mock_get_active_controller)
+        p.start().return_value = controller0
+        self.addCleanup(p.stop)
+
+        mock_kube_get_higher_equal_versions = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.common.kubernetes.KubeOperator.kube_get_higher_patch_version',
+            mock_kube_get_higher_equal_versions)
+        p.start().return_value = NEXT_VERSIONS
+        self.addCleanup(p.stop)
+
+        mock_disable_kubelet_garbage_collection = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.disable_kubelet_garbage_collection',
+                       mock_disable_kubelet_garbage_collection)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_pmon_restart_service = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.pmon_restart_service', mock_pmon_restart_service)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_get_k8s_images = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.get_k8s_images', mock_get_k8s_images)
+        p.start().return_value = {'fake_key': 'fake_image'}
+        self.addCleanup(p.stop)
+
+        mock_download_images_from_upstream_to_local_reg_and_crictl = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.conductor.manager.ConductorManager.'
+            'download_images_from_upstream_to_local_reg_and_crictl',
+            mock_download_images_from_upstream_to_local_reg_and_crictl)
+        p.start().return_value = True
+        self.addCleanup(p.stop)
+
+        mock_pull_kubernetes_images = mock.MagicMock()
+        p = mock.patch.object(
+            agent_rpcapi.AgentAPI, 'pull_kubernetes_images', mock_pull_kubernetes_images)
+        p.start()
+        self.addCleanup(p.stop)
+
+        # Pretend controller-0 receievs the kube_download_images call
+        self.service.host_uuid = controller0_host_uuid
+        self.service.kube_download_images(self.context, TO_VERSION)
+
+        mock_kube_get_higher_equal_versions.assert_called_once()
+        mock_disable_kubelet_garbage_collection.assert_called_once()
+        mock_pmon_restart_service.assert_called_once()
+        self.assertEqual(mock_get_k8s_images.call_count, len(NEXT_VERSIONS))
+        mock_download_images_from_upstream_to_local_reg_and_crictl.assert_called_with(
+                                                                                FAKE_IMAGE_LIST)
+        mock_pull_kubernetes_images.assert_called_once_with(
+            self.context, controller1_host_uuid, FAKE_IMAGE_LIST)
+
+    def test_kube_download_images_duplex_failure(self):
+        """Test download images on duplex and for single-version k8s upgrade: unexpected exception
+        """
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_DUPLEX
+        utils.update_test_isystem(system_dict)
+
+        # Create controller-0
+        config_uuid = str(uuid.uuid4())
+        controller0_host_uuid = str(uuid.uuid4())
+        controller0 = self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname='controller-0',
+            uuid=controller0_host_uuid,
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            mgmt_mac='00:11:22:33:44:55'
+        )
+
+        # Create controller-1
+        config_uuid = str(uuid.uuid4())
+        controller1_host_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname='controller-1',
+            uuid=controller1_host_uuid,
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            mgmt_mac='00:11:22:33:44:56'
+        )
+
+        FROM_VERSION = 'v1.29.2'
+        TO_VERSION = 'v1.30.6'
+        NEXT_VERSIONS = ['v1.30.6']
+        FAKE_IMAGE_LIST = ['fake_image']
+        # Create an upgrade
+        utils.create_test_kube_upgrade(
+            from_version=FROM_VERSION,
+            to_version=TO_VERSION,
+            state=kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES,
+        )
+
+        mock_get_active_controller = mock.MagicMock()
+        p = mock.patch('sysinv.api.controllers.v1.utils.HostHelper.get_active_controller',
+                       mock_get_active_controller)
+        p.start().return_value = controller0
+        self.addCleanup(p.stop)
+
+        mock_kube_get_higher_equal_versions = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.common.kubernetes.KubeOperator.kube_get_higher_patch_version',
+            mock_kube_get_higher_equal_versions)
+        p.start().return_value = NEXT_VERSIONS
+        self.addCleanup(p.stop)
+
+        mock_disable_kubelet_garbage_collection = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.disable_kubelet_garbage_collection',
+                       mock_disable_kubelet_garbage_collection)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_pmon_restart_service = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.pmon_restart_service', mock_pmon_restart_service)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_get_k8s_images = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.get_k8s_images', mock_get_k8s_images)
+        p.start().return_value = {'fake_key': 'fake_image'}
+        self.addCleanup(p.stop)
+
+        mock_download_images_from_upstream_to_local_reg_and_crictl = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.conductor.manager.ConductorManager.'
+            'download_images_from_upstream_to_local_reg_and_crictl',
+            mock_download_images_from_upstream_to_local_reg_and_crictl)
+        p.start().return_value = True
+        self.addCleanup(p.stop)
+
+        mock_pull_kubernetes_images = mock.MagicMock()
+        p = mock.patch.object(
+            agent_rpcapi.AgentAPI, 'pull_kubernetes_images', mock_pull_kubernetes_images)
+        p.start().side_effect = Exception("Fake error")
+        self.addCleanup(p.stop)
+
+        # Pretend controller-0 is an active controller when kube_download_images is called
+        self.service.host_uuid = controller0_host_uuid
+        self.service.kube_download_images(self.context, TO_VERSION)
+
+        mock_kube_get_higher_equal_versions.assert_called_once()
+        mock_disable_kubelet_garbage_collection.assert_called_once()
+        mock_pmon_restart_service.assert_called_once()
+        self.assertEqual(mock_get_k8s_images.call_count, len(NEXT_VERSIONS))
+        mock_download_images_from_upstream_to_local_reg_and_crictl.assert_called_with(
+                                                                                FAKE_IMAGE_LIST)
+        mock_pull_kubernetes_images.assert_called_once_with(
+            self.context, controller1_host_uuid, FAKE_IMAGE_LIST)
+        updated_upgrade = self.dbapi.kube_upgrade_get_one()
+        self.assertEqual(updated_upgrade.state, kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES_FAILED)
+
+    def test_download_images_from_upstream_to_local_reg_and_crictl_success(self):
+        """Test download_images_from_upstream_to_local_reg_and_crictl: success case
+        """
+
+        images_to_be_downloaded = ['fake_image1', 'fake_image2', 'fake_image3', 'fake_image4']
+        fake_local_registry_auth = {'username': 'fake_username', 'password': 'fake_password'}
+        fake_registries = {'fake_registries': 'fake_registries'}
+        fake_crictl_auth = (
+            f"{fake_local_registry_auth['username']}:{fake_local_registry_auth['password']}"
+        )
+        get_img_tag_with_registry_output = ('fake_target_image', fake_local_registry_auth)
+
+        mock_get_local_docker_registry_auth = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.get_local_docker_registry_auth',
+                       mock_get_local_docker_registry_auth)
+        p.start().return_value = {'username': 'fake_username', 'password': 'fake_password'}
+        self.addCleanup(p.stop)
+
+        mock_retrieve_specified_registries = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.kube_app.DockerHelper.retrieve_specified_registries',
+                       mock_retrieve_specified_registries)
+        p.start().return_value = fake_registries
+        self.addCleanup(p.stop)
+
+        mock_get_crictl_image_list = mock.MagicMock()
+        p = mock.patch('sysinv.common.containers.get_crictl_image_list',
+                       mock_get_crictl_image_list)
+        p.start().return_value = [f"{constants.DOCKER_REGISTRY_SERVER}/fake_image4",
+                                  f"{constants.DOCKER_REGISTRY_SERVER}/fake_image5"]
+        self.addCleanup(p.stop)
+
+        mock_get_img_tag_with_registry = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.kube_app.DockerHelper._get_img_tag_with_registry',
+                       mock_get_img_tag_with_registry)
+        p.start().return_value = get_img_tag_with_registry_output
+        self.addCleanup(p.stop)
+
+        mock_docker_apiclient_pull = mock.MagicMock()
+        p = mock.patch('docker.APIClient.pull', mock_docker_apiclient_pull)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_docker_apiclient_tag = mock.MagicMock()
+        p = mock.patch('docker.APIClient.tag', mock_docker_apiclient_tag)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_docker_apiclient_push = mock.MagicMock()
+        p = mock.patch('docker.APIClient.push', mock_docker_apiclient_push)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_docker_apiclient_inspect = mock.MagicMock()
+        p = mock.patch('docker.APIClient.inspect_distribution', mock_docker_apiclient_inspect)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_docker_apiclient_remove_image = mock.MagicMock()
+        p = mock.patch('docker.APIClient.remove_image', mock_docker_apiclient_remove_image)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_pull_image_to_crictl = mock.MagicMock()
+        p = mock.patch('sysinv.common.containers.pull_image_to_crictl',
+                       mock_pull_image_to_crictl)
+        p.start()
+        self.addCleanup(p.stop)
+
+        result = self.service.download_images_from_upstream_to_local_reg_and_crictl(
+            images_to_be_downloaded)
+
+        # Assertions start here
+        # Assert Main Result
+        self.assertTrue(result)
+
+        # Assert mock method calls
+        mock_get_local_docker_registry_auth.assert_called_once()
+        mock_retrieve_specified_registries.assert_called_once()
+        mock_get_crictl_image_list.assert_called_once()
+
+        expected_calls = [mock.call('fake_image1', fake_registries),
+                          mock.call('fake_image2', fake_registries),
+                          mock.call('fake_image3', fake_registries)]
+        mock_get_img_tag_with_registry.assert_has_calls(expected_calls, any_order=True)
+
+        mock_docker_apiclient_pull.assert_called_with(get_img_tag_with_registry_output[0],
+                                                auth_config=get_img_tag_with_registry_output[1])
+        self.assertEqual(mock_docker_apiclient_pull.call_count, 3)
+
+        expected_calls = [mock.call(get_img_tag_with_registry_output[0],
+                                    f"{constants.DOCKER_REGISTRY_SERVER}/fake_image1"),
+                          mock.call(get_img_tag_with_registry_output[0],
+                                    f"{constants.DOCKER_REGISTRY_SERVER}/fake_image2"),
+                          mock.call(get_img_tag_with_registry_output[0],
+                                    f"{constants.DOCKER_REGISTRY_SERVER}/fake_image3")]
+        mock_docker_apiclient_tag.assert_has_calls(expected_calls, any_order=True)
+        self.assertEqual(mock_docker_apiclient_tag.call_count, 3)
+
+        expected_calls = [mock.call(f"{constants.DOCKER_REGISTRY_SERVER}/fake_image1",
+                                    auth_config=get_img_tag_with_registry_output[1]),
+                          mock.call(f"{constants.DOCKER_REGISTRY_SERVER}/fake_image2",
+                                    auth_config=get_img_tag_with_registry_output[1]),
+                          mock.call(f"{constants.DOCKER_REGISTRY_SERVER}/fake_image3",
+                                    auth_config=get_img_tag_with_registry_output[1])]
+        mock_docker_apiclient_push.assert_has_calls(expected_calls, any_order=True)
+        self.assertEqual(mock_docker_apiclient_push.call_count, 3)
+        mock_docker_apiclient_inspect.assert_has_calls(expected_calls, any_order=True)
+        self.assertEqual(mock_docker_apiclient_inspect.call_count, 3)
+
+        expected_calls = [mock.call(f"{constants.DOCKER_REGISTRY_SERVER}/fake_image1"),
+                          mock.call(f"{constants.DOCKER_REGISTRY_SERVER}/fake_image2"),
+                          mock.call(f"{constants.DOCKER_REGISTRY_SERVER}/fake_image3"),
+                          mock.call("fake_target_image"),
+                          mock.call("fake_target_image"),
+                          mock.call("fake_target_image")]
+        mock_docker_apiclient_remove_image.assert_has_calls(expected_calls, any_order=True)
+        self.assertEqual(mock_docker_apiclient_remove_image.call_count, 6)
+
+        expected_calls = [mock.call(f"{constants.DOCKER_REGISTRY_SERVER}/fake_image1",
+                                    fake_crictl_auth),
+                          mock.call(f"{constants.DOCKER_REGISTRY_SERVER}/fake_image2",
+                                    fake_crictl_auth),
+                          mock.call(f"{constants.DOCKER_REGISTRY_SERVER}/fake_image3",
+                                    fake_crictl_auth)]
+        mock_pull_image_to_crictl.assert_has_calls(expected_calls, any_order=True)
+        self.assertEqual(mock_pull_image_to_crictl.call_count, 3)
+
+    def test_download_images_from_upstream_to_local_reg_and_crictl_failure_docker_pull_fail(self):
+        """Test download_images_from_upstream_to_local_reg_and_crictl: docker pull failed
+
+        Also tests failure to get list of existing images from crictl
+        """
+        images_to_be_downloaded = ['fake_image1', 'fake_image2', 'fake_image3']
+        fake_local_registry_auth = {'username': 'fake_username', 'password': 'fake_password'}
+        fake_registries = {'fake_registries': 'fake_registries'}
+        get_img_tag_with_registry_output = ('fake_target_image', fake_local_registry_auth)
+
+        mock_get_local_docker_registry_auth = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.get_local_docker_registry_auth',
+                       mock_get_local_docker_registry_auth)
+        p.start().return_value = {'username': 'fake_username', 'password': 'fake_password'}
+        self.addCleanup(p.stop)
+
+        mock_retrieve_specified_registries = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.kube_app.DockerHelper.retrieve_specified_registries',
+                       mock_retrieve_specified_registries)
+        p.start().return_value = fake_registries
+        self.addCleanup(p.stop)
+
+        mock_get_crictl_image_list = mock.MagicMock()
+        p = mock.patch('sysinv.common.containers.get_crictl_image_list',
+                       mock_get_crictl_image_list)
+        p.start().side_effect = exception.SysinvException("Fake Error")
+        self.addCleanup(p.stop)
+
+        mock_get_img_tag_with_registry = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.kube_app.DockerHelper._get_img_tag_with_registry',
+                       mock_get_img_tag_with_registry)
+        p.start().return_value = get_img_tag_with_registry_output
+        self.addCleanup(p.stop)
+
+        mock_docker_apiclient_pull = mock.MagicMock()
+        p = mock.patch('docker.APIClient.pull', mock_docker_apiclient_pull)
+        p.start().side_effect = Exception("Fake pull error")
+        self.addCleanup(p.stop)
+
+        mock_docker_apiclient_tag = mock.MagicMock()
+        p = mock.patch('docker.APIClient.tag', mock_docker_apiclient_tag)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_docker_apiclient_push = mock.MagicMock()
+        p = mock.patch('docker.APIClient.push', mock_docker_apiclient_push)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_docker_apiclient_inspect = mock.MagicMock()
+        p = mock.patch('docker.APIClient.inspect_distribution', mock_docker_apiclient_inspect)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_docker_apiclient_remove_image = mock.MagicMock()
+        p = mock.patch('docker.APIClient.remove_image', mock_docker_apiclient_remove_image)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_pull_image_to_crictl = mock.MagicMock()
+        p = mock.patch('sysinv.common.containers.pull_image_to_crictl',
+                       mock_pull_image_to_crictl)
+        p.start()
+        self.addCleanup(p.stop)
+
+        result = self.service.download_images_from_upstream_to_local_reg_and_crictl(
+            images_to_be_downloaded)
+
+        # Assertions start here
+        # Assert Main Result
+        self.assertFalse(result)
+
+        # Assert mock method calls
+        mock_get_local_docker_registry_auth.assert_called_once()
+        mock_retrieve_specified_registries.assert_called_once()
+        mock_get_crictl_image_list.assert_called_once()
+
+        # Assert Retries
+        self.assertEqual(mock_get_img_tag_with_registry.call_count,
+                         5 * len(images_to_be_downloaded))
+        self.assertEqual(mock_docker_apiclient_pull.call_count, 5 * len(images_to_be_downloaded))
+
+        mock_docker_apiclient_tag.assert_not_called()
+        mock_docker_apiclient_push.assert_not_called()
+        mock_docker_apiclient_inspect.assert_not_called()
+        mock_docker_apiclient_remove_image.assert_not_called()
+        mock_pull_image_to_crictl.assert_not_called()
+
+    def test_download_images_from_upstream_to_local_reg_and_crictl_failure_docker_push_fail(self):
+        """Test download_images_from_upstream_to_local_reg_and_crictl: docker push failed
+
+        """
+        images_to_be_downloaded = ['fake_image1', 'fake_image2', 'fake_image3']
+        fake_local_registry_auth = {'username': 'fake_username', 'password': 'fake_password'}
+        fake_registries = {'fake_registries': 'fake_registries'}
+        get_img_tag_with_registry_output = ('fake_target_image', fake_local_registry_auth)
+
+        mock_get_local_docker_registry_auth = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.get_local_docker_registry_auth',
+                       mock_get_local_docker_registry_auth)
+        p.start().return_value = {'username': 'fake_username', 'password': 'fake_password'}
+        self.addCleanup(p.stop)
+
+        mock_retrieve_specified_registries = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.kube_app.DockerHelper.retrieve_specified_registries',
+                       mock_retrieve_specified_registries)
+        p.start().return_value = fake_registries
+        self.addCleanup(p.stop)
+
+        mock_get_crictl_image_list = mock.MagicMock()
+        p = mock.patch('sysinv.common.containers.get_crictl_image_list',
+                       mock_get_crictl_image_list)
+        p.start().side_effect = exception.SysinvException("Fake Error")
+        self.addCleanup(p.stop)
+
+        mock_get_img_tag_with_registry = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.kube_app.DockerHelper._get_img_tag_with_registry',
+                       mock_get_img_tag_with_registry)
+        p.start().return_value = get_img_tag_with_registry_output
+        self.addCleanup(p.stop)
+
+        mock_docker_apiclient_pull = mock.MagicMock()
+        p = mock.patch('docker.APIClient.pull', mock_docker_apiclient_pull)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_docker_apiclient_tag = mock.MagicMock()
+        p = mock.patch('docker.APIClient.tag', mock_docker_apiclient_tag)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_docker_apiclient_push = mock.MagicMock()
+        p = mock.patch('docker.APIClient.push', mock_docker_apiclient_push)
+        p.start().side_effect = Exception("Fake push exception")
+        self.addCleanup(p.stop)
+
+        mock_docker_apiclient_inspect = mock.MagicMock()
+        p = mock.patch('docker.APIClient.inspect_distribution', mock_docker_apiclient_inspect)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_docker_apiclient_remove_image = mock.MagicMock()
+        p = mock.patch('docker.APIClient.remove_image', mock_docker_apiclient_remove_image)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_pull_image_to_crictl = mock.MagicMock()
+        p = mock.patch('sysinv.common.containers.pull_image_to_crictl',
+                       mock_pull_image_to_crictl)
+        p.start()
+        self.addCleanup(p.stop)
+
+        result = self.service.download_images_from_upstream_to_local_reg_and_crictl(
+            images_to_be_downloaded)
+
+        # Assertions start here
+        # Assert Main Result
+        self.assertFalse(result)
+
+        # Assert mock method calls
+        mock_get_local_docker_registry_auth.assert_called_once()
+        mock_retrieve_specified_registries.assert_called_once()
+        mock_get_crictl_image_list.assert_called_once()
+
+        expected_calls = [mock.call('fake_image1', fake_registries),
+                          mock.call('fake_image2', fake_registries),
+                          mock.call('fake_image3', fake_registries)]
+        mock_get_img_tag_with_registry.assert_has_calls(expected_calls, any_order=True)
+
+        mock_docker_apiclient_pull.assert_called_with(get_img_tag_with_registry_output[0],
+                                                auth_config=get_img_tag_with_registry_output[1])
+        self.assertEqual(mock_docker_apiclient_pull.call_count, 3)
+
+        expected_calls = [mock.call(get_img_tag_with_registry_output[0],
+                                    f"{constants.DOCKER_REGISTRY_SERVER}/fake_image1"),
+                          mock.call(get_img_tag_with_registry_output[0],
+                                    f"{constants.DOCKER_REGISTRY_SERVER}/fake_image2"),
+                          mock.call(get_img_tag_with_registry_output[0],
+                                    f"{constants.DOCKER_REGISTRY_SERVER}/fake_image3")]
+        mock_docker_apiclient_tag.assert_has_calls(expected_calls, any_order=True)
+        self.assertEqual(mock_docker_apiclient_tag.call_count, 3)
+
+        mock_docker_apiclient_push.assert_called()
+
+        mock_docker_apiclient_inspect.assert_not_called()
+        mock_docker_apiclient_remove_image.assert_not_called()
+        mock_pull_image_to_crictl.assert_not_called()
+
+    def test_download_images_from_upstream_to_local_reg_and_crictl_success_docker_remove_image_failed(self):  # pylint: disable=line-too-long # noqa: E501
+        """Test download_images_from_upstream_to_local_reg_and_crictl: Docker remove image failed
+
+        """
+        images_to_be_downloaded = ['fake_image1', 'fake_image2', 'fake_image3']
+        fake_local_registry_auth = {'username': 'fake_username', 'password': 'fake_password'}
+        fake_registries = {'fake_registries': 'fake_registries'}
+        fake_crictl_auth = (
+            f"{fake_local_registry_auth['username']}:{fake_local_registry_auth['password']}"
+        )
+        get_img_tag_with_registry_output = ('fake_target_image', fake_local_registry_auth)
+
+        mock_get_local_docker_registry_auth = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.get_local_docker_registry_auth',
+                       mock_get_local_docker_registry_auth)
+        p.start().return_value = {'username': 'fake_username', 'password': 'fake_password'}
+        self.addCleanup(p.stop)
+
+        mock_retrieve_specified_registries = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.kube_app.DockerHelper.retrieve_specified_registries',
+                       mock_retrieve_specified_registries)
+        p.start().return_value = fake_registries
+        self.addCleanup(p.stop)
+
+        mock_get_crictl_image_list = mock.MagicMock()
+        p = mock.patch('sysinv.common.containers.get_crictl_image_list',
+                       mock_get_crictl_image_list)
+        p.start().side_effect = exception.SysinvException("Fake Error")
+        self.addCleanup(p.stop)
+
+        mock_get_img_tag_with_registry = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.kube_app.DockerHelper._get_img_tag_with_registry',
+                       mock_get_img_tag_with_registry)
+        p.start().return_value = get_img_tag_with_registry_output
+        self.addCleanup(p.stop)
+
+        mock_docker_apiclient_pull = mock.MagicMock()
+        p = mock.patch('docker.APIClient.pull', mock_docker_apiclient_pull)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_docker_apiclient_tag = mock.MagicMock()
+        p = mock.patch('docker.APIClient.tag', mock_docker_apiclient_tag)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_docker_apiclient_push = mock.MagicMock()
+        p = mock.patch('docker.APIClient.push', mock_docker_apiclient_push)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_docker_apiclient_inspect = mock.MagicMock()
+        p = mock.patch('docker.APIClient.inspect_distribution', mock_docker_apiclient_inspect)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_docker_apiclient_remove_image = mock.MagicMock()
+        p = mock.patch('docker.APIClient.remove_image', mock_docker_apiclient_remove_image)
+        p.start().side_effect = Exception("Fake error")
+        self.addCleanup(p.stop)
+
+        mock_pull_image_to_crictl = mock.MagicMock()
+        p = mock.patch('sysinv.common.containers.pull_image_to_crictl',
+                       mock_pull_image_to_crictl)
+        p.start()
+        self.addCleanup(p.stop)
+
+        result = self.service.download_images_from_upstream_to_local_reg_and_crictl(
+            images_to_be_downloaded)
+
+        # Assertions start here
+        # Assert Main Result
+        self.assertTrue(result)
+
+        # Assert mock method calls
+        mock_get_local_docker_registry_auth.assert_called_once()
+        mock_retrieve_specified_registries.assert_called_once()
+        mock_get_crictl_image_list.assert_called_once()
+
+        expected_calls = [mock.call('fake_image1', fake_registries),
+                          mock.call('fake_image2', fake_registries),
+                          mock.call('fake_image3', fake_registries)]
+        mock_get_img_tag_with_registry.assert_has_calls(expected_calls, any_order=True)
+
+        mock_docker_apiclient_pull.assert_called_with(get_img_tag_with_registry_output[0],
+                                                auth_config=get_img_tag_with_registry_output[1])
+        self.assertEqual(mock_docker_apiclient_pull.call_count, 3)
+
+        expected_calls = [mock.call(get_img_tag_with_registry_output[0],
+                                    f"{constants.DOCKER_REGISTRY_SERVER}/fake_image1"),
+                          mock.call(get_img_tag_with_registry_output[0],
+                                    f"{constants.DOCKER_REGISTRY_SERVER}/fake_image2"),
+                          mock.call(get_img_tag_with_registry_output[0],
+                                    f"{constants.DOCKER_REGISTRY_SERVER}/fake_image3")]
+        mock_docker_apiclient_tag.assert_has_calls(expected_calls, any_order=True)
+        self.assertEqual(mock_docker_apiclient_tag.call_count, 3)
+
+        expected_calls = [mock.call(f"{constants.DOCKER_REGISTRY_SERVER}/fake_image1",
+                                    auth_config=get_img_tag_with_registry_output[1]),
+                          mock.call(f"{constants.DOCKER_REGISTRY_SERVER}/fake_image2",
+                                    auth_config=get_img_tag_with_registry_output[1]),
+                          mock.call(f"{constants.DOCKER_REGISTRY_SERVER}/fake_image3",
+                                    auth_config=get_img_tag_with_registry_output[1])]
+        mock_docker_apiclient_push.assert_has_calls(expected_calls, any_order=True)
+        self.assertEqual(mock_docker_apiclient_push.call_count, 3)
+        mock_docker_apiclient_inspect.assert_has_calls(expected_calls, any_order=True)
+        self.assertEqual(mock_docker_apiclient_inspect.call_count, 3)
+
+        mock_docker_apiclient_remove_image.assert_called()
+
+        expected_calls = [mock.call(f"{constants.DOCKER_REGISTRY_SERVER}/fake_image1",
+                                    fake_crictl_auth),
+                          mock.call(f"{constants.DOCKER_REGISTRY_SERVER}/fake_image2",
+                                    fake_crictl_auth),
+                          mock.call(f"{constants.DOCKER_REGISTRY_SERVER}/fake_image3",
+                                    fake_crictl_auth)]
+        mock_pull_image_to_crictl.assert_has_calls(expected_calls, any_order=True)
+        self.assertEqual(mock_pull_image_to_crictl.call_count, 3)
+
+    def test_download_images_from_upstream_to_local_reg_and_crictl_failure_crictl_pull_failed(self):
+        """Test download_images_from_upstream_to_local_reg_and_crictl: Crictl pull failed
+
+        """
+        images_to_be_downloaded = ['fake_image1', 'fake_image2', 'fake_image3']
+        fake_local_registry_auth = {'username': 'fake_username', 'password': 'fake_password'}
+        fake_registries = {'fake_registries': 'fake_registries'}
+        get_img_tag_with_registry_output = ('fake_target_image', fake_local_registry_auth)
+
+        mock_get_local_docker_registry_auth = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.get_local_docker_registry_auth',
+                       mock_get_local_docker_registry_auth)
+        p.start().return_value = {'username': 'fake_username', 'password': 'fake_password'}
+        self.addCleanup(p.stop)
+
+        mock_retrieve_specified_registries = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.kube_app.DockerHelper.retrieve_specified_registries',
+                       mock_retrieve_specified_registries)
+        p.start().return_value = fake_registries
+        self.addCleanup(p.stop)
+
+        mock_get_crictl_image_list = mock.MagicMock()
+        p = mock.patch('sysinv.common.containers.get_crictl_image_list',
+                       mock_get_crictl_image_list)
+        p.start().side_effect = exception.SysinvException("Fake Error")
+        self.addCleanup(p.stop)
+
+        mock_get_img_tag_with_registry = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.kube_app.DockerHelper._get_img_tag_with_registry',
+                       mock_get_img_tag_with_registry)
+        p.start().return_value = get_img_tag_with_registry_output
+        self.addCleanup(p.stop)
+
+        mock_docker_apiclient_pull = mock.MagicMock()
+        p = mock.patch('docker.APIClient.pull', mock_docker_apiclient_pull)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_docker_apiclient_tag = mock.MagicMock()
+        p = mock.patch('docker.APIClient.tag', mock_docker_apiclient_tag)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_docker_apiclient_push = mock.MagicMock()
+        p = mock.patch('docker.APIClient.push', mock_docker_apiclient_push)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_docker_apiclient_inspect = mock.MagicMock()
+        p = mock.patch('docker.APIClient.inspect_distribution', mock_docker_apiclient_inspect)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_docker_apiclient_remove_image = mock.MagicMock()
+        p = mock.patch('docker.APIClient.remove_image', mock_docker_apiclient_remove_image)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_pull_image_to_crictl = mock.MagicMock()
+        p = mock.patch('sysinv.common.containers.pull_image_to_crictl',
+                       mock_pull_image_to_crictl)
+        p.start().side_effect = exception.SysinvException("Fake crictl pull error")
+        self.addCleanup(p.stop)
+
+        result = self.service.download_images_from_upstream_to_local_reg_and_crictl(
+            images_to_be_downloaded)
+
+        # Assertions start here
+        # Assert Main Result
+        self.assertFalse(result)
+
+        # Assert mock method calls
+        mock_get_local_docker_registry_auth.assert_called_once()
+        mock_retrieve_specified_registries.assert_called_once()
+        mock_get_crictl_image_list.assert_called_once()
+
+        expected_calls = [mock.call('fake_image1', fake_registries),
+                          mock.call('fake_image2', fake_registries),
+                          mock.call('fake_image3', fake_registries)]
+        mock_get_img_tag_with_registry.assert_has_calls(expected_calls, any_order=True)
+
+        mock_docker_apiclient_pull.assert_called_with(get_img_tag_with_registry_output[0],
+                                                auth_config=get_img_tag_with_registry_output[1])
+        self.assertEqual(mock_docker_apiclient_pull.call_count, 3)
+
+        expected_calls = [mock.call(get_img_tag_with_registry_output[0],
+                                    f"{constants.DOCKER_REGISTRY_SERVER}/fake_image1"),
+                          mock.call(get_img_tag_with_registry_output[0],
+                                    f"{constants.DOCKER_REGISTRY_SERVER}/fake_image2"),
+                          mock.call(get_img_tag_with_registry_output[0],
+                                    f"{constants.DOCKER_REGISTRY_SERVER}/fake_image3")]
+        mock_docker_apiclient_tag.assert_has_calls(expected_calls, any_order=True)
+        self.assertEqual(mock_docker_apiclient_tag.call_count, 3)
+
+        expected_calls = [mock.call(f"{constants.DOCKER_REGISTRY_SERVER}/fake_image1",
+                                    auth_config=get_img_tag_with_registry_output[1]),
+                          mock.call(f"{constants.DOCKER_REGISTRY_SERVER}/fake_image2",
+                                    auth_config=get_img_tag_with_registry_output[1]),
+                          mock.call(f"{constants.DOCKER_REGISTRY_SERVER}/fake_image3",
+                                    auth_config=get_img_tag_with_registry_output[1])]
+        mock_docker_apiclient_push.assert_has_calls(expected_calls, any_order=True)
+        self.assertEqual(mock_docker_apiclient_push.call_count, 3)
+        mock_docker_apiclient_inspect.assert_has_calls(expected_calls, any_order=True)
+        self.assertEqual(mock_docker_apiclient_inspect.call_count, 3)
+
+        expected_calls = [mock.call(f"{constants.DOCKER_REGISTRY_SERVER}/fake_image1"),
+                          mock.call(f"{constants.DOCKER_REGISTRY_SERVER}/fake_image2"),
+                          mock.call(f"{constants.DOCKER_REGISTRY_SERVER}/fake_image3"),
+                          mock.call("fake_target_image"),
+                          mock.call("fake_target_image"),
+                          mock.call("fake_target_image")]
+        mock_docker_apiclient_remove_image.assert_has_calls(expected_calls, any_order=True)
+        self.assertEqual(mock_docker_apiclient_remove_image.call_count, 6)
+        mock_pull_image_to_crictl.assert_called()
+
     # def test_kube_host_cordon(self):
     #     system_dict = self.system.as_dict()
     #     system_dict['system_mode'] = constants.SYSTEM_MODE_SIMPLEX
@@ -1279,126 +2275,6 @@ class ManagerTestCase(base.DbTestCase):
     #     updated_upgrade = self.dbapi.kube_upgrade_get_one()
     #     self.assertEqual(updated_upgrade.state,
     #                      kubernetes.KUBE_UPGRADE_UNCORDON_COMPLETE)
-
-#    def test_kube_download_images_one_controller(self):
-#        # Create an upgrade
-#        utils.create_test_kube_upgrade(
-#            from_version='v1.42.1',
-#            to_version='v1.42.2',
-#            state=kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES,
-#        )
-#        # Create controller-0
-#        config_uuid = str(uuid.uuid4())
-#        self._create_test_ihost(
-#            personality=constants.CONTROLLER,
-#            hostname='controller-0',
-#            uuid=str(uuid.uuid4()),
-#            config_status=None,
-#            config_applied=config_uuid,
-#            config_target=config_uuid,
-#            invprovision=constants.PROVISIONED,
-#            administrative=constants.ADMIN_UNLOCKED,
-#            operational=constants.OPERATIONAL_ENABLED,
-#            availability=constants.AVAILABILITY_ONLINE,
-#        )
-#
-#        # Speed up the test
-#        kubernetes.MANIFEST_APPLY_INTERVAL = 1
-#        kubernetes.MANIFEST_APPLY_TIMEOUT = 1
-#
-#        # Download images
-#        self.service.kube_download_images(self.context, 'v1.42.2')
-#
-#        # Verify that the upgrade state was updated
-#        updated_upgrade = self.dbapi.kube_upgrade_get_one()
-#        self.assertEqual(updated_upgrade.state,
-#                         kubernetes.KUBE_UPGRADE_DOWNLOADED_IMAGES)
-
-#    def test_kube_download_images_one_controller_manifest_timeout(self):
-#        # Create an upgrade
-#        utils.create_test_kube_upgrade(
-#            from_version='v1.42.1',
-#            to_version='v1.42.2',
-#            state=kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES,
-#        )
-#        # Create controller-0
-#        config_uuid = str(uuid.uuid4())
-#        self._create_test_ihost(
-#            personality=constants.CONTROLLER,
-#            hostname='controller-0',
-#            uuid=str(uuid.uuid4()),
-#            config_status=None,
-#            config_applied=config_uuid,
-#            config_target=config_uuid,
-#            invprovision=constants.PROVISIONED,
-#            administrative=constants.ADMIN_UNLOCKED,
-#            operational=constants.OPERATIONAL_ENABLED,
-#            availability=constants.AVAILABILITY_ONLINE,
-#        )
-#
-#        # Speed up the test
-#        kubernetes.MANIFEST_APPLY_INTERVAL = 1
-#        kubernetes.MANIFEST_APPLY_TIMEOUT = 1
-#
-#        # Make the manifest apply fail
-#        self.fail_config_apply_runtime_manifest = True
-#
-#        # Download images
-#        self.service.kube_download_images(self.context, 'v1.42.2')
-#
-#        # Verify that the upgrade state was updated
-#        updated_upgrade = self.dbapi.kube_upgrade_get_one()
-#        self.assertEqual(updated_upgrade.state,
-#                         kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES_FAILED)
-
-#    def test_kube_download_images_two_controllers(self):
-#        # Create an upgrade
-#        utils.create_test_kube_upgrade(
-#            from_version='v1.42.1',
-#            to_version='v1.42.2',
-#            state=kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES,
-#        )
-#        # Create controller-0
-#        config_uuid = str(uuid.uuid4())
-#        self._create_test_ihost(
-#            personality=constants.CONTROLLER,
-#            hostname='controller-0',
-#            uuid=str(uuid.uuid4()),
-#            config_status=None,
-#            config_applied=config_uuid,
-#            config_target=config_uuid,
-#            invprovision=constants.PROVISIONED,
-#            administrative=constants.ADMIN_UNLOCKED,
-#            operational=constants.OPERATIONAL_ENABLED,
-#            availability=constants.AVAILABILITY_ONLINE,
-#        )
-#        # Create controller-1
-#        config_uuid = str(uuid.uuid4())
-#        self._create_test_ihost(
-#            personality=constants.CONTROLLER,
-#            hostname='controller-1',
-#            uuid=str(uuid.uuid4()),
-#            config_status=None,
-#            config_applied=config_uuid,
-#            config_target=config_uuid,
-#            invprovision=constants.PROVISIONED,
-#            administrative=constants.ADMIN_UNLOCKED,
-#            operational=constants.OPERATIONAL_ENABLED,
-#            availability=constants.AVAILABILITY_ONLINE,
-#            mgmt_mac='00:11:22:33:44:56',
-#        )
-#
-#        # Speed up the test
-#        kubernetes.MANIFEST_APPLY_INTERVAL = 1
-#        kubernetes.MANIFEST_APPLY_TIMEOUT = 1
-#
-#        # Download images
-#        self.service.kube_download_images(self.context, 'v1.42.2')
-#
-#        # Verify that the upgrade state was updated
-#        updated_upgrade = self.dbapi.kube_upgrade_get_one()
-#        self.assertEqual(updated_upgrade.state,
-#                         kubernetes.KUBE_UPGRADE_DOWNLOADED_IMAGES)
 
 #    @mock.patch('sysinv.conductor.manager.'
 #                'ConductorManager._config_apply_runtime_manifest')

@@ -478,7 +478,7 @@ def get_all_supported_k8s_versions():
     This returns a list of all kubernetes versions supported for a particular
     release by scanning /usr/local/kubernetes
 
-    :returns: List of strings in ascending order e.g. ['1.29.2', '1.30.6', '1.31.5', '1.32.2']
+    :returns: List of version strings e.g. ['1.29.2', '1.30.6', '1.31.5', '1.32.2']
     """
     try:
         k8s_versions = os.listdir(KUBERNETES_VERSIONED_BINARIES_ROOT)

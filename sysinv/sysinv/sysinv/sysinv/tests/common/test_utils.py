@@ -15,6 +15,7 @@ import fcntl
 import errno
 import subprocess
 
+from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils
 from sysinv.tests import base
@@ -502,3 +503,34 @@ class TestCommonUtils(base.TestCase):
         with open(temp_file.name, "r") as updated_file:
             updated_lines = updated_file.read()
         self.assertEqual(updated_lines, UPDATED_CONF_FILE)
+
+    def test_pmon_restart_service_success(self):
+        """Test successful pmon-restart service
+        """
+        fake_service_name = "fake_service"
+        cmd = [constants.PMON_RESTART_FULL_PATH, fake_service_name]
+
+        mock_utils_execute = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.execute', mock_utils_execute)
+        p.start()
+        self.addCleanup(p.stop)
+
+        utils.pmon_restart_service(fake_service_name)
+        mock_utils_execute.assert_called_once_with(*cmd, check_exit_code=0)
+
+    def test_pmon_restart_service_failure(self):
+        """Test pmon-restart service failure
+        """
+        fake_service_name = "fake_service"
+        cmd = [constants.PMON_RESTART_FULL_PATH, fake_service_name]
+
+        mock_utils_execute = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.execute', mock_utils_execute)
+        p.start().side_effect = exception.SysinvException("Fake error")
+        self.addCleanup(p.stop)
+
+        self.assertRaises(exception.SysinvException,
+                          utils.pmon_restart_service,
+                          fake_service_name)
+
+        mock_utils_execute.assert_called_once_with(*cmd, check_exit_code=0)
