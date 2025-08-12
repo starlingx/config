@@ -18639,7 +18639,7 @@ class ConductorManager(service.PeriodicService):
                        f"--kubeconfig={kubernetes.KUBERNETES_ADMIN_CONF}",
                        "get",
                        "ippool.crd.projectcalico.org/default-ipv4-ippool"]
-                cutils.execute(*cmd, attempts=5, delay_on_retry=3,
+                cutils.execute(*cmd, attempts=5, delay_on_retry=True,
                                check_exit_code=0)
             except exception.ProcessExecutionError as e:
                 if "Error from server (NotFound):" in e.stderr:
@@ -18656,7 +18656,7 @@ class ConductorManager(service.PeriodicService):
                            f"--kubeconfig={kubernetes.KUBERNETES_ADMIN_CONF}",
                            "delete",
                            "ippool.crd.projectcalico.org/default-ipv4-ippool"]
-                    cutils.execute(*cmd, attempts=5, delay_on_retry=3,
+                    cutils.execute(*cmd, attempts=5, delay_on_retry=True,
                                    check_exit_code=0)
                 except exception.ProcessExecutionError as e:
                     raise exception.SysinvException("Error deleting "
@@ -18664,11 +18664,7 @@ class ConductorManager(service.PeriodicService):
                             "object. Details: %s" % str(e))
                 LOG.info("ippool.crd.projectcalico.org/default-ipv4-ippool deleted successfully")
 
-        try:
-            os.remove(overrides_file)
-        except Exception as ex:
-            LOG.warning("Failed to remove host overrides file at %s. Error: [%s]. "
-                        "Remove manually to save space." % (overrides_file, ex))
+        LOG.info("Kubernetes networking upgrade completed successfully.")
 
     def kube_upgrade_networking(self, context, kube_version):
         """Upgrade kubernetes networking for this kubernetes version"""
@@ -18687,15 +18683,20 @@ class ConductorManager(service.PeriodicService):
 
         try:
             self._upgrade_k8s_networking(kube_version)
+            upgrade_status = kubernetes.KUBE_UPGRADED_NETWORKING
         except Exception as e:
             LOG.error("Kubernetes networking upgrade failed with error: [%s]" % (e))
-            # Update the upgrade state
-            self._kube_upgrade_state_update(
-                    context, kubernetes.KUBE_UPGRADING_NETWORKING_FAILED)
-            return
+            upgrade_status = kubernetes.KUBE_UPGRADING_NETWORKING_FAILED
 
-        self._kube_upgrade_state_update(context, kubernetes.KUBE_UPGRADED_NETWORKING)
-        LOG.info("Kubernetes networking upgrade completed successfully.")
+        try:
+            overrides_file = "/tmp/upgrade_overrides.yaml"
+            if os.path.exists(overrides_file):
+                os.remove(overrides_file)
+        except Exception as ex:
+            LOG.warning("Failed to remove host overrides file at %s. Error: [%s]. "
+                        "Remove manually to save space." % (overrides_file, ex))
+
+        self._kube_upgrade_state_update(context, upgrade_status)
 
     def _upgrade_k8s_storage(self, kube_version):
         """Upgrade kubernetes storage.
