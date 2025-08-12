@@ -1618,6 +1618,34 @@ class TestKubeOperator(base.TestCase):
         self.assertRaises(exception.SysinvException, kube.disable_kubelet_garbage_collection)
         mock_file_open.return_value.write.assert_not_called()
 
+    def test_enable_kubelet_garbage_collection_success(self):
+        """Test successful execution of method enable_kubelet_garbage_collection()
+        """
+        expected_config_update = \
+                'KUBELET_KUBEADM_ARGS="--fake-flag=fake_value"\n'
+
+        mock_file_open = mock.mock_open(
+            read_data='KUBELET_KUBEADM_ARGS="--image-gc-high-threshold 100 --fake-flag=fake_value"\n')  # pylint: disable=line-too-long # noqa: E501
+        p = mock.patch('builtins.open', mock_file_open)
+        p.start()
+        self.addCleanup(p.stop)
+
+        kube.enable_kubelet_garbage_collection()
+
+        mock_file_open.return_value.write.assert_called_with(expected_config_update)
+        self.assertEqual(mock_file_open.call_count, 2)
+
+    def test_enable_kubelet_garbage_collection_failure(self):
+        """Test failure of method enable_kubelet_garbage_collection()
+        """
+        mock_file_open = mock.mock_open()
+        p = mock.patch('builtins.open', mock_file_open)
+        p.start().return_value.read.side_effect = Exception("Fake error")
+        self.addCleanup(p.stop)
+
+        self.assertRaises(exception.SysinvException, kube.enable_kubelet_garbage_collection)
+        mock_file_open.return_value.write.assert_not_called()
+
     def test_kubectl_apply_success_integer_timeout(self):
         """Test kubectl apply successful execution: integer timeout
         """

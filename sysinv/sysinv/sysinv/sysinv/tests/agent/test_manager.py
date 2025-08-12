@@ -595,3 +595,132 @@ class TestHostKubernetesOperations(base.TestCase):
         mock_pmon_restart_service.assert_called_once()
         mock_pull_images.assert_called_once_with(images_to_be_pulled)
         mock_report_download_images_result.assert_called_once_with(self.context, result)
+
+    def test_kube_upgrade_kubelet_success_controller_node(self):
+        """Test successful execution of kubelet upgrade on a controller node
+        """
+        self.agent_manager._ihost_personality = constants.CONTROLLER
+        self.agent_manager._ihostname = 'fake_host_name'
+        fake_link = '/fake/path/to/fake_from_kube_version'
+        to_kube_version = 'vfake_to_kube_version'
+        upgrade_result = True
+        is_final_version = True
+
+        mock_os_readlink = mock.MagicMock()
+        p = mock.patch('os.readlink', mock_os_readlink)
+        p.start().return_value = fake_link
+        self.addCleanup(p.stop)
+
+        mock_upgrade_controller_kubelet = mock.MagicMock()
+        p = mock.patch('sysinv.agent.kube_host.KubeControllerOperator.upgrade_kubelet',
+                       mock_upgrade_controller_kubelet)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_upgrade_worker_kubelet = mock.MagicMock()
+        p = mock.patch('sysinv.agent.kube_host.KubeWorkerOperator.upgrade_kubelet',
+                       mock_upgrade_worker_kubelet)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_report_kube_upgrade_kubelet_result = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.rpcapi.ConductorAPI.report_kube_upgrade_kubelet_result',
+                       mock_report_kube_upgrade_kubelet_result)
+        p.start()
+        self.addCleanup(p.stop)
+
+        self.agent_manager.kube_upgrade_kubelet(
+            self.context, self.agent_manager._ihost_uuid, to_kube_version, is_final_version)
+
+        mock_os_readlink.assert_called_once()
+        mock_upgrade_controller_kubelet.assert_called_once_with(
+            'vfake_from_kube_version', to_kube_version, is_final_version)
+        mock_upgrade_worker_kubelet.assert_not_called()
+        mock_report_kube_upgrade_kubelet_result.assert_called_once_with(
+            self.context, self.agent_manager._ihost_uuid, to_kube_version, upgrade_result)
+
+    def test_kube_upgrade_kubelet_success_worker_node(self):
+        """Test successful execution of kubelet upgrade on a worker node
+        """
+        self.agent_manager._ihost_personality = constants.WORKER
+        self.agent_manager._ihostname = 'fake_host_name'
+        fake_link = '/fake/path/to/fake_from_kube_version'
+        to_kube_version = 'vfake_to_kube_version'
+        upgrade_result = True
+        is_final_version = True
+
+        mock_os_readlink = mock.MagicMock()
+        p = mock.patch('os.readlink', mock_os_readlink)
+        p.start().return_value = fake_link
+        self.addCleanup(p.stop)
+
+        mock_upgrade_controller_kubelet = mock.MagicMock()
+        p = mock.patch('sysinv.agent.kube_host.KubeControllerOperator.upgrade_kubelet',
+                       mock_upgrade_controller_kubelet)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_upgrade_worker_kubelet = mock.MagicMock()
+        p = mock.patch('sysinv.agent.kube_host.KubeWorkerOperator.upgrade_kubelet',
+                       mock_upgrade_worker_kubelet)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_report_kube_upgrade_kubelet_result = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.rpcapi.ConductorAPI.report_kube_upgrade_kubelet_result',
+                       mock_report_kube_upgrade_kubelet_result)
+        p.start()
+        self.addCleanup(p.stop)
+
+        self.agent_manager.kube_upgrade_kubelet(
+            self.context, self.agent_manager._ihost_uuid, to_kube_version, is_final_version)
+
+        mock_os_readlink.assert_called_once()
+        mock_upgrade_controller_kubelet.assert_not_called()
+        mock_upgrade_worker_kubelet.assert_called_once_with(
+            'vfake_from_kube_version', to_kube_version, is_final_version)
+        mock_report_kube_upgrade_kubelet_result.assert_called_once_with(
+            self.context, self.agent_manager._ihost_uuid, to_kube_version, upgrade_result)
+
+    def test_kube_upgrade_kubelet_failure(self):
+        """Test failed execution of kubelet upgrade on a worker node
+        """
+        self.agent_manager._ihost_personality = constants.WORKER
+        self.agent_manager._ihostname = 'fake_host_name'
+        fake_link = '/fake/path/to/fake_from_kube_version'
+        to_kube_version = 'vfake_to_kube_version'
+        upgrade_result = False
+        is_final_version = True
+
+        mock_os_readlink = mock.MagicMock()
+        p = mock.patch('os.readlink', mock_os_readlink)
+        p.start().return_value = fake_link
+        self.addCleanup(p.stop)
+
+        mock_upgrade_controller_kubelet = mock.MagicMock()
+        p = mock.patch('sysinv.agent.kube_host.KubeControllerOperator.upgrade_kubelet',
+                       mock_upgrade_controller_kubelet)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_upgrade_worker_kubelet = mock.MagicMock()
+        p = mock.patch('sysinv.agent.kube_host.KubeWorkerOperator.upgrade_kubelet',
+                       mock_upgrade_worker_kubelet)
+        p.start().side_effect = Exception("Fake error")
+        self.addCleanup(p.stop)
+
+        mock_report_kube_upgrade_kubelet_result = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.rpcapi.ConductorAPI.report_kube_upgrade_kubelet_result',
+                       mock_report_kube_upgrade_kubelet_result)
+        p.start()
+        self.addCleanup(p.stop)
+
+        self.agent_manager.kube_upgrade_kubelet(
+            self.context, self.agent_manager._ihost_uuid, to_kube_version, is_final_version)
+
+        mock_os_readlink.assert_called_once()
+        mock_upgrade_controller_kubelet.assert_not_called()
+        mock_upgrade_worker_kubelet.assert_called_once_with(
+            'vfake_from_kube_version', to_kube_version, is_final_version)
+        mock_report_kube_upgrade_kubelet_result.assert_called_once_with(
+            self.context, self.agent_manager._ihost_uuid, to_kube_version, upgrade_result)

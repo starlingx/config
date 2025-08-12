@@ -687,7 +687,7 @@ def is_k8s_configured():
 
 
 def enable_kubelet_garbage_collection():
-    """ Disables kubelet garbage collection
+    """Enables kubelet garbage collection
 
     This method virtually enables back kubelet image garbage collection by removing
     high(100) image garbage collection threshold in the kubelet config.

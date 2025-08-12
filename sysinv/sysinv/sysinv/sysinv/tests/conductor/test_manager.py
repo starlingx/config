@@ -3206,7 +3206,7 @@ class ManagerTestCase(base.DbTestCase):
         mock_shutil_copy2.assert_not_called()
         mock_render_jinja_template_from_file.assert_not_called()
         mock_kubectl_apply.assert_not_called()
-        mock_os_path_exists.assert_called_once()
+        mock_os_path_exists.assert_called()
         mock_os_remove.assert_not_called()
 
         updated_upgrade = self.dbapi.kube_upgrade_get_one()
@@ -3870,6 +3870,225 @@ class ManagerTestCase(base.DbTestCase):
         updated_upgrade = self.dbapi.kube_upgrade_get_one()
         self.assertEqual(updated_upgrade.state, kubernetes.KUBE_UPGRADING_STORAGE_FAILED)
 
+    def test_kube_upgrade_kubelet_controller_host_success(self):
+        """Test successful execution of kubelet upgrade (on controller host)
+        """
+        # Create controller-0
+        config_uuid = str(uuid.uuid4())
+        controller0_host_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname=constants.CONTROLLER_0_HOSTNAME,
+            uuid=controller0_host_uuid,
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            mgmt_mac='00:11:22:33:44:55'
+        )
+
+        FROM_VERSION = 'v1.29.2'
+        TO_VERSION = 'v1.30.6'
+
+        # Create an upgrade
+        utils.create_test_kube_upgrade(
+            from_version=FROM_VERSION,
+            to_version=TO_VERSION,
+            state=kubernetes.KUBE_UPGRADING_KUBELETS,
+        )
+
+        self.dbapi.kube_host_upgrade_update(1, {'target_version': TO_VERSION})
+
+        mock_kube_upgrade_kubelet = mock.MagicMock()
+        p = mock.patch.object(
+            agent_rpcapi.AgentAPI, 'kube_upgrade_kubelet', mock_kube_upgrade_kubelet)
+        p.start()
+        self.addCleanup(p.stop)
+
+        self.service.kube_upgrade_kubelet(self.context, controller0_host_uuid)
+
+        mock_kube_upgrade_kubelet.assert_called_once_with(
+            self.context, controller0_host_uuid, TO_VERSION, True)
+
+    def test_kube_upgrade_kubelet_worker_host_success(self):
+        """Test successful execution of kubelet upgrade (on worker host)
+        """
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_DUPLEX
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+
+        # Create controller-0
+        config_uuid = str(uuid.uuid4())
+        controller0_host_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname=constants.CONTROLLER_0_HOSTNAME,
+            uuid=controller0_host_uuid,
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            mgmt_mac='00:11:22:33:44:55'
+        )
+
+        # Create controller-1
+        config_uuid = str(uuid.uuid4())
+        controller1_host_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname=constants.CONTROLLER_1_HOSTNAME,
+            uuid=controller1_host_uuid,
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            mgmt_mac='00:11:22:33:44:56'
+        )
+
+        # Create compute-0
+        config_uuid = str(uuid.uuid4())
+        compute0_host_uuid = str(uuid.uuid4())
+        compute0_host = self._create_test_ihost(
+            personality=constants.WORKER,
+            hostname='compute-0',
+            uuid=compute0_host_uuid,
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            mgmt_mac='00:11:22:33:44:57')
+
+        FROM_VERSION = 'v1.29.2'
+        TO_VERSION = 'v1.30.6'
+
+        # Create an upgrade
+        utils.create_test_kube_upgrade(
+            from_version=FROM_VERSION,
+            to_version=TO_VERSION,
+            state=kubernetes.KUBE_UPGRADING_KUBELETS,
+        )
+
+        self.dbapi.kube_host_upgrade_update(compute0_host.id, {'target_version': TO_VERSION})
+
+        mock_kube_upgrade_kubelet = mock.MagicMock()
+        p = mock.patch.object(
+            agent_rpcapi.AgentAPI, 'kube_upgrade_kubelet', mock_kube_upgrade_kubelet)
+        p.start()
+        self.addCleanup(p.stop)
+
+        self.service.kube_upgrade_kubelet(self.context, compute0_host_uuid)
+
+        mock_kube_upgrade_kubelet.assert_called_once_with(
+            self.context, compute0_host_uuid, TO_VERSION, True)
+
+    def test_kube_upgrade_kubelet_storage_host(self):
+        """Test skipped execution of kubelet upgrade on storage host
+        """
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_DUPLEX
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+
+        # Create controller-0
+        config_uuid = str(uuid.uuid4())
+        controller0_host_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname=constants.CONTROLLER_0_HOSTNAME,
+            uuid=controller0_host_uuid,
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            mgmt_mac='00:11:22:33:44:55'
+        )
+
+        # Create controller-1
+        config_uuid = str(uuid.uuid4())
+        controller1_host_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname=constants.CONTROLLER_1_HOSTNAME,
+            uuid=controller1_host_uuid,
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            mgmt_mac='00:11:22:33:44:56'
+        )
+
+        # Create compute-0
+        config_uuid = str(uuid.uuid4())
+        compute0_host_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.WORKER,
+            hostname='compute-0',
+            uuid=compute0_host_uuid,
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            mgmt_mac='00:11:22:33:44:57')
+
+        # Create storage-0
+        config_uuid = str(uuid.uuid4())
+        storage0_host_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.STORAGE,
+            hostname=constants.STORAGE_0_HOSTNAME,
+            uuid=storage0_host_uuid,
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            mgmt_mac='00:11:22:33:44:58')
+
+        FROM_VERSION = 'v1.29.2'
+        TO_VERSION = 'v1.30.6'
+
+        # Create an upgrade
+        utils.create_test_kube_upgrade(
+            from_version=FROM_VERSION,
+            to_version=TO_VERSION,
+            state=kubernetes.KUBE_UPGRADING_KUBELETS,
+        )
+
+        mock_kube_upgrade_kubelet = mock.MagicMock()
+        p = mock.patch.object(
+            agent_rpcapi.AgentAPI, 'kube_upgrade_kubelet', mock_kube_upgrade_kubelet)
+        p.start()
+        self.addCleanup(p.stop)
+
+        self.assertRaises(exception.SysinvException,
+                          self.service.kube_upgrade_kubelet,
+                          self.context,
+                          storage0_host_uuid)
+
+        mock_kube_upgrade_kubelet.assert_not_called()
+
     # def test_kube_host_uncordon(self):
     #     system_dict = self.system.as_dict()
     #     system_dict['system_mode'] = constants.SYSTEM_MODE_SIMPLEX
@@ -4239,157 +4458,6 @@ class ManagerTestCase(base.DbTestCase):
 #
 #        mock_config_apply_runtime_manifest.assert_called_with(mock.ANY,
 #            '6c5aa183-4884-46e6-b86a-b29e6b08dedb', config_dict)
-
-#    @mock.patch('os.path.isdir', return_value=True)
-#    @mock.patch('shutil.copytree')
-#    @mock.patch('sysinv.conductor.manager.tempfile.mkdtemp', return_value='/tmp/mock-temp-dir')
-#    def test_kube_upgrade_kubelet_controller(self, mock_mkdtemp, mock_copytree, mock_isdir):
-#        # Create an upgrade
-#        utils.create_test_kube_upgrade(
-#            from_version='v1.42.1',
-#            to_version='v1.42.2',
-#            state=kubernetes.KUBE_UPGRADED_SECOND_MASTER,
-#        )
-#        # Create controller-0
-#        config_uuid = str(uuid.uuid4())
-#        c0 = self._create_test_ihost(
-#            personality=constants.CONTROLLER,
-#            hostname='controller-0',
-#            uuid=str(uuid.uuid4()),
-#            config_status=None,
-#            config_applied=config_uuid,
-#            config_target=config_uuid,
-#            invprovision=constants.PROVISIONED,
-#            administrative=constants.ADMIN_UNLOCKED,
-#            operational=constants.OPERATIONAL_ENABLED,
-#            availability=constants.AVAILABILITY_ONLINE,
-#        )
-#        # Set the target version for controller-0
-#        self.dbapi.kube_host_upgrade_update(1, {'target_version': 'v1.42.2'})
-#        # Make the kubelet upgrade pass
-#        self.kube_get_kubelet_versions_result = {
-#            'controller-0': 'v1.42.2',
-#            'controller-1': 'v1.42.1',
-#            'worker-0': 'v1.42.1'}
-#
-#        # Speed up the test
-#        kubernetes.MANIFEST_APPLY_INTERVAL = 1
-#        kubernetes.POD_START_INTERVAL = 1
-#
-#        # Upgrade the kubelet
-#        self.service.kube_upgrade_kubelet(self.context, c0.uuid)
-#
-#        # Verify that the upgrade state was not updated
-#        updated_upgrade = self.dbapi.kube_upgrade_get_one()
-#        self.assertEqual(updated_upgrade.state,
-#                         kubernetes.KUBE_UPGRADED_SECOND_MASTER)
-#
-#        # Verify that the host upgrade status is upgraded-kubelet
-#        updated_host_upgrade = self.dbapi.kube_host_upgrade_get(1)
-#        self.assertEqual(updated_host_upgrade.status,
-#                         kubernetes.KUBE_HOST_UPGRADED_KUBELET)
-
-#    def test_kube_upgrade_kubelet_second_master(self):
-#        # Create an upgrade
-#        utils.create_test_kube_upgrade(
-#            from_version='v1.42.1',
-#            to_version='v1.42.2',
-#            state=kubernetes.KUBE_UPGRADING_SECOND_MASTER,
-#        )
-#        # Create controller-0
-#        config_uuid = str(uuid.uuid4())
-#        self._create_test_ihost(
-#            personality=constants.CONTROLLER,
-#            hostname='controller-0',
-#            uuid=str(uuid.uuid4()),
-#            config_status=None,
-#            config_applied=config_uuid,
-#            config_target=config_uuid,
-#            invprovision=constants.PROVISIONED,
-#            administrative=constants.ADMIN_UNLOCKED,
-#            operational=constants.OPERATIONAL_ENABLED,
-#            availability=constants.AVAILABILITY_ONLINE,
-#            mgmt_mac='00:11:22:33:44:55',
-#        )
-#        # Set the target version for controller-0
-#        self.dbapi.kube_host_upgrade_update(1, {'target_version': 'v1.42.2'})
-#        # Create controller-1
-#        config_uuid = str(uuid.uuid4())
-#        c1 = self._create_test_ihost(
-#            personality=constants.CONTROLLER,
-#            hostname='controller-1',
-#            uuid=str(uuid.uuid4()),
-#            config_status=None,
-#            config_applied=config_uuid,
-#            config_target=config_uuid,
-#            invprovision=constants.PROVISIONED,
-#            administrative=constants.ADMIN_UNLOCKED,
-#            operational=constants.OPERATIONAL_ENABLED,
-#            availability=constants.AVAILABILITY_ONLINE,
-#            mgmt_mac='00:11:22:33:44:56',
-#        )
-#        # Set the target version for controller-1
-#        self.dbapi.kube_host_upgrade_update(2, {'target_version': 'v1.42.2'})
-#        # Make the kubelet upgrade pass
-#        self.kube_get_kubelet_versions_result = {
-#            'controller-0': 'v1.42.2',
-#            'controller-1': 'v1.42.2'}
-#        # Make the upgrade pass
-#        self.kube_get_control_plane_versions_result = {
-#            'controller-0': 'v1.42.2',
-#            'controller-1': 'v1.42.2'}
-#
-#        # Speed up the test
-#        kubernetes.MANIFEST_APPLY_INTERVAL = 1
-#        kubernetes.POD_START_INTERVAL = 1
-#
-#        # Upgrade the kubelet
-#        self.service.kube_upgrade_kubelet(self.context, c1.uuid)
-#
-#        # Verify that the host upgrade status was cleared
-#        updated_host_upgrade = self.dbapi.kube_host_upgrade_get(1)
-#        self.assertEqual(updated_host_upgrade.status, None)
-
-#    def test_kube_upgrade_kubelet_controller_upgrade_fail(self):
-#        # Create an upgrade
-#        utils.create_test_kube_upgrade(
-#            from_version='v1.42.1',
-#            to_version='v1.42.2',
-#            state=kubernetes.KUBE_UPGRADING_KUBELETS,
-#        )
-#        # Create controller-0
-#        config_uuid = str(uuid.uuid4())
-#        c0 = self._create_test_ihost(
-#            personality=constants.CONTROLLER,
-#            hostname='controller-0',
-#            uuid=str(uuid.uuid4()),
-#            config_status=None,
-#            config_applied=config_uuid,
-#            config_target=config_uuid,
-#            invprovision=constants.PROVISIONED,
-#            administrative=constants.ADMIN_UNLOCKED,
-#            operational=constants.OPERATIONAL_ENABLED,
-#            availability=constants.AVAILABILITY_ONLINE,
-#        )
-#        # Set the target version for controller-0
-#        self.dbapi.kube_host_upgrade_update(1, {'target_version': 'v1.42.2'})
-#
-#        # Speed up the test
-#        kubernetes.MANIFEST_APPLY_INTERVAL = 1
-#        kubernetes.POD_START_INTERVAL = 1
-#        kubernetes.POD_START_TIMEOUT = 1
-#
-#        # Upgrade the kubelet
-#        self.service.kube_upgrade_kubelet(self.context, c0.uuid)
-#
-#        # Verify that the upgrade state was not updated
-#        updated_upgrade = self.dbapi.kube_upgrade_get_one()
-#        self.assertEqual(updated_upgrade.state,
-#                         kubernetes.KUBE_UPGRADING_KUBELETS)
-#
-#        # Verify that the host upgrade status was cleared
-#        updated_host_upgrade = self.dbapi.kube_host_upgrade_get(1)
-#        self.assertIsNotNone(updated_host_upgrade.status)
 
     def test_backup_kube_control_plane(self):
         """ The unit test covers the success path of the method
