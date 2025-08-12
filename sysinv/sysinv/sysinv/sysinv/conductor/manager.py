@@ -12295,6 +12295,10 @@ class ConductorManager(service.PeriodicService):
             # diff list or dict, to only target required personalities.
             if section == constants.SERVICE_PARAM_SECTION_KUBERNETES_CONFIG:
                 personalities = [constants.CONTROLLER, constants.WORKER]
+            if section in [constants.SERVICE_PARAM_SECTION_KUBERNETES_SCHEDULER,
+                           constants.SERVICE_PARAM_SECTION_KUBERNETES_CONTROLLER_MANAGER]:
+                # Do not update target config for hosts
+                personalities = None
         elif service == constants.SERVICE_TYPE_PLATFORM:
             if section == constants.SERVICE_PARAM_SECTION_COLLECTD:
                 reboot = True
