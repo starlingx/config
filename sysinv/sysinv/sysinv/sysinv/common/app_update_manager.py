@@ -143,18 +143,19 @@ class AppUpdateManager:  # noqa: H238
         if self.apps_to_retry:
             apps_to_update = self.apps_to_retry
 
-        _, failed_updated_apps = self._update_strategy_fn(
+        _, successfully_updated_apps, failed_updated_apps = self._update_strategy_fn(
             context,
             apps_to_update,
             operation,
             **kwargs
         )
 
+        self.successfully_updated += successfully_updated_apps
+
         if failed_updated_apps and self.apps_to_retry:
             LOG.warning(
                 f"The following apps did not update successfully: {', '.join(failed_updated_apps)}."
             )
-            self.successfully_updated += list(set(self.apps_to_retry) - set(failed_updated_apps))
             self.failed_apps = failed_updated_apps
             return False
         elif failed_updated_apps:
@@ -162,14 +163,12 @@ class AppUpdateManager:  # noqa: H238
                 f"The following apps did not update successfully: {', '.join(failed_updated_apps)}."
                 " The system will try to update these apps one more time."
             )
-            self.successfully_updated += list(set(apps_to_update) - set(failed_updated_apps))
             self.apps_to_retry = failed_updated_apps
             return False
 
-        self.successfully_updated += apps_to_update
         return True
 
-    def update_apps(self, context):
+    def update_apps(self, context, k8s_version=None, k8s_upgrade_timing=None):
         """
             Executes the full application update process based on their current status:
                 - Uploading apps that are marked as uploaded
@@ -194,6 +193,8 @@ class AppUpdateManager:  # noqa: H238
                 context,
                 self.apps_to_update[constants.APP_UPLOAD_OP],
                 constants.APP_UPLOAD_OP,
+                k8s_version=k8s_version,
+                k8s_upgrade_timing=k8s_upgrade_timing,
                 async_upload=False,
                 skip_validations=True
             )
@@ -202,7 +203,9 @@ class AppUpdateManager:  # noqa: H238
             self._update_a_list_of_apps(
                 context,
                 self.apps_to_update[constants.APP_RECOVER_UPDATE_OP],
-                constants.APP_RECOVER_UPDATE_OP
+                constants.APP_RECOVER_UPDATE_OP,
+                k8s_version=k8s_version,
+                k8s_upgrade_timing=k8s_upgrade_timing
             )
 
             LOG.info("Starting the update of apps with applied status.")
@@ -213,6 +216,8 @@ class AppUpdateManager:  # noqa: H238
                     context,
                     class_type['apps'],
                     constants.APP_UPDATE_OP,
+                    k8s_version=k8s_version,
+                    k8s_upgrade_timing=k8s_upgrade_timing,
                     async_update=False,
                     skip_validations=True,
                     ignore_locks=True

@@ -196,6 +196,10 @@ KUBE_CONFIG_BACKUP_PATH = os.path.join(KUBE_CONTROL_PLANE_BACKUP_PATH, 'k8s-conf
 KUBE_CONTROL_PLANE_STATIC_PODS_MANIFESTS_ABORT = os.path.join(
     KUBE_CONTROL_PLANE_BACKUP_PATH, 'static-pod-manifests-abort')
 
+# App update constants for Kubernetes upgrades
+KUBE_APP_UPDATE_TIMEOUT_LIMIT_IN_MINUTES = 30
+KUBE_APP_UPDATE_PROGRESS_CHECK_INTERVAL_IN_SECONDS = 10
+
 
 def k8s_health_check(tries=20, try_sleep=5, timeout=5,
                      healthz_endpoint=constants.APISERVER_READYZ_ENDPOINT,

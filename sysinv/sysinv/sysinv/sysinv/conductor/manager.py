@@ -7779,55 +7779,45 @@ class ConductorManager(service.PeriodicService):
         LOG.info("Checking available application updates for Kubernetes version {}."
                  .format(k8s_version))
 
-        update_candidates = [app_name for app_name in
-                             self.apps_metadata[constants.APP_METADATA_APPS].keys()]
+        # Launch app updates
+        self._apps_update_operation = app_update_manager.AppUpdateManager(
+            self.dbapi,
+            self.perform_automatic_operation_in_parallel
+        )
+        self._apps_update_operation.update_apps(context, k8s_version, k8s_upgrade_timing)
 
-        # Launch a thread for each update candidate, then wait for all applications
-        # to finish updating.
-        threadpool = greenpool.GreenPool(len(update_candidates))
-        threads = {}
-        result = True
-        for app_name in update_candidates:
+        # Monitor update results
+        max_attempts = int(kubernetes.KUBE_APP_UPDATE_TIMEOUT_LIMIT_IN_MINUTES * 60 /
+                           kubernetes.KUBE_APP_UPDATE_PROGRESS_CHECK_INTERVAL_IN_SECONDS)
+        current_attempt = 0
+        while current_attempt < max_attempts:
+            update_progress = self._apps_update_operation.status
+            if update_progress['status'] == app_update_manager.AppsUpdateStatus.IN_PROGRESS.value:
+                log_message = f"Application updates to match target Kubernetes version \
+                              {k8s_version} in progress."
+                if self._apps_update_operation.successfully_updated:
+                    log_message = log_message + " Apps updated so far: " \
+                        f"{', '.join(update_progress['updated_apps'])}."
+                LOG.info(log_message)
+            elif update_progress['status'] == app_update_manager.AppsUpdateStatus.COMPLETED.value:
+                if self._apps_update_operation.successfully_updated:
+                    LOG.info(f"Apps updated to target Kubernetes version {k8s_version}: "
+                             f"{', '.join(update_progress['updated_apps'])}.")
+                return True
+            elif update_progress['status'] == app_update_manager.AppsUpdateStatus.FAILED.value:
+                LOG.error(f"Failed to update the following apps to match target Kubernetes "
+                          f"version {k8s_version}: "
+                          f"{', '.join(update_progress['failed_apps'])}.")
+                return False
+            else:
+                LOG.warning("Unknown status of application updates to match Kubernetes "
+                            f"version {k8s_version}.")
+            time.sleep(kubernetes.KUBE_APP_UPDATE_PROGRESS_CHECK_INTERVAL_IN_SECONDS)
+            current_attempt += 1
 
-            try:
-                app = kubeapp_obj.get_by_name(context, app_name)
-            except exception.KubeAppNotFound:
-                continue
-
-            # Apps should be either in 'applied' or 'apply-failure' state to be updated.
-            # Applied apps are selected to be updated since they are currently in use.
-            # If the app is in 'apply-failure' state we give it a chance to be
-            # successfully applied via the update process.
-            # If a newer compatible version of an app in 'uploaded' or 'uploaded-failed' state
-            # is available then the current version is removed and the new one is uploaded.
-            if (app.status == constants.APP_APPLY_SUCCESS or
-                    app.status == constants.APP_APPLY_FAILURE):
-                threads[app.name] = threadpool.spawn(self._auto_update_app,
-                                                     context,
-                                                     app_name,
-                                                     k8s_version,
-                                                     k8s_upgrade_timing,
-                                                     async_update=False)
-            elif (app.status == constants.APP_UPLOAD_SUCCESS or
-                    app.status == constants.APP_UPLOAD_FAILURE):
-                threads[app.name] = threadpool.spawn(self._auto_upload_managed_app,
-                                                     context,
-                                                     app_name,
-                                                     k8s_version,
-                                                     k8s_upgrade_timing,
-                                                     async_upload=False)
-
-        # Wait for all updates to finish
-        threadpool.waitall()
-
-        # Check result values
-        for app_name, thread in threads.items():
-            if thread.wait() is False:
-                LOG.error("Failed to update {} to match target Kubernetes version {}"
-                          .format(app_name, k8s_version))
-                result = False
-
-        return result
+        LOG.error(f"Application update operation to match target Kubernetes version {k8s_version} "
+                  "timed out.")
+        return False
 
     def _get_app_bundle_for_update(self, app, k8s_version=None, k8s_upgrade_timing=None):
         """ Retrieve metadata from the most updated application bundle
@@ -8783,13 +8773,13 @@ class ConductorManager(service.PeriodicService):
                 self.check_pending_app_reapply(context)
                 apps_to_update.append(app_name)
 
-        operation_result, _ = self.perform_automatic_operation_in_parallel(context,
+        operation_result, _, _ = self.perform_automatic_operation_in_parallel(context,
                                                             apps_to_apply,
                                                             constants.APP_APPLY_OP)
         if not operation_result:
             LOG.error("Error while auto applying one or more apps")
 
-        operation_result, _ = self.perform_automatic_operation_in_parallel(context,
+        operation_result, _, _ = self.perform_automatic_operation_in_parallel(context,
                                                             apps_to_update,
                                                             constants.APP_UPDATE_OP)
         if not operation_result:
@@ -8803,12 +8793,18 @@ class ConductorManager(service.PeriodicService):
 
         LOG.debug("Periodic Task: _k8s_application_audit: Finished")
 
-    def recover_and_update_apply_failed_app(self, context, app_name):
+    def recover_and_update_apply_failed_app(self,
+                                            context,
+                                            app_name,
+                                            k8s_version=None,
+                                            k8s_upgrade_timing=None):
         try:
             self._inner_sync_auto_apply(context, app_name, async_apply=False)
             self._auto_update_app(
                 context,
                 app_name,
+                k8s_version=k8s_version,
+                k8s_upgrade_timing=k8s_upgrade_timing,
                 async_update=False,
                 skip_validations=True,
                 ignore_locks=True
@@ -8849,6 +8845,7 @@ class ConductorManager(service.PeriodicService):
         }
 
         result = True
+        successful_executions = []
         failed_executions = []
 
         LOG.info(f"Initiating automatic operation '{op}' on {len(apps)} applications: "
@@ -8864,18 +8861,29 @@ class ConductorManager(service.PeriodicService):
                 app_name = futures[future]
                 try:
                     response = future.result()
-                    if response is False:
+
+                    # If response is "None", the app operation was skipped, e.g. there are
+                    # no app versions available to be updated.
+                    # If response is "True", the app operation was successful, e.g. the app
+                    # was successfully updated.
+                    # If response is "False", the app operation failed, e.g. the app update failed.
+                    if response is None:
+                        LOG.info(f"Automatic operation '{op}' skipped for app {app_name}")
+                    elif response is True:
+                        successful_executions.append(app_name)
+                        LOG.info(f"Automatic operation '{op}' to the app {app_name} "
+                                 "completed successfully.")
+                    elif response is False:
                         failed_executions.append(app_name)
                         result = False
-                        continue
-                    LOG.info(
-                        f"Automatic operation '{op}' to the app {app_name} completed successfully."
-                    )
+                    else:
+                        LOG.warning(f"Unknown result of automatic operation '{op}' "
+                                    f"for app {app_name}")
                 except Exception as e:
                     LOG.error(f"Error occurred while processing the app {app_name}: {e}")
                     failed_executions.append(app_name)
                     result = False
-        return result, failed_executions
+        return result, successful_executions, failed_executions
 
     def check_pending_app_reapply(self, context):
         if self._verify_restore_in_progress():
@@ -17435,6 +17443,7 @@ class ConductorManager(service.PeriodicService):
         }
 
         result = True
+        successful_executions = []
         failed_executions = []
 
         LOG.info(f"Initiating automatic operation '{op}' on applications: {', '.join(apps)}")
@@ -17442,18 +17451,22 @@ class ConductorManager(service.PeriodicService):
         for app in apps:
             try:
                 response = operation_func[op](context, app, **kwargs)
-                if response is False:
+                if response is None:
+                    LOG.info(f"Automatic operation '{op}' skipped for app {app}")
+                elif response is True:
+                    successful_executions.append(app)
+                    LOG.info(f"Automatic operation '{op}' to the app {app} "
+                             "completed successfully.")
+                elif response is False:
                     failed_executions.append(app)
                     result = False
-                    break
-                LOG.info(
-                    f"Automatic operation '{op}' to the app {app} completed successfully."
-                )
+                else:
+                    LOG.warning(f"Unknown result of automatic operation '{op}' for app {app}")
             except Exception as e:
                 LOG.error(f"Error occurred while processing the app {app}: {e}")
                 failed_executions.append(app)
                 result = False
-        return result, failed_executions
+        return result, successful_executions, failed_executions
 
     def rollback_all_apps(self, context):
         """
@@ -18060,8 +18073,8 @@ class ConductorManager(service.PeriodicService):
                 self._check_installed_apps_compatibility(k8s_version)):
             kube_upgrade_obj = objects.kube_upgrade.get_one(context)
             if kube_upgrade_obj.state not in abort_states:
-                LOG.info("Applications updated to match Kubernetes version %s."
-                         % (kube_upgrade_obj.to_version))
+                LOG.info("Application %s update step to match Kubernetes version %s completed."
+                         % (timing, kube_upgrade_obj.to_version))
                 kube_upgrade_obj.state = success_state
                 kube_upgrade_obj.save()
         else:
