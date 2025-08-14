@@ -898,6 +898,7 @@ class AddressPoolController(rest.RestController):
         if constants.NETWORK_TYPE_MGMT in network_types:
             if self._get_system_mode() == constants.SYSTEM_MODE_SIMPLEX and \
                     cutils.is_initial_config_complete():
+                pecan.request.rpcapi.update_mgmt_config(pecan.request.context)
                 pecan.request.rpcapi.set_mgmt_network_reconfig_flag(pecan.request.context)
 
         if constants.NETWORK_TYPE_ADMIN in network_types:
