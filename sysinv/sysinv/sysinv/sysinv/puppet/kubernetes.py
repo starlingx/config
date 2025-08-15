@@ -399,19 +399,16 @@ class KubernetesPuppet(base.BasePuppet):
                         check=True
                     )
                     LOG.info("Command succeeded: %s", cmd)
-                    LOG.debug("stdout: %s", result.stdout)
                     LOG.debug("stderr: %s", result.stderr)
                 except subprocess.CalledProcessError as e:
                     LOG.error("Command failed: %s", cmd)
                     LOG.error("Return code: %d", e.returncode)
-                    LOG.error("stdout: %s", e.stdout)
                     LOG.error("stderr: %s", e.stderr)
                     raise exception.SysinvException(
                         "uploading certificate key to the cluster"
                         "failed with error: [%s]" % e)
                 except subprocess.TimeoutExpired as e:
                     LOG.error("Command timed out: %s", cmd)
-                    LOG.error("stdout: %s", e.stdout)
                     LOG.error("stderr: %s", e.stderr)
                     raise
                 finally:
@@ -448,28 +445,27 @@ class KubernetesPuppet(base.BasePuppet):
                     check=True
                 )
                 join_cmd = result.stdout.strip()
-                LOG.debug("stdout: %s", result.stdout)
                 LOG.debug("stderr: %s", result.stderr)
             except subprocess.CalledProcessError as e:
                 LOG.error("Command failed: %s", cmd)
                 LOG.error("Return code: %d", e.returncode)
-                LOG.error("stdout: %s", e.stdout)
                 LOG.error("stderr: %s", e.stderr)
                 raise exception.SysinvException(
                     "kubeadm token create failed with error: [%s]" % e)
             except subprocess.TimeoutExpired as e:
                 LOG.error("Command timed out: %s", cmd)
-                LOG.error("stdout: %s", e.stdout)
                 LOG.error("stderr: %s", e.stderr)
                 raise
             join_cmd_additions += \
                 " --cri-socket /var/run/containerd/containerd.sock"
             join_cmd = join_cmd.strip() + join_cmd_additions
             LOG.info('get_kubernetes_join_cmd join_cmd=%s' % join_cmd)
-        except Exception:
-            LOG.warning("Exception generating bootstrap token")
-            raise exception.SysinvException(
-                'Failed to generate bootstrap token')
+        except Exception as e:
+            LOG.exception("Exception generating bootstrap token")
+            stderr = getattr(e, 'stderr', None)
+            if stderr:
+                LOG.error("Captured stderr: %s", stderr)
+            raise exception.SysinvException('Failed to generate bootstrap token') from e
 
         return join_cmd
 
