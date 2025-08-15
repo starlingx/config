@@ -288,8 +288,9 @@ class CgtsShell(object):
             system_url = None
 
             if not (args.refresh_cache or args.no_cache):
-                os_auth_token, system_url = \
-                    utils.load_auth_session_keyring_by_name(self.CACHE_KEY)
+                os_auth_token, system_url = utils.load_auth_session_keyring_by_name(
+                    self._cache_key(args.os_username))
+
                 if os_auth_token and system_url:
                     self.keyring = True
 
@@ -342,7 +343,7 @@ class CgtsShell(object):
             timeout = str(int((expires_at - now).total_seconds()))
 
             utils.persist_auth_session_keyring(
-                self.CACHE_KEY,
+                self._cache_key(args.os_username),
                 client.http_client.session.get_token(),
                 client.http_client.endpoint_override,
                 timeout)
@@ -355,7 +356,7 @@ class CgtsShell(object):
             args.os_auth_token = None
             args.system_url = None
             self.keyring = False
-            utils.revoke_keyring_by_name(self.CACHE_KEY)
+            utils.revoke_keyring_by_name(self._cache_key(args.os_username))
             client = cgclient.get_client(api_version, **(args.__dict__))
             try:
                 args.func(client, args)
@@ -389,6 +390,10 @@ class CgtsShell(object):
                                        args.command)
         else:
             self.parser.print_help()
+
+    def _cache_key(self, username: str) -> str:
+        """Define the name of the key used to store user credentials in the cache."""
+        return self.CACHE_KEY if not username else self.CACHE_KEY + ':' + username
 
 
 class HelpFormatter(argparse.HelpFormatter):
