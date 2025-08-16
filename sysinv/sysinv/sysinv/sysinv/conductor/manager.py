@@ -1655,6 +1655,7 @@ class ConductorManager(service.PeriodicService):
         }
         self._config_apply_runtime_manifest(context, config_uuid,
                                             config_dict, force=True)
+        self._update_pxe_config(host)
 
     def report_kernel_config_complete(self, context, ihost_uuid, status, error):
         """ Report kernel config runtime manifest from agent completed run
@@ -1866,11 +1867,17 @@ class ConductorManager(service.PeriodicService):
 
         if (host.personality == constants.CONTROLLER and
                 constants.WORKER in tsc.subfunctions):
-            pxe_config = "pxe-smallsystem-install-%s" % sw_version
+            if constants.LOWLATENCY in host.subfunctions:
+                pxe_config = "pxe-smallsystem_lowlatency-install-%s" % sw_version
+            else:
+                pxe_config = "pxe-smallsystem-install-%s" % sw_version
         elif host.personality == constants.CONTROLLER:
             pxe_config = "pxe-controller-install-%s" % sw_version
         elif host.personality == constants.WORKER:
-            pxe_config = "pxe-worker-install-%s" % sw_version
+            if constants.LOWLATENCY in host.subfunctions:
+                pxe_config = "pxe-worker_lowlatency-install-%s" % sw_version
+            else:
+                pxe_config = "pxe-worker-install-%s" % sw_version
         elif host.personality == constants.STORAGE:
             pxe_config = "pxe-storage-install-%s" % sw_version
 
