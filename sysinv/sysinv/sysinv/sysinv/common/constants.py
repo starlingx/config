@@ -1200,6 +1200,7 @@ SERVICE_TYPE_KUBERNETES = 'kubernetes'
 SERVICE_TYPE_PTP = 'ptp'
 SERVICE_TYPE_CEPH = 'ceph'
 SERVICE_TYPE_DNS = 'dns'
+SERVICE_TYPE_MODULE = 'module'
 
 # For service parameter sections that include a wildcard, any 'name' field will be
 # allowed by the API. The wildcard card name will only be matched if no other matches
@@ -1550,6 +1551,10 @@ SERVICE_PARAM_PLATFORM_SCTP_AUTOLOAD_ENABLED = 'enabled'
 # DNS host record Service Parameters
 SERVICE_PARAM_SECTION_DNS_HOST_RECORD = 'host-record'
 SERVICE_PARAM_NAME_DNS_HOST_RECORD_HOSTS = 'hosts'
+
+# i801 module parameters
+SERVICE_PARAM_SECTION_MODULE_I801 = 'i801'
+SERVICE_PARAM_NAME_MODULE_I801_I2C_INTERRUPTS = 'i2c_interrupts'
 
 # cli-confirmation parameters
 SERVICE_PARAM_SECTION_PLATFORM_CLIENT = 'client'
