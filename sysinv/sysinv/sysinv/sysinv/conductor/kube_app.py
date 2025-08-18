@@ -675,6 +675,11 @@ class AppOperator(object):
                     if override_file["valuesKey"].endswith("static-overrides.yaml"):
                         static_overrides_path = os.path.join(chart_path,
                                                              override_file["valuesKey"])
+                        # Since static-override.yaml exists, its copy will also be present.
+                        # The copy ensures that the accessed static-override is the original
+                        # and not a modified version.
+                        static_overrides_path_orig = static_overrides_path.replace(
+                            "-static-overrides.yaml", "-static-overrides-orig.yaml")
 
                 if not static_overrides_path or \
                         not os.path.isfile(static_overrides_path):
@@ -682,7 +687,7 @@ class AppOperator(object):
                         "FluxCD app chart static overrides file doesn't exist "
                         "%s" % chart_name))
 
-                with io.open(static_overrides_path, 'r', encoding='utf-8') as f:
+                with io.open(static_overrides_path_orig, 'r', encoding='utf-8') as f:
                     static_overrides_file = yaml.safe_load(f) or {}
 
                 # get the image tags from the static overrides file
@@ -718,10 +723,16 @@ class AppOperator(object):
 
                 # Update static overrides if needed
                 if static_overrides_imgs != static_overrides_imgs_copy:
+                    # Remove the public port from images with local registry
+                    static_overrides_imgs = \
+                        self._image.remove_pub_port_from_images_with_local_registry(
+                            static_overrides_imgs)
+
                     static_overrides_to_dump = self._image.merge_dict(static_overrides_file,
                                                                       static_overrides_imgs)
-                    with io.open(static_overrides_path, 'w', encoding='utf-8') as f:
-                        yaml.safe_dump(static_overrides_to_dump, f, default_flow_style=False)
+
+                    # Update the static overrides file atomically
+                    cutils.atomic_update_yaml_file(static_overrides_to_dump, static_overrides_path)
 
         return list(set(app_imgs))
 
@@ -1553,6 +1564,60 @@ class AppOperator(object):
                   metadata_file, keys, default, value)
         return value
 
+    def make_backup_static_override(self, app):
+        """
+        Creates backup copies of 'static-overrides.yaml' files for each chart group in a
+        FluxCD application's manifest.
+
+        Args:
+            app: Application object containing the path to the
+                 FluxCD manifest (app.sync_fluxcd_manifest).
+        """
+
+        # Construct the path to the root kustomization.yaml file
+        root_kustomization_path = os.path.join(
+            app.sync_fluxcd_manifest, constants.APP_ROOT_KUSTOMIZE_FILE)
+
+        # Get the kustomization.yaml file to find constructed chart groups
+        with io.open(root_kustomization_path, 'r', encoding='utf-8') as f:
+            root_kustomization_yaml = next(yaml.safe_load_all(f))
+            charts_groups = root_kustomization_yaml["resources"]
+
+        for chart_group in charts_groups:
+            if chart_group != "base":
+                chart_path = os.path.join(app.sync_fluxcd_manifest, chart_group)
+                helmrelease_path = os.path.join(chart_path, "helmrelease.yaml")
+
+                # Get the helmrelease.yaml file
+                with io.open(helmrelease_path, 'r', encoding='utf-8') as f:
+                    helmrelease_yaml = next(yaml.safe_load_all(f))
+                # Check if the helmrelease.yaml has valuesFrom
+                if "valuesFrom" not in helmrelease_yaml["spec"]:
+                    LOG.warning("No valuesFrom found in helmrelease.yaml for chart group "
+                                f"{chart_group} in {chart_path}")
+                    continue
+                for override_file in helmrelease_yaml["spec"]["valuesFrom"]:
+                    if override_file["valuesKey"].endswith("static-overrides.yaml"):
+                        static_overrides_path = os.path.join(chart_path,
+                                                             override_file["valuesKey"])
+
+                        # Create backup copy of the static overrides file
+                        if os.path.exists(static_overrides_path):
+                            # Construct the backup filename
+                            backup_filename = override_file["valuesKey"].replace(
+                                "static-overrides.yaml", "static-overrides-orig.yaml")
+                            # Construct the backup path
+                            backup_path = os.path.join(chart_path, backup_filename)
+
+                            # Copy the static overrides file to the backup path
+                            shutil.copy(static_overrides_path, backup_path)
+                            LOG.info("Created backup of static overrides: {backup_path}")
+                        else:
+                            LOG.warning("No static overrides found for chart"
+                                        f"{chart_group} in {chart_path}")
+
+                        break
+
     def _preserve_user_overrides(self, from_app, to_app):
         """Dump user overrides
 
@@ -2220,6 +2285,11 @@ class AppOperator(object):
                 with self._lock:
                     self._upload_helm_charts(app)
 
+            # The static-override.yaml file inside an app's chart fluxcd folder receives changes
+            # to its image links so that the local registry (registry.local:9001) can be added.
+            # To ensure the addition process always uses the original file to perform this action,
+            # a copy is made to preserve its status.
+            self.make_backup_static_override(app)
             # System overrides will be generated here.
             self._save_images_list(app)
 
@@ -4000,25 +4070,6 @@ class DockerHelper(object):
         # must be unauthenticated in this case.)
         return pub_img_tag, None
 
-    def _remove_public_registry_port(self, img_tag):
-            """Fix image tag by removing public registry port when pushing to
-            the local registry.
-
-            image goes from the incorrect format:
-            registry.local:9001/public.example.com:30093/stx/some-image:some-tag
-
-            to the compliant:
-            registry.local:9001/public.example.com/stx/some-image:some-tag
-
-            :param img_tag: str
-            :return: str
-
-            """
-            regex_pattern = r"(?P<url1>.*)\/(?P<url2>.+)(?P<port>:\d+)\/(?P<tag>.+:.+)"
-            substitution_pattern = "\\g<url1>/\\g<url2>/\\g<tag>"
-
-            return re.sub(regex_pattern, substitution_pattern, img_tag, 1)
-
     def download_an_image(self, app, registries_info, img_tag):
 
         rc = True
@@ -4028,6 +4079,18 @@ class DockerHelper(object):
 
         start = time.time()
         if img_tag.startswith(constants.DOCKER_REGISTRY_HOST):
+            # Get the public image url from the local registry
+            pub_img_tag = img_tag.replace(
+                constants.DOCKER_REGISTRY_SERVER + "/", "")
+
+            # Remove the port from the public image URL if it exists.
+            # Docker does not accept image tags with two ports in the URL.
+            # For example, the following is invalid:
+            #   registry.local:9001/public.example.com:30093/stx/some-image:some-tag
+            # The correct format should be:
+            #   registry.local:9001/public.example.com/stx/some-image:some-tag
+            img_tag = cutils.remove_public_registry_port(img_tag)
+
             try:
                 if AppOperator.is_app_aborted(app.name):
                     LOG.info("User aborted. Skipping download of image %s " % img_tag)
@@ -4049,9 +4112,6 @@ class DockerHelper(object):
                              "download started from public/private registry"
                              % img_tag)
 
-                    pub_img_tag = img_tag.replace(
-                        constants.DOCKER_REGISTRY_SERVER + "/", "")
-
                     target_img_tag, registry_auth = \
                         self._get_img_tag_with_registry(pub_img_tag, registries_info)
 
@@ -4069,7 +4129,6 @@ class DockerHelper(object):
                     return img_tag, rc
 
                 try:
-                    img_tag = self._remove_public_registry_port(img_tag)
                     # Tag and push the image to the local registry
                     client.tag(target_img_tag, img_tag)
                     # admin password may be changed by openstack client cmd in parallel.
@@ -4121,6 +4180,7 @@ class AppImageParser(object):
     """Utility class to help find images for an application"""
 
     TAG_LIST = ['tag', 'imageTag', 'imagetag']
+    EXCEPTION_KEYS = ['source_url']
 
     def _find_images_in_dict(self, var_dict):
         """A generator to find image references in a nested dictionary.
@@ -4216,6 +4276,42 @@ class AppImageParser(object):
                 source_dict[k] = v
         return source_dict
 
+    def remove_pub_port_from_images_with_local_registry(self, imgs_dict):
+        """
+        Remove public registry ports from image references in a dictionary structure.
+
+        This method recursively processes a dictionary containing image references and removes
+        public registry ports from image URLs that match a specific pattern. This is necessary
+        because when the image link already contains the local registry URL (e.g.,
+        registry.local:9001), it cannot contain two ports in the URL.
+        For example, an incorrect image reference like:
+            registry.local:9001/public.example.com:30093/stx/some-image:some-tag
+        should be converted to:
+            registry.local:9001/public.example.com/stx/some-image:some-tag
+
+        Args:
+            imgs_dict (dict): Dictionary containing image references. Can contain nested
+            dictionaries which will be processed recursively.
+
+        Returns:
+            dict: The modified dictionary with public registry ports removed.
+
+        """
+        if not isinstance(imgs_dict, dict):
+            raise exception.SysinvException(_(
+                "Unable to update images prefix: %s is not a dict." % imgs_dict))
+
+        for k, v in six.iteritems(imgs_dict):
+            if v and isinstance(v, str):
+                # Check if this is a repository field with the problematic pattern
+                if k not in self.TAG_LIST and re.search(r'^.+:.+/', v):
+                    imgs_dict[k] = cutils.remove_public_registry_port(v)
+            elif isinstance(v, dict):
+                # Recursively process nested dictionaries
+                self.remove_pub_port_from_images_with_local_registry(v)
+
+        return imgs_dict
+
     def update_images_with_local_registry(self, imgs_dict):
         """Update image references with local registry prefix.
 
@@ -4229,15 +4325,27 @@ class AppImageParser(object):
 
         for k, v in six.iteritems(imgs_dict):
             if v and isinstance(v, str):
-                if (not re.search(r'^.+:.+/', v) and
-                        k not in self.TAG_LIST):
+                if (not re.search(r'^.+:.+/', v) and k not in self.TAG_LIST):
                     if not cutils.is_valid_domain_name(v[:v.find('/')]):
                         # Explicitly specify 'docker.io' in the image
                         v = '{}/{}'.format(
                             constants.DEFAULT_DOCKER_DOCKER_REGISTRY, v)
                     v = '{}/{}'.format(constants.DOCKER_REGISTRY_SERVER, v)
                     imgs_dict[k] = v
+                elif (
+                    re.search(r"^.+:.+/", v)
+                    and not v.startswith(constants.DOCKER_REGISTRY_SERVER)
+                    and k not in self.EXCEPTION_KEYS
+                ):
+                    # If the image link starts with a domain valid with a port, and not
+                    # starts with the local registry URL, then it is assumed to be a public
+                    # registry link. In this case, we need to prepend the local registry URL.
+                    # Example: registry.local:9001/public.example.com:30093/stx/some-image:some-tag
 
+                    # Before the static-override file is updated and the docker image tag for
+                    # the local registry is created, the second port of this URL will be removed.
+                    v = '{}/{}'.format(constants.DOCKER_REGISTRY_SERVER, v)
+                    imgs_dict[k] = v
             elif isinstance(v, dict):
                 if ("registry" in v and "repository" in v and
                         cutils.is_empty_value(v["registry"]) and
