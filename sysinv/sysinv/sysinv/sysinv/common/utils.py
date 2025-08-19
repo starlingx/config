@@ -4524,6 +4524,20 @@ def is_certificate_request_created(name):
     return False
 
 
+def run_kubectl(cmd):
+    """Run a kubectl command and return stdout, stderr)."""
+    process = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        universal_newlines=True
+    )
+
+    stdout, stderr = process.communicate()
+
+    return stdout.strip("'"), stderr.strip("'")
+
+
 def get_certificate_request(name):
     """
     Get a CertificateRequest resource
@@ -4534,22 +4548,48 @@ def get_certificate_request(name):
     """
 
     try:
-        cmd = ['kubectl', '--kubeconfig', kubernetes.KUBERNETES_ADMIN_CONF,
-               '-n', constants.CERT_NAMESPACE_PLATFORM_CERTS, 'get',
-               constants.CERT_REQUEST_RESOURCE, name, '-o',
-               "jsonpath='{.status.certificate}'"]
+        # Try a few times to wait for the certificaterequest to be ready
+        interval = 2
+        count = 3
+        for i in range(count):
+            # check if the certificaterequest is ready
+            cmd = ['kubectl', '--kubeconfig', kubernetes.KUBERNETES_ADMIN_CONF,
+                   '-n', constants.CERT_NAMESPACE_PLATFORM_CERTS, 'get',
+                   constants.CERT_REQUEST_RESOURCE, name, '-o',
+                   "jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}'"]
+            ready, stderr = run_kubectl(cmd)
 
-        process = subprocess.Popen(cmd,
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        universal_newlines=True)
+            # certificaterequest is ready
+            if ready == "True":
+                break
 
-        stdout, stderr = process.communicate()
+            if i == count - 1:
+                raise exception.SysinvException("CertificateRequest %s is not ready "
+                                                "in %s seconds." % (name, interval * count))
+            LOG.info(f"{name} is not ready: {stderr}. Will retry in {interval} seconds ...")
+            time.sleep(interval)
 
-        if process.returncode != 0:
-            LOG.error(f"Failed to get CertificateRequest resource. {stderr}")
-            return None
+        # Try a few times to retrieve the certificate from the certificaterequest
+        interval = 2
+        count = 3
+        for i in range(count):
+            cmd = ['kubectl', '--kubeconfig', kubernetes.KUBERNETES_ADMIN_CONF,
+                   '-n', constants.CERT_NAMESPACE_PLATFORM_CERTS, 'get',
+                   constants.CERT_REQUEST_RESOURCE, name, '-o',
+                   "jsonpath='{.status.certificate}'"]
+            cert, stderr = run_kubectl(cmd)
 
-        return stdout.strip("'")
+            # The certificate is retrieved
+            if cert:
+                break
+
+            if i == count - 1:
+                raise exception.SysinvException("Certificate %s is not retrieved "
+                                                "in %s seconds." % (name, interval * count))
+            LOG.info(f"{name} is still empty: {stderr}. Will retry in {interval} seconds ...")
+            time.sleep(interval)
+
+        return cert
 
     except Exception as e:
         LOG.error(f"Error trying to get CertificateRequest resource, reason: {e}")
