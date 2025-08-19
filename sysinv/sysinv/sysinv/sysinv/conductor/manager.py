@@ -20751,6 +20751,13 @@ class ConductorManager(service.PeriodicService):
                 server_cert = "dc-adminep-certificate"
                 ns = "dc-cert"
             elif system_dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
+                sc_inter_ca = "sc-adminep-inter-ca-certificate"
+                sc_inter_ca_obj = cutils.get_certificate_from_file(constants.ADMIN_EP_CERT_FILENAME,
+                                                                    1)
+                certs_info[sc_inter_ca] = cutils.get_cert_values(sc_inter_ca_obj)
+                certs_info[sc_inter_ca][constants.FILEPATH] = constants.ADMIN_EP_CERT_FILENAME
+                certs_info[sc_inter_ca][constants.RENEWAL] = constants.AUTOMATIC
+
                 ca_cert = "sc-adminep-root-ca-certificate"
                 server_cert = "sc-adminep-certificate"
                 ns = "sc-cert"

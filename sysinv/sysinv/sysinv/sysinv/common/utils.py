@@ -3141,10 +3141,11 @@ def get_cert_subject_string_hash(cert):
     return hashed_attributes
 
 
-def get_certificate_from_file(file_path):
+def get_certificate_from_file(file_path, index=0):
     """ Extract certificate from a specific file
 
     :param file_path: the absolute path of the file which has the certificate
+    :index: index of certificate in the list returns from the extract_certs_from_pem()
     :returns: a x509.Certificate object that will store information regarding this certificate
     """
     LOG.debug("extracting information of certificate in %s" % file_path)
@@ -3152,7 +3153,7 @@ def get_certificate_from_file(file_path):
         with open(file_path, 'rb') as file_data:
             file_data.seek(0, os.SEEK_SET)
             read_file = file_data.read()
-            certificate = extract_certs_from_pem(read_file)[0]
+            certificate = extract_certs_from_pem(read_file)[index]
     except Exception as e:
         LOG.warning("No certificate was extracted from file %s"
                     "due to %s" % (file_path, e))
