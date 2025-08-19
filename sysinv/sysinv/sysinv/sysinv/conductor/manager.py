@@ -9881,9 +9881,12 @@ class ConductorManager(service.PeriodicService):
         config_uuid = self._config_update_hosts(context, personalities)
 
         config_dict = {}
-        is_aio_simplex_system = cutils.is_aio_simplex_system(self.dbapi)
-        if is_aio_simplex_system:
-            # update all necessary config at runtime for AIO-SX
+        active_controller = utils.HostHelper.get_active_controller(self.dbapi)
+        is_host_simplex_controller = utils.is_host_simplex_controller(active_controller)
+
+        if is_host_simplex_controller:
+            # update all necessary config at runtime for OAM network update on
+            # AIO-SX or an orphan controller.
             config_dict = {
                 "personalities": personalities,
                 "classes": ['platform::network::runtime',
@@ -9911,9 +9914,10 @@ class ConductorManager(service.PeriodicService):
 
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
-        # there is still pending reboot required config to apply if not AIO-SX
-        # If mgmt reconfig is in progress, set reboot required for this config.
-        if not is_aio_simplex_system or \
+        # there is still pending reboot required config to apply if not a simplex
+        # or an orphan controller, or if mgmt reconfig is in progress, set reboot
+        # required for this config.
+        if not is_host_simplex_controller or \
                 os.path.isfile(tsc.MGMT_NETWORK_RECONFIGURATION_ONGOING):
             self._config_update_hosts(context, [constants.CONTROLLER], reboot=True)
 
@@ -9922,7 +9926,7 @@ class ConductorManager(service.PeriodicService):
         self._update_hosts_file('oamcontroller', extoam.oam_floating_ip,
                                 active=False)
 
-        if not is_aio_simplex_system:
+        if not is_host_simplex_controller:
             cutils.touch(
                 self._get_oam_runtime_apply_file(standby_controller=True))
 
