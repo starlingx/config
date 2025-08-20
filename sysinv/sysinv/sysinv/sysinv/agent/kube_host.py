@@ -487,10 +487,16 @@ class KubeControllerOperator(KubeHostOperator):
         :param: back_to_kube_version: kubernetes version to roll back to
         """
         abort = True
+
         recovery = False
+
+        restart_services_for_recovery = False
+
         while self._abort_attempt <= constants.AUTO_RECOVERY_COUNT:
+
             LOG.info("Trying kubernetes upgrade abort... Attempt %s of %s."
                     % (self._abort_attempt, constants.AUTO_RECOVERY_COUNT))
+
             try:
                 if kubernetes.k8s_health_check(tries=3, try_sleep=1, log=False):
                     if not kubernetes.is_node_cordoned(self._host_name):
@@ -519,6 +525,8 @@ class KubeControllerOperator(KubeHostOperator):
                                 kubernetes.KUBE_ETCD_SYSTEMD_SERVICE_NAME]:
                     self._mask_stop_service(service, runtime=True, now=True)
 
+                restart_services_for_recovery = False
+
                 self.restore_etcd_snapshot()
 
                 self.restore_backed_up_static_pod_manifests()
@@ -537,6 +545,12 @@ class KubeControllerOperator(KubeHostOperator):
                                 kubernetes.KUBELET_SYSTEMD_SERVICE_NAME,
                                 kubernetes.KUBE_ISOLCPU_PLUGIN_SYSTEMD_SERVICE_NAME]:
                     self._unmask_start_service(service, runtime=True, now=True)
+
+                # If abort fails after services are started above, call to _unmask_start_service
+                # in the upgrade_abort_recovery method is ineffective. In this case, services rather
+                # need to be restarted. This flag is indicative of whether services needs to be
+                # started or restarted.
+                restart_services_for_recovery = True
 
                 k8s_health = kubernetes.k8s_wait_for_endpoints_health(quiet=True)
                 if k8s_health:
@@ -561,7 +575,7 @@ class KubeControllerOperator(KubeHostOperator):
         # Do best effort to recover to the state just before abort was executed
         if not abort:
             try:
-                self.upgrade_abort_recovery(current_kube_version)
+                self.upgrade_abort_recovery(current_kube_version, restart_services_for_recovery)
                 recovery = True
             except Exception as ex:
                 LOG.error(ex)
@@ -584,10 +598,9 @@ class KubeControllerOperator(KubeHostOperator):
             for file_name in files:
                 source_file_path = os.path.join(kubernetes.KUBE_CONFIG_BACKUP_PATH, file_name)
                 dest_file_path = os.path.join(kubernetes.KUBERNETES_CONF_DIR, file_name)
-                if not os.path.exists(dest_file_path):
-                    shutil.move(source_file_path, dest_file_path)
-            LOG.info("Kubernetes kubeconfig files recovered successfully from %s to %s."
-                     % (kubernetes.KUBE_CONFIG_BACKUP_PATH, kubernetes.KUBERNETES_CONF_DIR))
+                shutil.move(source_file_path, dest_file_path)
+                LOG.info("Kubernetes kubeconfig file recovered successfully from %s to %s."
+                        % (source_file_path, dest_file_path))
         except Exception as ex:
             raise exception.SysinvException("Failed to recover kubeconfig files. "
                                             "Error: [%s]" % (ex))
@@ -610,10 +623,9 @@ class KubeControllerOperator(KubeHostOperator):
                 src_path = os.path.join(kubernetes.KUBE_CONTROL_PLANE_STATIC_PODS_MANIFESTS_ABORT,
                                          file_name)
                 dest_path = os.path.join(kubernetes.KUBE_CONTROL_PLANE_MANIFESTS_PATH, file_name)
-                if not os.path.exists(dest_path):
-                    shutil.move(src_path, dest_path)
-                    LOG.info("Kubernetes static pod manifest %s recovered successfully to %s."
-                             % (src_path, dest_path))
+                shutil.move(src_path, dest_path)
+                LOG.info("Kubernetes static pod manifest %s recovered successfully to %s."
+                            % (src_path, dest_path))
         except Exception as ex:
             raise exception.SysinvException("Failed to recover static pod manifests. "
                                             "Error: [%s]" % (ex))
@@ -622,17 +634,25 @@ class KubeControllerOperator(KubeHostOperator):
         """Recover etcd
         """
         try:
-            if not os.path.exists(self._etcd_db_path):
-                shutil.move(self._etcd_bkp_path, self._etcd_db_path)
-                LOG.info("Kubernetes: etcd recovered successfully from %s to %s."
-                        % (self._etcd_bkp_path, self._etcd_db_path))
+            if not os.path.exists(self._etcd_bkp_path):
+                raise exception.SysinvException("Saved etcd for recovery purpose not found at %s"
+                                                % (self._etcd_bkp_path))
+            if os.path.exists(self._etcd_db_path):
+                shutil.rmtree(self._etcd_db_path)
+            shutil.copytree(self._etcd_bkp_path, self._etcd_db_path)
+            LOG.info("Kubernetes: etcd recovered successfully from %s to %s."
+                    % (self._etcd_bkp_path, self._etcd_db_path))
         except Exception as ex:
             raise exception.SysinvException("Failed to recover etcd. Error: [%s]" % (ex))
 
-    def upgrade_abort_recovery(self, recover_to_kube_version):
+    def upgrade_abort_recovery(self, recover_to_kube_version, restart_services):
         """Recover a failed abort attempt
         """
         try:
+
+            LOG.info("Starting kubernetes upgrade abort recovery to version [%s]."
+                     % (recover_to_kube_version))
+
             self._recover_kubeconfig_files()
 
             self._recover_static_pod_manifests()
@@ -647,19 +667,31 @@ class KubeControllerOperator(KubeHostOperator):
 
             kubernetes.enable_kubelet_garbage_collection()
 
-            for service in [kubernetes.KUBE_ETCD_SYSTEMD_SERVICE_NAME,
-                            kubernetes.KUBE_DOCKER_SYSTEMD_SERVICE_NAME,
-                            kubernetes.KUBE_CONTAINERD_SYSTEMD_SERVICE_NAME,
-                            kubernetes.KUBELET_SYSTEMD_SERVICE_NAME,
-                            kubernetes.KUBE_ISOLCPU_PLUGIN_SYSTEMD_SERVICE_NAME]:
-                self._unmask_start_service(service, runtime=True, now=True)
+            if restart_services:
+                # Among etcd, docker, kubelet, containerd and isolcpu_plugin, only etcd
+                # is managed by sm. Kubelet, containerd, docker and isolcpu_plugin are managed
+                # by pmon, but docker is not actually restarted by the 'pmon-restart' command.
+                # So restart docker using systemctl and restart rest using pmon-restart.
+                utils.sm_restart_service(kubernetes.KUBE_ETCD_SYSTEMD_SERVICE_NAME)
+                utils.systemctl_restart_service(kubernetes.KUBE_DOCKER_SYSTEMD_SERVICE_NAME)
+                # kubelet restart also restarts isolcpu_plugin using systemd dependency config.
+                for service in [kubernetes.KUBE_CONTAINERD_SYSTEMD_SERVICE_NAME,
+                                kubernetes.KUBELET_SYSTEMD_SERVICE_NAME]:
+                    utils.pmon_restart_service(service)
+            else:
+                for service in [kubernetes.KUBE_ETCD_SYSTEMD_SERVICE_NAME,
+                                kubernetes.KUBE_DOCKER_SYSTEMD_SERVICE_NAME,
+                                kubernetes.KUBE_CONTAINERD_SYSTEMD_SERVICE_NAME,
+                                kubernetes.KUBELET_SYSTEMD_SERVICE_NAME,
+                                kubernetes.KUBE_ISOLCPU_PLUGIN_SYSTEMD_SERVICE_NAME]:
+                    self._unmask_start_service(service, runtime=True, now=True)
 
             k8s_health = kubernetes.k8s_wait_for_endpoints_health()
             if k8s_health:
                 LOG.info("All control plane pods are back, up and running")
             else:
-                raise exception.SysinvException(
-                        "Kubernetes control plane pods not back after kubernetes abort procedure")
+                raise exception.SysinvException("Kubernetes control plane pods not back after "
+                                                "kubernetes abort recovery procedure.")
 
             kubernetes.kube_uncordon_node(self._host_name)
 

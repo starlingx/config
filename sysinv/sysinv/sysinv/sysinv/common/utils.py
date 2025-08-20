@@ -431,6 +431,21 @@ def systemctl_unmask_service(service_name, runtime=False, now=False):
                                         % (service_name, ex))
 
 
+def systemctl_restart_service(service_name):
+    """Restart a service using systemctl
+
+    :param: service_name: string: Name of the service to be restarted
+    :raises: SysinvException upon failure
+    """
+    try:
+        cmd = [constants.SYSTEMCTL_PATH, constants.RESTART_COMMAND, service_name]
+        execute(*cmd, check_exit_code=0)
+        LOG.info("Service %s restarted successfully" % (service_name))
+    except Exception as ex:
+        raise exception.SysinvException("Failed to restart the service %s with error: [%s]"
+                                        % (service_name, ex))
+
+
 def systemctl_start_service(service_name):
     """Start a service using systemctl
 
@@ -473,6 +488,35 @@ def pmon_stop_service(service_name):
         LOG.info("Service %s pmon-stopped successfully" % (service_name))
     except Exception as ex:
         raise exception.SysinvException("Failed to stop the service %s with error: [%s]"
+                                        % (service_name, ex))
+
+
+def sm_restart_service(service_name, safe=True):
+    """Restart a service using sm-restart
+
+    :param: service_name: string: Name of the service to be restarted
+    :param: safe: If True, service will be restarted with command sm-restart-safe otherwise
+                  with just sm-restart.
+    :raises: SysinvException upon failure or service is not managed by sm
+    """
+    try:
+        if safe:
+            command = constants.SM_RESTART_SAFE
+        else:
+            command = constants.SM_RESTART
+
+        cmd = [command, 'service', service_name]
+
+        stdout, _ = execute(*cmd, check_exit_code=0)
+
+        if "does not exist" in stdout:
+            raise exception.SysinvException("service %s is not managed by the service-manager."
+                                            % (service_name))
+
+        LOG.info("Service %s restarted successfully" % (service_name))
+
+    except Exception as ex:
+        raise exception.SysinvException("Failed to restart the service %s with error: [%s]"
                                         % (service_name, ex))
 
 
