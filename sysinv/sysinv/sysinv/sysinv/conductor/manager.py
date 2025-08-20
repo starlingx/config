@@ -18725,7 +18725,6 @@ class ConductorManager(service.PeriodicService):
         SNAPSHOT_CONTROLLER_IMG_KEY = 'snapshot_controller_img'
 
         try:
-
             images = self._get_kubernetes_system_images(kube_version)
             storage_images = [images[SNAPSHOT_CONTROLLER_IMG_KEY]]
         except Exception as ex:
@@ -18881,7 +18880,7 @@ class ConductorManager(service.PeriodicService):
         - restore etcd snapshot
         - restore static pod manifests
         - unmask/start services: etcd, docker, containerd
-        - revert and update bindmount k8s binaries
+        - revert symlinks of k8s binaries to staged binaries of the original version
         - unmask/start the kubelet service
         - wait for control plane pod health
         """
@@ -18891,6 +18890,8 @@ class ConductorManager(service.PeriodicService):
         controller_hosts = self.dbapi.ihost_get_by_personality(
             constants.CONTROLLER)
         system = self.dbapi.isystem_get_one()
+        abort_to_version = kube_upgrade_obj.from_version
+
         if system.system_mode == constants.SYSTEM_MODE_SIMPLEX:
             # Terminate lingering kubeadm processes left-over from timed out operation.
             try:
@@ -18926,6 +18927,38 @@ class ConductorManager(service.PeriodicService):
                 return
 
             if kube_upgrade_obj.state == kubernetes.KUBE_UPGRADE_ABORTING:
+                # Disable image garbage collection to avoid the race condition with the garbage
+                # collector: deleting images before they are actually used.
+                # GC is re-enabled during abort procedure.
+                try:
+                    kubernetes.disable_kubelet_garbage_collection()
+                    cutils.pmon_restart_service(kubernetes.KUBELET_SYSTEMD_SERVICE_NAME)
+                    LOG.info("Successfully disabled kubelet image garbage collection.")
+                except Exception:
+                    LOG.warning("Failed to disable garbage collection in kubelet, "
+                                "continuing anyway.")
+
+                abort_to_version = abort_to_version.strip('v')
+
+                images = kubernetes.get_k8s_images(abort_to_version)
+                target_images = [images['kube-apiserver'],
+                                 images['kube-controller-manager'],
+                                 images['kube-scheduler']]
+
+                try:
+                    success = \
+                        self.download_images_from_upstream_to_local_reg_and_crictl(target_images)
+                except Exception:
+                    # handle unexpected exception
+                    success = False
+
+                if not success:
+                    LOG.error("Image download operation failed. Required images for kubernetes "
+                              "abort operation not present. Abort failed.")
+                    kube_upgrade_obj.state = kubernetes.KUBE_UPGRADE_ABORTING_FAILED
+                    kube_upgrade_obj.save()
+                    return
+
                 try:
                     rpcapi = agent_rpcapi.AgentAPI()
                     rpcapi.kube_upgrade_abort(
