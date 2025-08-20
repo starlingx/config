@@ -48,7 +48,7 @@ def do_ptp_instance_list(cc, args):
            metavar='<service type>',
            choices=[
                'ptp4l', 'phc2sys', 'ts2phc', 'clock', 'synce4l',
-               constants.PTP_INSTANCE_TYPE_MONITORING
+               constants.PTP_INSTANCE_TYPE_GNSS_MONITOR
            ],
            help="Service type [REQUIRED]")
 def do_ptp_instance_add(cc, args):
@@ -86,17 +86,17 @@ def _ptp_instance_parameter_op(cc, op, instance, parameters):
         raise exc.CommandError('Missing PTP parameter')
     ptp_instance = ptp_instance_utils._find_ptp_instance(cc, instance)
 
-    # check for supported parameters in case of monitoring type
-    if (ptp_instance.service == constants.PTP_INSTANCE_TYPE_MONITORING and op == "add"):
+    # check for supported parameters in case of gnss-monitor type
+    if (ptp_instance.service == constants.PTP_INSTANCE_TYPE_GNSS_MONITOR and op == "add"):
         for param_keypair in parameters:
             if param_keypair.find("=") < 0:
                 raise exc.CommandError(f"Bad PTP parameter keypair: {param_keypair}")
             (param_name, param_value) = param_keypair.split("=", 1)
 
-            if param_name not in constants.PTP_INSTANCE_TYPE_MONITORING_SUPPORTED_PARAMETERS:
+            if param_name not in constants.PTP_INSTANCE_TYPE_GNSS_MONITOR_SUPPORTED_PARAMETERS:
                 raise exc.CommandError(
                     f"Parameter {param_name} is not supported. Supported parameters:"
-                    f"{constants.PTP_INSTANCE_TYPE_MONITORING_SUPPORTED_PARAMETERS}"
+                    f"{constants.PTP_INSTANCE_TYPE_GNSS_MONITOR_SUPPORTED_PARAMETERS}"
                 )
 
     patch = []

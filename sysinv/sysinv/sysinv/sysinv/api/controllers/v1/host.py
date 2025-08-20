@@ -2041,11 +2041,11 @@ class HostController(rest.RestController):
                                                         constants.NETWORK_TYPE_MGMT, True)
             return address.address
 
-    def _exists_monitoring_instance_on_host(self, host_uuid):
+    def _exists_gnss_monitor_instance_on_host(self, host_uuid):
         ptp_instances = pecan.request.dbapi.ptp_instances_get_list(host_uuid)
 
         for instance in ptp_instances:
-            if instance["service"] == constants.PTP_INSTANCE_TYPE_MONITORING:
+            if instance["service"] == constants.PTP_INSTANCE_TYPE_GNSS_MONITOR:
                 return True
 
         return False
@@ -2068,14 +2068,14 @@ class HostController(rest.RestController):
                 values = {'host_id': ihost_obj.id,
                           'ptp_instance_id': ptp_instance_id}
                 if p.get('op') == constants.PTP_PATCH_OPERATION_ADD:
-                    # Check constraint: single monitoring ptp instance on host
+                    # Check constraint: single gnss-monitor ptp instance on host
                     if ptp_instance[
                         "service"
-                    ] == constants.PTP_INSTANCE_TYPE_MONITORING and self._exists_monitoring_instance_on_host(
+                    ] == constants.PTP_INSTANCE_TYPE_GNSS_MONITOR and self._exists_gnss_monitor_instance_on_host(
                         uuid
                     ):
                         raise wsme.exc.ClientSideError(
-                            _("Monitoring ptp instance already exists on host")
+                            _("gnss-monitor ptp instance already exists on host")
                         )
 
                     pecan.request.dbapi.ptp_instance_assign(values)
