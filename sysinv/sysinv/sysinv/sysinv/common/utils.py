@@ -3984,6 +3984,40 @@ def is_bundle_extension_valid(filename):
     return file_extension.lower() == ".tgz"
 
 
+def get_host_mgmt_ip(dbapi, host_obj):
+    """Return the host's management network primary address
+
+    :param dbapi: the database api
+    :param host_obj: the host object
+
+    :return: the address in string format, or None if not found
+    """
+    if host_obj.hostname:
+        hostname = host_obj.hostname
+
+        if host_obj.hostname == constants.CONTROLLER_0_HOSTNAME:
+
+            # During mgmt network reconfiguration, do not change the mgmt IP
+            # in maintencance as it will be updated after the unlock.
+            if os.path.isfile(tsc.MGMT_NETWORK_RECONFIGURATION_ONGOING):
+                return gethostbyname(constants.CONTROLLER_0_FQDN)
+
+            system = dbapi.isystem_get_one()
+            if (system.capabilities.get('simplex_to_duplex_migration') or
+                    system.capabilities.get('simplex_to_duplex-direct_migration')):
+                        # during migration, controller-0 is still using the mgmt floating address,
+                        # the unit address will be available only after unlock to finish
+                        # migration to DX
+                        hostname = constants.CONTROLLER_HOSTNAME
+
+        addr_name = format_address_name(hostname, constants.NETWORK_TYPE_MGMT)
+        addr_obj = get_primary_address_by_name(dbapi, addr_name,
+                                               constants.NETWORK_TYPE_MGMT)
+        if addr_obj:
+            return addr_obj.address
+    return None
+
+
 def get_primary_address_by_name(dbapi, db_address_name, networktype, raise_exc=False):
     """Search address by database name to retrieve the relevant address from
        the primary pool, if multiple entries for the same name are found, the
