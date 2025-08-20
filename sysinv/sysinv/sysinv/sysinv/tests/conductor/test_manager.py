@@ -461,6 +461,14 @@ class ManagerTestCase(base.DbTestCase):
                            file_path="/path/to/bundle4"),
         ]
 
+        def mock_get_reorder_apps():
+            return self.get_reorder_apps_result
+        self.mocked_get_reorder_apps = mock.patch(
+            'sysinv.common.app_metadata.get_reorder_apps',
+            mock_get_reorder_apps)
+        self.mocked_get_reorder_apps.start()
+        self.addCleanup(self.mocked_get_reorder_apps.stop)
+
         def mock_kube_app_bundle_storage_get_all(*args):
             return self.bundle_metadata_list
         self.mocked_kube_app_bundle_storage_get_all = mock.patch(
@@ -1082,6 +1090,34 @@ class ManagerTestCase(base.DbTestCase):
         self.assertEqual(ret, [])
 
     def test_kube_pre_application_update(self):
+
+        self.get_reorder_apps_result = {
+            constants.APP_METADATA_DEPENDENT_APPS: [],
+            constants.APP_METADATA_CLASS: {
+                constants.APP_METADATA_CLASS_CRITICAL: [],
+                constants.APP_METADATA_CLASS_STORAGE: [],
+                constants.APP_METADATA_CLASS_DISCOVERY: [],
+                constants.APP_METADATA_CLASS_OPTIONAL: [],
+                constants.APP_METADATA_CLASS_REPORTING: []
+            },
+            constants.APP_METADATA_INDEPENDENT_APPS: ['stx-openstack']
+        }
+
+        def mock_auto_update_app(obj,
+                                 context,
+                                 app_name,
+                                 k8s_version=None,
+                                 k8s_upgrade_timing=None,
+                                 async_update=True,
+                                 skip_validations=False,
+                                 ignore_locks=False):
+            return True
+        mocked_auto_update_app = mock.patch(
+            'sysinv.conductor.manager.ConductorManager._auto_update_app',
+            mock_auto_update_app)
+        mocked_auto_update_app.start()
+        self.addCleanup(mocked_auto_update_app.stop)
+
         # Create application
         dbutils.create_test_app(
             name='stx-openstack',
@@ -1112,6 +1148,33 @@ class ManagerTestCase(base.DbTestCase):
         # Test pre app update step when the installed application isn't
         # compatible with the new kubernetes version
 
+        self.get_reorder_apps_result = {
+            constants.APP_METADATA_DEPENDENT_APPS: [],
+            constants.APP_METADATA_CLASS: {
+                constants.APP_METADATA_CLASS_CRITICAL: [],
+                constants.APP_METADATA_CLASS_STORAGE: [],
+                constants.APP_METADATA_CLASS_DISCOVERY: [],
+                constants.APP_METADATA_CLASS_OPTIONAL: [],
+                constants.APP_METADATA_CLASS_REPORTING: []
+            },
+            constants.APP_METADATA_INDEPENDENT_APPS: ['stx-openstack']
+        }
+
+        def mock_auto_update_app(obj,
+                                 context,
+                                 app_name,
+                                 k8s_version=None,
+                                 k8s_upgrade_timing=None,
+                                 async_update=True,
+                                 skip_validations=False,
+                                 ignore_locks=False):
+            return True
+        mocked_auto_update_app = mock.patch(
+            'sysinv.conductor.manager.ConductorManager._auto_update_app',
+            mock_auto_update_app)
+        mocked_auto_update_app.start()
+        self.addCleanup(mocked_auto_update_app.stop)
+
         # Create application
         dbutils.create_test_app(
             name='stx-openstack',
@@ -1137,6 +1200,120 @@ class ManagerTestCase(base.DbTestCase):
         updated_upgrade = self.dbapi.kube_upgrade_get_one()
         self.assertEqual(updated_upgrade.state,
                          kubernetes.KUBE_PRE_UPDATING_APPS_FAILED)
+
+    def test_kube_pre_application_update_app_failed(self):
+        # Test pre app update step when the application fails to be updated.
+
+        self.get_reorder_apps_result = {
+            constants.APP_METADATA_DEPENDENT_APPS: [],
+            constants.APP_METADATA_CLASS: {
+                constants.APP_METADATA_CLASS_CRITICAL: [],
+                constants.APP_METADATA_CLASS_STORAGE: [],
+                constants.APP_METADATA_CLASS_DISCOVERY: [],
+                constants.APP_METADATA_CLASS_OPTIONAL: [],
+                constants.APP_METADATA_CLASS_REPORTING: []
+            },
+            constants.APP_METADATA_INDEPENDENT_APPS: ['stx-openstack']
+        }
+
+        def mock_auto_update_app(obj,
+                                 context,
+                                 app_name,
+                                 k8s_version=None,
+                                 k8s_upgrade_timing=None,
+                                 async_update=True,
+                                 skip_validations=False,
+                                 ignore_locks=False):
+            return False
+
+        mocked_auto_update_app = mock.patch(
+            'sysinv.conductor.manager.ConductorManager._auto_update_app',
+            mock_auto_update_app)
+        mocked_auto_update_app.start()
+        self.addCleanup(mocked_auto_update_app.stop)
+
+        # Create application
+        dbutils.create_test_app(
+            name='stx-openstack',
+            app_version='1.0-19',
+            manifest_name='manifest',
+            manifest_file='stx-openstack.yaml',
+            status='applied',
+            active=True)
+
+        # Create an upgrade
+        from_version = 'v1.42.1'
+        to_version = 'v1.43.1'
+        utils.create_test_kube_upgrade(
+            from_version=from_version,
+            to_version=to_version,
+            state=kubernetes.KUBE_UPGRADE_STARTED,
+        )
+
+        # Run update
+        self.service.kube_pre_application_update(self.context, to_version)
+
+        # Verify that the upgrade state was updated
+        updated_upgrade = self.dbapi.kube_upgrade_get_one()
+        self.assertEqual(updated_upgrade.state,
+                         kubernetes.KUBE_PRE_UPDATING_APPS_FAILED)
+
+    def test_kube_pre_application_update_app_skipped(self):
+        # Test pre app update step when the application update is skipped.
+
+        self.get_reorder_apps_result = {
+            constants.APP_METADATA_DEPENDENT_APPS: [],
+            constants.APP_METADATA_CLASS: {
+                constants.APP_METADATA_CLASS_CRITICAL: [],
+                constants.APP_METADATA_CLASS_STORAGE: [],
+                constants.APP_METADATA_CLASS_DISCOVERY: [],
+                constants.APP_METADATA_CLASS_OPTIONAL: [],
+                constants.APP_METADATA_CLASS_REPORTING: []
+            },
+            constants.APP_METADATA_INDEPENDENT_APPS: ['stx-openstack']
+        }
+
+        def mock_auto_update_app(obj,
+                                 context,
+                                 app_name,
+                                 k8s_version=None,
+                                 k8s_upgrade_timing=None,
+                                 async_update=True,
+                                 skip_validations=False,
+                                 ignore_locks=False):
+            return None
+
+        mocked_auto_update_app = mock.patch(
+            'sysinv.conductor.manager.ConductorManager._auto_update_app',
+            mock_auto_update_app)
+        mocked_auto_update_app.start()
+        self.addCleanup(mocked_auto_update_app.stop)
+
+        # Create application
+        dbutils.create_test_app(
+            name='stx-openstack',
+            app_version='1.0-19',
+            manifest_name='manifest',
+            manifest_file='stx-openstack.yaml',
+            status='applied',
+            active=True)
+
+        # Create an upgrade
+        from_version = 'v1.42.1'
+        to_version = 'v1.43.1'
+        utils.create_test_kube_upgrade(
+            from_version=from_version,
+            to_version=to_version,
+            state=kubernetes.KUBE_UPGRADE_STARTED,
+        )
+
+        # Run update
+        self.service.kube_pre_application_update(self.context, to_version)
+
+        # Verify that the upgrade state was updated
+        updated_upgrade = self.dbapi.kube_upgrade_get_one()
+        self.assertEqual(updated_upgrade.state,
+                         kubernetes.KUBE_PRE_UPDATED_APPS)
 
     def test_kube_upgrade_init_actions(self):
         # Create controller-0
@@ -4787,6 +4964,34 @@ class ManagerTestCase(base.DbTestCase):
             kubernetes.KUBE_CONTROL_PLANE_BACKUP_PATH)
 
     def test_kube_post_application_update(self):
+
+        self.get_reorder_apps_result = {
+            constants.APP_METADATA_DEPENDENT_APPS: [],
+            constants.APP_METADATA_CLASS: {
+                constants.APP_METADATA_CLASS_CRITICAL: [],
+                constants.APP_METADATA_CLASS_STORAGE: [],
+                constants.APP_METADATA_CLASS_DISCOVERY: [],
+                constants.APP_METADATA_CLASS_OPTIONAL: [],
+                constants.APP_METADATA_CLASS_REPORTING: []
+            },
+            constants.APP_METADATA_INDEPENDENT_APPS: ['stx-openstack']
+        }
+
+        def mock_auto_update_app(obj,
+                                 context,
+                                 app_name,
+                                 k8s_version=None,
+                                 k8s_upgrade_timing=None,
+                                 async_update=True,
+                                 skip_validations=False,
+                                 ignore_locks=False):
+            return True
+        mocked_auto_update_app = mock.patch(
+            'sysinv.conductor.manager.ConductorManager._auto_update_app',
+            mock_auto_update_app)
+        mocked_auto_update_app.start()
+        self.addCleanup(mocked_auto_update_app.stop)
+
         # Create application
         dbutils.create_test_app(
             name='stx-openstack',
@@ -4817,6 +5022,33 @@ class ManagerTestCase(base.DbTestCase):
         # Test post app update step when the installed application isn't
         # compatible with the new kubernetes version
 
+        self.get_reorder_apps_result = {
+            constants.APP_METADATA_DEPENDENT_APPS: [],
+            constants.APP_METADATA_CLASS: {
+                constants.APP_METADATA_CLASS_CRITICAL: [],
+                constants.APP_METADATA_CLASS_STORAGE: [],
+                constants.APP_METADATA_CLASS_DISCOVERY: [],
+                constants.APP_METADATA_CLASS_OPTIONAL: [],
+                constants.APP_METADATA_CLASS_REPORTING: []
+            },
+            constants.APP_METADATA_INDEPENDENT_APPS: ['stx-openstack']
+        }
+
+        def mock_auto_update_app(obj,
+                                 context,
+                                 app_name,
+                                 k8s_version=None,
+                                 k8s_upgrade_timing=None,
+                                 async_update=True,
+                                 skip_validations=False,
+                                 ignore_locks=False):
+            return True
+        mocked_auto_update_app = mock.patch(
+            'sysinv.conductor.manager.ConductorManager._auto_update_app',
+            mock_auto_update_app)
+        mocked_auto_update_app.start()
+        self.addCleanup(mocked_auto_update_app.stop)
+
         # Create application
         dbutils.create_test_app(
             name='stx-openstack',
@@ -4842,6 +5074,120 @@ class ManagerTestCase(base.DbTestCase):
         updated_upgrade = self.dbapi.kube_upgrade_get_one()
         self.assertEqual(updated_upgrade.state,
                          kubernetes.KUBE_POST_UPDATING_APPS_FAILED)
+
+    def test_kube_post_application_update_app_failed(self):
+        # Test post app update step when the application fails to be updated.
+
+        self.get_reorder_apps_result = {
+            constants.APP_METADATA_DEPENDENT_APPS: [],
+            constants.APP_METADATA_CLASS: {
+                constants.APP_METADATA_CLASS_CRITICAL: [],
+                constants.APP_METADATA_CLASS_STORAGE: [],
+                constants.APP_METADATA_CLASS_DISCOVERY: [],
+                constants.APP_METADATA_CLASS_OPTIONAL: [],
+                constants.APP_METADATA_CLASS_REPORTING: []
+            },
+            constants.APP_METADATA_INDEPENDENT_APPS: ['stx-openstack']
+        }
+
+        def mock_auto_update_app(obj,
+                                 context,
+                                 app_name,
+                                 k8s_version=None,
+                                 k8s_upgrade_timing=None,
+                                 async_update=True,
+                                 skip_validations=False,
+                                 ignore_locks=False):
+            return False
+
+        mocked_auto_update_app = mock.patch(
+            'sysinv.conductor.manager.ConductorManager._auto_update_app',
+            mock_auto_update_app)
+        mocked_auto_update_app.start()
+        self.addCleanup(mocked_auto_update_app.stop)
+
+        # Create application
+        dbutils.create_test_app(
+            name='stx-openstack',
+            app_version='1.0-19',
+            manifest_name='manifest',
+            manifest_file='stx-openstack.yaml',
+            status='applied',
+            active=True)
+
+        # Create an upgrade
+        from_version = 'v1.42.1'
+        to_version = 'v1.43.1'
+        utils.create_test_kube_upgrade(
+            from_version=from_version,
+            to_version=to_version,
+            state=kubernetes.KUBE_UPGRADING_KUBELETS,
+        )
+
+        # Run update
+        self.service.kube_post_application_update(self.context, to_version)
+
+        # Verify that the upgrade state was updated
+        updated_upgrade = self.dbapi.kube_upgrade_get_one()
+        self.assertEqual(updated_upgrade.state,
+                         kubernetes.KUBE_POST_UPDATING_APPS_FAILED)
+
+    def test_kube_post_application_update_app_skipped(self):
+        # Test post app update step when the application update is skipped.
+
+        self.get_reorder_apps_result = {
+            constants.APP_METADATA_DEPENDENT_APPS: [],
+            constants.APP_METADATA_CLASS: {
+                constants.APP_METADATA_CLASS_CRITICAL: [],
+                constants.APP_METADATA_CLASS_STORAGE: [],
+                constants.APP_METADATA_CLASS_DISCOVERY: [],
+                constants.APP_METADATA_CLASS_OPTIONAL: [],
+                constants.APP_METADATA_CLASS_REPORTING: []
+            },
+            constants.APP_METADATA_INDEPENDENT_APPS: ['stx-openstack']
+        }
+
+        def mock_auto_update_app(obj,
+                                 context,
+                                 app_name,
+                                 k8s_version=None,
+                                 k8s_upgrade_timing=None,
+                                 async_update=True,
+                                 skip_validations=False,
+                                 ignore_locks=False):
+            return None
+
+        mocked_auto_update_app = mock.patch(
+            'sysinv.conductor.manager.ConductorManager._auto_update_app',
+            mock_auto_update_app)
+        mocked_auto_update_app.start()
+        self.addCleanup(mocked_auto_update_app.stop)
+
+        # Create application
+        dbutils.create_test_app(
+            name='stx-openstack',
+            app_version='1.0-19',
+            manifest_name='manifest',
+            manifest_file='stx-openstack.yaml',
+            status='applied',
+            active=True)
+
+        # Create an upgrade
+        from_version = 'v1.42.1'
+        to_version = 'v1.43.1'
+        utils.create_test_kube_upgrade(
+            from_version=from_version,
+            to_version=to_version,
+            state=kubernetes.KUBE_UPGRADING_KUBELETS,
+        )
+
+        # Run update
+        self.service.kube_post_application_update(self.context, to_version)
+
+        # Verify that the upgrade state was updated
+        updated_upgrade = self.dbapi.kube_upgrade_get_one()
+        self.assertEqual(updated_upgrade.state,
+                         kubernetes.KUBE_POST_UPDATED_APPS)
 
 # @mock.patch('sysinv.conductor.manager.utils.HostHelper.get_active_controller')
 # @mock.patch('sysinv.conductor.manager.'

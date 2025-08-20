@@ -199,10 +199,14 @@ class TestAppUpdateManager(unittest.TestCase):
     def test_update_a_list_of_apps_all_success(self):
         # All apps succeed, no retry
         self.manager.apps_to_retry = []
-        self.mock_update_strategy_fn.return_value = (None, [])
+        self.mock_update_strategy_fn.return_value = (None, [], [])
+        self.mock_update_strategy_fn.side_effect = [
+            (None, ['app1', 'app2'], []),
+        ]
         result = self.manager._update_a_list_of_apps(
-            self.context, ['app1', 'app2'], constants.APP_UPDATE_OP
+                self.context, ['app1', 'app2'], constants.APP_UPDATE_OP
         )
+
         self.assertTrue(result)
         self.assertIn('app1', self.manager.successfully_updated)
         self.assertIn('app2', self.manager.successfully_updated)
@@ -213,8 +217,8 @@ class TestAppUpdateManager(unittest.TestCase):
         # Second call: still fails, should raise RetryError due to retry decorator
         self.manager.apps_to_retry = []
         self.mock_update_strategy_fn.side_effect = [
-            (None, ['app2']),
-            (None, ['app2'])
+            (None, ['app1'], ['app2']),
+            (None, ['app1'], ['app2'])
         ]
         with mock.patch('sysinv.common.app_update_manager.LOG') as mock_log:
             with self.assertRaises(RetryError):
@@ -232,8 +236,8 @@ class TestAppUpdateManager(unittest.TestCase):
         # Second call: app2 succeeds
         self.manager.apps_to_retry = []
         self.mock_update_strategy_fn.side_effect = [
-            (None, ['app2']),
-            (None, [])
+            (None, ['app1'], ['app2']),
+            (None, ['app1', 'app2'], [])
         ]
         with mock.patch('sysinv.common.app_update_manager.LOG') as mock_log:
             result = self.manager._update_a_list_of_apps(
@@ -251,7 +255,7 @@ class TestAppUpdateManager(unittest.TestCase):
     def test_update_a_list_of_apps_no_apps_to_update(self):
         # No apps to update, should succeed
         self.manager.apps_to_retry = []
-        self.mock_update_strategy_fn.return_value = (None, [])
+        self.mock_update_strategy_fn.return_value = (None, [], [])
         result = self.manager._update_a_list_of_apps(
             self.context, [], constants.APP_UPDATE_OP
         )
@@ -263,8 +267,8 @@ class TestAppUpdateManager(unittest.TestCase):
         # All apps fail, should retry and then fail
         self.manager.apps_to_retry = []
         self.mock_update_strategy_fn.side_effect = [
-            (None, ['app1', 'app2']),
-            (None, ['app1', 'app2'])
+            (None, [], ['app1', 'app2']),
+            (None, [], ['app1', 'app2'])
         ]
         with mock.patch('sysinv.common.app_update_manager.LOG') as mock_log:
             with self.assertRaises(RetryError):
@@ -278,7 +282,7 @@ class TestAppUpdateManager(unittest.TestCase):
 
     def test_update_a_list_of_apps_with_empty_list(self):
         self.manager.apps_to_retry = []
-        self.mock_update_strategy_fn.return_value = (None, [])
+        self.mock_update_strategy_fn.return_value = (None, [], [])
         result = self.manager._update_a_list_of_apps(
             self.context, [], constants.APP_UPDATE_OP
         )
@@ -309,18 +313,24 @@ class TestAppUpdateManager(unittest.TestCase):
                     self.context,
                     ['app_upload'],
                     constants.APP_UPLOAD_OP,
+                    k8s_version=None,
+                    k8s_upgrade_timing=None,
                     async_upload=False,
                     skip_validations=True
                 ),
                 mock.call(
                     self.context,
                     ['app_recover'],
-                    constants.APP_RECOVER_UPDATE_OP
+                    constants.APP_RECOVER_UPDATE_OP,
+                    k8s_version=None,
+                    k8s_upgrade_timing=None
                 ),
                 mock.call(
                     self.context,
                     ['app_update'],
                     constants.APP_UPDATE_OP,
+                    k8s_version=None,
+                    k8s_upgrade_timing=None,
                     async_update=False,
                     skip_validations=True,
                     ignore_locks=True
