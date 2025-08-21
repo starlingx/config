@@ -1825,11 +1825,27 @@ class AppOperator(object):
             # fluxcd is forced to reconcile within the reapply/update process. This happens to
             # prevent the previous status of the helmrelease from being used.
             if is_reapply_process or caller == constants.APP_UPDATE_OP:
-                for release_name, chart_obj in list(charts.items()):
+                max_attempts = int(
+                    common.HELM_RECONCILIATION_TIMEOUT_IN_MINUTES * 60
+                    / common.HELM_RECONCILIATION_CHECK_INTERVAL_IN_SECONDS
+                )
+                for release_name, chart in list(charts.items()):
                     LOG.info(f"Forcing reconciliation for release: {release_name}")
                     try:
-                        helm_utils.call_fluxcd_reconciliation(release_name,
-                                                              chart_obj["namespace"])
+                        helm_utils.call_fluxcd_reconciliation(release_name, chart["namespace"])
+
+                        # This attempt loop is necessary because reconciliation sometimes takes
+                        # time for changes to be applied.
+                        attempt = 0
+                        while attempt < max_attempts:
+                            release = _get_helmrelease_info(release_name, chart["namespace"])
+                            status, _ = self._fluxcd.get_helm_release_status(release)
+                            if status == 'False':
+                                time.sleep(common.HELM_RECONCILIATION_CHECK_INTERVAL_IN_SECONDS)
+                                attempt += 1
+                                continue
+                            break
+
                     except Exception as e:
                         LOG.error(f"Error while forcing FluxCD reconciliation for release \
                                   {release_name}: {e}")
