@@ -2135,6 +2135,17 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.cast(context, self.make_msg('kube_delete_container_images',
                                                 target_version=kube_version))
 
+    def report_unfinished_kube_upgrade_from_agent(self, context, host_uuid):
+        """Asynchronously, report unfinished k8s upgrade by sysinv-agent
+
+        This method is only used by sysinv-agent to report about unfinished kubernetes
+        upgrade in sysinv-agent in case of unexpected sysinv-agent restart/failure etc.
+        Sysinv-agent does an attempt to finish it but if that does not work, this method is
+        called as a last resort.
+        """
+        return self.cast(context, self.make_msg('report_unfinished_kube_upgrade_from_agent',
+                                                host_uuid=host_uuid))
+
     def store_bitstream_file(self, context, filename):
         """Asynchronously, have the conductor store the device image
         on this host.

@@ -35,8 +35,11 @@ Commands (from conductors) are received via RPC calls.
 
 from __future__ import print_function
 from eventlet.green import subprocess
+from eventlet import greenthread
 import fileinput
+import inspect
 import os
+import pickle  # nosec B403
 import retrying
 import six
 import shutil
@@ -122,6 +125,9 @@ PUPPET_HIERADATA_PATH = os.path.join(tsc.PUPPET_PATH, 'hieradata')
 PUPPET_HIERADATA_CACHE_PATH = '/etc/puppet/cache/hieradata'
 
 LOCK_AGENT_ACTION = 'agent-exclusive-action'
+
+K8S_UPGRADE_IN_PROGRESS_FILE_PATH = os.path.join(
+    tsc.PLATFORM_CONF_PATH, '.sysinv_agent_k8s_upgrade_in_progress.pkl')
 
 
 class FakeGlobalSectionHead(object):
@@ -234,6 +240,8 @@ class AgentManager(service.PeriodicService):
         if tsc.system_mode == constants.SYSTEM_MODE_SIMPLEX:
             utils.touch(SYSINV_READY_FLAG)
 
+        greenthread.spawn(self._unfinished_kube_upgrade_check)
+
     def stop(self, graceful=False):
         if self._zmq_rpc_service:
             self._zmq_rpc_service.stop()
@@ -265,6 +273,77 @@ class AgentManager(service.PeriodicService):
         utils.touch(SYSINV_READY_FLAG)
         time.sleep(1)  # give time for conductor to process
         self._report_to_conductor_iplatform_avail_flag = True
+
+    def _unfinished_kube_upgrade_check(self):
+        """Initial unfinished kubernetes upgrade check upon service startup
+
+        This method checks for unfinished kubernetes upgrade action on this host by looking
+        for a file containing kube upgrade method with argument values and re-runs the incomplete
+        upgrade procedure. It reports to sysinv-conductor if it is unable to do so.
+        """
+        # If the k8s_upgrade_in_progress file not found, we assume k8s upgrade agent code was not
+        # running. There is only a remote chance of the file getting deleted accidentally as it is
+        # hidden and at a safe location. We can safely ignore the possibility of it happening here.
+        if not os.path.exists(K8S_UPGRADE_IN_PROGRESS_FILE_PATH):
+            LOG.info("No unfinished kubernetes upgrade process found in sysinv-agent ...")
+            return
+
+        # Following block waits for the service to be completely up
+        tries = 120
+        while not self._ihost_uuid and tries:
+            time.sleep(5)
+            tries -= 1
+        if not self._ihost_uuid:
+            # Although host_uuid is available in the pickled data, operation like pull images
+            # require it for the validation with self._ihost_uuid.
+            # So unfinished k8s upgrade cannot be completed before self.ihost_uuid is set.
+            # Without self._ihost_uuid set, do nothing. Neither continue, nor report the unfinished
+            # k8s upgrade. Practically, this condition will never occur.
+            LOG.error("Host uuid not set after 10 minutes wait, cannot report unfinished "
+                      "kubernetes upgrade.")
+            return
+
+        try:
+            context = mycontext.get_admin_context()
+            k8s_upgrade_data = None
+            with open(K8S_UPGRADE_IN_PROGRESS_FILE_PATH, 'rb') as file:
+                k8s_upgrade_data = pickle.load(file)  # nosec B403
+            if k8s_upgrade_data:
+                method_name = k8s_upgrade_data.get('method_name', None)
+                if not method_name:
+                    LOG.error("Kubernetes upgrade: cannot determine which kubernetes upgrade "
+                              "stage was running from the available data. Reporting unfinished "
+                              "kubernetes upgrade to the conductor...")
+                    rpcapi = conductor_rpcapi.ConductorAPI(topic=conductor_rpcapi.MANAGER_TOPIC)
+                    rpcapi.report_unfinished_kube_upgrade_from_agent(context, self._ihost_uuid)
+                else:
+                    method_object = getattr(self, method_name, None)
+                    k8s_upgrade_data.pop('method_name')
+                    # k8s_upgrade_data now only has the parameters for the method to call.
+                    if method_object:
+                        LOG.info("Unfinished kubernetes upgrade found. "
+                                 "Attempting to re-run: [%s] ..." % (method_name))
+                        method_object(**k8s_upgrade_data)
+                    else:
+                        LOG.error("Incorrect kubernetes upgrade procedure found in the unfinshed "
+                                  "kubernetes upgrade data: [%s]. Cannot continue the upgrade. "
+                                  "Reporting unfinished upgrade to the conductor..." % method_name)
+                        rpcapi = conductor_rpcapi.ConductorAPI(topic=conductor_rpcapi.MANAGER_TOPIC)
+                        rpcapi.report_unfinished_kube_upgrade_from_agent(context, self._ihost_uuid)
+            else:
+                LOG.error("Unfinished kubernetes upgrade data is either corrupted or not available."
+                          " Cannot continue the upgrade. Reporting unfinished upgrade to the "
+                          "conductor...")
+                rpcapi = conductor_rpcapi.ConductorAPI(topic=conductor_rpcapi.MANAGER_TOPIC)
+                rpcapi.report_unfinished_kube_upgrade_from_agent(context, self._ihost_uuid)
+            self._cleanup_kube_upgrade_method_details()
+        except Exception as ex:
+            LOG.error("Unfinished kubernetes upgrade check failed with error: %s" % (ex))
+            # Not sure what stage caused the exception
+            if os.path.exists(K8S_UPGRADE_IN_PROGRESS_FILE_PATH):
+                rpcapi = conductor_rpcapi.ConductorAPI(topic=conductor_rpcapi.MANAGER_TOPIC)
+                rpcapi.report_unfinished_kube_upgrade_from_agent(context, self._ihost_uuid)
+                self._cleanup_kube_upgrade_method_details()
 
     @staticmethod
     def _update_interface_irq_affinity(self, interface_list):
@@ -2366,6 +2445,77 @@ class AgentManager(service.PeriodicService):
             else:
                 LOG.info("update_host_lvm - ipv data is empty.")
 
+    def _save_kube_upgrade_method_details(self, frame):
+        """Save kubernetes upgrade method name and arguments with values
+
+        This method saves kubernetes upgrade method name and arguments with their values
+
+        :param: frame: Frame object containing kube upgrade method name and arguments with values
+        :raises: SysinvException in case of saving error
+        """
+        if not frame:
+            raise exception.SysinvException("Cannot save kubernetes upgrade method name and "
+                                            "arguments. Details not available.")
+
+        if not inspect.isframe(frame):
+            raise exception.SysinvException("Input to save kubernetes method details is not a valid"
+                                            " frame of the procedure running.: %s" % (type(frame)))
+
+        try:
+            arg_info = inspect.getargvalues(frame)
+            if not arg_info:
+                raise exception.SysinvException("Kubernetes upgrade call method argument details "
+                                                "not found.")
+
+            data_to_save = arg_info.locals
+            if not data_to_save:
+                raise exception.SysinvException("Kubernetes upgrade call method argument details "
+                                                "not found.")
+
+            # data_to_save now look like this
+            #
+            # {'self': <sysinv.agent.manager.AgentManager object at 0x77cd02f7a970>,
+            # 'context': <oslo_context.context.RequestContext object at 0x77cd027260a0>,
+            # 'host_uuid': '<host_uuid>',
+            # 'to_kube_version': '<kube_version>',
+            # 'is_final_version': True,
+            # 'frame': <frame at 0x2dee6360, file '/usr/lib/python3/dist-packages/sysinv/sysinv/
+            #          sysinv/sysinv/agent/manager.py', line 2466, code kube_upgrade_kubelet>}
+
+            # 'frame' object and 'self' are not picklable. Neither they are required to be saved.
+            # Just extract the method name from 'frame' which will be required when the data is
+            # unpickeled
+
+            if 'frame' not in data_to_save:
+                raise exception.SysinvException("Kubernetes upgrade method name details not found.")
+
+            method_name = data_to_save['frame'].f_code.co_name
+            if not method_name:
+                raise exception.SysinvException("Kubernetes upgrade method name not found.")
+
+            data_to_save.update({'method_name': method_name})
+            data_to_save.pop('frame')
+            data_to_save.pop('self')
+
+            with open(K8S_UPGRADE_IN_PROGRESS_FILE_PATH, 'wb') as file:
+                pickle.dump(data_to_save, file)
+
+        except Exception as ex:
+            raise exception.SysinvException("Failed to save kubernetes upgrade method "
+                                            "name and arguments. Error: [%s]" % (ex))
+
+    def _cleanup_kube_upgrade_method_details(self):
+        """Deletes file containing unfinished kubernetes upgrade method and its arguments
+        """
+        try:
+            if os.path.exists(K8S_UPGRADE_IN_PROGRESS_FILE_PATH):
+                os.remove(K8S_UPGRADE_IN_PROGRESS_FILE_PATH)
+                LOG.debug("Successfully removed k8s upgrade data file [%s]."
+                            % (K8S_UPGRADE_IN_PROGRESS_FILE_PATH))
+        except Exception as ex:
+            LOG.warning("Failed to cleanup k8s upgrade data file [%s] with error: [%s]. "
+                        % (K8S_UPGRADE_IN_PROGRESS_FILE_PATH, ex))
+
     def kube_upgrade_kubelet(self, context, host_uuid, to_kube_version, is_final_version):
         """Upgrade the kubernetes kubelet on this host
 
@@ -2378,6 +2528,13 @@ class AgentManager(service.PeriodicService):
                                   current kubernetes upgrade attempt else False
         """
         if self._ihost_personality in (constants.WORKER, constants.CONTROLLER):
+
+            try:
+                frame = inspect.currentframe()
+                self._save_kube_upgrade_method_details(frame)
+            except Exception as ex:
+                LOG.warning("Failed to save kubelet upgrade method details with error: [%s]. "
+                            "Continuing... " % (ex))
 
             try:
                 current_link = os.readlink(kubernetes.KUBERNETES_SYMLINKS_STAGE_2)
@@ -2407,6 +2564,7 @@ class AgentManager(service.PeriodicService):
             conductor_api = conductor_rpcapi.ConductorAPI()
             conductor_api.report_kube_upgrade_kubelet_result(context, host_uuid,
                                                              to_kube_version, success)
+            self._cleanup_kube_upgrade_method_details()
 
     def report_initial_inventory(self, context, host_uuid):
         # conductor requests re-report initial inventory
@@ -2426,6 +2584,14 @@ class AgentManager(service.PeriodicService):
         :returns: True if image download succeeds False otherwise
         """
         if self._ihost_uuid and self._ihost_uuid == host_uuid:
+
+            try:
+                frame = inspect.currentframe()
+                self._save_kube_upgrade_method_details(frame)
+            except Exception as ex:
+                LOG.warning("Failed to save kubernetes image pull method details with error: [%s]."
+                            " Continuing... " % (ex))
+
             start = time.time()
             try:
                 # To avoid undesirable removal of pulled images by GC before
@@ -2448,6 +2614,7 @@ class AgentManager(service.PeriodicService):
 
             rpcapi = conductor_rpcapi.ConductorAPI(topic=conductor_rpcapi.MANAGER_TOPIC)
             rpcapi.report_download_images_result(context, result)
+            self._cleanup_kube_upgrade_method_details()
 
     def kube_upgrade_abort(self, context, current_kube_version, back_to_kube_version):
         """Abort a kubernetes upgrade
@@ -2459,6 +2626,14 @@ class AgentManager(service.PeriodicService):
         :param: back_to_kube_version: kubernetes version to roll back to
         """
         if self._ihost_personality == constants.CONTROLLER:
+
+            try:
+                frame = inspect.currentframe()
+                self._save_kube_upgrade_method_details(frame)
+            except Exception as ex:
+                LOG.warning("Failed to save kube upgrade abort data with error: [%s]. "
+                            "Continuing... " % (ex))
+
             LOG.info("Starting kubernetes upgrade abort from version %s to %s"
                      % (current_kube_version, back_to_kube_version))
             try:
@@ -2481,6 +2656,7 @@ class AgentManager(service.PeriodicService):
             rpcapi = conductor_rpcapi.ConductorAPI(topic=conductor_rpcapi.MANAGER_TOPIC)
             rpcapi.report_kube_upgrade_abort_result(
                 context, current_kube_version, back_to_kube_version, abort, recovery)
+            self._cleanup_kube_upgrade_method_details()
 
     def kube_upgrade_control_plane(self, context, host_uuid, to_kube_version, is_first_master):
         """Upgrade kubernetes control plane on this host
@@ -2494,6 +2670,14 @@ class AgentManager(service.PeriodicService):
                                  else False
         """
         if self._ihost_personality == constants.CONTROLLER:
+
+            try:
+                frame = inspect.currentframe()
+                self._save_kube_upgrade_method_details(frame)
+            except Exception as ex:
+                LOG.warning("Failed to save kube control plane upgrade method details with "
+                            "error: [%s]. Continuing... " % (ex))
+
             operator = kube_host.KubeControllerOperator(context, host_uuid, self._hostname)
             attempt = 1
             while attempt <= constants.CONTROL_PLANE_RETRY_COUNT:
@@ -2506,7 +2690,7 @@ class AgentManager(service.PeriodicService):
                     success = True
                     break
                 except Exception as ex:
-                    LOG.error("Attempt %s to upgrade Kubernetes control-plane to version %s failed "
+                    LOG.error("Attempt %s to upgrade kubernetes control-plane to version %s failed "
                               "on this host. Error: [%s]" % (attempt, to_kube_version, ex))
                     attempt += 1
                     success = False
@@ -2518,3 +2702,4 @@ class AgentManager(service.PeriodicService):
             rpcapi = conductor_rpcapi.ConductorAPI(topic=conductor_rpcapi.MANAGER_TOPIC)
             rpcapi.report_kube_upgrade_control_plane_result(context, host_uuid, to_kube_version,
                                                             is_first_master, success)
+            self._cleanup_kube_upgrade_method_details()

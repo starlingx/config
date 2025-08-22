@@ -400,6 +400,7 @@ class ConductorManager(service.PeriodicService):
 
         self._initialize_backup_actions_log()
         self._app_alarm_audit_counter = 0  # Counter for alarm audit frequency
+        self._k8s_upgrade_downloading_images_on_inactive_controller = False
 
     def start(self):
         try:
@@ -17683,6 +17684,63 @@ class ConductorManager(service.PeriodicService):
 
         os.chmod(constants.SYSINV_CONF_DEFAULT_PATH, 0o400)
 
+    def report_unfinished_kube_upgrade_from_agent(self, context, host_uuid):
+        """Report unfinished k8s upgrade by sysinv-agent
+
+        This method is only used by sysinv-agent to report about unfinished kubernetes
+        upgrade in sysinv-agent in case of unexpected sysinv-agent restart/fail-start etc.
+        Sysinv-agent does an attempt to finish it but if that does not work, this method is
+        called as a last resort.
+        """
+        try:
+            kube_upgrade = self.dbapi.kube_upgrade_get_one()
+        except exception.NotFound:
+            # Not upgrading kubernetes
+            return
+
+        host_obj = objects.host.get_by_uuid(context, host_uuid)
+        host_name = host_obj.hostname
+        kube_host_upgrade = objects.kube_host_upgrade.get_by_host_id(context, host_obj.id)
+
+        current_kube_state = kube_upgrade.state
+        fail_state = None
+        fail_status = None
+
+        # Following block of conditions ensures kube upgrade status of only the reporting
+        # host is updated and not for false host.
+        if current_kube_state == kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES and \
+                self._k8s_upgrade_downloading_images_on_inactive_controller:
+            fail_state = kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES_FAILED
+            self._k8s_upgrade_downloading_images_on_inactive_controller = False
+        elif current_kube_state == kubernetes.KUBE_UPGRADING_FIRST_MASTER and \
+                kube_host_upgrade.status == kubernetes.KUBE_HOST_UPGRADING_CONTROL_PLANE:
+            fail_state = kubernetes.KUBE_UPGRADING_FIRST_MASTER_FAILED
+            fail_status = kubernetes.KUBE_HOST_UPGRADING_CONTROL_PLANE_FAILED
+        elif current_kube_state == kubernetes.KUBE_UPGRADING_SECOND_MASTER and \
+                kube_host_upgrade.status == kubernetes.KUBE_HOST_UPGRADING_CONTROL_PLANE:
+            fail_state = kubernetes.KUBE_UPGRADING_SECOND_MASTER_FAILED
+            fail_status = kubernetes.KUBE_HOST_UPGRADING_CONTROL_PLANE_FAILED
+        elif current_kube_state == kubernetes.KUBE_UPGRADING_KUBELETS and \
+                kube_host_upgrade.status == kubernetes.KUBE_HOST_UPGRADING_KUBELET:
+            fail_status = kubernetes.KUBE_HOST_UPGRADING_KUBELET_FAILED
+        elif current_kube_state == kubernetes.KUBE_UPGRADE_ABORTING:
+            fail_state = kubernetes.KUBE_UPGRADE_ABORTING_FAILED
+
+        if not any([fail_state, fail_status]):
+            return
+
+        LOG.error("Unfinished kubernetes upgrade report from host [%s] received." % (host_name))
+
+        if fail_state:
+            LOG.error("Transitioning kubernetes upgrade from state [%s] to [%s]."
+                      % (current_kube_state, fail_state))
+            self.dbapi.kube_upgrade_update(kube_upgrade.id, {'state': fail_state})
+
+        if fail_status:
+            LOG.error("Transitioning kubernetes host upgrade status to [%s] for host [%s]."
+                      % (fail_status, host_name))
+            self.dbapi.kube_host_upgrade_update(kube_host_upgrade.id, {'status': fail_status})
+
     def _kube_upgrade_init_actions(self):
         """ Perform any kubernetes upgrade related startup actions"""
         try:
@@ -17819,6 +17877,7 @@ class ConductorManager(service.PeriodicService):
             state = kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES_FAILED
             LOG.error("Kubernetes image download failed on the other controller."
                       "Check sysinv.log on that controller.")
+        self._k8s_upgrade_downloading_images_on_inactive_controller = False
         self._kube_upgrade_state_update(context, state)
 
     @retry(retry_on_result=lambda x: x is None,
@@ -18060,12 +18119,14 @@ class ConductorManager(service.PeriodicService):
                     continue
                 try:
                     LOG.info("Downloading images on %s" % (host.hostname))
+                    self._k8s_upgrade_downloading_images_on_inactive_controller = True
                     agent_api.pull_kubernetes_images(context, host.uuid, target_images)
                 except Exception as ex:
                     # Handle unexpected exception
                     LOG.exception("Images download failed on %s. Error: [%s]" % (host.hostname, ex))
                     self._kube_upgrade_state_update(
                             context, kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES_FAILED)
+                    self._k8s_upgrade_downloading_images_on_inactive_controller = False
 
     def kube_application_update(self,
                                 context,
