@@ -5458,7 +5458,7 @@ class HostController(rest.RestController):
                 kernel_config_time,
                 constants.KERNEL_CONFIG_STATUS_FORMAT
             )
-        except ValueError:
+        except (ValueError, TypeError):
             # string is not a valid datetime - no kernel config in progress
             return
 
