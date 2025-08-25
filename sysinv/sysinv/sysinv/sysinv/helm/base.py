@@ -300,17 +300,8 @@ class BaseHelm(object):
 
     def _get_ceph_monitor_ips(self, name_filter=None):
         system = self._get_system()
-        network_type = self.dbapi.storage_ceph_get_list()[0].get('network')
         if system.system_type == constants.TIS_AIO_BUILD:
-            if (
-                system.system_mode == constants.SYSTEM_MODE_SIMPLEX
-                and network_type != constants.NETWORK_TYPE_MGMT
-            ):
-                # ceph monitor for controller-0
-                monitors = self._get_filtered_ceph_monitor_ips_by_name(constants.CEPH_MON_0)
-            else:
-                # ceph monitor for controller-floating
-                monitors = self._get_filtered_ceph_monitor_ips_by_name(constants.CEPH_FLOATING_MON)
+            monitors = self._get_filtered_ceph_monitor_ips_by_name(constants.CEPH_FLOATING_MON)
         elif name_filter:
             monitors = self._get_filtered_ceph_monitor_ips_using_function(name_filter)
         else:

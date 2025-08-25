@@ -57,8 +57,10 @@ SUBCLOUD_WRITABLE_NETWORK_TYPES = [constants.NETWORK_TYPE_ADMIN,
 
 # Address pool for networks below in an AIO-SX installation
 # is allowed to be deleted/modified post install
-AIOSX_WRITABLE_NETWORK_TYPES = [constants.NETWORK_TYPE_MGMT,
-                                constants.NETWORK_TYPE_STORAGE]
+AIOSX_RUNTIME_WRITABLE_NETWORK_TYPES = (
+    constants.NETWORK_TYPE_MGMT,
+    constants.NETWORK_TYPE_STORAGE,
+)
 
 
 class AddressPoolPatchType(types.JsonPatchType):
@@ -378,7 +380,7 @@ class AddressPoolController(rest.RestController):
             if nw_type in SUBCLOUD_WRITABLE_NETWORK_TYPES:
                 continue
 
-            if nw_type in AIOSX_WRITABLE_NETWORK_TYPES:
+            if nw_type in AIOSX_RUNTIME_WRITABLE_NETWORK_TYPES:
                 if self._get_system_mode() == constants.SYSTEM_MODE_SIMPLEX:
                     chosts = pecan.request.dbapi.ihost_get_by_personality(constants.CONTROLLER)
                     for host in chosts:
@@ -389,8 +391,12 @@ class AddressPoolController(rest.RestController):
                             raise wsme.exc.ClientSideError(msg)
                     continue
 
-            if nw_type in {constants.NETWORK_TYPE_MGMT,
-                           constants.NETWORK_TYPE_STORAGE}:
+            # Check sx-to-dx migration case
+            if nw_type in (
+                constants.NETWORK_TYPE_MGMT,
+                constants.NETWORK_TYPE_CLUSTER_HOST,
+                constants.NETWORK_TYPE_STORAGE,
+            ):
                 if self._get_system_mode() == constants.SYSTEM_MODE_DUPLEX:
                     system = pecan.request.dbapi.isystem_get_one()
                     if (system.capabilities.get('simplex_to_duplex_migration') or
@@ -812,30 +818,17 @@ class AddressPoolController(rest.RestController):
             updates[addr_id_field] = address.id
 
     def _apply_network_specific_address_updates(self, addrpool, network_types, commands):
-        if constants.NETWORK_TYPE_OAM in network_types:
-            self._apply_oam_address_updates(addrpool, commands)
-        if constants.NETWORK_TYPE_MGMT in network_types:
-            self._apply_mgmt_address_updates(addrpool, commands)
-        if constants.NETWORK_TYPE_STORAGE in network_types:
-            self._apply_storage_address_updates(addrpool, commands)
-
-    def _apply_oam_address_updates(self, addrpool, commands):
-        system = pecan.request.dbapi.isystem_get_one()
-        if system.capabilities.get('simplex_to_duplex_migration') or \
-                system.capabilities.get('simplex_to_duplex-direct_migration'):
-            self._aio_sx_to_dx_address_migration(addrpool, commands)
-
-    def _apply_mgmt_address_updates(self, addrpool, commands):
-        system = pecan.request.dbapi.isystem_get_one()
-        if system.capabilities.get('simplex_to_duplex_migration') or \
-                system.capabilities.get('simplex_to_duplex-direct_migration'):
-            self._aio_sx_to_dx_address_migration(addrpool, commands)
-
-    def _apply_storage_address_updates(self, addrpool, commands):
-        system = pecan.request.dbapi.isystem_get_one()
-        if system.capabilities.get('simplex_to_duplex_migration') or \
-                system.capabilities.get('simplex_to_duplex-direct_migration'):
-            self._aio_sx_to_dx_address_migration(addrpool, commands)
+        for network_type in (
+            constants.NETWORK_TYPE_OAM,
+            constants.NETWORK_TYPE_MGMT,
+            constants.NETWORK_TYPE_CLUSTER_HOST,
+            constants.NETWORK_TYPE_STORAGE,
+        ):
+            if network_type in network_types:
+                system = pecan.request.dbapi.isystem_get_one()
+                if system.capabilities.get('simplex_to_duplex_migration') or \
+                        system.capabilities.get('simplex_to_duplex-direct_migration'):
+                    self._aio_sx_to_dx_address_migration(addrpool, commands)
 
     def _aio_sx_to_dx_address_migration(self, addrpool, commands):
         create_cmd = commands['create'].get('controller0_address', None)

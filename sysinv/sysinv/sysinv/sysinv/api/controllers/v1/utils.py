@@ -973,9 +973,12 @@ def get_primary_address_by_name(db_address_name, networktype, raise_exc=False):
     """
     if (
         get_system_mode() == constants.SYSTEM_MODE_SIMPLEX
-        and networktype in (constants.NETWORK_TYPE_ADMIN,
-                            constants.NETWORK_TYPE_MGMT,
-                            constants.NETWORK_TYPE_STORAGE)
+        and networktype in (
+            constants.NETWORK_TYPE_ADMIN,
+            constants.NETWORK_TYPE_MGMT,
+            constants.NETWORK_TYPE_CLUSTER_HOST,
+            constants.NETWORK_TYPE_STORAGE,
+        )
         and db_address_name == f"{constants.CONTROLLER_0_HOSTNAME}-{networktype}"
     ):
         db_address_name = f"{constants.CONTROLLER_HOSTNAME}-{networktype}"

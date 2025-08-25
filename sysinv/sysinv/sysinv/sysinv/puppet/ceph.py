@@ -78,7 +78,7 @@ class CephPuppet(openstack.OpenstackBasePuppet):
             mon_2_host = None
 
         floating_mon_ip = ceph_mon_ips[constants.CEPH_FLOATING_MON]
-        if utils.is_aio_simplex_system(self.dbapi) and network_type == constants.NETWORK_TYPE_MGMT:
+        if utils.is_aio_simplex_system(self.dbapi):
             mon_0_ip = floating_mon_ip
         else:
             mon_0_ip = ceph_mon_ips.get(constants.CEPH_MON_0, None)
