@@ -645,6 +645,8 @@ class KubeControllerOperator(KubeHostOperator):
                          kubernetes.KUBERNETES_SYMLINKS_STAGE_2]:
                 self._update_symlink(link, recover_to_kube_version)
 
+            kubernetes.enable_kubelet_garbage_collection()
+
             for service in [kubernetes.KUBE_ETCD_SYSTEMD_SERVICE_NAME,
                             kubernetes.KUBE_DOCKER_SYSTEMD_SERVICE_NAME,
                             kubernetes.KUBE_CONTAINERD_SYSTEMD_SERVICE_NAME,
