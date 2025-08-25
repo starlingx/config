@@ -12305,6 +12305,17 @@ class ConductorManager(service.PeriodicService):
                             constants.SERVICE_PARAM_SECTION_DOCKER_CONCURRENCY]
                     or name == constants.SERVICE_PARAM_NAME_DOCKER_AUTH_SECRET):
                 reboot = False
+        elif service == constants.SERVICE_TYPE_MODULE:
+            personalities = [constants.CONTROLLER,
+                             constants.WORKER,
+                             constants.STORAGE]
+            config_dict = {
+                'personalities': personalities,
+                'classes': ['platform::module::runtime']
+            }
+
+            config_uuid = self._config_update_hosts(context, personalities)
+            self._config_apply_runtime_manifest(context, config_uuid, config_dict)
         elif service == constants.SERVICE_TYPE_KUBERNETES:
             reboot = True
             # kube apiserver service parameters can be applied without a reboot
