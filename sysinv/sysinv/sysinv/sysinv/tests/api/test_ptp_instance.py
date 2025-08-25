@@ -91,9 +91,9 @@ class TestCreatePtpInstance(BasePtpInstanceTestCase):
             status_code=http_client.CONFLICT,
             error_message=error_message)
 
-    def test_create_ptp_instance_monitoring_ok(self):
+    def test_create_ptp_instance_gnss_monitor_ok(self):
         self._create_ptp_instance_success(
-            "fake-instance-monitoring", constants.PTP_INSTANCE_TYPE_MONITORING
+            "fake-instance-gnss-monitor", constants.PTP_INSTANCE_TYPE_GNSS_MONITOR
         )
 
 
@@ -145,9 +145,9 @@ class TestHostPtpInstance(BasePtpInstanceTestCase):
         self.assertEqual(response.content_type, 'application/json')
         self.assertEqual(response.status_code, http_client.OK)
 
-    def _assign_host_ptp_instance_monitoring_success(self):
+    def _assign_host_ptp_instance_gnss_monitor_success(self):
         ptp_instance = dbutils.create_test_ptp_instance(
-            name="test-instance", service=constants.PTP_INSTANCE_TYPE_MONITORING
+            name="test-instance", service=constants.PTP_INSTANCE_TYPE_GNSS_MONITOR
         )
         ptp_instance_id = ptp_instance["id"]
         response = self.patch_json(
@@ -166,14 +166,14 @@ class TestHostPtpInstance(BasePtpInstanceTestCase):
 
         return ptp_instance_id
 
-    def test_host_ptp_instance_monitoring_assign_ok(self):
-        self._assign_host_ptp_instance_monitoring_success()
+    def test_host_ptp_instance_gnss_monitor_assign_ok(self):
+        self._assign_host_ptp_instance_gnss_monitor_success()
 
-    def test_host_second_ptp_instance_monitoring_assign_failed(self):
-        self._assign_host_ptp_instance_monitoring_success()
+    def test_host_second_ptp_instance_gnss_monitor_assign_failed(self):
+        self._assign_host_ptp_instance_gnss_monitor_success()
 
         ptp_instance = dbutils.create_test_ptp_instance(
-            name="test-instance2", service=constants.PTP_INSTANCE_TYPE_MONITORING
+            name="test-instance2", service=constants.PTP_INSTANCE_TYPE_GNSS_MONITOR
         )
         ptp_instance_id = ptp_instance["id"]
         response = self.patch_json(
@@ -192,7 +192,7 @@ class TestHostPtpInstance(BasePtpInstanceTestCase):
         self.assertEqual("application/json", response.content_type)
         self.assertEqual(response.status_code, http_client.BAD_REQUEST)
         self.assertIn(
-            "Monitoring ptp instance already exists on host",
+            "gnss-monitor ptp instance already exists on host",
             response.json["error_message"]
         )
 
@@ -229,7 +229,7 @@ class TestListPtpInstance(BasePtpInstanceTestCase):
                     constants.PTP_INSTANCE_TYPE_PHC2SYS,
                     constants.PTP_INSTANCE_TYPE_SYNCE4L,
                     constants.PTP_INSTANCE_TYPE_TS2PHC,
-                    constants.PTP_INSTANCE_TYPE_MONITORING]
+                    constants.PTP_INSTANCE_TYPE_GNSS_MONITOR]
         for service in services:
             name = '%s-%s' % (name_prefix, service)
             instance = dbutils.create_test_ptp_instance(name=name,

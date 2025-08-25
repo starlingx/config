@@ -62,10 +62,10 @@ def do_ptp_interface_add(cc, args):
     ptp_instance = ptp_instance_utils._find_ptp_instance(
         cc, args.ptpinstancenameorid)
 
-    # Do not allow for monitoring service type.
-    if ptp_instance.service == constants.PTP_INSTANCE_TYPE_MONITORING:
+    # Do not allow for gnss-monitor service type.
+    if ptp_instance.service == constants.PTP_INSTANCE_TYPE_GNSS_MONITOR:
         raise exc.CommandError(
-            "PTP instance of monitoring type does not support interface"
+            "PTP instance of gnss-monitor type does not support interface"
         )
 
     data.update({'ptp_instance_uuid': ptp_instance.uuid})

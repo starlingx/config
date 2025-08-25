@@ -375,12 +375,12 @@ class NetworkingPuppet(base.BasePuppet):
 
         return config
 
-    def _set_ptp_instance_monitoring_global_parameters(
+    def _set_ptp_instance_gnss_monitor_global_parameters(
         self, instance, ptp_parameters_instance
     ):
         default_global_parameters = {
-            "satellite_count": constants.PTP_MONITORING_SATELLITE_COUNT,
-            "signal_quality_db": constants.PTP_MONITORING_SIGNAL_QUALITY_DB_VALUE,
+            "satellite_count": constants.PTP_GNSS_MONITOR_SATELLITE_COUNT,
+            "signal_quality_db": constants.PTP_GNSS_MONITOR_SIGNAL_QUALITY_DB_VALUE,
         }
         default_cmdline_opts = ""
 
@@ -804,7 +804,7 @@ class NetworkingPuppet(base.BasePuppet):
                 nic_clocks[instance['name']]['interfaces'] = []
             elif (
                 ptp_instances[index]["service"]
-                == constants.PTP_INSTANCE_TYPE_MONITORING
+                == constants.PTP_INSTANCE_TYPE_GNSS_MONITOR
             ):
                 ptp_instances[index][instance["name"]] = instance.as_dict()
                 ptp_instances[index][instance["name"]]["interfaces"] = []
@@ -841,28 +841,28 @@ class NetworkingPuppet(base.BasePuppet):
         else:
             ptp_config = {}
 
-        # Generate the monitoring config
+        # Generate the gnss-monitor config
         monitoring_enabled = False
         monitoring_config = {}
         len_monitoring_instance_configs = len(monitoring_instance_configs)
 
         if ptpinstance_enabled and len_monitoring_instance_configs > 0:
-            # Only single monitoring instance per host is allowed.
+            # Only single gnss-monitor instance per host is allowed.
             if len_monitoring_instance_configs == 1:
                 monitoring_enabled = True
-                monitoring_config = self._set_ptp_instance_monitoring_global_parameters(
+                monitoring_config = self._set_ptp_instance_gnss_monitor_global_parameters(
                     monitoring_instance_configs[0], ptp_parameters_instance
                 )
             else:
                 LOG.warning(
-                    f"PTP monitoring instances are {len_monitoring_instance_configs > 1} on host id {host.id}."
+                    f"PTP gnss-monitor instances are {len_monitoring_instance_configs > 1} on host id {host.id}."
                 )
 
         return {
             'platform::ptpinstance::config': ptp_config,
             'platform::ptpinstance::enabled': ptpinstance_enabled,
-            'platform::ptpinstance::monitoring::monitoring_config': monitoring_config,
-            'platform::ptpinstance::monitoring::monitoring_enabled': monitoring_enabled,
+            'platform::ptpinstance::gnss_monitor::monitoring_config': monitoring_config,
+            'platform::ptpinstance::gnss_monitor::monitoring_enabled': monitoring_enabled,
             'platform::ptpinstance::nic_clock::nic_clock_config': nic_clock_config,
             'platform::ptpinstance::nic_clock::nic_clock_enabled': nic_clock_enabled,
         }

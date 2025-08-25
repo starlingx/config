@@ -75,7 +75,7 @@ class PtpInstance(base.APIBase):
                           constants.PTP_INSTANCE_TYPE_TS2PHC,
                           constants.PTP_INSTANCE_TYPE_CLOCK,
                           constants.PTP_INSTANCE_TYPE_SYNCE4L,
-                          constants.PTP_INSTANCE_TYPE_MONITORING)
+                          constants.PTP_INSTANCE_TYPE_GNSS_MONITOR)
     "Type of service of the PTP instance"
 
     hostnames = types.MultiType([list])
