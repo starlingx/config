@@ -1569,11 +1569,16 @@ PMON_STOP_FULL_PATH = '/usr/local/sbin/pmon-stop'
 PMON_RESTART_FULL_PATH = '/usr/local/sbin/pmon-restart'
 MASK_COMMAND = 'mask'
 START_COMMAND = 'start'
+RESTART_COMMAND = 'restart'
 UNMASK_COMMAND = 'unmask'
 IS_ACTIVE_COMMAND = 'is-active'
 IS_ENABLED_COMMAND = 'is-enabled'
 SYSTEMCTL_RUNTIME_FLAG = '--runtime'
 SYSTEMCTL_NOW_FLAG = '--now'
+
+# SM related
+SM_RESTART = '/usr/bin/sm-restart'
+SM_RESTART_SAFE = '/usr/bin/sm-restart-safe'
 
 ETCD_PATH = "/opt/etcd"
 ETCD_DIR_NAME = "db"
