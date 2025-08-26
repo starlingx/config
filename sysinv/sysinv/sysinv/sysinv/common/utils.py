@@ -4889,3 +4889,63 @@ def verify_activate_rollback_in_progress(dbapi):
             result = True
 
     return result
+
+
+def remove_public_registry_port(img_tag):
+    """
+    Fix image tag by removing public registry port when pushing to
+    the local registry.
+
+    image goes from the incorrect format:
+    registry.local:9001/public.example.com:30093/stx/some-image:some-tag
+
+    to the compliant:
+    registry.local:9001/public.example.com/stx/some-image:some-tag
+
+    :param img_tag: str
+    :return: str
+
+    """
+    regex_pattern = r"(?P<url1>.*)\/(?P<url2>.+)(?P<port>:\d+)\/(?P<image>.+)"
+    substitution_pattern = "\\g<url1>/\\g<url2>/\\g<image>"
+
+    return re.sub(regex_pattern, substitution_pattern, img_tag, 1)
+
+
+def atomic_update_yaml_file(values, file_path):
+    """
+    Atomically updates a YAML file with the provided values.
+    This function creates a temporary file within the same folder as the file_path
+    parameter and updates it with the values parameter, then atomically renames the
+    temporary file to the target file path. This ensures that the update is atomic
+    and reduces the risk of data corruption.
+
+    Args:
+        values (iterable): The data to be written to the YAML file.
+        file_path (str): The path to the YAML file to be updated.
+    """
+
+    if os.path.exists(file_path):
+        # Get the directory of the file to be updated
+        file_dir = os.path.dirname(file_path)
+        with tempfile.TemporaryDirectory(dir=file_dir) as temp_dirname:
+            # Create a temporary file path in the same directory
+            temp_file_path = os.path.join(temp_dirname, os.path.basename(file_path))
+
+            with open(temp_file_path, 'w', encoding='utf-8') as f:
+                try:
+                    # Write the values to the temporary file using yaml.safe_dump
+                    yaml.safe_dump(values, f, default_flow_style=False)
+                    LOG.debug(f"Temporary file {temp_file_path} generated")
+                except Exception as e:
+                    raise exception.SysinvException(
+                        f"Failed to generate temporary file {temp_file_path}: {e}")
+            try:
+                # Atomically rename the temporary file to the target file path
+                os.rename(temp_file_path, file_path)
+                LOG.debug(f"Updated file {file_path} atomically with {temp_file_path}")
+            except Exception as e:
+                raise exception.SysinvException(f"Failed to update file "
+                        f"{file_path} with temporary file {temp_file_path}: {e}")
+    else:
+        raise exception.SysinvException(f"File {file_path} does not exist. Cannot update.")
