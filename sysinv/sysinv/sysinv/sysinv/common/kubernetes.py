@@ -173,7 +173,8 @@ K8S_INITIAL_CMD_VERSION = '1.29.2'
 MANIFEST_APPLY_TIMEOUT = 60 * 15
 MANIFEST_APPLY_INTERVAL = 10
 POD_START_TIMEOUT = 60 * 2
-POD_START_INTERVAL = 10
+# Static pods are generally first to get started upon kubelet start and are up fairly quick
+STATIC_POD_START_INTERVAL = 1
 
 # Kubeadm to Kubelet minor version skew toleration
 KUBELET_MINOR_SKEW_TOLERANCE = 3

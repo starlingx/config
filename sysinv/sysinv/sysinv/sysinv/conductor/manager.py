@@ -18417,10 +18417,29 @@ class ConductorManager(service.PeriodicService):
         host_obj = objects.host.get_by_uuid(context, host_uuid)
         kube_host_upgrade_obj = objects.kube_host_upgrade.get_by_host_id(context, host_obj.id)
         host_name = host_obj.hostname
+
         if success:
-            kube_host_upgrade_obj.status = kubernetes.KUBE_HOST_UPGRADED_KUBELET
-            LOG.info("Kubelet on the host %s upgraded successfully to version %s."
-                     % (host_name, to_version))
+            # Double check that the kubelet on the host was upgraded successfully.
+            # On AIO-SX this ensures that the kube-apiserver is back up and running after kubelet
+            # restart.
+            starttime = datetime.now()
+            while ((datetime.now() - starttime).total_seconds() < kubernetes.POD_START_TIMEOUT):
+                try:
+                    kubelet_versions = self._kube.kube_get_kubelet_versions()
+                    if kubelet_versions.get(host_name, None) == to_version:
+                        kube_host_upgrade_obj.status = kubernetes.KUBE_HOST_UPGRADED_KUBELET
+                        LOG.info("Kubelet on the host %s upgraded successfully to version %s."
+                                % (host_name, to_version))
+                        break
+                except Exception as ex:
+                    LOG.warning("[Kubelet upgrade verify]: kubelets version check error: [%s]"
+                                % (ex))
+                LOG.debug("Waiting for kubelet restart complete on host %s" % host_name)
+                greenthread.sleep(kubernetes.STATIC_POD_START_INTERVAL)
+            else:
+                kube_host_upgrade_obj.status = kubernetes.KUBE_HOST_UPGRADING_KUBELET_FAILED
+                LOG.error("Failed to upgrade kubelet on the host %s to version %s."
+                        % (host_name, to_version))
         else:
             kube_host_upgrade_obj.status = kubernetes.KUBE_HOST_UPGRADING_KUBELET_FAILED
             LOG.error("Failed to upgrade kubelet on the host %s to version %s."
