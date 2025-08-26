@@ -229,6 +229,7 @@ def _get_hostname_field_index(network_type, dbapi=None):
                 constants.NETWORK_TYPE_MGMT,
                 constants.NETWORK_TYPE_CLUSTER_HOST,
                 constants.NETWORK_TYPE_STORAGE,
+                constants.NETWORK_TYPE_PXEBOOT,
             )
         ):
             if hostname in [constants.CONTROLLER_0_HOSTNAME, constants.CONTROLLER_1_HOSTNAME]:
@@ -316,6 +317,7 @@ def _assign_addresses_to_controller_iface(host, interface_id, network, addrpools
         constants.NETWORK_TYPE_MGMT,
         constants.NETWORK_TYPE_CLUSTER_HOST,
         constants.NETWORK_TYPE_STORAGE,
+        constants.NETWORK_TYPE_PXEBOOT,
     ):
         hostname = constants.CONTROLLER_HOSTNAME
     else:

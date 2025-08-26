@@ -396,6 +396,7 @@ class AddressPoolController(rest.RestController):
                 constants.NETWORK_TYPE_MGMT,
                 constants.NETWORK_TYPE_CLUSTER_HOST,
                 constants.NETWORK_TYPE_STORAGE,
+                constants.NETWORK_TYPE_PXEBOOT,
             ):
                 if self._get_system_mode() == constants.SYSTEM_MODE_DUPLEX:
                     system = pecan.request.dbapi.isystem_get_one()
@@ -545,7 +546,8 @@ class AddressPoolController(rest.RestController):
     def _get_required_address_fields(self, network_types):
         sx_floating_only_networks = [constants.NETWORK_TYPE_OAM,
                                      constants.NETWORK_TYPE_MGMT,
-                                     constants.NETWORK_TYPE_ADMIN]
+                                     constants.NETWORK_TYPE_ADMIN,
+                                     constants.NETWORK_TYPE_PXEBOOT]
         if any(x in network_types for x in sx_floating_only_networks):
             if utils.get_system_mode() == constants.SYSTEM_MODE_SIMPLEX:
                 return self.FLOATING_ADDR_FIELD
@@ -823,6 +825,7 @@ class AddressPoolController(rest.RestController):
             constants.NETWORK_TYPE_MGMT,
             constants.NETWORK_TYPE_CLUSTER_HOST,
             constants.NETWORK_TYPE_STORAGE,
+            constants.NETWORK_TYPE_PXEBOOT,
         ):
             if network_type in network_types:
                 system = pecan.request.dbapi.isystem_get_one()
