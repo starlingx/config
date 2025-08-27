@@ -1353,8 +1353,7 @@ class ConductorManager(service.PeriodicService):
             ihosts = self.dbapi.ihost_get_list()
 
             addresses = self.dbapi._addresses_get_by_pool_uuid(mgmt_network.pool_uuid)
-            has_controller_0_mgmt = any(address.name for address in addresses
-                                           if address.name == constants.CONTROLLER_0_MGMT)
+
             # Loop through mgmt addresses to write to file
             for address in addresses:
                 line = None
@@ -1373,16 +1372,17 @@ class ConductorManager(service.PeriodicService):
                 if hostname == constants.CONTROLLER_HOSTNAME:
                     # For simplex with no controller-0/controller-1 addresses, set
                     # controller-0.internal as an alias to the controller entry.
-                    if is_aio_simplex and not has_controller_0_mgmt:
+                    if is_aio_simplex:
                         controller_alias.append(constants.CONTROLLER_0_FQDN)
                     addn_line_internal = self._dnsmasq_addn_host_entry_to_string(
                             address.address, constants.CONTROLLER_FQDN, controller_alias)
-                else:
+                    f_out_addn.write(addn_line_internal)
+                elif not (hostname == constants.CONTROLLER_0_HOSTNAME and is_aio_simplex):
                     hostname_internal = hostname + "." + constants.INTERNAL_DOMAIN
                     hostname_alias = [hostname]
                     addn_line_internal = self._dnsmasq_addn_host_entry_to_string(
                             address.address, hostname_internal, hostname_alias)
-                f_out_addn.write(addn_line_internal)
+                    f_out_addn.write(addn_line_internal)
 
             # Add pxecontroller to dnsmasq.hosts file
             pxeboot_network = self.dbapi.network_get_by_type(
