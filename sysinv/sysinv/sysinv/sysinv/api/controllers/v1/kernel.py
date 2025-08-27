@@ -179,6 +179,9 @@ class KernelController(rest.RestController):
         if ihost.inv_state != constants.INV_STATE_INITIAL_INVENTORIED:
             raise wsme.exc.ClientSideError(_('Host must have completed initial inventory.'))
 
+        if ihost.availability == constants.AVAILABILITY_OFFLINE:
+            raise wsme.exc.ClientSideError(_('Host must be online.'))
+
     @staticmethod
     def _check_patch(patch):
         KERNEL_PATH = '/kernel_provisioned'
