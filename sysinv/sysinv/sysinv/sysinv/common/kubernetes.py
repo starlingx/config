@@ -908,12 +908,17 @@ class KubeOperator(object):
         if isinstance(ex, MaxRetryError):
             LOG.warn('Retrying against MaxRetryError: {}'.format(ex))
             return True
+        elif isinstance(ex, ApiException):
+            if ex.status == httplib.FORBIDDEN:
+                LOG.warn('Retrying against FORBIDDEN: {}'.format(ex))
+                return True
+            else:
+                return False
         else:
             return False
 
     def _retry_on_urllibs3_RetryError(ex):  # pylint: disable=no-self-argument
-        if isinstance(ex, MaxRetryError):
-            LOG.warn('Retrying against MaxRetryError: {}'.format(ex))
+        if __class__._retry_on_urllibs3_MaxRetryError(ex):
             return True
         elif isinstance(ex, ValueError):
             LOG.warn('Retrying against ValueError: {}'.format(ex))
