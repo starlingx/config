@@ -9981,6 +9981,72 @@ class ConductorManager(service.PeriodicService):
         self._config_apply_runtime_manifest(context, config_uuid=config_uuid,
                                             config_dict=config_dict)
 
+    def update_mgmt_config(self, context):
+        """Update the Management network configuration"""
+
+        if cutils.is_initial_config_complete():
+            controller_oam = cutils.format_address_name(constants.CONTROLLER_HOSTNAME,
+                                                        constants.NETWORK_TYPE_OAM)
+            controller_mgmt = cutils.format_address_name(constants.CONTROLLER_HOSTNAME,
+                                                         constants.NETWORK_TYPE_MGMT)
+            oam1 = cutils.get_primary_address_by_name(self.dbapi,
+                                                      controller_oam,
+                                                      constants.NETWORK_TYPE_OAM)
+            mgmt1 = cutils.get_primary_address_by_name(self.dbapi,
+                                                       controller_mgmt,
+                                                       constants.NETWORK_TYPE_MGMT)
+            oam2 = cutils.get_secondary_address_by_name(self.dbapi,
+                                                        controller_oam,
+                                                        constants.NETWORK_TYPE_OAM)
+            mgmt2 = cutils.get_secondary_address_by_name(self.dbapi,
+                                                         controller_mgmt,
+                                                         constants.NETWORK_TYPE_MGMT)
+            openldap_sans = []
+            registry_sans = []
+            for ip_addr in [oam1, oam2, mgmt1, mgmt2]:
+                if ip_addr is not None:
+                    openldap_sans.append(ip_addr.address)
+                    registry_sans.append(ip_addr.address)
+
+            kube_op = kubernetes.KubeOperator()
+            certobj = kube_op.get_custom_resource(kubernetes.CERT_MANAGER_GROUP,
+                                                  kubernetes.CERT_MANAGER_VERSION,
+                                                  kubernetes.NAMESPACE_DEPLOYMENT,
+                                                  'certificates',
+                                                  constants.OPENLDAP_CERT_SECRET_NAME)
+            if certobj is not None:
+                certobj['spec']['ipAddresses'] = list(set(certobj['spec']['ipAddresses']
+                                                    + openldap_sans))
+                kube_op.apply_custom_resource(kubernetes.CERT_MANAGER_GROUP,
+                                              kubernetes.CERT_MANAGER_VERSION,
+                                              kubernetes.NAMESPACE_DEPLOYMENT,
+                                              'certificates',
+                                              constants.OPENLDAP_CERT_SECRET_NAME,
+                                              certobj)
+
+            certobj = kube_op.get_custom_resource(kubernetes.CERT_MANAGER_GROUP,
+                                                  kubernetes.CERT_MANAGER_VERSION,
+                                                  kubernetes.NAMESPACE_DEPLOYMENT,
+                                                  'certificates',
+                                                  constants.REGISTRY_CERT_SECRET_NAME)
+            if certobj is not None:
+                certobj['spec']['ipAddresses'] = list(set(certobj['spec']['ipAddresses']
+                                                    + registry_sans))
+                kube_op.apply_custom_resource(kubernetes.CERT_MANAGER_GROUP,
+                                              kubernetes.CERT_MANAGER_VERSION,
+                                              kubernetes.NAMESPACE_DEPLOYMENT,
+                                              'certificates',
+                                              constants.REGISTRY_CERT_SECRET_NAME,
+                                              certobj)
+
+        personalities = [constants.CONTROLLER]
+        config_uuid = self._config_update_hosts(context, personalities)
+        config_dict = {
+            "personalities": personalities,
+            "classes": ['platform::kubernetes::certsans::runtime']
+        }
+        self._config_apply_runtime_manifest(context, config_uuid, config_dict)
+
     def update_mgmt_secondary_pool_config(self, context, family, disable=False):
         LOG.info(f"update management secondary pool config family={family}, disable={disable}")
         # management is present on all nodes

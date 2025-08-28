@@ -817,6 +817,13 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                                 family=family, disable=disable),
                          timeout=RPC_TIMEOUT)
 
+    def update_mgmt_config(self, context):
+        """Synchronously, have the conductor update the Management network configuration.
+
+        :param context: request context.
+        """
+        return self.call(context, self.make_msg('update_mgmt_config'))
+
     def update_mgmt_secondary_pool_config(self, context, family, disable=False):
         """Synchronously, have the conductor update the management secondary pool config.
 
