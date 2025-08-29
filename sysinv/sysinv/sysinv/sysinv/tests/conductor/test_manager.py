@@ -1646,6 +1646,9 @@ class ManagerTestCase(base.DbTestCase):
         TO_VERSION = 'v1.30.6'
         NEXT_VERSIONS = ['v1.30.6']
         FAKE_IMAGE_LIST = ['fake_image']
+        FAKE_CREDS = {'username': 'fake_username', 'password': 'fake_password'}
+        FAKE_AUTH = "fake_username:fake_password"
+
         # Create an upgrade
         utils.create_test_kube_upgrade(
             from_version=FROM_VERSION,
@@ -1690,6 +1693,12 @@ class ManagerTestCase(base.DbTestCase):
         p.start().return_value = True
         self.addCleanup(p.stop)
 
+        mock_get_local_docker_registry_auth = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.get_local_docker_registry_auth',
+                       mock_get_local_docker_registry_auth)
+        p.start().return_value = FAKE_CREDS
+        self.addCleanup(p.stop)
+
         mock_pull_kubernetes_images = mock.MagicMock()
         p = mock.patch.object(
             agent_rpcapi.AgentAPI, 'pull_kubernetes_images', mock_pull_kubernetes_images)
@@ -1706,8 +1715,9 @@ class ManagerTestCase(base.DbTestCase):
         self.assertEqual(mock_get_k8s_images.call_count, len(NEXT_VERSIONS))
         mock_download_images_from_upstream_to_local_reg_and_crictl.assert_called_with(
                                                                                 FAKE_IMAGE_LIST)
+        mock_get_local_docker_registry_auth.assert_called_once()
         mock_pull_kubernetes_images.assert_called_once_with(
-            self.context, controller1_host_uuid, FAKE_IMAGE_LIST)
+            self.context, controller1_host_uuid, FAKE_IMAGE_LIST, FAKE_AUTH)
 
     def test_kube_download_images_duplex_failure(self):
         """Test download images on duplex and for single-version k8s upgrade: unexpected exception
@@ -1754,6 +1764,9 @@ class ManagerTestCase(base.DbTestCase):
         TO_VERSION = 'v1.30.6'
         NEXT_VERSIONS = ['v1.30.6']
         FAKE_IMAGE_LIST = ['fake_image']
+        FAKE_CREDS = {'username': 'fake_username', 'password': 'fake_password'}
+        FAKE_AUTH = "fake_username:fake_password"
+
         # Create an upgrade
         utils.create_test_kube_upgrade(
             from_version=FROM_VERSION,
@@ -1804,6 +1817,12 @@ class ManagerTestCase(base.DbTestCase):
         p.start().side_effect = Exception("Fake error")
         self.addCleanup(p.stop)
 
+        mock_get_local_docker_registry_auth = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.get_local_docker_registry_auth',
+                       mock_get_local_docker_registry_auth)
+        p.start().return_value = FAKE_CREDS
+        self.addCleanup(p.stop)
+
         # Pretend controller-0 is an active controller when kube_download_images is called
         self.service.host_uuid = controller0_host_uuid
         self.service.kube_download_images(self.context, TO_VERSION)
@@ -1814,8 +1833,9 @@ class ManagerTestCase(base.DbTestCase):
         self.assertEqual(mock_get_k8s_images.call_count, len(NEXT_VERSIONS))
         mock_download_images_from_upstream_to_local_reg_and_crictl.assert_called_with(
                                                                                 FAKE_IMAGE_LIST)
+        mock_get_local_docker_registry_auth.assert_called_once()
         mock_pull_kubernetes_images.assert_called_once_with(
-            self.context, controller1_host_uuid, FAKE_IMAGE_LIST)
+            self.context, controller1_host_uuid, FAKE_IMAGE_LIST, FAKE_AUTH)
         updated_upgrade = self.dbapi.kube_upgrade_get_one()
         self.assertEqual(updated_upgrade.state, kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES_FAILED)
 

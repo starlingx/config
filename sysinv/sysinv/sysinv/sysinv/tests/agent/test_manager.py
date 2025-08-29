@@ -493,6 +493,7 @@ class TestHostKubernetesOperations(base.TestCase):
         """Test pull kubernetes images: Successful execution
         """
         images_to_be_pulled = ['fake_image1', 'fake_image2', 'fake_image3', 'fake_image4']
+        fake_crictl_auth = "fake_username:fake_password"
         result = True
 
         mock_save_kube_upgrade_method_details = mock.MagicMock()
@@ -532,19 +533,20 @@ class TestHostKubernetesOperations(base.TestCase):
         self.addCleanup(p.stop)
 
         self.agent_manager.pull_kubernetes_images(
-            self.context, self.agent_manager._ihost_uuid, images_to_be_pulled)
+            self.context, self.agent_manager._ihost_uuid, images_to_be_pulled, fake_crictl_auth)
 
         mock_save_kube_upgrade_method_details.assert_called_once()
         mock_cleanup_kube_upgrade_method_details.assert_called_once()
         mock_disable_kubelet_garbage_collection.assert_called_once()
         mock_pmon_restart_service.assert_called_once()
-        mock_pull_images.assert_called_once_with(images_to_be_pulled)
+        mock_pull_images.assert_called_once_with(images_to_be_pulled, fake_crictl_auth)
         mock_report_download_images_result.assert_called_once_with(self.context, result)
 
     def test_pull_kubernetes_images_success_disable_gc_failed(self):
         """Test pull kubernetes images: Successful execution even though disable GC failed
         """
         images_to_be_pulled = ['fake_image1', 'fake_image2', 'fake_image3', 'fake_image4']
+        fake_crictl_auth = "fake_username:fake_password"
         result = True
 
         mock_save_kube_upgrade_method_details = mock.MagicMock()
@@ -584,19 +586,20 @@ class TestHostKubernetesOperations(base.TestCase):
         self.addCleanup(p.stop)
 
         self.agent_manager.pull_kubernetes_images(
-            self.context, self.agent_manager._ihost_uuid, images_to_be_pulled)
+            self.context, self.agent_manager._ihost_uuid, images_to_be_pulled, fake_crictl_auth)
 
         mock_save_kube_upgrade_method_details.assert_called_once()
         mock_cleanup_kube_upgrade_method_details.assert_called_once()
         mock_disable_kubelet_garbage_collection.assert_called_once()
         mock_pmon_restart_service.assert_not_called()
-        mock_pull_images.assert_called_once_with(images_to_be_pulled)
+        mock_pull_images.assert_called_once_with(images_to_be_pulled, fake_crictl_auth)
         mock_report_download_images_result.assert_called_once_with(self.context, result)
 
     def test_pull_kubernetes_images_failure(self):
         """Test pull kubernetes images failure: crictl image pull failed
         """
         images_to_be_pulled = ['fake_image1', 'fake_image2', 'fake_image3', 'fake_image4']
+        fake_crictl_auth = "fake_username:fake_password"
         result = False
 
         mock_save_kube_upgrade_method_details = mock.MagicMock()
@@ -636,13 +639,13 @@ class TestHostKubernetesOperations(base.TestCase):
         self.addCleanup(p.stop)
 
         self.agent_manager.pull_kubernetes_images(
-            self.context, self.agent_manager._ihost_uuid, images_to_be_pulled)
+            self.context, self.agent_manager._ihost_uuid, images_to_be_pulled, fake_crictl_auth)
 
         mock_save_kube_upgrade_method_details.assert_called_once()
         mock_cleanup_kube_upgrade_method_details.assert_called_once()
         mock_disable_kubelet_garbage_collection.assert_called_once()
         mock_pmon_restart_service.assert_called_once()
-        mock_pull_images.assert_called_once_with(images_to_be_pulled)
+        mock_pull_images.assert_called_once_with(images_to_be_pulled, fake_crictl_auth)
         mock_report_download_images_result.assert_called_once_with(self.context, result)
 
     def test_kube_upgrade_kubelet_success_controller_node(self):
