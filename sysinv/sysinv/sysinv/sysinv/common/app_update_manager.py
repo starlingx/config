@@ -157,6 +157,7 @@ class AppUpdateManager:  # noqa: H238
                 f"The following apps did not update successfully: {', '.join(failed_updated_apps)}."
             )
             self.failed_apps = failed_updated_apps
+            self.apps_to_retry = []
             return False
         elif failed_updated_apps:
             LOG.warning(
@@ -166,6 +167,7 @@ class AppUpdateManager:  # noqa: H238
             self.apps_to_retry = failed_updated_apps
             return False
 
+        self.apps_to_retry = []
         return True
 
     def update_apps(self, context, k8s_version=None, k8s_upgrade_timing=None):
@@ -210,7 +212,7 @@ class AppUpdateManager:  # noqa: H238
 
             LOG.info("Starting the update of apps with applied status.")
             for class_type in self.apps_to_update[constants.APP_UPDATE_OP]:
-                if class_type == 'unmanaged_apps':
+                if class_type['class_type'] == 'unmanaged_apps':
                     LOG.info("Starting the update of unmanaged apps with applied status.")
                 self._update_a_list_of_apps(
                     context,

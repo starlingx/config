@@ -3340,7 +3340,7 @@ class AppOperator(object):
                 # rolled back Flux controllers
                 if (
                     not skip_recovery
-                    and not cutils.verify_activate_rollback_in_progress(self._dbapi)
+                    or not cutils.verify_activate_rollback_in_progress(self._dbapi)
                 ):
                     self._perform_app_recover(to_rpc_app, from_app, to_app,
                                               lifecycle_hook_info_app_update,
@@ -3355,7 +3355,7 @@ class AppOperator(object):
                 # rolled back Flux controllers
                 if (
                     not skip_recovery
-                    and not cutils.verify_activate_rollback_in_progress(self._dbapi)
+                    or not cutils.verify_activate_rollback_in_progress(self._dbapi)
                 ):
                     self._perform_app_recover(to_rpc_app, from_app, to_app,
                                               lifecycle_hook_info_app_update,
