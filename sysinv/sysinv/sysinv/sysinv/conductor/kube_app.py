@@ -1611,7 +1611,7 @@ class AppOperator(object):
 
                             # Copy the static overrides file to the backup path
                             shutil.copy(static_overrides_path, backup_path)
-                            LOG.info("Created backup of static overrides: {backup_path}")
+                            LOG.info(f"Created backup of static overrides: {backup_path}")
                         else:
                             LOG.warning("No static overrides found for chart"
                                         f"{chart_group} in {chart_path}")
@@ -4074,9 +4074,19 @@ class DockerHelper(object):
                     img_name = pub_img_tag.split(
                         registry_info['registry_default'])[1]
                     return registry + img_name, registry_auth
-                return pub_img_tag, registry_auth
+                elif registry_auth:
+                    LOG.warning("Proxy registry not available for "
+                                f"{registry_info['registry_default']}. Downloading {pub_img_tag} "
+                                "directly from registry using the provided credentials.")
+                    return pub_img_tag, registry_auth
 
-            elif pub_img_tag.startswith(registry_info['registry_replaced']):
+                LOG.warning("Proxy registry not available for "
+                            f"{registry_info['registry_default']}. Downloading {pub_img_tag} "
+                            "directly from unauthenticated registry.")
+                return pub_img_tag, None
+
+            elif registry_info['registry_replaced'] is not None and \
+                    pub_img_tag.startswith(registry_info['registry_replaced']):
                 return pub_img_tag, registry_auth
 
         # In case the image is overridden via "system helm-override-update"
