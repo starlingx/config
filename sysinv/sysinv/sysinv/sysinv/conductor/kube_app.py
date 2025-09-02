@@ -2487,7 +2487,6 @@ class AppOperator(object):
 
         # Initialize the ordered_apps dictionary
         ordered_apps = {
-            constants.APP_METADATA_DEPENDENT_APPS: [],
             constants.APP_METADATA_CLASS: {
                 constants.APP_METADATA_CLASS_CRITICAL: [],
                 constants.APP_METADATA_CLASS_STORAGE: [],
@@ -2495,7 +2494,8 @@ class AppOperator(object):
                 constants.APP_METADATA_CLASS_OPTIONAL: [],
                 constants.APP_METADATA_CLASS_REPORTING: []
             },
-            constants.APP_METADATA_INDEPENDENT_APPS: []
+            constants.APP_METADATA_INDEPENDENT_APPS: [],
+            constants.APP_METADATA_DEPENDENT_APPS: []
         }
 
         # Iterate through the platform-managed apps

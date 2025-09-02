@@ -16340,14 +16340,19 @@ class ConductorManager(service.PeriodicService):
         ordered_apps = []
         ordered_active_apps = []
 
-        ordered_apps.extend(self.apps_metadata[constants.APP_METADATA_ORDERED_APPS].get(
-            constants.APP_METADATA_DEPENDENT_APPS, []))
+        # Add class apps to ordered_apps list
         class_data = self.apps_metadata[constants.APP_METADATA_ORDERED_APPS].get(
             constants.APP_METADATA_CLASS, {})
         for class_category in class_data.keys():
             ordered_apps.extend(class_data.get(class_category, []))
+
+        # add independent apps to ordered_apps list
         ordered_apps.extend(self.apps_metadata[constants.APP_METADATA_ORDERED_APPS].get(
             constants.APP_METADATA_INDEPENDENT_APPS, []))
+
+        # add dependent apps to ordered_apps list
+        ordered_apps.extend(self.apps_metadata[constants.APP_METADATA_ORDERED_APPS].get(
+            constants.APP_METADATA_DEPENDENT_APPS, []))
 
         try:
             if name_only and not filter_active:
