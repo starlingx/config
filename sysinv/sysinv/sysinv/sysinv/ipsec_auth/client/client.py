@@ -288,15 +288,8 @@ class Client(object):
                     LOG.exception("Failed to load StrongSwan connections: %s" % err)
                     return False
 
-                rekey = subprocess.run(['swanctl', '--rekey', '--ike', constants.IKE_SA_NAME,
-                                        '--reauth'], stdout=subprocess.PIPE,
-                                        stderr=subprocess.PIPE, check=False)
-
-                if rekey.returncode != 0:
-                    err = "Error: %s" % (rekey.stderr.decode("utf-8"))
-                    LOG.exception("Failed to rekey IKE SA with StrongSwan: %s" % err)
-                    return False
-
+                # The new credential and conns are loaded. When auto reauth happens, the new
+                # certificate will be used.
                 LOG.info('IPsec certificate renewed successfully with load-creds/conns')
 
         return True
