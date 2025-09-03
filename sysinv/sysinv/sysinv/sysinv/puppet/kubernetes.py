@@ -324,7 +324,7 @@ class KubernetesPuppet(base.BasePuppet):
                         self.context)
                     kube_upgrade_state = kube_upgrade_obj.state
                 except exception.NotFound:
-                    pass
+                    kube_upgrade_obj = None
                 if kube_upgrade_state:
                     kube_host_upgrade = objects.kube_host_upgrade.get_by_host_id(
                         self.context, host.id)
@@ -358,6 +358,28 @@ class KubernetesPuppet(base.BasePuppet):
                 # to make sure all hosts decrypt using the same key
                 key = str(keyring.get_password(CERTIFICATE_KEY_SERVICE,
                         CERTIFICATE_KEY_USER))
+
+                # In a multi-node setup, during a Kubernetes upgrade, if
+                # kubeadm has not yet been upgraded and an unexpected reboot
+                # occurs, other nodes may fail to join due to version skew.
+                # updating the apiVersion to match the kubelet version
+                # restores the cluster to a stable state.
+
+                failed_states = {
+                    kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES_FAILED,
+                    kubernetes.KUBE_PRE_UPDATING_APPS_FAILED,
+                    kubernetes.KUBE_UPGRADING_NETWORKING_FAILED,
+                    kubernetes.KUBE_UPGRADING_STORAGE_FAILED,
+                }
+
+                system = self.dbapi.isystem_get_one()
+                if system.system_mode != constants.SYSTEM_MODE_SIMPLEX:
+                    if (
+                        kube_upgrade_obj
+                        and kube_version.kubelet_version != kubeadm_version
+                        and kube_upgrade_obj.state in failed_states
+                    ):
+                        kubeadm_version = kube_version.kubelet_version
 
                 # Update API reference to kubeadm.k8s.io/v1beta3 when k8s
                 # version is less than 1.31
