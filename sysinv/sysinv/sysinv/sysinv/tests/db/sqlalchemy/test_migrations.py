@@ -2103,3 +2103,13 @@ class TestMigrations(BaseMigrationTestCase, WalkVersionsMixin):
         for col, coltype in interfaces_col.items():
             self.assertTrue(isinstance(interfaces.c[col].type,
                             getattr(sqlalchemy.types, coltype)))
+
+    def _check_144(self, engine, data):
+        # Assert data types for new column in table "i_user"
+        users = db_utils.get_table(engine, 'i_user')
+        user_cols = {
+            'passwd_last_change': 'Integer',
+        }
+        for col, coltype in user_cols.items():
+            self.assertTrue(isinstance(users.c[col].type,
+                                       getattr(sqlalchemy.types, coltype)))

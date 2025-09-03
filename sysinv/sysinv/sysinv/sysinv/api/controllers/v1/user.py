@@ -69,6 +69,9 @@ class User(base.APIBase):
     passwd_expiry_days = int
     "Represent the password aging of the iuser."
 
+    passwd_last_change = int
+    "Represent the password last changed date of the iuser."
+
     action = wtypes.text
     "Represent the action on the iuser."
 
@@ -105,6 +108,7 @@ class User(base.APIBase):
                                       'root_sig',
                                       'passwd_hash',
                                       'passwd_expiry_days',
+                                      'passwd_last_change',
                                       'isystem_uuid',
                                       'created_at',
                                       'updated_at'])
