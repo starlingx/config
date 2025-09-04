@@ -649,6 +649,7 @@ DRBD_CEPH = 'ceph-float'
 # File system functions
 FILESYSTEM_CEPH_FUNCTION_MONITOR = 'monitor'
 FILESYSTEM_CEPH_FUNCTION_OSD = 'osd'
+FILESYSTEM_CEPH_MARKED_FOR_REMOVAL = 'marked_for_removal'
 
 # Maximum number of Ceph Monitors
 FILESYSTEM_CEPH_MONITOR_MAX = 5

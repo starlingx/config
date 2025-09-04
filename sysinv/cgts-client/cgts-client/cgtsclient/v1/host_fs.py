@@ -43,8 +43,8 @@ class HostFsManager(base.Manager):
         if body:
             return self.resource_class(self, body)
 
-    def delete(self, fs_id):
-        path = '/v1/host_fs/%s' % fs_id
+    def delete(self, fs_id, force=False):
+        path = '/v1/host_fs/%s?force=%s' % (fs_id, force)
         return self._delete(path)
 
     def create(self, **kwargs):
