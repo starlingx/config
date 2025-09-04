@@ -10198,6 +10198,13 @@ class ConductorManager(service.PeriodicService):
                      "host-unlock due to Management Network reconfiguration.")
             return
 
+        system = self.dbapi.isystem_get_one()
+        if (system.capabilities.get('simplex_to_duplex_migration') or
+                system.capabilities.get('simplex_to_duplex-direct_migration')):
+            LOG.info("Admin network changes will be applied after the next "
+                     "host-unlock due to migration to Duplex.")
+            return
+
         if disable:
             # Note: The SNAT LDAP rule will be removed before the address
             # pool deletion.  No need to do it here.
