@@ -15,6 +15,7 @@ import errno
 import mock
 import os
 import subprocess
+import time
 
 from sysinv.common import constants
 from sysinv.common import exception
@@ -81,6 +82,30 @@ key6=correct_value6
 """
 
 TEST_JINJA_TEMPLATES_FULL_PATH = os.path.join(os.path.dirname(__file__), 'data')
+# This is not supposed to be used as an actual 'timeout' value to be passed to any method that
+# accepts timeout. Rather this is supposed to be used as a special constant to compare with to
+# emulate an instant timeout. For an illustration, this is used in FakePopen.wait() method.
+FAKE_WAIT_FOR_TIMEOUT_PURPOSE = '9999'
+
+
+class FakePopen(object):
+
+    def __init__(self, **kwargs):
+        self.fake_kill_called = False
+        self.fake_wait_called = False
+        self.wait_timed_out = False
+        self.wait_return_code = 0
+        self.stdout = ["Fake stdout line1\n", "Fake stdout line2\n"]
+
+    def wait(self, timeout=None):
+        self.fake_wait_called = True
+        if timeout == FAKE_WAIT_FOR_TIMEOUT_PURPOSE:
+            self.wait_timed_out = True
+            raise subprocess.TimeoutExpired(cmd='fake_cmd', timeout=timeout)
+        return self.wait_return_code
+
+    def kill(self):
+        self.fake_kill_called = True
 
 
 class TestCommonUtils(base.TestCase):
@@ -601,3 +626,119 @@ class TestCommonUtils(base.TestCase):
         self.assertRaises(exception.SysinvException,
                           utils.render_jinja_template_from_file,
                           template_path, template_file_name, custom_filters, values)
+
+    def test_execute_and_watch_success(self):
+        """Test successful execution of execute_and_watch
+        """
+        fake_cmd = ['fake', 'command']
+        timeout = 1
+        log_prefix = "fake_prefix"
+
+        mock_popen = mock.MagicMock()
+        p = mock.patch('eventlet.green.subprocess.Popen', mock_popen)
+        p.start().return_value = FakePopen()
+        self.addCleanup(p.stop)
+
+        mock_sys_stdout_flush = mock.MagicMock()
+        p = mock.patch('sys.stdout.flush', mock_sys_stdout_flush)
+        p.start()
+        self.addCleanup(p.stop)
+
+        utils.execute_and_watch(fake_cmd, timeout, log_prefix)
+
+        self.assertTrue(mock_popen.fake_wait_called)
+        mock_sys_stdout_flush.assert_called()
+
+    def test_execute_and_watch_failure(self):
+        """Test failed execution of execute_and_watch
+        """
+        fake_cmd = ['fake', 'command']
+        timeout = '1'
+        log_prefix = "fake_prefix"
+
+        fake_popen = FakePopen()
+        fake_popen.wait_return_code = 1
+
+        mock_popen = mock.MagicMock()
+        p = mock.patch('eventlet.green.subprocess.Popen', mock_popen)
+        p.start().return_value = fake_popen
+        self.addCleanup(p.stop)
+
+        mock_sys_stdout_flush = mock.MagicMock()
+        p = mock.patch('sys.stdout.flush', mock_sys_stdout_flush)
+        p.start()
+        self.addCleanup(p.stop)
+
+        self.assertRaises(exception.SysinvException,
+                          utils.execute_and_watch,
+                          fake_cmd,
+                          timeout,
+                          log_prefix)
+
+        self.assertTrue(mock_popen.fake_wait_called)
+        self.assertTrue(mock_popen.fake_kill_called)
+
+    def test_execute_and_watch_timeout(self):
+        """Test failed execution of execute_and_watch: Timeout
+        """
+        fake_cmd = ['fake', 'command']
+        log_prefix = "fake_prefix"
+
+        # To emulate a timeout, a special constant: 'FAKE_WAIT_FOR_TIMEOUT_PURPOSE' is used which is
+        # used to instantly throw a TimedoutException. To emulate command execution, sleep is added
+        # inside mocked sys.stdout.flush method. Although sleep is 10 seconds, it does not take that
+        # much seconds to execute this test, as using the special constant, FakePopen.wait()
+        # emulates the timeout instantly and this particular test finishes about in a second
+        # (or less than that).
+        FAKE_FLUSH_SLEEP_SECONDS = 10
+        timeout = FAKE_WAIT_FOR_TIMEOUT_PURPOSE
+
+        mock_popen = mock.MagicMock()
+        p = mock.patch('eventlet.green.subprocess.Popen', mock_popen)
+        p.start().return_value = FakePopen()
+        self.addCleanup(p.stop)
+
+        def fake_sys_stdout_flush():
+            time.sleep(FAKE_FLUSH_SLEEP_SECONDS)
+
+        mock_sys_stdout_flush = fake_sys_stdout_flush
+        p = mock.patch('sys.stdout.flush', mock_sys_stdout_flush)
+        p.start()
+        self.addCleanup(p.stop)
+
+        self.assertRaises(exception.SysinvException,
+                          utils.execute_and_watch,
+                          fake_cmd,
+                          timeout,
+                          log_prefix)
+
+        self.assertTrue(mock_popen.fake_wait_called)
+        self.assertTrue(mock_popen.wait_timed_out)
+        self.assertTrue(mock_popen.fake_kill_called)
+
+    def test_execute_and_watch_invalid_timeout_value(self):
+        """Test successful execution of execute_and_watch: invalid timeout value
+        """
+        fake_cmd = ['fake', 'command']
+        log_prefix = "fake_prefix"
+        invalid_timeouts = [64.53, True, 'invalid_value']
+
+        for timeout in invalid_timeouts:
+            mock_popen = mock.MagicMock()
+            p = mock.patch('eventlet.green.subprocess.Popen', mock_popen)
+            p.start().return_value = FakePopen()
+            self.addCleanup(p.stop)
+
+            mock_sys_stdout_flush = mock.MagicMock()
+            p = mock.patch('sys.stdout.flush', mock_sys_stdout_flush)
+            p.start()
+            self.addCleanup(p.stop)
+
+            self.assertRaises(exception.SysinvException,
+                            utils.execute_and_watch,
+                            fake_cmd,
+                            timeout,
+                            log_prefix)
+
+            mock_popen.assert_not_called()
+            mock_sys_stdout_flush.assert_not_called()

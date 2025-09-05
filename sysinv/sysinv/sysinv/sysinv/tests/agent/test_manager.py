@@ -1366,3 +1366,127 @@ class TestHostKubernetesOperations(base.TestCase):
 
         mock_os_path_exists.assert_called_once()
         mock_os_remove.assert_called_once()
+
+    def test_kube_upgrade_control_plane_success_first_attempt(self):
+        """Test successful execution of control plane upgrade
+        """
+        self.agent_manager._ihost_personality = constants.CONTROLLER
+        self.agent_manager._ihostname = 'fake_host_name'
+        to_kube_version = 'vfake_to_kube_version'
+        upgrade_result = True
+        is_first_master = True
+
+        mock_upgrade_control_plane = mock.MagicMock()
+        p = mock.patch('sysinv.agent.kube_host.KubeControllerOperator.upgrade_control_plane',
+                       mock_upgrade_control_plane)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_report_kube_upgrade_control_plane_result = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.rpcapi.ConductorAPI.'
+                       'report_kube_upgrade_control_plane_result',
+                       mock_report_kube_upgrade_control_plane_result)
+        p.start()
+        self.addCleanup(p.stop)
+
+        self.agent_manager.kube_upgrade_control_plane(
+            self.context, self.agent_manager._ihost_uuid, to_kube_version, is_first_master)
+
+        mock_upgrade_control_plane.assert_called_once_with(to_kube_version, is_first_master)
+
+        mock_report_kube_upgrade_control_plane_result.assert_called_once_with(
+            self.context, self.agent_manager._ihost_uuid, to_kube_version,
+            is_first_master, upgrade_result)
+
+    def test_kube_upgrade_control_plane_success_retry(self):
+        """Test successful execution of control plane upgrade in retry attempt
+        """
+        self.agent_manager._ihost_personality = constants.CONTROLLER
+        self.agent_manager._ihostname = 'fake_host_name'
+        to_kube_version = 'vfake_to_kube_version'
+        upgrade_result = True
+        is_first_master = True
+
+        mock_upgrade_control_plane = mock.MagicMock()
+        p = mock.patch('sysinv.agent.kube_host.KubeControllerOperator.upgrade_control_plane',
+                       mock_upgrade_control_plane)
+        p.start().side_effect = [Exception("Fake error"), True]
+        self.addCleanup(p.stop)
+
+        mock_report_kube_upgrade_control_plane_result = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.rpcapi.ConductorAPI.'
+                       'report_kube_upgrade_control_plane_result',
+                       mock_report_kube_upgrade_control_plane_result)
+        p.start()
+        self.addCleanup(p.stop)
+
+        self.agent_manager.kube_upgrade_control_plane(
+            self.context, self.agent_manager._ihost_uuid, to_kube_version, is_first_master)
+
+        mock_upgrade_control_plane.assert_called()
+        self.assertEqual(mock_upgrade_control_plane.call_count, 2)
+
+        mock_report_kube_upgrade_control_plane_result.assert_called_once_with(
+            self.context, self.agent_manager._ihost_uuid, to_kube_version,
+            is_first_master, upgrade_result)
+
+    def test_kube_upgrade_control_plane_non_controller(self):
+        """Test successful execution of control plane upgrade on a non-controller host
+        """
+        personalities = [constants.WORKER, constants.STORAGE]
+        self.agent_manager._ihostname = 'fake_host_name'
+        to_kube_version = 'vfake_to_kube_version'
+        is_first_master = True
+
+        for personality in personalities:
+            self.agent_manager._ihost_personality = personality
+            mock_upgrade_control_plane = mock.MagicMock()
+            p = mock.patch('sysinv.agent.kube_host.KubeControllerOperator.upgrade_control_plane',
+                           mock_upgrade_control_plane)
+            p.start()
+            self.addCleanup(p.stop)
+
+            mock_report_kube_upgrade_control_plane_result = mock.MagicMock()
+            p = mock.patch('sysinv.conductor.rpcapi.ConductorAPI.'
+                           'report_kube_upgrade_control_plane_result',
+                           mock_report_kube_upgrade_control_plane_result)
+            p.start()
+            self.addCleanup(p.stop)
+
+            self.agent_manager.kube_upgrade_control_plane(
+                self.context, self.agent_manager._ihost_uuid, to_kube_version, is_first_master)
+
+            mock_upgrade_control_plane.assert_not_called()
+            mock_report_kube_upgrade_control_plane_result.assert_not_called()
+
+    def test_kube_upgrade_control_plane_failure(self):
+        """Test failed execution of control plane upgrade
+        """
+        self.agent_manager._ihost_personality = constants.CONTROLLER
+        self.agent_manager._ihostname = 'fake_host_name'
+        to_kube_version = 'vfake_to_kube_version'
+        upgrade_result = False
+        is_first_master = True
+
+        mock_upgrade_control_plane = mock.MagicMock()
+        p = mock.patch('sysinv.agent.kube_host.KubeControllerOperator.upgrade_control_plane',
+                       mock_upgrade_control_plane)
+        p.start().side_effect = Exception("Fake error")
+        self.addCleanup(p.stop)
+
+        mock_report_kube_upgrade_control_plane_result = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.rpcapi.ConductorAPI.'
+                       'report_kube_upgrade_control_plane_result',
+                       mock_report_kube_upgrade_control_plane_result)
+        p.start()
+        self.addCleanup(p.stop)
+
+        self.agent_manager.kube_upgrade_control_plane(
+            self.context, self.agent_manager._ihost_uuid, to_kube_version, is_first_master)
+
+        mock_upgrade_control_plane.assert_called()
+        self.assertEqual(mock_upgrade_control_plane.call_count, 2)
+
+        mock_report_kube_upgrade_control_plane_result.assert_called_once_with(
+            self.context, self.agent_manager._ihost_uuid, to_kube_version,
+            is_first_master, upgrade_result)

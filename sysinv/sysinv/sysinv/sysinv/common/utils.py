@@ -357,6 +357,68 @@ def trycmd(*args, **kwargs):
     return out, err
 
 
+def execute_and_watch(cmd, timeout=60, log_prefix=None):
+    """Helper script to execute a command and scrape output while it executes
+
+    Runs a command using subprocess Popen and scrapes its output by piping stdout.
+    The method is most suitable for commands that takes longer to run and needs to be tuned to its
+    output to track its progress. Hence, this requires a timeout to ensure that the comamnd is
+    eventually terminated.
+
+    :param: cmd: list. Command to be executed in the format acceptable by subprocess.Popen
+                       e.g. ['ls', '-la']
+    :param: timeout: Request timeout in seconds. Integer/String. Default value: 60
+    :param: log_prefix: String prefix to be added to logs in case required
+
+    :returns: integer. Return code of the command in case of successful execution of the command.
+    :raises: SysinvException in case of an error.
+    """
+    try:
+        process = None
+
+        if not isinstance(timeout, int) or \
+                (isinstance(timeout, str) and not timeout.isnumeric()) or isinstance(timeout, bool):
+            raise exception.SysinvException("Invalid timeout type: %s" % (type(timeout)))
+
+        timeout = int(timeout)
+
+        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                   text=True, bufsize=1)
+
+        def _capture_output():
+            for line in process.stdout:
+                if log_prefix:
+                    line = "[%s]: %s" % (log_prefix, line)
+                LOG.info(line)
+                # Ensure that the buffer is flushed
+                sys.stdout.flush()
+
+        t = threading.Thread(target=_capture_output)
+
+        t.start()
+
+        return_code = process.wait(timeout=timeout)
+
+        t.join(timeout=timeout)
+
+        if return_code == 0:
+            LOG.info("Command %s execution successful" % (cmd))
+        else:
+            raise exception.ProcessExecutionError(
+                cmd=cmd, exit_code=return_code, stderr=process.stderr.read())
+
+    except exception.ProcessExecutionError as ex:
+        if process:
+            process.kill()
+        raise exception.SysinvException("Command %s execution failed with error: [%s] and "
+                                        "exit code: [%s]" % (cmd, ex.stderr, ex.exit_code))
+    except Exception as ex:
+        if process:
+            process.kill()
+        raise exception.SysinvException("Command %s execution failed with error: [%s] "
+                                        % (cmd, ex))
+
+
 def systemctl_is_active_service(service_name):
     """Check if a systemd service is active
 
