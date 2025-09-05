@@ -10,6 +10,8 @@
 
 SERVICE=
 
+script_name=$(basename "$0")
+
 case $nodetype in
     controller)
         SERVICE=controllerconfig.service
@@ -26,10 +28,22 @@ case $nodetype in
 esac
 
 while :; do
-    systemctl status $SERVICE |grep -q running
-    if [ $? -ne 0 ]; then
-        exit 0
+    status="$(systemctl status ${SERVICE} 2>&1)"
+    # verify systemctl status response format
+    # <service> - <Description>
+    # ...
+    if echo "${status}" | grep -q "${SERVICE}"
+    then
+            if ! echo "${status}" | grep -q running
+            then
+                msg="${SERVICE} has finished running."
+                logger -t "${script_name}" "${msg}"
+                echo "${script_name} - ${msg}"
+                exit 0
+            fi
+    else
+        logger -t "${script_name}" "${status}"
+        echo "${script_name} - ${status}"
     fi
     sleep 1
 done
-
