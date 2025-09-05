@@ -12,5 +12,9 @@ ExecStart=/usr/bin/ipsec-server
 PIDFile=/var/run/ipsec-server.pid
 TimeoutStartSec=10s
 
+# syscall filtering
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
 [Install]
 WantedBy=multi-user.target
