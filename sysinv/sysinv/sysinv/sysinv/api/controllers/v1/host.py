@@ -2411,6 +2411,14 @@ class HostController(rest.RestController):
 
             ihost_obj.save()
 
+            # Check if apps need to be re-applied when host availability is saved to the database
+            if not os.path.isfile(tsc.RESTORE_IN_PROGRESS_FLAG) and \
+                    ihost_dict_orig['availability'] != ihost_obj.availability:
+                pecan.request.rpcapi.evaluate_apps_reapply(
+                    pecan.request.context,
+                    trigger={'type': constants.APP_EVALUATE_REAPPLY_HOST_AVAILABILITY_SAVED,
+                             'availability': ihost_obj.availability})
+
             if hostupdate.ihost_patch['operational'] == \
                     constants.OPERATIONAL_ENABLED:
                 self._update_add_ceph_state()
