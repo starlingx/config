@@ -17827,6 +17827,36 @@ class ConductorManager(service.PeriodicService):
 
         os.chmod(constants.SYSINV_CONF_DEFAULT_PATH, 0o400)
 
+    def _update_hieradata_file(self, file_path, configs_to_be_updated):
+        """Update hieradata file with provided config parameters
+
+        :param: file_path: full path to the file
+        :param: configs_to_be_updated: dict. config parameters to be updated as key:value
+        :raises: SysinvException in case of error
+        """
+        try:
+            hieradata_content = ""
+            with open(file_path, 'r') as file:
+                hieradata_content = yaml.safe_load(file)
+            if hieradata_content:
+                for config_parameter in configs_to_be_updated:
+                    if config_parameter in hieradata_content:
+                        hieradata_content[config_parameter] = \
+                            configs_to_be_updated[config_parameter]
+                    else:
+                        raise exception.SysinvException("Config parameter %s not found in hieradata"
+                                                        " file %s" % (config_parameter, file_path))
+                with open(file_path, 'w') as file:
+                    yaml.safe_dump(hieradata_content, file)
+                LOG.info("Hieradata file %s updated with values %s"
+                         % (file_path, configs_to_be_updated))
+            else:
+                raise exception.SysinvException("No contents found in hieradata file: %s"
+                                                % (file_path))
+        except Exception as ex:
+            raise exception.SysinvException("Failed to update hieradata with provided config "
+                                            "parameters. Error: %s" % (ex))
+
     def report_unfinished_kube_upgrade_from_agent(self, context, host_uuid):
         """Report unfinished k8s upgrade by sysinv-agent
 
@@ -18361,6 +18391,26 @@ class ConductorManager(service.PeriodicService):
         host_obj = objects.host.get_by_uuid(context, host_uuid)
         kube_host_upgrade_obj = objects.kube_host_upgrade.get_by_host_id(context, host_obj.id)
         kube_upgrade_obj = objects.kube_upgrade.get_one(context)
+        host_name = host_obj.hostname
+
+        # Update hieradata to persist symlinks in case of unexpected reboot after
+        # control-plane upgrade.
+        if success:
+            try:
+                stripped_version = to_version.strip('v')
+                hieradata_file_path = os.path.join(
+                    tsc.PUPPET_PATH, 'hieradata', f"{host_name}.yaml")
+                configs_to_be_updated = {
+                    'platform::kubernetes::params::kubeadm_version': stripped_version
+                }
+                self._update_hieradata_file(hieradata_file_path, configs_to_be_updated)
+            except Exception as ex:
+                LOG.warning("Failed to update kubeadm version in hieradata with new kubernetes "
+                            "version after control-plane upgrade on host: [%s]. In case of "
+                            "unintented reboot, this will cause kubeadm and kubectl on that host "
+                            "to run with older version. To avoid this situation, perform lock and "
+                            "unlock operation on that host at earliest. Error was: [%s]"
+                            % (host_name, ex))
 
         if success and is_first_master:
             upgrade_state = kubernetes.KUBE_UPGRADED_FIRST_MASTER
@@ -18550,6 +18600,32 @@ class ConductorManager(service.PeriodicService):
         host_name = host_obj.hostname
 
         if success:
+            # Update hieradata to persist symlinks in case of unexpected reboot after kubelet
+            # upgrade
+            try:
+                stripped_version = to_version.strip('v')
+                hieradata_file_path = os.path.join(
+                    tsc.PUPPET_PATH, 'hieradata', f"{host_name}.yaml")
+                configs_to_be_updated = {
+                    'platform::kubernetes::params::kubelet_version': stripped_version,
+                    'platform::kubernetes::params::version': to_version
+                }
+                # Control-plane components don't exist on worker hosts. So both the symlinks i.e.
+                # stage1 and stage2 are updated as a part of kubelet upgrade. For controllers, this
+                # is done as a part of control-plane upgrade.
+                if host_obj.personality == constants.WORKER:
+                    configs_to_be_updated.update({
+                        'platform::kubernetes::params::kubeadm_version': stripped_version
+                    })
+                self._update_hieradata_file(hieradata_file_path, configs_to_be_updated)
+            except Exception as ex:
+                LOG.warning("Failed to update kubelet and kubernetes params hieradata values with "
+                            "the new kubernetes version after kubelet upgrade on host: [%s]. In "
+                            "case of unintented reboot, this will cause kubelet on that host to "
+                            "run with older version. To avoid this situation, perform lock and "
+                            "unlock operation on that host at earliest. Error was: [%s]"
+                            % (host_name, ex))
+
             # Double check that the kubelet on the host was upgraded successfully.
             # On AIO-SX this ensures that the kube-apiserver is back up and running after kubelet
             # restart.
@@ -19077,8 +19153,31 @@ class ConductorManager(service.PeriodicService):
         :param: recovery: True if abort recovery succeeds. If this is True, abort must be False.
                           False if abort recovery Fails or not required to run.
         """
+
         kube_upgrade_obj = objects.kube_upgrade.get_one(context)
+
         if abort:
+            # Update hieradata to persist symlinks in case of unexpected reboot after upgrade abort
+            try:
+                stripped_version = back_to_kube_version.strip('v')
+                # Abort operation is currently supported only on AIO-SX.
+                # For multi-node, host_uuid should be added as a parameter to this method,
+                # which can be used to get hostname from the database.
+                hieradata_file_path = os.path.join(
+                    tsc.PUPPET_PATH, 'hieradata', f"{constants.CONTROLLER_0_HOSTNAME}.yaml")
+                configs_to_be_updated = {
+                    'platform::kubernetes::params::kubeadm_version': stripped_version,
+                    'platform::kubernetes::params::kubelet_version': stripped_version,
+                    'platform::kubernetes::params::version': back_to_kube_version
+                }
+                self._update_hieradata_file(hieradata_file_path, configs_to_be_updated)
+            except Exception as ex:
+                LOG.warning("Failed to update hieradata with old kubernetes version after abort "
+                            "operation on host: [%s]. In case of unintented reboot, this will "
+                            "cause kubernetes on that host to run with the upgraded version. To "
+                            "avoid this situation, perform lock and unlock operation for that host "
+                            "at earliest. Error was: [%s]" % (constants.CONTROLLER_0_HOSTNAME, ex))
+
             kube_upgrade_obj.state = kubernetes.KUBE_UPGRADE_ABORTED
             LOG.info("Kubernetes upgrade abort operation from version %s to %s successful."
                      % (current_kube_version, back_to_kube_version))
@@ -19091,6 +19190,7 @@ class ConductorManager(service.PeriodicService):
                 LOG.error("Kubernetes upgrade abort operation from version %s to %s failed. "
                           "Abort recovery also failed."
                           % (current_kube_version, back_to_kube_version))
+
         kube_upgrade_obj.save()
         # Update host upgrade status
         controller_hosts = self.dbapi.ihost_get_by_personality(constants.CONTROLLER)
