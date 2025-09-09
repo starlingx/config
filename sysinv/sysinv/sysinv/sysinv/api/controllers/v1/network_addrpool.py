@@ -202,7 +202,8 @@ class NetworkAddresspoolController(rest.RestController):
         return False
 
     def _network_addresspool_operation_complete(self, operation, network, addrpool, hosts):
-        if network.type == constants.NETWORK_TYPE_OAM:
+        if_net_list = pecan.request.dbapi.interface_network_get_by_network_id(network.id)
+        if network.type == constants.NETWORK_TYPE_OAM and len(if_net_list) > 0:
             pecan.request.rpcapi.update_oam_config(pecan.request.context)
 
         elif network.type == constants.NETWORK_TYPE_MGMT:

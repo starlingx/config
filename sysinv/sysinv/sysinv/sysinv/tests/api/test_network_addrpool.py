@@ -1529,7 +1529,11 @@ class TestDelete(NetworkAddrpoolTestCase):
         self.mock_utils_is_initial_config_complete.return_value = True
         self.addCleanup(p.stop)
 
+        controller0 = self._create_test_host(constants.CONTROLLER)
+        c0_oam0 = dbutils.create_test_interface(ifname='enp0s3', forihostid=controller0.id)
+
         net_type = constants.NETWORK_TYPE_OAM
+        dbutils.create_test_interface_network(interface_id=c0_oam0.id, network_id=self.networks[net_type].id)
         net_pool_1 = dbutils.create_test_network_addrpool(
             address_pool_id=self.address_pools['oam-ipv4'].id,
             network_id=self.networks[net_type].id)
