@@ -1318,7 +1318,7 @@ class AgentManager(service.PeriodicService):
         if config_uuid is None:
             config_uuid = self.iconfig_read_config_applied()
         if config_uuid != self._iconfig_read_config_reported:
-            LOG.info("Agent config applied  %s" % config_uuid)
+            LOG.info("Agent config applied iconfig_uuid=%s" % config_uuid)
 
             imsg_dict = {'config_applied': config_uuid}
             if config_dict:
@@ -1990,6 +1990,7 @@ class AgentManager(service.PeriodicService):
         :          }
         :returns: none
         """
+        LOG.info("AgentManager.iconfig_update_file: received request iconfig_uuid=%s", iconfig_uuid)
         LOG.debug("AgentManager.iconfig_update_file: updating iconfig"
                   " %s %s %s" % (iconfig_uuid, iconfig_dict,
                                  self._ihost_personality))
@@ -2004,22 +2005,17 @@ class AgentManager(service.PeriodicService):
                 config_uuid=iconfig_uuid, config_dict=iconfig_dict,
                 host_personality=self._ihost_personality)
 
-        if self._ihost_personality in iconfig_dict['personalities']:
+        if self._ihost_personality not in iconfig_dict['personalities']:
+            LOG.info("AgentManager.iconfig_update_file: does not target this host personality")
+        else:
             file_content = iconfig_dict['file_content']
-
-            if not file_content:
-                LOG.info("AgentManager: no file_content %s %s %s" %
-                         (iconfig_uuid, iconfig_dict,
-                          self._ihost_personality))
 
             file_names = iconfig_dict['file_names']
             for file_name in file_names:
                 file_name_sysinv = file_name + ".sysinv"
 
-                LOG.debug("AgentManager.iconfig_update_file: updating file %s "
-                          "with content: %s"
-                          % (file_name,
-                             iconfig_dict['file_content']))
+                LOG.info("AgentManager.iconfig_update_file: updating file %s",
+                         file_name)
 
                 if os.path.isfile(file_name):
                     if not nobackup:
@@ -2031,7 +2027,10 @@ class AgentManager(service.PeriodicService):
                 else:
                     f_content = file_content
 
-                if f_content is not None:
+                if f_content is None:
+                    LOG.info("AgentManager.iconfig_update_file: no content %s",
+                             file_name)
+                else:
                     # create a temporary file to hold the runtime configuration values
                     dirname = os.path.dirname(file_name)
                     basename = os.path.basename(file_name)
