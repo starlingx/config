@@ -191,6 +191,8 @@ class IPsecConnection(object):
                     LOG.debug("Cert Serial: {}".format(cert.serial_number))
                     self.status_code = StatusCode.IPSEC_OP_SUCCESS
 
+                    self.hostname = utils.get_client_host_info_by_mac(mac_addr).get('hostname')
+                    payload['hostname'] = self.hostname
                     payload["ca_cert_serial"] = cert.serial_number
                     payload['status_code'] = self.status_code.value
                 else:
