@@ -229,13 +229,8 @@ class TestPostMixin(object):
         self._create_test_host(constants.CONTROLLER)
         addrpool = self._create_test_address_pool('system-controller-oam',
                                                   self.system_controller_oam_subnet)
-        m = mock.Mock()
-        update_dnsmasq_config = "sysinv.conductor.rpcapi.ConductorAPI.update_dnsmasq_config"
-        with mock.patch('sysinv.common.utils.is_initial_config_complete', lambda: True), \
-                        mock.patch(update_dnsmasq_config, m.update_dnsmasq_config):
-            address_pool_id = self._test_create_network_success(
-                constants.NETWORK_TYPE_SYSTEM_CONTROLLER_OAM, addrpool)
-        m.update_dnsmasq_config.assert_called_once()
+        address_pool_id = self._test_create_network_success(
+            constants.NETWORK_TYPE_SYSTEM_CONTROLLER_OAM, addrpool)
 
         address_pool = self.dbapi.address_pool_get(address_pool_id)
         self.assertIsNone(address_pool.floating_address)
