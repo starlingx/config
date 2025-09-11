@@ -1376,8 +1376,14 @@ class TestHostKubernetesOperations(base.TestCase):
         self.agent_manager._ihost_personality = constants.CONTROLLER
         self.agent_manager._ihostname = 'fake_host_name'
         to_kube_version = 'vfake_to_kube_version'
+        current_link = '/usr/local/kubernetes/1.29.2/stage1'
         upgrade_result = True
         is_first_master = True
+
+        mock_os_readlink = mock.MagicMock()
+        p = mock.patch('os.readlink', mock_os_readlink)
+        p.start().return_value = current_link
+        self.addCleanup(p.stop)
 
         mock_upgrade_control_plane = mock.MagicMock()
         p = mock.patch('sysinv.agent.kube_host.KubeControllerOperator.upgrade_control_plane',
@@ -1395,8 +1401,10 @@ class TestHostKubernetesOperations(base.TestCase):
         self.agent_manager.kube_upgrade_control_plane(
             self.context, self.agent_manager._ihost_uuid, to_kube_version, is_first_master)
 
-        mock_upgrade_control_plane.assert_called_once_with(to_kube_version, is_first_master)
+        mock_upgrade_control_plane.assert_called_once_with(
+            'v1.29.2', to_kube_version, is_first_master)
 
+        mock_os_readlink.assert_called_once()
         mock_report_kube_upgrade_control_plane_result.assert_called_once_with(
             self.context, self.agent_manager._ihost_uuid, to_kube_version,
             is_first_master, upgrade_result)
@@ -1407,6 +1415,7 @@ class TestHostKubernetesOperations(base.TestCase):
         self.agent_manager._ihost_personality = constants.CONTROLLER
         self.agent_manager._ihostname = 'fake_host_name'
         to_kube_version = 'vfake_to_kube_version'
+        current_link = '/usr/local/kubernetes/1.29.2/stage1'
         upgrade_result = True
         is_first_master = True
 
@@ -1414,6 +1423,11 @@ class TestHostKubernetesOperations(base.TestCase):
         p = mock.patch('sysinv.agent.kube_host.KubeControllerOperator.upgrade_control_plane',
                        mock_upgrade_control_plane)
         p.start().side_effect = [Exception("Fake error"), True]
+        self.addCleanup(p.stop)
+
+        mock_os_readlink = mock.MagicMock()
+        p = mock.patch('os.readlink', mock_os_readlink)
+        p.start().return_value = current_link
         self.addCleanup(p.stop)
 
         mock_report_kube_upgrade_control_plane_result = mock.MagicMock()
@@ -1438,6 +1452,7 @@ class TestHostKubernetesOperations(base.TestCase):
         """
         personalities = [constants.WORKER, constants.STORAGE]
         self.agent_manager._ihostname = 'fake_host_name'
+        current_link = '/usr/local/kubernetes/1.29.2/stage1'
         to_kube_version = 'vfake_to_kube_version'
         is_first_master = True
 
@@ -1447,6 +1462,11 @@ class TestHostKubernetesOperations(base.TestCase):
             p = mock.patch('sysinv.agent.kube_host.KubeControllerOperator.upgrade_control_plane',
                            mock_upgrade_control_plane)
             p.start()
+            self.addCleanup(p.stop)
+
+            mock_os_readlink = mock.MagicMock()
+            p = mock.patch('os.readlink', mock_os_readlink)
+            p.start().return_value = current_link
             self.addCleanup(p.stop)
 
             mock_report_kube_upgrade_control_plane_result = mock.MagicMock()
@@ -1467,6 +1487,7 @@ class TestHostKubernetesOperations(base.TestCase):
         """
         self.agent_manager._ihost_personality = constants.CONTROLLER
         self.agent_manager._ihostname = 'fake_host_name'
+        current_link = '/usr/local/kubernetes/1.29.2/stage1'
         to_kube_version = 'vfake_to_kube_version'
         upgrade_result = False
         is_first_master = True
@@ -1475,6 +1496,11 @@ class TestHostKubernetesOperations(base.TestCase):
         p = mock.patch('sysinv.agent.kube_host.KubeControllerOperator.upgrade_control_plane',
                        mock_upgrade_control_plane)
         p.start().side_effect = Exception("Fake error")
+        self.addCleanup(p.stop)
+
+        mock_os_readlink = mock.MagicMock()
+        p = mock.patch('os.readlink', mock_os_readlink)
+        p.start().return_value = current_link
         self.addCleanup(p.stop)
 
         mock_report_kube_upgrade_control_plane_result = mock.MagicMock()

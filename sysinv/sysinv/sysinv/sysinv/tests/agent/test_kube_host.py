@@ -1021,6 +1021,7 @@ class TestKubernetesOperator(base.TestCase):
     def test_kube_upgrade_control_plane_success_simplex(self):
         """Test successful execution of kubernetes control plane upgrade on simplex
         """
+        from_kube_version = 'vfake_from_kube_version'
         to_kube_version = 'vfake_to_kube_version'
         is_first_master = True
 
@@ -1090,9 +1091,17 @@ class TestKubernetesOperator(base.TestCase):
         p.start()
         self.addCleanup(p.stop)
 
+        mock_pin_unpin_control_plane_images = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.agent.kube_host.KubeControllerOperator._pin_unpin_control_plane_images',
+            mock_pin_unpin_control_plane_images)
+        p.start()
+        self.addCleanup(p.stop)
+
         self.kube_controller_operator._system_mode = \
             constants.SYSTEM_MODE_SIMPLEX
-        self.kube_controller_operator.upgrade_control_plane(to_kube_version, is_first_master)
+        self.kube_controller_operator.upgrade_control_plane(
+            from_kube_version, to_kube_version, is_first_master)
 
         mock_kubeadm_upgrade_apply.assert_called_once_with(to_kube_version)
         mock_kubeadm_upgrade_node.assert_not_called()
@@ -1110,10 +1119,13 @@ class TestKubernetesOperator(base.TestCase):
         mock_kube_patch_daemonset.assert_called_once_with(
             'kube-proxy', kubernetes.NAMESPACE_KUBE_SYSTEM, body=mock.ANY)
         mock_update_symlink.assert_called()
+        mock_pin_unpin_control_plane_images.assert_called_once_with(
+            pin_images_version=to_kube_version, unpin_images_version=from_kube_version)
 
     def test_kube_upgrade_control_plane_success_duplex_first_master(self):
         """Test successful execution of kubernetes control plane upgrade on duplex: first master
         """
+        from_kube_version = 'vfake_from_kube_version'
         to_kube_version = 'vfake_to_kube_version'
         is_first_master = True
 
@@ -1170,9 +1182,17 @@ class TestKubernetesOperator(base.TestCase):
         p.start()
         self.addCleanup(p.stop)
 
+        mock_pin_unpin_control_plane_images = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.agent.kube_host.KubeControllerOperator._pin_unpin_control_plane_images',
+            mock_pin_unpin_control_plane_images)
+        p.start()
+        self.addCleanup(p.stop)
+
         self.kube_controller_operator._system_mode = \
             constants.SYSTEM_MODE_DUPLEX
-        self.kube_controller_operator.upgrade_control_plane(to_kube_version, is_first_master)
+        self.kube_controller_operator.upgrade_control_plane(
+            from_kube_version, to_kube_version, is_first_master)
 
         mock_kubeadm_upgrade_apply.assert_called()
         mock_kubeadm_upgrade_node.assert_not_called()
@@ -1181,10 +1201,13 @@ class TestKubernetesOperator(base.TestCase):
         mock_kube_patch_deployment.assert_not_called()
         mock_kube_patch_daemonset.assert_not_called()
         mock_update_symlink.assert_called_once()
+        mock_pin_unpin_control_plane_images.assert_called_once_with(
+            pin_images_version=to_kube_version, unpin_images_version=from_kube_version)
 
     def test_kube_upgrade_control_plane_success_duplex_second_master(self):
         """Test successful execution of kubernetes control plane upgrade on duplex: Second master
         """
+        from_kube_version = 'vfake_from_kube_version'
         to_kube_version = 'vfake_to_kube_version'
         is_first_master = False
 
@@ -1276,9 +1299,17 @@ class TestKubernetesOperator(base.TestCase):
         p.start()
         self.addCleanup(p.stop)
 
+        mock_pin_unpin_control_plane_images = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.agent.kube_host.KubeControllerOperator._pin_unpin_control_plane_images',
+            mock_pin_unpin_control_plane_images)
+        p.start()
+        self.addCleanup(p.stop)
+
         self.kube_controller_operator._system_mode = \
             constants.SYSTEM_MODE_DUPLEX
-        self.kube_controller_operator.upgrade_control_plane(to_kube_version, is_first_master)
+        self.kube_controller_operator.upgrade_control_plane(
+            from_kube_version, to_kube_version, is_first_master)
 
         mock_kubeadm_upgrade_apply.assert_not_called()
         mock_kubeadm_upgrade_node.assert_called_once_with(to_kube_version)
@@ -1301,10 +1332,13 @@ class TestKubernetesOperator(base.TestCase):
         mock_kube_patch_daemonset.assert_called_once_with(
             'kube-proxy', kubernetes.NAMESPACE_KUBE_SYSTEM, body=mock.ANY)
         mock_update_symlink.assert_called()
+        mock_pin_unpin_control_plane_images.assert_called_once_with(
+            pin_images_version=to_kube_version, unpin_images_version=from_kube_version)
 
     def test_kube_upgrade_control_plane_failure_simplex(self):
         """Test failed execution of kubernetes control plane upgrade on simplex
         """
+        from_kube_version = 'vfake_from_kube_version'
         to_kube_version = 'vfake_to_kube_version'
         is_first_master = True
 
@@ -1356,10 +1390,18 @@ class TestKubernetesOperator(base.TestCase):
         p.start()
         self.addCleanup(p.stop)
 
+        mock_pin_unpin_control_plane_images = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.agent.kube_host.KubeControllerOperator._pin_unpin_control_plane_images',
+            mock_pin_unpin_control_plane_images)
+        p.start()
+        self.addCleanup(p.stop)
+
         self.kube_controller_operator._system_mode = \
             constants.SYSTEM_MODE_SIMPLEX
         self.assertRaises(exception.SysinvException,
                           self.kube_controller_operator.upgrade_control_plane,
+                          from_kube_version,
                           to_kube_version,
                           is_first_master)
 
@@ -1371,10 +1413,12 @@ class TestKubernetesOperator(base.TestCase):
         mock_kube_patch_deployment.assert_not_called()
         mock_kube_patch_daemonset.assert_not_called()
         mock_update_symlink.assert_not_called()
+        mock_pin_unpin_control_plane_images.assert_not_called()
 
     def test_kube_upgrade_control_plane_failure_duplex(self):
         """Test failed execution of kubernetes control plane upgrade on duplex
         """
+        from_kube_version = 'vfake_from_kube_version'
         to_kube_version = 'vfake_to_kube_version'
         is_first_master = False
 
@@ -1439,10 +1483,18 @@ class TestKubernetesOperator(base.TestCase):
         p.start()
         self.addCleanup(p.stop)
 
+        mock_pin_unpin_control_plane_images = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.agent.kube_host.KubeControllerOperator._pin_unpin_control_plane_images',
+            mock_pin_unpin_control_plane_images)
+        p.start()
+        self.addCleanup(p.stop)
+
         self.kube_controller_operator._system_mode = \
             constants.SYSTEM_MODE_DUPLEX
         self.assertRaises(exception.SysinvException,
                           self.kube_controller_operator.upgrade_control_plane,
+                          from_kube_version,
                           to_kube_version,
                           is_first_master)
 
@@ -1453,6 +1505,7 @@ class TestKubernetesOperator(base.TestCase):
         mock_kube_patch_service_account.assert_called()
         mock_kube_patch_deployment.assert_called()
         mock_kube_patch_daemonset.assert_not_called()
+        mock_pin_unpin_control_plane_images.assert_not_called()
         mock_update_symlink.assert_not_called()
 
     def test_update_symlink_success_stage1(self):
@@ -1595,3 +1648,191 @@ class TestKubernetesOperator(base.TestCase):
         mock_os_path_islink.assert_called_once_with(link)
         mock_os_remove.assert_called_once_with(link)
         mock_os_symlink.assert_called_once_with(versioned_stage, link)
+
+    def test_pin_control_plane_images_success(self):
+        """Test successful execution of _pin_unpin_control_plane_images: pin images
+        """
+        version = "v1.29.2"
+        images = {
+            "kube-apiserver": f"registry.k8s.io/kube-apiserver:{version}",
+            "kube-scheduler": f"registry.k8s.io/kube-scheduler:{version}",
+            "kube-controller-manager": f"registry.k8s.io/kube-controller-manager:{version}"
+        }
+
+        mock_pin_ctr_image = mock.MagicMock()
+        p = mock.patch('sysinv.common.containers.pin_ctr_image', mock_pin_ctr_image)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_unpin_ctr_image = mock.MagicMock()
+        p = mock.patch('sysinv.common.containers.unpin_ctr_image', mock_unpin_ctr_image)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_get_k8s_images = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.get_k8s_images', mock_get_k8s_images)
+        p.start().return_value = images
+        self.addCleanup(p.stop)
+
+        self.kube_controller_operator._pin_unpin_control_plane_images(pin_images_version=version)
+
+        mock_pin_ctr_image.assert_called()
+        mock_unpin_ctr_image.assert_not_called()
+        mock_get_k8s_images.assert_called()
+
+    def test_unpin_control_plane_images_success(self):
+        """Test successful execution of _pin_unpin_control_plane_images: unpin images
+        """
+        version = "v1.29.2"
+        images = {
+            "kube-apiserver": f"registry.k8s.io/kube-apiserver:{version}",
+            "kube-scheduler": f"registry.k8s.io/kube-scheduler:{version}",
+            "kube-controller-manager": f"registry.k8s.io/kube-controller-manager:{version}"
+        }
+
+        mock_pin_ctr_image = mock.MagicMock()
+        p = mock.patch('sysinv.common.containers.pin_ctr_image', mock_pin_ctr_image)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_unpin_ctr_image = mock.MagicMock()
+        p = mock.patch('sysinv.common.containers.unpin_ctr_image', mock_unpin_ctr_image)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_get_k8s_images = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.get_k8s_images', mock_get_k8s_images)
+        p.start().return_value = images
+        self.addCleanup(p.stop)
+
+        self.kube_controller_operator._pin_unpin_control_plane_images(unpin_images_version=version)
+
+        mock_pin_ctr_image.assert_not_called()
+        mock_unpin_ctr_image.assert_called()
+        mock_get_k8s_images.assert_called_once()
+
+    def test_pin_unpin_control_plane_images_success(self):
+        """Test successful execution of _pin_unpin_control_plane_images: pin-unpin images
+        """
+        pin_version = "v1.32.2"
+        unpin_version = "v1.29.2"
+        images = [
+            {
+                "kube-apiserver": f"registry.k8s.io/kube-apiserver:{pin_version}",
+                "kube-scheduler": f"registry.k8s.io/kube-scheduler:{pin_version}",
+                "kube-controller-manager": f"registry.k8s.io/kube-controller-manager:{pin_version}"
+            },
+            {
+                "kube-apiserver": f"registry.k8s.io/kube-apiserver:{unpin_version}",
+                "kube-scheduler": f"registry.k8s.io/kube-scheduler:{unpin_version}",
+                "kube-controller-manager":
+                f"registry.k8s.io/kube-controller-manager:{unpin_version}"
+            }
+        ]
+
+        mock_pin_ctr_image = mock.MagicMock()
+        p = mock.patch('sysinv.common.containers.pin_ctr_image', mock_pin_ctr_image)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_unpin_ctr_image = mock.MagicMock()
+        p = mock.patch('sysinv.common.containers.unpin_ctr_image', mock_unpin_ctr_image)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_get_k8s_images = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.get_k8s_images', mock_get_k8s_images)
+        p.start().side_effect = images
+        self.addCleanup(p.stop)
+
+        self.kube_controller_operator._pin_unpin_control_plane_images(
+            pin_images_version=pin_version, unpin_images_version=unpin_version)
+
+        mock_pin_ctr_image.assert_called()
+        mock_unpin_ctr_image.assert_called()
+        expected_calls = [mock.call(pin_version.strip('v')), mock.call(unpin_version.strip('v'))]
+        mock_get_k8s_images.assert_has_calls(expected_calls)
+        self.assertEqual(mock_get_k8s_images.call_count, 2)
+
+    def test_pin_unpin_control_plane_images_failure_unspecified_version(self):
+        """Test failed execution of _pin_unpin_control_plane_images: unspecified versions
+        """
+        mock_pin_ctr_image = mock.MagicMock()
+        p = mock.patch('sysinv.common.containers.pin_ctr_image', mock_pin_ctr_image)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_unpin_ctr_image = mock.MagicMock()
+        p = mock.patch('sysinv.common.containers.unpin_ctr_image', mock_unpin_ctr_image)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_get_k8s_images = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.get_k8s_images', mock_get_k8s_images)
+        p.start()
+        self.addCleanup(p.stop)
+
+        self.assertRaises(exception.SysinvException,
+                          self.kube_controller_operator._pin_unpin_control_plane_images)
+
+        mock_pin_ctr_image.assert_not_called()
+        mock_unpin_ctr_image.assert_not_called()
+
+    def test_pin_unpin_control_plane_images_failure_same_version(self):
+        """Test failed execution of _pin_unpin_control_plane_images: same versions specified
+        """
+        pin_version = "v1.29.2"
+        unpin_version = "v1.29.2"
+
+        mock_pin_ctr_image = mock.MagicMock()
+        p = mock.patch('sysinv.common.containers.pin_ctr_image', mock_pin_ctr_image)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_unpin_ctr_image = mock.MagicMock()
+        p = mock.patch('sysinv.common.containers.unpin_ctr_image', mock_unpin_ctr_image)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_get_k8s_images = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.get_k8s_images', mock_get_k8s_images)
+        p.start()
+        self.addCleanup(p.stop)
+
+        self.assertRaises(exception.SysinvException,
+                          self.kube_controller_operator._pin_unpin_control_plane_images,
+                          pin_version,
+                          unpin_version)
+
+        mock_pin_ctr_image.assert_not_called()
+        mock_unpin_ctr_image.assert_not_called()
+
+    def test_pin_unpin_control_plane_images_failure_operation_error(self):
+        """Test failed execution of _pin_unpin_control_plane_images: operation error
+        """
+        pin_version = "v1.29.2"
+        unpin_version = "v1.32.2"
+
+        mock_pin_ctr_image = mock.MagicMock()
+        p = mock.patch('sysinv.common.containers.pin_ctr_image', mock_pin_ctr_image)
+        p.start().side_effect = Exception("Fake error")
+        self.addCleanup(p.stop)
+
+        mock_unpin_ctr_image = mock.MagicMock()
+        p = mock.patch('sysinv.common.containers.unpin_ctr_image', mock_unpin_ctr_image)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_get_k8s_images = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.get_k8s_images', mock_get_k8s_images)
+        p.start()
+        self.addCleanup(p.stop)
+
+        self.assertRaises(exception.SysinvException,
+                          self.kube_controller_operator._pin_unpin_control_plane_images,
+                          pin_version,
+                          unpin_version)
+
+        mock_pin_ctr_image.assert_called()
+        mock_unpin_ctr_image.assert_not_called()
+        mock_get_k8s_images.assert_called_once()

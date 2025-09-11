@@ -19289,6 +19289,10 @@ class ConductorManager(service.PeriodicService):
                     return
 
                 try:
+                    # TODO(kdhokte): Add a mechanism to get current kubernetes version on the host
+                    # and replace kube_upgrade_obj.to_version in below API call with that version
+                    # so that in case of abort operation failure, cluster is recovered to the
+                    # current kubernetes version
                     rpcapi = agent_rpcapi.AgentAPI()
                     rpcapi.kube_upgrade_abort(
                             context, kube_upgrade_obj.to_version, kube_upgrade_obj.from_version)

@@ -117,6 +117,8 @@ class KubeHostOperator(object):
         self._host_uuid = host_uuid
         self._host_name = host_name
         self._system_mode = tsc.system_mode
+        self.current_stage1_link_version = None
+        self.current_stage2_link_version = None
         self._containerd_operator = ContainerdOperator()
         self._kubernetes_operator = kubernetes.KubeOperator()
 
@@ -473,7 +475,27 @@ class KubeControllerOperator(KubeHostOperator):
 
         recovery = False
 
+        recovery_possible = True
+
         restart_services_for_recovery = False
+
+        # "current_kube_version" is set to final kubernetes version being upgraded to.
+        # In case of multi-version AIO-SX, abort may be called at any stage.
+        # e.g. For kubernetes upgrade from 1.29.2 to 1.32.2, if abort is called after
+        # control-plane upgrade to 1.31.5 and kubelet still running on 1.29.2 and fails,
+        # recovery should be done to the state at which abort was called and not to
+        # "current_kube_version" which must have set to 1.32.2.
+        # This also applies to pinning and unpinning control-plane images of appropriate versions.
+        try:
+            current_link = os.readlink(kubernetes.KUBERNETES_SYMLINKS_STAGE_1)
+            self.current_stage1_link_version = current_link.split('/')[4]
+
+            current_link = os.readlink(kubernetes.KUBERNETES_SYMLINKS_STAGE_2)
+            self.current_stage2_link_version = current_link.split('/')[4]
+        except Exception as ex:
+            LOG.warning("Failed to get current kubeadm and kubelet binaries version. If the abort "
+                        "operation fails, recovery will not be possible. Error was: [%s]" % (ex))
+            recovery_possible = False
 
         while self._abort_attempt <= constants.AUTO_RECOVERY_COUNT:
 
@@ -544,6 +566,15 @@ class KubeControllerOperator(KubeHostOperator):
 
                 kubernetes.kube_uncordon_node(self._host_name)
 
+                try:
+                    self._pin_unpin_control_plane_images(
+                        pin_images_version=back_to_kube_version,
+                        unpin_images_version=self.current_stage1_link_version)
+                except Exception as ex:
+                    # This failure can be ignored
+                    LOG.warning("Pin/unpin control-plane images operation failed. "
+                                "Error: [%s]" % (ex))
+
                 self._cleanup_backed_up_artifacts()
 
                 abort = True
@@ -558,8 +589,12 @@ class KubeControllerOperator(KubeHostOperator):
         # Do best effort to recover to the state just before abort was executed
         if not abort:
             try:
-                self.upgrade_abort_recovery(current_kube_version, restart_services_for_recovery)
-                recovery = True
+                if recovery_possible:
+                    self.upgrade_abort_recovery(back_to_kube_version, restart_services_for_recovery)
+                    recovery = True
+                else:
+                    raise exception.SysinvException("Version to recover kubernetes cluster is "
+                                                    "unavailable. Recovery is not possible.")
             except Exception as ex:
                 LOG.error(ex)
                 recovery = False
@@ -628,13 +663,14 @@ class KubeControllerOperator(KubeHostOperator):
         except Exception as ex:
             raise exception.SysinvException("Failed to recover etcd. Error: [%s]" % (ex))
 
-    def upgrade_abort_recovery(self, recover_to_kube_version, restart_services):
+    def upgrade_abort_recovery(
+            self, recover_from_kube_version, restart_services):
         """Recover a failed abort attempt
         """
         try:
 
             LOG.info("Starting kubernetes upgrade abort recovery to version [%s]."
-                     % (recover_to_kube_version))
+                     % (self.current_stage1_link_version))
 
             self._recover_kubeconfig_files()
 
@@ -642,11 +678,14 @@ class KubeControllerOperator(KubeHostOperator):
 
             self._recover_etcd()
 
-            recover_to_kube_version = recover_to_kube_version.strip('v')
+            # Abort recovery should be done to the state at which abort was initiated.
+            links = {
+                kubernetes.KUBERNETES_SYMLINKS_STAGE_1: self.current_stage1_link_version,
+                kubernetes.KUBERNETES_SYMLINKS_STAGE_2: self.current_stage2_link_version
+            }
 
-            for link in [kubernetes.KUBERNETES_SYMLINKS_STAGE_1,
-                         kubernetes.KUBERNETES_SYMLINKS_STAGE_2]:
-                self._update_symlink(link, recover_to_kube_version)
+            for link, version in links.items():
+                self._update_symlink(link, version)
 
             kubernetes.enable_kubelet_garbage_collection()
 
@@ -677,6 +716,15 @@ class KubeControllerOperator(KubeHostOperator):
                                                 "kubernetes abort recovery procedure.")
 
             kubernetes.kube_uncordon_node(self._host_name)
+
+            try:
+                self._pin_unpin_control_plane_images(
+                    pin_images_version=self.current_stage1_link_version,
+                    unpin_images_version=recover_from_kube_version)
+            except Exception as ex:
+                # This failure can be ignored
+                LOG.warning("Pin/unpin control-plane images operation failed. "
+                            "Error: [%s]" % (ex))
 
             self._cleanup_backed_up_artifacts()
 
@@ -841,9 +889,60 @@ class KubeControllerOperator(KubeHostOperator):
             raise exception.SysinvException("Failed to update coredns deployment with "
                                             "error: [%s]" % (ex))
 
-    def upgrade_control_plane(self, to_kube_version, is_first_master):
+    def _pin_unpin_control_plane_images(self, pin_images_version=None, unpin_images_version=None):
+        """Pin and/or unpin static pod images of the specified kubernetes versions
+
+        Following images are pinned/unpinned for versions specified
+        - kube-apiserver
+        - kube-controller-manager
+        - kube-scheduler
+
+        If pin_images_version is specified, above images for the specified version are pinned
+        If unpin_images_version is specified, above images for the specified version are unpinned
+        If none of them is specified, no action is taken.
+        pin_images_version and unpin_images_version must be different.
+
+        :param: pin_images_version: version for which above images need to be pinned
+        :param: unpin_images_version: version for which above images need to be unpinned
+        :raises: SysinvException in case of error
+        """
+        try:
+            if not pin_images_version and not unpin_images_version:
+                raise exception.SysinvException("Kubernetes version not specified to pin or unpin "
+                                                "control plane images. Nothing to do.")
+
+            if pin_images_version == unpin_images_version:
+                raise exception.SysinvException("Specified same kubernetes version: %s to pin and "
+                                                "unpin images. Operation invalid."
+                                                % (pin_images_version))
+
+            def _pin_unpin_operation(operation, version):
+                version = version.strip('v')
+                images = kubernetes.get_k8s_images(version)
+                target_images = [
+                    images['kube-apiserver'],
+                    images['kube-controller-manager'],
+                    images['kube-scheduler']
+                ]
+
+                for image in target_images:
+                    image = f"{constants.DOCKER_REGISTRY_SERVER}/{image}"
+                    operation(image)
+
+            if pin_images_version:
+                _pin_unpin_operation(containers.pin_ctr_image, pin_images_version)
+
+            if unpin_images_version:
+                _pin_unpin_operation(containers.unpin_ctr_image, unpin_images_version)
+
+        except Exception as ex:
+            raise exception.SysinvException("Failed to pin/unpin control plane images. "
+                                            "Error: [%s]" % (ex))
+
+    def upgrade_control_plane(self, from_kube_version, to_kube_version, is_first_master):
         """Upgrade kubernetes control-plane components on this controller
 
+        :param: from_kube_version: current kubernetes version
         :param: to_kube_version: kubernetes version being upgraded to
         :param: is_first_master: True if this is the first controller being upgraded else False
         """
@@ -866,6 +965,13 @@ class KubeControllerOperator(KubeHostOperator):
                 self._rollout_restart_kube_proxy_daemonset()
 
             self._update_symlink(kubernetes.KUBERNETES_SYMLINKS_STAGE_1, to_kube_version)
+
+            try:
+                self._pin_unpin_control_plane_images(pin_images_version=to_kube_version,
+                                                     unpin_images_version=from_kube_version)
+            except Exception as ex:
+                # This failure can be ignored
+                LOG.warning(ex)
 
         except Exception as ex:
             raise exception.SysinvException("Error upgrading control plane components: %s" % (ex))

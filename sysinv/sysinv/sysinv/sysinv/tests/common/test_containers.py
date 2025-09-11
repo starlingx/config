@@ -137,3 +137,179 @@ class TestContainers(base.TestCase):
         self.assertRaises(exception.SysinvException,
                           containers.get_crictl_image_list)
         mock_utils_execute.assert_called_once()
+
+    def test_label_ctr_images_success(self):
+        """Test successful execution of label containerd images.
+        """
+        fake_image = "fake_image"
+        fake_label_key = "fake_label_key"
+        fake_label_value = "fake_label_value"
+        expected_cmd = ['ctr', '-n', 'k8s.io', 'images', 'label',
+                        'fake_image', 'fake_label_key=fake_label_value']
+
+        mock_utils_execute = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.execute', mock_utils_execute)
+        p.start()
+        self.addCleanup(p.stop)
+
+        containers.label_ctr_image(fake_image, fake_label_key, fake_label_value)
+
+        mock_utils_execute.assert_called_once_with(*expected_cmd, check_exit_code=0)
+
+    def test_label_ctr_images_failure(self):
+        """Test failed execution of label containerd images.
+        """
+        fake_image = "fake_image"
+        fake_label_key = "fake_label_key"
+        fake_label_value = "fake_label_value"
+        expected_cmd = ['ctr', '-n', 'k8s.io', 'images', 'label',
+                        'fake_image', 'fake_label_key=fake_label_value']
+
+        mock_utils_execute = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.execute', mock_utils_execute)
+        p.start().side_effect = Exception("Fake error")
+        self.addCleanup(p.stop)
+
+        self.assertRaises(exception.SysinvException,
+                          containers.label_ctr_image,
+                          fake_image,
+                          fake_label_key,
+                          fake_label_value)
+
+        mock_utils_execute.assert_called_once_with(*expected_cmd, check_exit_code=0)
+
+    def test_label_ctr_images_failure_invalid_image_name(self):
+        """Test failed execution of label containerd images: invalid image name
+        """
+        fake_image = 3
+        fake_label_key = "fake_label_key"
+        fake_label_value = "fake_label_value"
+
+        mock_utils_execute = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.execute', mock_utils_execute)
+        p.start().side_effect = Exception("Fake error")
+        self.addCleanup(p.stop)
+
+        self.assertRaises(exception.SysinvException,
+                          containers.label_ctr_image,
+                          fake_image,
+                          fake_label_key,
+                          fake_label_value)
+
+        mock_utils_execute.assert_not_called()
+
+    def test_label_ctr_images_success_label_key_and_value_none(self):
+        """Test failed execution of label containerd images: label key and value None
+        """
+        fake_image = "fake_image"
+        fake_label_key = None
+        fake_label_value = None
+        expected_cmd = ['ctr', '-n', 'k8s.io', 'images', 'label',
+                        'fake_image', 'None=None']
+
+        mock_utils_execute = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.execute', mock_utils_execute)
+        p.start().side_effect = Exception("Fake error")
+        self.addCleanup(p.stop)
+
+        self.assertRaises(exception.SysinvException,
+                          containers.label_ctr_image,
+                          fake_image,
+                          fake_label_key,
+                          fake_label_value)
+
+        mock_utils_execute.assert_called_once_with(*expected_cmd, check_exit_code=0)
+
+    def test_pin_ctr_images_success(self):
+        """Test successful execution of pin_ctr_image.
+        """
+        fake_image = "fake_image"
+
+        mock_utils_execute = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.execute', mock_utils_execute)
+        p.start()
+        self.addCleanup(p.stop)
+
+        containers.pin_ctr_image(fake_image)
+
+        mock_utils_execute.assert_called_once()
+
+    def test_pin_ctr_images_failure(self):
+        """Test failed execution of pin_ctr_image.
+        """
+        fake_image = "fake_image"
+
+        mock_utils_execute = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.execute', mock_utils_execute)
+        p.start().side_effect = Exception("Fake error")
+        self.addCleanup(p.stop)
+
+        self.assertRaises(exception.SysinvException,
+                          containers.pin_ctr_image,
+                          fake_image)
+
+        mock_utils_execute.assert_called_once()
+
+    def test_pin_ctr_images_failure_invalid_image_names(self):
+        """Test failed execution of pin_ctr_image: invalid image names
+        """
+        fake_invalid_image_names = [3, 2.4, False]
+
+        for fake_image in fake_invalid_image_names:
+            mock_utils_execute = mock.MagicMock()
+            p = mock.patch('sysinv.common.utils.execute', mock_utils_execute)
+            p.start().side_effect = Exception("Fake error")
+            self.addCleanup(p.stop)
+
+            self.assertRaises(exception.SysinvException,
+                              containers.pin_ctr_image,
+                              fake_image)
+
+            mock_utils_execute.assert_not_called()
+
+    def test_unpin_ctr_images_success(self):
+        """Test successful execution of unpin_ctr_image.
+        """
+        fake_image = "fake_image"
+
+        mock_utils_execute = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.execute', mock_utils_execute)
+        p.start()
+        self.addCleanup(p.stop)
+
+        containers.unpin_ctr_image(fake_image)
+
+        mock_utils_execute.assert_called_once()
+
+    def test_unpin_ctr_images_failure(self):
+        """Test failed execution of unpin_ctr_image.
+        """
+        fake_image = "fake_image"
+
+        mock_utils_execute = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.execute', mock_utils_execute)
+        p.start().side_effect = Exception("Fake error")
+        self.addCleanup(p.stop)
+
+        self.assertRaises(exception.SysinvException,
+                          containers.unpin_ctr_image,
+                          fake_image)
+
+        mock_utils_execute.assert_called_once()
+
+    def test_unpin_ctr_images_failure_invalid_image_names(self):
+        """Test failed execution of unpin_ctr_image: invalid image names
+        """
+        fake_invalid_image_names = [3, 2.4, False]
+
+        for fake_image in fake_invalid_image_names:
+            mock_utils_execute = mock.MagicMock()
+            p = mock.patch('sysinv.common.utils.execute', mock_utils_execute)
+            p.start().side_effect = Exception("Fake error")
+            self.addCleanup(p.stop)
+
+            self.assertRaises(exception.SysinvException,
+                              containers.unpin_ctr_image,
+                              fake_image)
+
+            mock_utils_execute.assert_not_called()
