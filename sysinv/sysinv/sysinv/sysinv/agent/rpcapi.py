@@ -331,3 +331,20 @@ class AgentAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                        host_uuid=host_uuid,
                                        images=images,
                                        crictl_auth=crictl_auth))
+
+    def pin_kubernetes_control_plane_images(self, context, host_uuid, version):
+        """Asynchronously, pin kubernetes static pod images of current kubernetes version
+
+        Following images are pinned
+        - kube-apiserver
+        - kube-controller-manager
+        - kube-scheduler
+
+        :param: context: request context
+        :param: host_uuid: the host uuid
+        :param: version: Version of images to be pinned
+        """
+        return self.cast(context,
+                         self.make_msg('pin_kubernetes_control_plane_images',
+                                       host_uuid=host_uuid,
+                                       version=version))

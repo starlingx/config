@@ -2703,3 +2703,22 @@ class AgentManager(service.PeriodicService):
             rpcapi.report_kube_upgrade_control_plane_result(context, host_uuid, to_kube_version,
                                                             is_first_master, success)
             self._cleanup_kube_upgrade_method_details()
+
+    def pin_kubernetes_control_plane_images(self, context, host_uuid, version):
+        """Pin kubernetes static pod images
+
+        Following images of specified kubernetes version are pinned
+        - kube-apiserver
+        - kube-controller-manager
+        - kube-scheduler
+
+        :param: context: request context
+        :param: host_uuid: the host uuid
+        :param: version: Version of images to be pinned
+        """
+        if self._ihost_uuid and self._ihost_uuid == host_uuid:
+            try:
+                operator = kube_host.KubeControllerOperator(context, host_uuid, self._hostname)
+                operator._pin_unpin_control_plane_images(pin_images_version=version)
+            except Exception as ex:
+                LOG.warning("Failed to pin kubernetes control-plane images. Error: [%s]" % (ex))
