@@ -14983,26 +14983,6 @@ class ConductorManager(service.PeriodicService):
         }
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
-    def update_dnsmasq_config(self, context):
-        """Update the dnsmasq configuration"""
-
-        personalities = [constants.CONTROLLER]
-
-        # During management network update, the dnsmasq service should not be
-        # reloaded, expect to update the service config during the controller
-        # config after unlock and reboot, the ongoing flag will be removed then.
-        if os.path.isfile(tsc.MGMT_NETWORK_RECONFIGURATION_ONGOING):
-            LOG.info("DNSMASQ changes will be applied after the next "
-                     "host-unlock due to Management Network reconfiguration.")
-            self._config_update_hosts(context, personalities, reboot=True)
-            return
-        config_uuid = self._config_update_hosts(context, personalities)
-        config_dict = {
-            "personalities": personalities,
-            "classes": ['platform::dns::dnsmasq::runtime'],
-        }
-        self._config_apply_runtime_manifest(context, config_uuid, config_dict)
-
     def update_ldap_client_config(self, context):
         """Update the LDAP client configuration"""
         personalities = [constants.CONTROLLER,

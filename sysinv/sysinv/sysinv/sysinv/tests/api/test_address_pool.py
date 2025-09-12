@@ -938,9 +938,6 @@ class TestPatchMixin(object):
         self.assertEqual(False, self.mock_rpcapi_update_admin_config.call_args.kwargs['disable'])
 
     def test_modify_systemcontroller_oam(self):
-        p = mock.patch('sysinv.conductor.rpcapi.ConductorAPI.update_dnsmasq_config')
-        self.mock_rpcapi_update_dnsmasq_config = p.start()
-        self.addCleanup(p.stop)
 
         self._create_test_host(constants.CONTROLLER, unit=0)
         sc_oam_network = self._find_network_by_type(constants.NETWORK_TYPE_SYSTEM_CONTROLLER_OAM)
@@ -948,8 +945,6 @@ class TestPatchMixin(object):
         sc_oam_pool_start = sc_oam_pool.ranges[0][0]
 
         self.patch_success(sc_oam_pool, floating_address=sc_oam_pool_start)
-
-        self.mock_rpcapi_update_dnsmasq_config.assert_called_once()
 
     def test_change_admin_gateway(self):
         p = mock.patch('sysinv.conductor.rpcapi.ConductorAPI.update_admin_config')
@@ -1851,16 +1846,10 @@ class TestDelete(AddressPoolTestCase):
         self.mock_rpcapi_update_oam_config.assert_called_once()
 
     def test_system_controller_oam_address_pool_delete(self):
-        p = mock.patch('sysinv.conductor.rpcapi.ConductorAPI.update_dnsmasq_config')
-        self.mock_rpcapi_update_dnsmasq_config = p.start()
-        self.addCleanup(p.stop)
-
         pool = self.find_addrpool_by_networktype(constants.NETWORK_TYPE_SYSTEM_CONTROLLER_OAM)
 
         response = self.delete(self.get_single_url(pool.uuid), headers=self.API_HEADERS)
         self.assertEqual(response.status_code, http_client.NO_CONTENT)
-
-        self.mock_rpcapi_update_dnsmasq_config.assert_not_called()
 
     def test_mgmt_address_pool_delete_secondary(self):
         self._set_system_mode(constants.SYSTEM_MODE_SIMPLEX)
