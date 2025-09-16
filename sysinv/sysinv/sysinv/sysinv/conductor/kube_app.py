@@ -664,7 +664,6 @@ class AppOperator(object):
                 override_imgs_copy = copy.deepcopy(override_imgs)
 
                 # Get the image tags from the fluxcd static overrides file
-                static_overrides_path = None
                 if "valuesFrom" not in helmrelease_yaml["spec"]:
                     raise exception.SysinvException(_(
                         "FluxCD app chart doesn't have overrides files "
@@ -675,17 +674,25 @@ class AppOperator(object):
                     if override_file["valuesKey"].endswith("static-overrides.yaml"):
                         static_overrides_path = os.path.join(chart_path,
                                                              override_file["valuesKey"])
-                        # Since static-override.yaml exists, its copy will also be present.
-                        # The copy ensures that the accessed static-override is the original
-                        # and not a modified version.
+
+                        if not os.path.isfile(static_overrides_path):
+                            raise exception.SysinvException(_(
+                                "FluxCD app chart static overrides file doesn't exist "
+                                "%s" % chart_name))
+
+                        # The static overrides copy ensures that the accessed override
+                        # is the original and not a modified version.
                         static_overrides_path_orig = static_overrides_path.replace(
                             "-static-overrides.yaml", "-static-overrides-orig.yaml")
 
-                if not static_overrides_path or \
-                        not os.path.isfile(static_overrides_path):
+                        # Create static overrides backup file if it does not exist
+                        if not os.path.isfile(static_overrides_path_orig):
+                            self.back_up_static_override_file(chart_path,
+                                                              override_file["valuesKey"])
+                        break
+                else:
                     raise exception.SysinvException(_(
-                        "FluxCD app chart static overrides file doesn't exist "
-                        "%s" % chart_name))
+                        "Static overrides file not specified on %s" % helmrelease_path))
 
                 with io.open(static_overrides_path_orig, 'r', encoding='utf-8') as f:
                     static_overrides_file = yaml.safe_load(f) or {}
@@ -1564,19 +1571,44 @@ class AppOperator(object):
                   metadata_file, keys, default, value)
         return value
 
-    def make_backup_static_override(self, app):
+    def back_up_static_override_file(self, chart_path, override_file):
+        """
+        Back up an existing static override file.
+
+        Args:
+            chart_path: path to the application chart
+            override_file: override filename
+        """
+
+        static_overrides_path = os.path.join(chart_path, override_file)
+
+        # Create backup copy of the static overrides file
+        if os.path.exists(static_overrides_path):
+            # Construct the backup filename
+            backup_filename = override_file.replace(
+                "static-overrides.yaml", "static-overrides-orig.yaml")
+            # Construct the backup path
+            backup_path = os.path.join(chart_path, backup_filename)
+
+            # Copy the static overrides file to the backup path
+            shutil.copy(static_overrides_path, backup_path)
+            LOG.info(f"Created backup of static overrides: {backup_path}")
+        else:
+            LOG.warning(f"Static overrides file {static_overrides_path} not found."
+                        "Could not create backup file.")
+
+    def back_up_static_overrides(self, sync_fluxcd_manifest):
         """
         Creates backup copies of 'static-overrides.yaml' files for each chart group in a
         FluxCD application's manifest.
 
         Args:
-            app: Application object containing the path to the
-                 FluxCD manifest (app.sync_fluxcd_manifest).
+            sync_fluxcd_manifest: path to FluxCD manifests
         """
 
         # Construct the path to the root kustomization.yaml file
         root_kustomization_path = os.path.join(
-            app.sync_fluxcd_manifest, constants.APP_ROOT_KUSTOMIZE_FILE)
+            sync_fluxcd_manifest, constants.APP_ROOT_KUSTOMIZE_FILE)
 
         # Get the kustomization.yaml file to find constructed chart groups
         with io.open(root_kustomization_path, 'r', encoding='utf-8') as f:
@@ -1585,7 +1617,7 @@ class AppOperator(object):
 
         for chart_group in charts_groups:
             if chart_group != "base":
-                chart_path = os.path.join(app.sync_fluxcd_manifest, chart_group)
+                chart_path = os.path.join(sync_fluxcd_manifest, chart_group)
                 helmrelease_path = os.path.join(chart_path, "helmrelease.yaml")
 
                 # Get the helmrelease.yaml file
@@ -1598,25 +1630,11 @@ class AppOperator(object):
                     continue
                 for override_file in helmrelease_yaml["spec"]["valuesFrom"]:
                     if override_file["valuesKey"].endswith("static-overrides.yaml"):
-                        static_overrides_path = os.path.join(chart_path,
-                                                             override_file["valuesKey"])
-
-                        # Create backup copy of the static overrides file
-                        if os.path.exists(static_overrides_path):
-                            # Construct the backup filename
-                            backup_filename = override_file["valuesKey"].replace(
-                                "static-overrides.yaml", "static-overrides-orig.yaml")
-                            # Construct the backup path
-                            backup_path = os.path.join(chart_path, backup_filename)
-
-                            # Copy the static overrides file to the backup path
-                            shutil.copy(static_overrides_path, backup_path)
-                            LOG.info(f"Created backup of static overrides: {backup_path}")
-                        else:
-                            LOG.warning("No static overrides found for chart"
-                                        f"{chart_group} in {chart_path}")
-
+                        self.back_up_static_override_file(chart_path, override_file["valuesKey"])
                         break
+                else:
+                    raise exception.SysinvException(
+                        f"Static overrides file not specified on {helmrelease_path}")
 
     def _preserve_user_overrides(self, from_app, to_app):
         """Dump user overrides
@@ -2305,7 +2323,7 @@ class AppOperator(object):
             # to its image links so that the local registry (registry.local:9001) can be added.
             # To ensure the addition process always uses the original file to perform this action,
             # a copy is made to preserve its status.
-            self.make_backup_static_override(app)
+            self.back_up_static_overrides(app.sync_fluxcd_manifest)
             # System overrides will be generated here.
             self._save_images_list(app)
 
