@@ -73,16 +73,18 @@ class ContainerdOperator(object):
             raise exception.SysinvException("Failed to stop containerd containers and pods. "
                                             "Error: [%s]" % (ex))
 
-    def pull_images(self, images):
+    def pull_images(self, images, crictl_auth):
         """ Pull images to crictl
 
         :param: images: List of images to be downloaded.
+        :param: crictl_auth: Auth string to pull kubernetes images
 
         :returns: True if image download succeeds False otherwise
         """
         try:
-            crictl_auth = self._get_auth()
+
             if not crictl_auth:
+                LOG.error("Auth credentials to pull images not found.")
                 return False
 
             try:
@@ -278,7 +280,11 @@ class KubeWorkerOperator(KubeHostOperator):
 
             # pull pause image if required
             if current_pause_image != target_pause_image:
-                if not self._containerd_operator.pull_images([target_pause_image]):
+                local_registry_auth = utils.get_local_docker_registry_auth()
+                crictl_auth = (
+                    f"{local_registry_auth['username']}:{local_registry_auth['password']}"
+                )
+                if not self._containerd_operator.pull_images([target_pause_image], crictl_auth):
                     raise exception.SysinvException("Failed to pull the pause image required for "
                                                     "the kubelet upgrade.")
             else:

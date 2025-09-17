@@ -2573,12 +2573,13 @@ class AgentManager(service.PeriodicService):
             self._inventoried_initial = False
             self._inventory_reported = set()
 
-    def pull_kubernetes_images(self, context, host_uuid, images):
+    def pull_kubernetes_images(self, context, host_uuid, images, crictl_auth):
         """ Pull kubernetes control plane images to crictl
 
         :param: context: context object.
         :param: host_uuid: A host UUID string.
         :param: images: List of images to be downloaded.
+        :param: crictl_auth: Auth string to pull kubernetes images
 
         :returns: True if image download succeeds False otherwise
         """
@@ -2604,7 +2605,7 @@ class AgentManager(service.PeriodicService):
                 LOG.warning("Failed to disable garbage collection in kubelet with error: [%s] "
                             "continuing anyway." % (ex))
 
-            result = self._containerd_operator.pull_images(images)
+            result = self._containerd_operator.pull_images(images, crictl_auth)
             if result:
                 LOG.info("All required kubernetes images downloaded successfully in %s seconds"
                          % (time.time() - start))

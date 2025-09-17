@@ -149,11 +149,6 @@ class TestContainerdOperator(base.TestCase):
                                     f"{constants.DOCKER_REGISTRY_SERVER}/fake_image2"]
         images_to_be_pulled = ['fake_image1', 'fake_image2', 'fake_image3', 'fake_image4']
 
-        mock_get_auth = mock.MagicMock()
-        p = mock.patch('sysinv.agent.kube_host.ContainerdOperator._get_auth', mock_get_auth)
-        p.start().return_value = fake_auth
-        self.addCleanup(p.stop)
-
         mock_get_crictl_image_list = mock.MagicMock()
         p = mock.patch('sysinv.common.containers.get_crictl_image_list', mock_get_crictl_image_list)
         p.start().return_value = fake_exisitng_image_list
@@ -164,10 +159,9 @@ class TestContainerdOperator(base.TestCase):
         p.start()
         self.addCleanup(p.stop)
 
-        result = self.containerd_operator.pull_images(images_to_be_pulled)
+        result = self.containerd_operator.pull_images(images_to_be_pulled, fake_auth)
 
         self.assertTrue(result)
-        mock_get_auth.assert_called_once()
         mock_get_crictl_image_list.assert_called_once()
         expected_calls = [mock.call(f"{constants.DOCKER_REGISTRY_SERVER}/fake_image3", fake_auth),
                           mock.call(f"{constants.DOCKER_REGISTRY_SERVER}/fake_image4", fake_auth)]
@@ -182,11 +176,6 @@ class TestContainerdOperator(base.TestCase):
                                     f"{constants.DOCKER_REGISTRY_SERVER}/fake_image2"]
         images_to_be_pulled = ['fake_image1', 'fake_image2']
 
-        mock_get_auth = mock.MagicMock()
-        p = mock.patch('sysinv.agent.kube_host.ContainerdOperator._get_auth', mock_get_auth)
-        p.start().return_value = fake_auth
-        self.addCleanup(p.stop)
-
         mock_get_crictl_image_list = mock.MagicMock()
         p = mock.patch('sysinv.common.containers.get_crictl_image_list', mock_get_crictl_image_list)
         p.start().return_value = fake_exisitng_image_list
@@ -197,10 +186,9 @@ class TestContainerdOperator(base.TestCase):
         p.start()
         self.addCleanup(p.stop)
 
-        result = self.containerd_operator.pull_images(images_to_be_pulled)
+        result = self.containerd_operator.pull_images(images_to_be_pulled, fake_auth)
 
         self.assertTrue(result)
-        mock_get_auth.assert_called_once()
         mock_get_crictl_image_list.assert_called_once()
         mock_pull_image_to_crictl.assert_not_called()
 
@@ -209,11 +197,6 @@ class TestContainerdOperator(base.TestCase):
         """
         fake_auth = "fake_username:fake_password"
         images_to_be_pulled = ['fake_image1', 'fake_image2', 'fake_image3', 'fake_image4']
-
-        mock_get_auth = mock.MagicMock()
-        p = mock.patch('sysinv.agent.kube_host.ContainerdOperator._get_auth', mock_get_auth)
-        p.start().return_value = fake_auth
-        self.addCleanup(p.stop)
 
         mock_get_crictl_image_list = mock.MagicMock()
         p = mock.patch('sysinv.common.containers.get_crictl_image_list', mock_get_crictl_image_list)
@@ -225,10 +208,9 @@ class TestContainerdOperator(base.TestCase):
         p.start()
         self.addCleanup(p.stop)
 
-        result = self.containerd_operator.pull_images(images_to_be_pulled)
+        result = self.containerd_operator.pull_images(images_to_be_pulled, fake_auth)
 
         self.assertTrue(result)
-        mock_get_auth.assert_called_once()
         mock_get_crictl_image_list.assert_called_once()
         expected_calls = [mock.call(f"{constants.DOCKER_REGISTRY_SERVER}/fake_image1", fake_auth),
                           mock.call(f"{constants.DOCKER_REGISTRY_SERVER}/fake_image2", fake_auth),
@@ -237,43 +219,11 @@ class TestContainerdOperator(base.TestCase):
         mock_pull_image_to_crictl.assert_has_calls(expected_calls, any_order=True)
         self.assertEqual(mock_pull_image_to_crictl.call_count, 4)
 
-    def test_pull_images_failure_failed_to_get_auth(self):
-        """Test successful image pull: Failed to get auth credentials
-        """
-        images_to_be_pulled = ['fake_image1', 'fake_image2', 'fake_image3', 'fake_image4']
-
-        mock_get_auth = mock.MagicMock()
-        p = mock.patch('sysinv.agent.kube_host.ContainerdOperator._get_auth', mock_get_auth)
-        p.start().return_value = None
-        self.addCleanup(p.stop)
-
-        mock_get_crictl_image_list = mock.MagicMock()
-        p = mock.patch('sysinv.common.containers.get_crictl_image_list', mock_get_crictl_image_list)
-        p.start()
-        self.addCleanup(p.stop)
-
-        mock_pull_image_to_crictl = mock.MagicMock()
-        p = mock.patch('sysinv.common.containers.pull_image_to_crictl', mock_pull_image_to_crictl)
-        p.start()
-        self.addCleanup(p.stop)
-
-        result = self.containerd_operator.pull_images(images_to_be_pulled)
-
-        self.assertFalse(result)
-        mock_get_auth.assert_called_once()
-        mock_get_crictl_image_list.assert_not_called()
-        mock_pull_image_to_crictl.assert_not_called()
-
     def test_pull_images_failure_image_pull_exception(self):
         """Test image pull failure: Image pull exception
         """
         fake_auth = "fake_username:fake_password"
         images_to_be_pulled = ['fake_image1', 'fake_image2', 'fake_image3', 'fake_image4']
-
-        mock_get_auth = mock.MagicMock()
-        p = mock.patch('sysinv.agent.kube_host.ContainerdOperator._get_auth', mock_get_auth)
-        p.start().return_value = fake_auth
-        self.addCleanup(p.stop)
 
         mock_get_crictl_image_list = mock.MagicMock()
         p = mock.patch('sysinv.common.containers.get_crictl_image_list', mock_get_crictl_image_list)
@@ -285,10 +235,9 @@ class TestContainerdOperator(base.TestCase):
         p.start().side_effect = exception.SysinvException("Fake error")
         self.addCleanup(p.stop)
 
-        result = self.containerd_operator.pull_images(images_to_be_pulled)
+        result = self.containerd_operator.pull_images(images_to_be_pulled, fake_auth)
 
         self.assertFalse(result)
-        mock_get_auth.assert_called_once()
         mock_get_crictl_image_list.assert_called_once()
         mock_pull_image_to_crictl.assert_called()
 
@@ -739,6 +688,7 @@ class TestKubernetesOperator(base.TestCase):
         from_kube_version = 'vfake_from_kube_version'
         to_kube_version = 'vfake_to_kube_version'
         is_final_version = False
+        fake_creds = {'username': 'fake_username', 'password': 'fake_password'}
         fake_pause_image = 'fake_pause_image'
         different_fake_pause_image = 'different_fake_pause_image'
         containerd_read_data = 'sandbox_image = "%s/%s"' % (constants.DOCKER_REGISTRY_SERVER,
@@ -751,6 +701,12 @@ class TestKubernetesOperator(base.TestCase):
         p = mock.patch('sysinv.common.kubernetes.get_k8s_images', mock_get_k8s_images)
         p.start().side_effect = [{'pause': fake_pause_image},
                                  {'pause': different_fake_pause_image}]
+        self.addCleanup(p.stop)
+
+        mock_get_local_docker_registry_auth = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.get_local_docker_registry_auth',
+                       mock_get_local_docker_registry_auth)
+        p.start().return_value = fake_creds
         self.addCleanup(p.stop)
 
         mock_crictl_pull_images = mock.MagicMock()
@@ -791,6 +747,7 @@ class TestKubernetesOperator(base.TestCase):
         mock_file_open.assert_called()
         mock_file_open.return_value.write.assert_called_with(containerd_write_data + '\n')
         mock_crictl_pull_images.assert_called_once()
+        mock_get_local_docker_registry_auth.assert_called_once()
         mock_kubeadm_upgrade_node.assert_called_once_with('fake_to_kube_version')
         mock_update_symlink.assert_has_calls([mock.call(kubernetes.KUBERNETES_SYMLINKS_STAGE_1,
                                                         'fake_to_kube_version'),
@@ -806,6 +763,7 @@ class TestKubernetesOperator(base.TestCase):
         from_kube_version = 'vfake_from_kube_version'
         to_kube_version = 'vfake_to_kube_version'
         is_final_version = False
+        fake_creds = {'username': 'fake_username', 'password': 'fake_password'}
         fake_pause_image = 'fake_pause_image'
         different_fake_pause_image = 'different_fake_pause_image'
         containerd_read_data = 'sandbox_image = "%s/%s"' % (constants.DOCKER_REGISTRY_SERVER,
@@ -816,6 +774,12 @@ class TestKubernetesOperator(base.TestCase):
         p = mock.patch('sysinv.common.kubernetes.get_k8s_images', mock_get_k8s_images)
         p.start().side_effect = [{'pause': fake_pause_image},
                                  {'pause': different_fake_pause_image}]
+        self.addCleanup(p.stop)
+
+        mock_get_local_docker_registry_auth = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.get_local_docker_registry_auth',
+                       mock_get_local_docker_registry_auth)
+        p.start().return_value = fake_creds
         self.addCleanup(p.stop)
 
         mock_crictl_pull_images = mock.MagicMock()
@@ -857,6 +821,7 @@ class TestKubernetesOperator(base.TestCase):
         mock_get_k8s_images.assert_has_calls([mock.call('fake_from_kube_version'),
                                               mock.call('fake_to_kube_version')], any_order=True)
         mock_file_open.assert_not_called()
+        mock_get_local_docker_registry_auth.assert_called_once()
         mock_crictl_pull_images.assert_called_once()
         mock_kubeadm_upgrade_node.assert_not_called()
         mock_update_symlink.assert_not_called()
@@ -868,6 +833,7 @@ class TestKubernetesOperator(base.TestCase):
         from_kube_version = 'vfake_from_kube_version'
         to_kube_version = 'vfake_to_kube_version'
         is_final_version = False
+        fake_creds = {'username': 'fake_username', 'password': 'fake_password'}
         fake_pause_image = 'fake_pause_image'
         different_fake_pause_image = 'different_fake_pause_image'
         containerd_read_data = 'sandbox_image = "%s/%s"' % (constants.DOCKER_REGISTRY_SERVER,
@@ -878,6 +844,12 @@ class TestKubernetesOperator(base.TestCase):
         p = mock.patch('sysinv.common.kubernetes.get_k8s_images', mock_get_k8s_images)
         p.start().side_effect = [{'pause': fake_pause_image},
                                  {'pause': different_fake_pause_image}]
+        self.addCleanup(p.stop)
+
+        mock_get_local_docker_registry_auth = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.get_local_docker_registry_auth',
+                       mock_get_local_docker_registry_auth)
+        p.start().return_value = fake_creds
         self.addCleanup(p.stop)
 
         mock_crictl_pull_images = mock.MagicMock()
@@ -919,6 +891,7 @@ class TestKubernetesOperator(base.TestCase):
         mock_get_k8s_images.assert_has_calls([mock.call('fake_from_kube_version'),
                                               mock.call('fake_to_kube_version')], any_order=True)
         mock_file_open.assert_not_called()
+        mock_get_local_docker_registry_auth.assert_called_once()
         mock_crictl_pull_images.assert_called_once()
         mock_kubeadm_upgrade_node.assert_called_once()
         mock_update_symlink.assert_not_called()

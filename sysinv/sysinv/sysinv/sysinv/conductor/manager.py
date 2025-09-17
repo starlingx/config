@@ -18272,9 +18272,13 @@ class ConductorManager(service.PeriodicService):
                 if host.uuid == self.host_uuid:
                     continue
                 try:
+                    local_registry_auth = cutils.get_local_docker_registry_auth()
+                    crictl_auth = (
+                        f"{local_registry_auth['username']}:{local_registry_auth['password']}"
+                    )
                     LOG.info("Downloading images on %s" % (host.hostname))
                     self._k8s_upgrade_downloading_images_on_inactive_controller = True
-                    agent_api.pull_kubernetes_images(context, host.uuid, target_images)
+                    agent_api.pull_kubernetes_images(context, host.uuid, target_images, crictl_auth)
                 except Exception as ex:
                     # Handle unexpected exception
                     LOG.exception("Images download failed on %s. Error: [%s]" % (host.hostname, ex))
