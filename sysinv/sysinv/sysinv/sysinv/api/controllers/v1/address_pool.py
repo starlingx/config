@@ -690,6 +690,12 @@ class AddressPoolController(rest.RestController):
         updates = self._get_updates(patch)
         self._check_modification_allowed(network_types)
         existing_addresses = self._validate_updates(addrpool, network_types, updates)
+
+        if constants.NETWORK_TYPE_MGMT in network_types:
+            if self._get_system_mode() == constants.SYSTEM_MODE_SIMPLEX and \
+                    cutils.is_initial_config_complete():
+                pecan.request.rpcapi.set_mgmt_network_reconfig_flag(pecan.request.context)
+
         field_updates = self._update_addresses(addrpool, network_types, updates, existing_addresses)
         self._update_no_proxy_list(addrpool, network_types, field_updates)
         addrpool = self._apply_addrpool_updates(addrpool, updates, field_updates)
@@ -896,7 +902,6 @@ class AddressPoolController(rest.RestController):
             if self._get_system_mode() == constants.SYSTEM_MODE_SIMPLEX and \
                     cutils.is_initial_config_complete():
                 pecan.request.rpcapi.update_mgmt_config(pecan.request.context)
-                pecan.request.rpcapi.set_mgmt_network_reconfig_flag(pecan.request.context)
 
         if constants.NETWORK_TYPE_ADMIN in network_types:
             if is_primary and operation == constants.API_DELETE:
@@ -987,6 +992,11 @@ class AddressPoolController(rest.RestController):
         # from the no_proxy list
         if self._has_to_update_no_proxy_list(network_types):
             caddress_pool.remove_management_addresses_from_no_proxy_list([addrpool])
+
+        if constants.NETWORK_TYPE_MGMT in network_types:
+            if self._get_system_mode() == constants.SYSTEM_MODE_SIMPLEX and \
+                    cutils.is_initial_config_complete():
+                pecan.request.rpcapi.set_mgmt_network_reconfig_flag(pecan.request.context)
 
         # If the primary pool is being removed, the network will be automatically removed and also
         # the network-addrpool entry for the secondary pool. The addresses from the secondary pool
