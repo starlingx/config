@@ -142,6 +142,30 @@ def _validate_token_expiry_time(name, value):
             "Parameter '%s' must be an integer value." % name))
 
 
+def _validate_identity_role_bindings(name, value):
+    """Check role bindings syntax"""
+    lines = value.split(";")
+    for line in lines:
+        split_line = line.split(":")
+        if len(split_line) != 2:
+            raise wsme.exc.ClientSideError(_(
+                "Parameter '%s' misconfigured: %s"
+                % (name, line)))
+        if "" in split_line:
+            raise wsme.exc.ClientSideError(_(
+                "Parameter '%s' misconfigured with empty string: %s"
+                % (name, line)))
+        rhs = split_line[1].split(",")
+        if len(rhs) > 3 or len(rhs) < 1:
+            raise wsme.exc.ClientSideError(_(
+                "Parameter '%s' misconfigured: %s must contain 1-3 terms"
+                % (name, split_line[1])))
+        if "" in rhs:
+            raise wsme.exc.ClientSideError(_(
+                "Parameter '%s' misconfigured: %s has an empty term"
+                % (name, rhs)))
+
+
 def _validate_ip_address(name, value):
     """Check if ip value is valid"""
     if not cutils.is_valid_ip(value):
@@ -1011,6 +1035,19 @@ IDENTITY_CONFIG_PARAMETER_RESOURCE = {
     constants.SERVICE_PARAM_IDENTITY_CONFIG_TOKEN_EXPIRATION: 'openstack::keystone::params::token_expiration',
 }
 
+IDENTITY_STX_PARAMETER_OPTIONAL = [
+    constants.SERVICE_PARAM_NAME_IDENTITY_STX_ROLE_BINDINGS,
+]
+
+IDENTITY_STX_PARAMETER_VALIDATOR = {
+    constants.SERVICE_PARAM_NAME_IDENTITY_STX_ROLE_BINDINGS:
+        _validate_identity_role_bindings,
+}
+
+IDENTITY_STX_PARAMETER_RESOURCE = {
+    constants.SERVICE_PARAM_NAME_IDENTITY_STX_ROLE_BINDINGS: 'platform::params::oidc_role_binding',
+}
+
 IDENTITY_LOCAL_OPENLDAP_PARAMETER_OPTIONAL = [
     constants.SERVICE_PARAM_NAME_IDENTITY_LOCAL_OPENLDAP_INSECURE_SERVICE,
 ]
@@ -1728,6 +1765,11 @@ SERVICE_PARAMETER_SCHEMA = {
             SERVICE_PARAM_OPTIONAL: IDENTITY_CONFIG_PARAMETER_OPTIONAL,
             SERVICE_PARAM_VALIDATOR: IDENTITY_CONFIG_PARAMETER_VALIDATOR,
             SERVICE_PARAM_RESOURCE: IDENTITY_CONFIG_PARAMETER_RESOURCE,
+        },
+        constants.SERVICE_PARAM_SECTION_IDENTITY_STX: {
+            SERVICE_PARAM_OPTIONAL: IDENTITY_STX_PARAMETER_OPTIONAL,
+            SERVICE_PARAM_VALIDATOR: IDENTITY_STX_PARAMETER_VALIDATOR,
+            SERVICE_PARAM_RESOURCE: IDENTITY_STX_PARAMETER_RESOURCE,
         },
         constants.SERVICE_PARAM_SECTION_IDENTITY_LDAP_DOMAIN1: {
             SERVICE_PARAM_OPTIONAL: IDENTITY_LDAP_PARAMETER_OPTIONAL,

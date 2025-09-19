@@ -12522,6 +12522,13 @@ class ConductorManager(service.PeriodicService):
                         "classes": ['platform::ldap::insecure::runtime']
                     }
                     self._config_apply_runtime_manifest(context, config_uuid, config_dict)
+                elif section == constants.SERVICE_PARAM_SECTION_IDENTITY_STX:
+                    personalities = [constants.CONTROLLER]
+                    config_dict = {
+                        "personalities": personalities,
+                        "classes": ['platform::params::config_oidc_role_binding::runtime']
+                    }
+                    self._config_apply_runtime_manifest(context, config_uuid, config_dict)
                 else:
                     personalities = [constants.CONTROLLER]
                     config_dict = {
