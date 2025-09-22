@@ -2682,9 +2682,13 @@ class AgentManager(service.PeriodicService):
             attempt = 1
             while attempt <= constants.CONTROL_PLANE_RETRY_COUNT:
                 try:
+                    current_link = os.readlink(kubernetes.KUBERNETES_SYMLINKS_STAGE_1)
+                    from_kube_version = 'v' + current_link.split('/')[4]
+
                     LOG.info("Kubernetes control-plane upgrade to version %s started on this "
                             "host. Attempt: %s" % (to_kube_version, attempt))
-                    operator.upgrade_control_plane(to_kube_version, is_first_master)
+                    operator.upgrade_control_plane(
+                        from_kube_version, to_kube_version, is_first_master)
                     LOG.info("Kubernetes control-plane upgrade to version %s successful on this "
                              "host." % (to_kube_version))
                     success = True
