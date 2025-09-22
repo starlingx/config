@@ -19399,6 +19399,25 @@ class ConductorManager(service.PeriodicService):
 
         return
 
+    def pin_kubernetes_control_plane_images(self, context, version):
+        """Pin kubernetes static pod images of specified kubernetes version
+
+        Following images are pinned
+        - kube-apiserver
+        - kube-controller-manager
+        - kube-scheduler
+
+        :param: context: request context
+        :param: version: Version of images to be pinned
+        """
+        try:
+            controller_hosts = self.dbapi.ihost_get_by_personality(constants.CONTROLLER)
+            agent_api = agent_rpcapi.AgentAPI()
+            for host in controller_hosts:
+                agent_api.pin_kubernetes_control_plane_images(context, host.uuid, version)
+        except Exception as ex:
+            LOG.warning("Failed to pin kubernetes control-plane images. Error: [%s]" % (ex))
+
     def store_bitstream_file(self, context, filename):
         """Store FPGA bitstream file """
         image_file_path = os.path.join(dconstants.DEVICE_IMAGE_PATH, filename)

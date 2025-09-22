@@ -6251,6 +6251,155 @@ class ManagerTestCase(base.DbTestCase):
         updated_upgrade = self.dbapi.kube_upgrade_get_one()
         self.assertEqual(updated_upgrade.state, kubernetes.KUBE_UPGRADING_SECOND_MASTER_FAILED)
 
+    def test_pin_kubernetes_control_plane_images_simplex_success(self):
+        """Test successful execution of pin control-plane images
+
+        """
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_SIMPLEX
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+
+        # Create controller-0
+        config_uuid = str(uuid.uuid4())
+        controller0_host_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname=constants.CONTROLLER_0_HOSTNAME,
+            uuid=controller0_host_uuid,
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            mgmt_mac='00:11:22:33:44:55'
+        )
+
+        mock_pin_kubernetes_control_plane_images = mock.MagicMock()
+        p = mock.patch.object(agent_rpcapi.AgentAPI, 'pin_kubernetes_control_plane_images',
+                              mock_pin_kubernetes_control_plane_images)
+        p.start()
+        self.addCleanup(p.stop)
+
+        FAKE_KUBE_VERSION = 'v1.29.2'
+
+        self.service.pin_kubernetes_control_plane_images(self.context, FAKE_KUBE_VERSION)
+
+        mock_pin_kubernetes_control_plane_images.assert_called_once_with(
+            self.context, controller0_host_uuid, FAKE_KUBE_VERSION)
+
+    def test_pin_kubernetes_control_plane_images_duplex_success(self):
+        """Test successful execution of pin control-plane images
+
+        """
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_DUPLEX
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+
+        # Create controller-0
+        config_uuid = str(uuid.uuid4())
+        controller0_host_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname=constants.CONTROLLER_0_HOSTNAME,
+            uuid=controller0_host_uuid,
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            mgmt_mac='00:11:22:33:44:55'
+        )
+
+        # Create controller-1
+        config_uuid = str(uuid.uuid4())
+        controller1_host_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname=constants.CONTROLLER_1_HOSTNAME,
+            uuid=controller1_host_uuid,
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            mgmt_mac='00:11:22:33:44:56'
+        )
+
+        # Create compute-0
+        config_uuid = str(uuid.uuid4())
+        compute0_host_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.WORKER,
+            hostname='compute-0',
+            uuid=compute0_host_uuid,
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            mgmt_mac='00:11:22:33:44:57')
+
+        mock_pin_kubernetes_control_plane_images = mock.MagicMock()
+        p = mock.patch.object(agent_rpcapi.AgentAPI, 'pin_kubernetes_control_plane_images',
+                              mock_pin_kubernetes_control_plane_images)
+        p.start()
+        self.addCleanup(p.stop)
+
+        FAKE_KUBE_VERSION = 'v1.29.2'
+
+        self.service.pin_kubernetes_control_plane_images(self.context, FAKE_KUBE_VERSION)
+
+        expected_calls = [mock.call(self.context, controller0_host_uuid, FAKE_KUBE_VERSION),
+                          mock.call(self.context, controller1_host_uuid, FAKE_KUBE_VERSION)]
+        mock_pin_kubernetes_control_plane_images.assert_has_calls(expected_calls)
+        self.assertEqual(mock_pin_kubernetes_control_plane_images.call_count, 2)
+
+    def test_pin_kubernetes_control_plane_images_failure(self):
+        """Test failed execution of pin control-plane images
+
+        """
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_SIMPLEX
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+
+        # Create controller-0
+        config_uuid = str(uuid.uuid4())
+        controller0_host_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname=constants.CONTROLLER_0_HOSTNAME,
+            uuid=controller0_host_uuid,
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            mgmt_mac='00:11:22:33:44:55'
+        )
+
+        mock_pin_kubernetes_control_plane_images = mock.MagicMock()
+        p = mock.patch.object(agent_rpcapi.AgentAPI, 'pin_kubernetes_control_plane_images',
+                              mock_pin_kubernetes_control_plane_images)
+        p.start().side_effect = Exception("Fake error")
+        self.addCleanup(p.stop)
+
+        FAKE_KUBE_VERSION = 'v1.29.2'
+
+        self.service.pin_kubernetes_control_plane_images(self.context, FAKE_KUBE_VERSION)
+
+        mock_pin_kubernetes_control_plane_images.assert_called_once_with(
+            self.context, controller0_host_uuid, FAKE_KUBE_VERSION)
+
     # def test_kube_host_uncordon(self):
     #     system_dict = self.system.as_dict()
 

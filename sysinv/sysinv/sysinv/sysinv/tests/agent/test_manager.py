@@ -1519,3 +1519,39 @@ class TestHostKubernetesOperations(base.TestCase):
         mock_report_kube_upgrade_control_plane_result.assert_called_once_with(
             self.context, self.agent_manager._ihost_uuid, to_kube_version,
             is_first_master, upgrade_result)
+
+    def test_pin_kubernetes_control_plane_images_success(self):
+        """ Test successful execution of pin kubernetes control plane images
+        """
+        FAKE_KUBE_VERSION = 'v1.29.2'
+
+        mock_pin_unpin_control_plane_images = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.agent.kube_host.KubeControllerOperator._pin_unpin_control_plane_images',
+            mock_pin_unpin_control_plane_images)
+        p.start()
+        self.addCleanup(p.stop)
+
+        self.agent_manager.pin_kubernetes_control_plane_images(
+            self.context, self.agent_manager._ihost_uuid, FAKE_KUBE_VERSION)
+
+        mock_pin_unpin_control_plane_images.assert_called_once_with(
+            pin_images_version=FAKE_KUBE_VERSION)
+
+    def test_pin_kubernetes_control_plane_images_failed(self):
+        """ Test failed execution of pin kubernetes control plane images
+        """
+        FAKE_KUBE_VERSION = 'v1.29.2'
+
+        mock_pin_unpin_control_plane_images = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.agent.kube_host.KubeControllerOperator._pin_unpin_control_plane_images',
+            mock_pin_unpin_control_plane_images)
+        p.start()
+        self.addCleanup(p.stop)
+
+        self.agent_manager.pin_kubernetes_control_plane_images(
+            self.context, self.agent_manager._ihost_uuid, FAKE_KUBE_VERSION)
+
+        mock_pin_unpin_control_plane_images.assert_called_once_with(
+            pin_images_version=FAKE_KUBE_VERSION)
