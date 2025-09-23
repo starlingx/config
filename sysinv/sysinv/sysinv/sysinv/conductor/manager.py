@@ -8996,14 +8996,24 @@ class ConductorManager(service.PeriodicService):
         self._inner_sync_auto_apply_with_lock(
             context,
             app_name,
-            status_constraints=(constants.APP_APPLY_SUCCESS,)
+            status_constraints=(constants.APP_APPLY_SUCCESS,),
+            is_reapply=True
         )
 
     @cutils.synchronized(LOCK_APP_AUTO_MANAGE)
-    def _inner_sync_auto_apply_with_lock(self, context, app_name, status_constraints=None):
-        self._inner_sync_auto_apply(context, app_name, status_constraints)
+    def _inner_sync_auto_apply_with_lock(self,
+                                         context,
+                                         app_name,
+                                         status_constraints=None,
+                                         is_reapply=False):
+        self._inner_sync_auto_apply(context, app_name, status_constraints, is_reapply=is_reapply)
 
-    def _inner_sync_auto_apply(self, context, app_name, status_constraints=None, async_apply=True):
+    def _inner_sync_auto_apply(self,
+                               context,
+                               app_name,
+                               status_constraints=None,
+                               async_apply=True,
+                               is_reapply=False):
         """
         Synchronizes and triggers the automatic apply/re-apply of a Kubernetes app
         based on its presence and status constraints.
@@ -9039,10 +9049,10 @@ class ConductorManager(service.PeriodicService):
         lifecycle_hook_info.mode = LifecycleConstants.APP_LIFECYCLE_MODE_AUTO
 
         if async_apply:
-            greenthread.spawn(self.perform_app_apply, context,
-                          app, app.mode, lifecycle_hook_info)
+            greenthread.spawn(self.perform_app_apply,
+                              context, app, app.mode, lifecycle_hook_info, is_reapply)
         else:
-            self.perform_app_apply(context, app, app.mode, lifecycle_hook_info)
+            self.perform_app_apply(context, app, app.mode, lifecycle_hook_info, is_reapply)
 
     def check_nodes_stable(self):
         """Check if the nodes are in a stable state in order to allow apps to be applied"""
