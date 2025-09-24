@@ -3283,6 +3283,42 @@ class AppOperator(object):
         :return: True if the update to the new version was successful. False otherwise.
         """
 
+        def trigger_recovery(skip_recovery=False, fluxcd_process_required=True):
+            """ Trigger application recovery
+
+            Application recovery is triggered if activate-rollback is not running and
+            if the app does not have 'update_failure_no_rollback' enabled in the metadata.
+
+            :param skip_recovery: (optional) whether 'update_failure_no_rollback' is
+                                  enabled for the app. Defaults to False.
+            :param fluxcd_process_required: (optional) whether FluxCD operation should be
+                                             called for recovery. Defaults to True.
+
+            :return boolean: True if recovery was triggered. False otherwise.
+            """
+
+            # During activate-rollback, automatic recovery during app downgrades is being
+            # disabled. In this scenario, the N+1 versions may not be compatible with the
+            # current state of the system, such as potential incompatibilities with the
+            # rolled back Flux controllers.
+            if cutils.verify_activate_rollback_in_progress(self._dbapi):
+                LOG.warn("Skipping recovery for %s (%s) since activate-rollback is running.",
+                         to_app.name, to_app.version)
+                return False
+
+            if skip_recovery:
+                LOG.warn("Skip recovery enabled for %s (%s)", to_app.name, to_app.version)
+            else:
+                LOG.error("Application %s update from version %s to version "
+                          "%s aborted. Recovering." % (
+                              to_app.name, from_app.version, to_app.version))
+                self._perform_app_recover(to_rpc_app, from_app, to_app,
+                                          lifecycle_hook_info_app_update,
+                                          fluxcd_process_required)
+                return True
+
+            return False
+
         from_app = AppOperator.Application(from_rpc_app)
         to_app = AppOperator.Application(to_rpc_app)
 
@@ -3352,32 +3388,12 @@ class AppOperator(object):
             except exception.LifecycleSemanticCheckException as e:
                 LOG.info("App {} rejected operation {} for reason: {}"
                          "".format(to_app.name, constants.APP_UPDATE_OP, str(e)))
-                # During activate-rollback, automatic recovery during app downgrades is being
-                # disabled. In this scenario, the N+1 versions may not be compatible with the
-                # current state of the system, such as potential incompatibilities with the
-                # rolled back Flux controllers
-                if (
-                    not skip_recovery
-                    or not cutils.verify_activate_rollback_in_progress(self._dbapi)
-                ):
-                    self._perform_app_recover(to_rpc_app, from_app, to_app,
-                                              lifecycle_hook_info_app_update,
-                                              fluxcd_process_required=False)
+                if trigger_recovery(skip_recovery, fluxcd_process_required=False):
                     return False
             except Exception as e:
                 LOG.error("App {} operation {} semantic check error: {}"
                           "".format(to_app.name, constants.APP_UPDATE_OP, str(e)))
-                # During activate-rollback, automatic recovery during app downgrades is being
-                # disabled. In this scenario, the N+1 versions may not be compatible with the
-                # current state of the system, such as potential incompatibilities with the
-                # rolled back Flux controllers
-                if (
-                    not skip_recovery
-                    or not cutils.verify_activate_rollback_in_progress(self._dbapi)
-                ):
-                    self._perform_app_recover(to_rpc_app, from_app, to_app,
-                                              lifecycle_hook_info_app_update,
-                                              fluxcd_process_required=False)
+                if trigger_recovery(skip_recovery, fluxcd_process_required=False):
                     return False
 
             if semantic_check_result:
@@ -3435,24 +3451,8 @@ class AppOperator(object):
             # If operation failed consider doing the app recovery
             do_recovery = not operation_successful
 
-            # Here the app operation failed (do_recovery is True)
-            # but skip_recovery requested.
-            if skip_recovery and do_recovery:
-                LOG.info("Application %s (%s) has configured skip_recovery %s"
-                         ", recovery skipped.",
-                         to_app.name, to_app.version, skip_recovery)
-                do_recovery = False
-
             # If recovery is requested stop the flow of execution here
-            if do_recovery and not cutils.verify_activate_rollback_in_progress(self._dbapi):
-                # During activate-rollback, automatic recovery during app downgrades is being
-                # disabled. In this scenario, the N+1 versions may not be compatible with the
-                # current state of the system, such as potential incompatibilities with the
-                # rolled back Flux controllers
-                LOG.error("Application %s update from version %s to version "
-                          "%s aborted." % (to_app.name, from_app.version, to_app.version))
-                self._perform_app_recover(to_rpc_app, from_app, to_app,
-                                          lifecycle_hook_info_app_update)
+            if do_recovery and trigger_recovery(skip_recovery):
                 return False
 
             self._update_app_status(to_app, constants.APP_UPDATE_IN_PROGRESS,
@@ -3531,15 +3531,9 @@ class AppOperator(object):
             # ie.images download/k8s resource creation failure
             # Start recovering without trigger fluxcd process
             LOG.exception(e)
-            # During activate-rollback, automatic recovery during app downgrades is being
-            # disabled. In this scenario, the N+1 versions may not be compatible with the
-            # current state of the system, such as potential incompatibilities with the
-            # rolled back Flux controllers
-            if not cutils.verify_activate_rollback_in_progress(self._dbapi):
-                self._perform_app_recover(to_rpc_app, from_app, to_app,
-                                          lifecycle_hook_info_app_update,
-                                          fluxcd_process_required=False)
-            return False
+
+            if trigger_recovery(fluxcd_process_required=False):
+                return False
         except Exception as e:
             # Application update successfully(fluxcd apply/rollback)
             # Error occurs during cleanup old app

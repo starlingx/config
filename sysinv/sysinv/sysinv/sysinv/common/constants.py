@@ -2346,8 +2346,7 @@ APP_PROGRESS_CLEANUP_FAILED = 'Application files/helm release cleanup for versio
 APP_PROGRESS_RECOVER_IN_PROGRESS = 'recovering version {} '
 APP_PROGRESS_RECOVER_CHARTS = 'recovering helm charts'
 APP_PROGRESS_UPDATE_FAILED_SKIP_RECOVERY = "Application {} update from " \
-    "version {} to version {} failed and recovery skipped " \
-    "because skip_recovery was requested."
+    "version {} to version {} failed and recovery skipped."
 APP_PROGRESS_REMOVE_FAILED_WARNING = "Application remove failed. Status forced to '{}'. " \
     "Use native helm commands to clean up application helm releases."
 
