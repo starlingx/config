@@ -2211,6 +2211,12 @@ class AppOperator(object):
             self._clear_app_alarm(old_app.name)
             LOG.info("Application %s recover to version %s completed."
                      % (old_app.name, old_app.version))
+            lifecycle_hook_info_app_recover.relative_timing = \
+                LifecycleConstants.APP_LIFECYCLE_TIMING_POST
+            lifecycle_hook_info_app_recover.lifecycle_type = \
+                LifecycleConstants.APP_LIFECYCLE_TYPE_RESOURCE
+            self.app_lifecycle_actions(None, None, old_app._kube_app,
+                                       lifecycle_hook_info_app_recover)
         else:
             self._plugins.deactivate_plugins(old_app)
             self._update_app_status(
