@@ -2049,7 +2049,7 @@ FLUXCD_CRD_HELM_REPO_GROUP = 'source.toolkit.fluxcd.io'
 FLUXCD_CRD_HELM_REPO_VERSION = 'v1'
 FLUXCD_CRD_HELM_REPO_PLURAL = 'helmrepositories'
 FLUXCD_CRD_HELM_CHART_GROUP = 'source.toolkit.fluxcd.io'
-FLUXCD_CRD_HELM_CHART_VERSION = 'v1beta1'
+FLUXCD_CRD_HELM_CHART_VERSION = 'v1'
 FLUXCD_CRD_HELM_CHART_PLURAL = 'helmcharts'
 # Actually beginning of errors, should be used with
 # string.startswith(FLUXCD_RECOVERY_HELM_RELEASE_STATUS_ERRORS[number])
