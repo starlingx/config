@@ -15,6 +15,10 @@ class KubeAppManager(base.Manager):
         _, body = self.api.json_request('POST', f"{self.path}evaluate_apps_reapply/", body=triggers)
         return body
 
+    def get_all_apps(self):
+        _, response = self.api.json_request('GET', f"{self.path}apps/")
+        return response.get('apps', [])
+
     def update_all(self):
         return self.api.json_request('POST', f"{self.path}apps/update_all/")
 
