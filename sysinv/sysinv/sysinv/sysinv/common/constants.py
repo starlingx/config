@@ -365,7 +365,7 @@ DEFAULT_DC_VAULT_STOR_SIZE = 15
 
 BACKUP_OVERHEAD = 5
 IMAGE_CONVERSION_SIZE = 1
-KUBERNETES_DOCKER_STOR_SIZE = 30
+KUBERNETES_DOCKER_STOR_SIZE = 40
 DOCKER_DISTRIBUTION_STOR_SIZE = 16
 ETCD_STOR_SIZE = 5
 KUBELET_STOR_SIZE = 10
@@ -386,7 +386,7 @@ DEFAULT_SMALL_DISK_SIZE = 240
 # DEFAULT_PLATFORM_STOR_SIZE                           10
 # DEFAULT_EXTENSION_STOR_SIZE                           1
 # DEFAULT_RABBIT_STOR_SIZE                              2
-# KUBERNETES_DOCKER_STOR_SIZE                          30
+# KUBERNETES_DOCKER_STOR_SIZE                          40
 # DOCKER_DISTRIBUTION_STOR_SIZE                        16
 # ETCD_STOR_SIZE                                        5
 # CEPH_MON_SIZE                                        20
@@ -398,8 +398,8 @@ DEFAULT_SMALL_DISK_SIZE = 240
 # boot/EFI partition (created in kickstarts)            1
 # buffer for partition creation                         1
 # -------------------------------------------------------
-#                                                     196
-MINIMUM_SMALL_DISK_SIZE = 196
+#                                                     206
+MINIMUM_SMALL_DISK_SIZE = 206
 
 # The minimum tiny disk size needed to create all partitions
 # Value based on the following calculation:
