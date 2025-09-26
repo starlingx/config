@@ -585,43 +585,23 @@ class TestPatchMixin(object):
         self.assertEqual(addrpool.uuid, c1_address.pool_uuid)
         self.assertIsNone(c1_address.ifname)
 
-    def test_storage_aio_sx_to_dx_migration(self):
-        addrpool = self.find_addrpool_by_networktype(constants.NETWORK_TYPE_STORAGE)
-        interface = self.create_test_interface()
+    def test_mgmt_aio_sx_to_dx_migration(self):
+        self._test_aio_sx_to_dx_migration(constants.NETWORK_TYPE_MGMT)
 
-        system_dict = self.system.as_dict()
-        system_dict['capabilities'].update({'simplex_to_duplex_migration': True})
-        self.dbapi.isystem_update(self.system.uuid, system_dict)
-
-        floating_addr = self.dbapi.address_get_by_id(addrpool.floating_address_id)
-        self.dbapi.address_update(floating_addr.uuid, {'interface_id': interface.id})
-
-        self.dbapi.address_destroy_by_id(addrpool.controller0_address_id)
-        self.dbapi.address_destroy_by_id(addrpool.controller1_address_id)
-        self.dbapi.address_pool_update(addrpool.uuid, {
-            'controller0_address_id': None,
-            'controller1_address_id': None
-        })
-
-        response = self.patch_success(
-            addrpool,
-            controller0_address=addrpool.controller0_address,
-            controller1_address=addrpool.controller1_address
-        )
-
-        floating_addr = self.dbapi.address_get_by_id(addrpool.floating_address_id)
-        self.assertIsNone(floating_addr.ifname)
-
-        c0_address = self.dbapi.address_get_by_id(response.json['controller0_address_id'])
-        self.assertEqual(addrpool.uuid, c0_address.pool_uuid)
-        self.assertEqual(interface.ifname, c0_address.ifname)
-
-        c1_address = self.dbapi.address_get_by_id(response.json['controller1_address_id'])
-        self.assertEqual(addrpool.uuid, c1_address.pool_uuid)
-        self.assertIsNone(c1_address.ifname)
+    def test_admin_aio_sx_to_dx_migration(self):
+        self._test_aio_sx_to_dx_migration(constants.NETWORK_TYPE_ADMIN)
 
     def test_cluster_host_aio_sx_to_dx_migration(self):
-        addrpool = self.find_addrpool_by_networktype(constants.NETWORK_TYPE_CLUSTER_HOST)
+        self._test_aio_sx_to_dx_migration(constants.NETWORK_TYPE_CLUSTER_HOST)
+
+    def test_storage_aio_sx_to_dx_migration(self):
+        self._test_aio_sx_to_dx_migration(constants.NETWORK_TYPE_STORAGE)
+
+    def test_pxeboot_aio_sx_to_dx_migration(self):
+        self._test_aio_sx_to_dx_migration(constants.NETWORK_TYPE_PXEBOOT)
+
+    def _test_aio_sx_to_dx_migration(self, nw_type):
+        addrpool = self.find_addrpool_by_networktype(nw_type)
         interface = self.create_test_interface()
 
         system_dict = self.system.as_dict()
@@ -633,7 +613,6 @@ class TestPatchMixin(object):
 
         self.dbapi.address_destroy_by_id(addrpool.controller0_address_id)
         self.dbapi.address_destroy_by_id(addrpool.controller1_address_id)
-
         self.dbapi.address_pool_update(addrpool.uuid, {
             'controller0_address_id': None,
             'controller1_address_id': None
