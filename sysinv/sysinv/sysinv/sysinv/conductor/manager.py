@@ -7214,6 +7214,7 @@ class ConductorManager(service.PeriodicService):
     PUPPET_RUNTIME_CLASS_DOCKERDISTRIBUTION = 'platform::dockerdistribution::runtime'
     PUPPET_RUNTIME_CLASS_USERS = 'platform::users::runtime'
     PUPPET_RUNTIME_CLASS_OSDS = 'platform::ceph::runtime_osds'
+    PUPPET_RUNTIME_CLASS_PCI = 'platform::kubernetes::worker::pci::runtime'
     PUPPET_RUNTIME_FILES_DOCKER_REGISTRY_KEY_FILE = constants.DOCKER_REGISTRY_KEY_FILE
     PUPPET_RUNTIME_FILES_DOCKER_REGISTRY_CERT_FILE = constants.DOCKER_REGISTRY_CERT_FILE
     PUPPET_RUNTIME_FILES_DOCKER_REGISTRY_PKCS1_KEY_FILE = constants.DOCKER_REGISTRY_PKCS1_KEY_FILE
@@ -7223,7 +7224,8 @@ class ConductorManager(service.PeriodicService):
         PUPPET_RUNTIME_CLASS_ROUTES,
         PUPPET_RUNTIME_CLASS_DOCKERDISTRIBUTION,
         PUPPET_RUNTIME_CLASS_USERS,
-        PUPPET_RUNTIME_CLASS_OSDS
+        PUPPET_RUNTIME_CLASS_OSDS,
+        PUPPET_RUNTIME_CLASS_PCI
     ]
     PUPPET_RUNTIME_FILTER_FILES = [
         PUPPET_RUNTIME_FILES_DOCKER_REGISTRY_KEY_FILE,
@@ -7282,6 +7284,9 @@ class ConductorManager(service.PeriodicService):
         # check if needed to wait for filter class
         check_wait = False
         for filter_class in filter_classes:
+            if filter_class == self.PUPPET_RUNTIME_CLASS_PCI:
+                if not self._check_ready_class_runtime(self.PUPPET_RUNTIME_CLASS_PCI):
+                    return False
             if filter_class == self.PUPPET_RUNTIME_CLASS_ROUTES:
                 if not self._check_ready_class_runtime(self.PUPPET_RUNTIME_CLASS_ROUTES):
                     LOG.info("config type %s filter_mapping %s False (check)" %
@@ -9783,7 +9788,7 @@ class ConductorManager(service.PeriodicService):
         }
 
         self._config_apply_runtime_manifest(
-            context, config_uuid, config_dict, force=True)
+            context, config_uuid, config_dict, force=True, filter_classes=[self.PUPPET_RUNTIME_CLASS_PCI])
 
     def update_platform_ratelimit_config(self, context, host_uuid):
         """update rate limit configuration of platform interfaces
@@ -14204,6 +14209,7 @@ class ConductorManager(service.PeriodicService):
 
         tmp_config_dict = deepcopy(config_dict)
         tmp_config_dict.pop("host_uuids", None)
+        tmp_config_dict.pop("puppet_path", None)
 
         valid_inventory_states = [
                     constants.INV_STATE_INITIAL_INVENTORIED,
