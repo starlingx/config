@@ -19274,23 +19274,14 @@ class ConductorManager(service.PeriodicService):
                 return
 
             if kube_upgrade_obj.state == kubernetes.KUBE_UPGRADE_ABORTING:
-                # Disable image garbage collection to avoid the race condition with the garbage
-                # collector: deleting images before they are actually used.
-                # GC is re-enabled during abort procedure.
-                try:
-                    kubernetes.disable_kubelet_garbage_collection()
-                    cutils.pmon_restart_service(kubernetes.KUBELET_SYSTEMD_SERVICE_NAME)
-                    LOG.info("Successfully disabled kubelet image garbage collection.")
-                except Exception:
-                    LOG.warning("Failed to disable garbage collection in kubelet, "
-                                "continuing anyway.")
 
                 abort_to_version = abort_to_version.strip('v')
-
                 images = kubernetes.get_k8s_images(abort_to_version)
-                target_images = [images['kube-apiserver'],
-                                 images['kube-controller-manager'],
-                                 images['kube-scheduler']]
+                target_images = [
+                    images['kube-apiserver'],
+                    images['kube-controller-manager'],
+                    images['kube-scheduler']
+                ]
 
                 try:
                     success = \
@@ -19305,6 +19296,8 @@ class ConductorManager(service.PeriodicService):
                     kube_upgrade_obj.state = kubernetes.KUBE_UPGRADE_ABORTING_FAILED
                     kube_upgrade_obj.save()
                     return
+
+                self.pin_kubernetes_control_plane_images(context, abort_to_version)
 
                 try:
                     # TODO(kdhokte): Add a mechanism to get current kubernetes version on the host
