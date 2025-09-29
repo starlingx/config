@@ -1412,6 +1412,59 @@ class KubeOperator(object):
         else:
             return cr_obj
 
+    def get_helmcharts_info(self, namespace):
+        """
+        Gets all HelmChart resources in the given namespace and extracts their names and versions.
+
+        :param namespace (str): The Kubernetes namespace to query.
+        :return (dict): dictionary with chart names as keys and chart versions as values.
+        """
+
+        custom_objects_api = self._get_kubernetesclient_custom_objects()
+        group = constants.FLUXCD_CRD_HELM_CHART_GROUP
+        version = constants.FLUXCD_CRD_HELM_CHART_VERSION
+        plural = constants.FLUXCD_CRD_HELM_CHART_PLURAL
+
+        try:
+            response = custom_objects_api.list_namespaced_custom_object(
+                group=group,
+                version=version,
+                namespace=namespace,
+                plural=plural
+            )
+
+            charts_info = {}
+            for item in response.get("items", []):
+                chart_name = item.get("spec", {}).get("chart", "")
+                chart_version = item.get("spec", {}).get("version", "")
+                charts_info[chart_name] = chart_version
+            return charts_info
+        except Exception as e:
+            LOG.error(e)
+            return {}
+
+    def patch_custom_resource(self, group, version, namespace, plural, name, body):
+        """
+        Patches a custom Kubernetes resource using the provided body.
+
+        :param group (str): The API group of the custom resource.
+        :param version (str): The API version of the custom resource.
+        :param namespace (str): The namespace where the resource is located.
+        :param plural (str): The plural name of the custom resource.
+        :param name (str): The name of the resource to patch.
+        :param body (dict): The patch body to apply to the resource.
+        """
+        custom_resource_api = self._get_kubernetesclient_custom_objects()
+
+        cr_obj = self.get_custom_resource(group, version, namespace, plural, name)
+        if cr_obj:
+            custom_resource_api.patch_namespaced_custom_object(group,
+                                                            version,
+                                                            namespace,
+                                                            plural,
+                                                            name,
+                                                            body)
+
     def apply_custom_resource(self, group, version, namespace, plural, name, body):
         custom_resource_api = self._get_kubernetesclient_custom_objects()
 

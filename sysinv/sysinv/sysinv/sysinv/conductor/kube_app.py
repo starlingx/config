@@ -2149,10 +2149,21 @@ class AppOperator(object):
             with self._lock:
                 self._upload_helm_charts(old_app)
 
+            # Ensure the old releases have the suspend key set to false, as the update process sets
+            # this key to true.
+            old_app.charts = self._get_list_of_charts(old_app)
+            for chart in old_app.charts:
+                self._kube.patch_custom_resource(
+                    constants.FLUXCD_CRD_HELM_REL_GROUP,
+                    constants.FLUXCD_CRD_HELM_REL_VERSION,
+                    chart.namespace,
+                    constants.FLUXCD_CRD_HELM_REL_PLURAL,
+                    chart.metadata_name,
+                    {"spec": {"suspend": False}}
+                )
+
             rc = True
             if fluxcd_process_required:
-                old_app.charts = self._get_list_of_charts(old_app)
-
                 # Ensure that the old app plugins are enabled prior to fluxcd process.
                 _activate_old_app_plugins(old_app)
 
@@ -2316,6 +2327,23 @@ class AppOperator(object):
                     name=app.name,
                     version=app.version,
                     reason="Failed to validate application manifest.")
+
+            # Ensure the HelmRelease is not suspended before running future operations.
+            kustomization = os.path.join(manifest_sync_path, constants.APP_ROOT_KUSTOMIZE_FILE)
+            with io.open(kustomization, 'r', encoding='utf-8') as f:
+                kustomization_yaml = next(yaml.safe_load_all(f))
+                charts = kustomization_yaml["resources"]
+
+            for chart in charts:
+                if chart != "base":
+                    chart_path = os.path.join(manifest_sync_path, chart)
+                    helmrelease_path = os.path.join(chart_path, "helmrelease.yaml")
+
+                    with io.open(helmrelease_path, 'r', encoding='utf-8') as f:
+                        helmrelease_yaml = next(yaml.safe_load_all(f))
+
+                    helmrelease_yaml['spec']['suspend'] = False
+                    cutils.atomic_update_yaml_file(helmrelease_yaml, helmrelease_path)
 
             self._update_app_status(
                 app, new_progress=constants.APP_PROGRESS_VALIDATE_UPLOAD_CHARTS)
@@ -3372,6 +3400,41 @@ class AppOperator(object):
                 cutils.get_resources_list_via_kubectl_kustomize(from_app.sync_fluxcd_manifest)
             helm_repos = cutils.filter_helm_repositories(resources_list)
             helm_utils.call_fluxcd_repository_reconciliation(helm_repos)
+
+            from_app_charts = self._get_list_of_charts(from_app)
+            for chart in from_app_charts:
+                self._kube.patch_custom_resource(
+                    constants.FLUXCD_CRD_HELM_REL_GROUP,
+                    constants.FLUXCD_CRD_HELM_REL_VERSION,
+                    chart.namespace,
+                    constants.FLUXCD_CRD_HELM_REL_PLURAL,
+                    chart.metadata_name,
+                    {"spec": {"suspend": True}}
+                )
+
+                self._kube.delete_custom_resource(
+                    constants.FLUXCD_CRD_HELM_CHART_GROUP,
+                    constants.FLUXCD_CRD_HELM_REPO_VERSION,
+                    chart.namespace,
+                    constants.FLUXCD_CRD_HELM_CHART_PLURAL,
+                    f"{chart.namespace}-{chart.name}"
+                )
+
+            MAX_HELMCHART_DELETION_RETRIES = 5
+            PROGRESS_CHECK_INTERVAL = 1
+            attempt = 0
+
+            while attempt < MAX_HELMCHART_DELETION_RETRIES:
+                aggregated_charts = []
+                for chart in from_app_charts:
+                    helmcharts = self._kube.get_helmcharts_info(chart.namespace)
+                    if helmcharts:
+                        aggregated_charts.append(helmcharts)
+                if aggregated_charts:
+                    attempt += 1
+                    time.sleep(PROGRESS_CHECK_INTERVAL)
+                    continue
+                break
 
             lifecycle_hook_info_app_update.operation = constants.APP_UPDATE_OP
 
