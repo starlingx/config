@@ -3213,6 +3213,12 @@ class AppOperator(object):
                     ) = True
                     self.app_lifecycle_actions(None, None, rpc_app, lifecycle_hook_info_app_apply)
 
+                    if caller != constants.APP_UPDATE_OP:
+                        # Update progress column of apps in uploaded state that depend on this app
+                        # that has just been applied.
+                        app_dependents.remove_dependency_msg_of_uploaded_apps(
+                            self._dbapi, app.name)
+
                     return True
         except Exception as e:
             # ex: update release version failure, user abort
@@ -3518,6 +3524,11 @@ class AppOperator(object):
                         from_app.version, to_app.version))
                 LOG.info("Application %s update from version %s to version "
                          "%s completed." % (to_app.name, from_app.version, to_app.version))
+
+                # Update progress column of apps in uploaded state that depend on this app
+                # that has just been updated.
+                app_dependents.remove_dependency_msg_of_uploaded_apps(
+                    self._dbapi, to_app.name)
 
             # The initial operation for to_app failed
             # This is reached here only when skip_recovery is requested

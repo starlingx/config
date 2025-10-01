@@ -11,6 +11,7 @@
 import re
 
 from sysinv.common import constants
+from sysinv.common import utils
 
 
 def match_dependency(app_list, app_tuple):
@@ -317,3 +318,67 @@ def validate_parent_exceptions(blocking_parent_list, dependent_parent_exceptions
             return False
 
     return True
+
+
+def remove_dependency_msg_of_uploaded_apps(dbapi, target_app_name):
+    """
+    Updates the progress of uploaded apps that depend on the target app.
+
+    Often, when an app is updated, it may satisfy dependencies for other apps
+    that are in the uploaded state. This function checks for such apps and updates
+    their progress accordingly.
+
+    Args:
+        dbapi: Database API object used to query and update applications.
+        target_app_name (str): The name of the app that was just updated.
+
+    """
+
+    # checks if any app in uploaded state has dependency on this app that is being updated.
+    uploaded_db_apps = dbapi.kube_app_get_all_by_status(constants.APP_UPLOAD_SUCCESS)
+
+    for uploaded_db_app in uploaded_db_apps:
+
+        app_metadata = uploaded_db_app.app_metadata
+        dependent_apps_list_uploaded_app = app_metadata.get(
+            constants.APP_METADATA_DEPENDENT_APPS, None)
+
+        if not dependent_apps_list_uploaded_app:
+            continue
+
+        # Check if any of the dependent apps in the uploaded app
+        # matches the target app that was just applied.
+        dependents_on_target_app = False
+        for dep_app in dependent_apps_list_uploaded_app:
+            if isinstance(dep_app, dict):
+                if dep_app.get(constants.APP_METADATA_DEPENDENT_APPS_NAME) == target_app_name:
+                    dependents_on_target_app = True
+                    break
+            elif isinstance(dep_app, list):
+                for sub_dep in dep_app:
+                    if sub_dep.get(constants.APP_METADATA_DEPENDENT_APPS_NAME) == target_app_name:
+                        dependents_on_target_app = True
+                        break
+
+        # Check if the dependent app is still missing
+        if dependents_on_target_app:
+            dependent_apps_missing_list = get_dependent_apps_missing(
+                app_metadata, dbapi)
+            if dependent_apps_missing_list:
+                # There are still missing dependencies, update progress with just the missing apps
+                missing_apps = format_missing_apps_output(
+                    dependent_apps_missing_list)
+
+                progress_msg = (
+                    f"{constants.APP_PROGRESS_COMPLETED} - "
+                    f"this app depends on the following missing apps: {missing_apps}"
+                )
+                progress_msg = utils.truncate_message(progress_msg)
+
+                values = {'progress': progress_msg}
+                dbapi.kube_app_update(uploaded_db_app.id, values)
+
+            else:
+                # All dependencies are now satisfied, update progress to completed
+                values = {'progress': constants.APP_PROGRESS_COMPLETED}
+                dbapi.kube_app_update(uploaded_db_app.id, values)
