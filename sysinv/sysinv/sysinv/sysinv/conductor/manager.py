@@ -2538,6 +2538,10 @@ class ConductorManager(service.PeriodicService):
 
            reload the related service on keystone password change"""
 
+        if os.path.isfile(constants.SKIP_KEYSTONE_PASSWORD_UPDATE):
+            LOG.info("Skipping service config for keystone user: %s" % username)
+            return
+
         LOG.info("Updating service config for keystone user: %s" % username)
         personalities = [constants.CONTROLLER]
         config_uuid = self._config_update_hosts(context, personalities)

@@ -2410,6 +2410,9 @@ ANSIBLE_ENROLLMENT_FLAG = os.path.join(tsc.VOLATILE_PATH, ".enrollment_in_progre
 ANSIBLE_ENROLLMENT_COMPLETED_FLAG = \
     os.path.join(tsc.VOLATILE_PATH, ".subcloud_enrollment_completed")
 
+SKIP_KEYSTONE_PASSWORD_UPDATE = \
+    os.path.join(tsc.VOLATILE_PATH, ".skip_keystone_password_update")
+
 # just used for upgrade purposes
 OLD_ANSIBLE_BOOTSTRAP_COMPLETED_FLAG = os.path.join(tsc.CONFIG_PATH,
                                                     ".bootstrap_completed")
