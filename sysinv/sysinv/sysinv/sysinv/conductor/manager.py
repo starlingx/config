@@ -17707,6 +17707,10 @@ class ConductorManager(service.PeriodicService):
         LOG.info("Running kubernetes audit manually.")
         self._audit_kubernetes_cluster_health(context)
 
+    def run_local_registry_secrets_audit(self, context):
+        LOG.info("Running registry secrets audit manually.")
+        self._app.audit_local_registry_secrets(context)
+
     def reconfigure_service_endpoints(self, context, host):
         """Reconfigure the service endpoints
 

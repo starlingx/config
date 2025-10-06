@@ -1931,6 +1931,13 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.call(context,
                          self.make_msg('run_kubernetes_health_audit'))
 
+    def run_local_registry_secrets_audit(self, context):
+        """Execute audit to update the registry secrets in each namespace
+        :param context: request context.
+        """
+        return self.call(context,
+                         self.make_msg('run_local_registry_secrets_audit'))
+
     def rollback_all_apps(self, context):
         return self.cast(context, self.make_msg('rollback_all_apps'))
 
