@@ -2200,9 +2200,12 @@ class AppOperator(object):
                                     new_chart.namespace,
                                     constants.FLUXCD_CRD_HELM_REL_PLURAL,
                                     new_chart.metadata_name)
+
                                 # Use helm to immediately remove the release
-                                helm_utils.delete_helm_release(new_chart.release,
-                                                               new_chart.namespace)
+                                helm_utils.delete_helm_release(
+                                    new_chart.release,
+                                    new_chart.namespace
+                                )
                     else:
                         rc = False
                 else:
@@ -2213,6 +2216,16 @@ class AppOperator(object):
 
         except exception.ApplicationApplyFailure:
             rc = False
+        except exception.HelmFailure as e:
+            self._update_app_status(
+                old_app,
+                constants.APP_REMOVE_FAILURE,
+                constants.APP_PROGRESS_RECOVER_ABORTED.format(old_app.version) +
+                constants.APP_PROGRESS_REMOVE_FAILED_WARNING.format(constants.APP_REMOVE_FAILURE) +
+                'Please check logs for details.'
+            )
+            LOG.error(f"The attempt to delete helmrelease failed with error: {e}")
+            return False
         except Exception as e:
             # ie. patch report error, cleanup application files error
             #     helm release delete failure
@@ -3691,18 +3704,29 @@ class AppOperator(object):
             if helm_release_status == self._fluxcd.HELM_RELEASE_STATUS_UNKNOWN:
                 LOG.info("Removing helm release which has an operation in "
                          "progress: {} - {}".format(namespace, release))
-                # Send delete request in FluxCD so it doesn't recreate the helm
-                # release
-                self._kube.delete_custom_resource(
-                    constants.FLUXCD_CRD_HELM_REL_GROUP,
-                    constants.FLUXCD_CRD_HELM_REL_VERSION,
-                    namespace,
-                    constants.FLUXCD_CRD_HELM_REL_PLURAL,
-                    release)
-                # Remove resource in Helm
-                helm_utils.delete_helm_release(
-                    helm_release_dict['spec']['releaseName'],
-                    namespace=namespace)
+                try:
+                    # Send delete request in FluxCD so it doesn't recreate the helm
+                    # release
+                    self._kube.delete_custom_resource(
+                        constants.FLUXCD_CRD_HELM_REL_GROUP,
+                        constants.FLUXCD_CRD_HELM_REL_VERSION,
+                        namespace,
+                        constants.FLUXCD_CRD_HELM_REL_PLURAL,
+                        release)
+                    # Remove resource in Helm
+                    helm_utils.delete_helm_release(
+                        helm_release_dict['spec']['releaseName'],
+                        namespace=namespace)
+                except exception.HelmFailure as e:
+                    self._update_app_status(
+                        app,
+                        constants.APP_REMOVE_FAILURE,
+                        constants.APP_PROGRESS_REMOVE_FAILED_WARNING.format(
+                            constants.APP_REMOVE_FAILURE
+                        ) + 'Please check logs for details.'
+                    )
+                    LOG.error(f"The attempt to delete helmrelease failed with error: {e}")
+                    return False
 
         if self._make_app_request(app, constants.APP_REMOVE_OP):
             # After fluxcd delete, the data for the releases are purged from
@@ -4757,13 +4781,19 @@ class FluxCDHelper(object):
     def run_kubectl_kustomize(self, operation_type, manifest_dir):
         if operation_type == constants.KUBECTL_KUSTOMIZE_VALIDATE:
             cmd = ['kubectl', '--kubeconfig', kubernetes.KUBERNETES_ADMIN_CONF,
-               constants.KUBECTL_KUSTOMIZE_APPLY, '-k', manifest_dir, '--dry-run=server']
+               constants.KUBECTL_KUSTOMIZE_APPLY, '-k', manifest_dir, '--dry-run=server',
+               f'--request-timeout={constants.KUBECTL_KUSTOMIZE_REQUEST_TIMEOUT}',
+               f'--timeout={constants.KUBECTL_KUSTOMIZE_TIMEOUT}']
         elif operation_type == constants.KUBECTL_KUSTOMIZE_DELETE:
             cmd = ['kubectl', '--kubeconfig', kubernetes.KUBERNETES_ADMIN_CONF,
-                   operation_type, '-k', manifest_dir, '--ignore-not-found=true']
+                   operation_type, '-k', manifest_dir, '--ignore-not-found=true',
+                   f'--request-timeout={constants.KUBECTL_KUSTOMIZE_REQUEST_TIMEOUT}',
+                   f'--timeout={constants.KUBECTL_KUSTOMIZE_TIMEOUT}']
         else:
             cmd = ['kubectl', '--kubeconfig', kubernetes.KUBERNETES_ADMIN_CONF,
-                   operation_type, '-k', manifest_dir]
+                   operation_type, '-k', manifest_dir,
+                   f'--request-timeout={constants.KUBECTL_KUSTOMIZE_REQUEST_TIMEOUT}',
+                   f'--timeout={constants.KUBECTL_KUSTOMIZE_TIMEOUT}']
 
         process = subprocess.Popen(cmd,
         stdout=subprocess.PIPE, stderr=subprocess.PIPE,
