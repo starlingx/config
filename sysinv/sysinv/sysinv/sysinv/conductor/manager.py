@@ -17835,8 +17835,18 @@ class ConductorManager(service.PeriodicService):
         """
         try:
             hieradata_content = ""
+
+            def represent_null(representer, _):
+                return representer.represent_scalar('tag:yaml.org,2002:null', 'null')
+
+            yaml_rt = yaml.YAML()
+            yaml_rt.preserve_quotes = True
+            yaml_rt.default_flow_style = False
+            yaml_rt.representer.add_representer(type(None), represent_null)
+
             with open(file_path, 'r') as file:
-                hieradata_content = yaml.safe_load(file)
+                hieradata_content = yaml_rt.load(file)
+
             if hieradata_content:
                 for config_parameter in configs_to_be_updated:
                     if config_parameter in hieradata_content:
@@ -17846,7 +17856,7 @@ class ConductorManager(service.PeriodicService):
                         raise exception.SysinvException("Config parameter %s not found in hieradata"
                                                         " file %s" % (config_parameter, file_path))
                 with open(file_path, 'w') as file:
-                    yaml.safe_dump(hieradata_content, file)
+                    yaml_rt.dump(hieradata_content, file)
                 LOG.info("Hieradata file %s updated with values %s"
                          % (file_path, configs_to_be_updated))
             else:
