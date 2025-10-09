@@ -2791,7 +2791,10 @@ class InterfaceControllerVlanOverBond(InterfaceHostTestCase):
                      'stx-description': f'ifname:eth0,net:{None}', 'tc': False},
             "eth1": {'family': 'inet', 'method': 'manual',
                      'stx-description': f'ifname:eth1,net:{None}', 'tc': False},
-            "pxeboot0": {'family': 'inet', 'method': 'static',
+            "pxeboot0": {'family': 'inet', 'method': 'manual',
+                     'stx-description': f'ifname:pxeboot0,net:{None}',
+                     'bond-slaves': 'eth0 eth1 ', 'tc': False},
+            "pxeboot0:1": {'family': 'inet', 'method': 'static',
                      'stx-description': f'ifname:pxeboot0,net:{constants.NETWORK_TYPE_PXEBOOT}',
                      'bond-slaves': 'eth0 eth1 ', 'tc': False},
             "vlan1": {'family': 'inet', 'method': 'manual',
@@ -3096,7 +3099,10 @@ class InterfaceComputeVlanOverEthernet(InterfaceHostTestCase):
         self.expected_data_interfaces = ['eth4', 'data']
         self.expected_pci_interfaces = ['sriov', 'pthru']
         self.exp_yaml_config = {
-            "eth0": {'family': 'inet', 'method': 'dhcp',
+            "eth0": {'family': 'inet', 'method': 'manual',
+                     'stx-description': f'ifname:pxeboot,net:{None}',
+                     'tc': False},
+            "eth0:1": {'family': 'inet', 'method': 'dhcp',
                      'stx-description': f'ifname:pxeboot,net:{constants.NETWORK_TYPE_PXEBOOT}',
                      'tc': False},
             "eth1": {'family': 'inet', 'method': 'manual',
@@ -3156,7 +3162,10 @@ class InterfaceComputeVlanOverEthernetCfg2(InterfaceHostTestCase):
         self.exp_yaml_config = {
             "data": {'family': 'inet', 'method': 'manual',
                      'stx-description': f'ifname:data,net:{None}', 'tc': False},
-            "eth0": {'family': 'inet', 'method': 'dhcp',
+            "eth0": {'family': 'inet', 'method': 'manual',
+                     'stx-description': f'ifname:pxeboot,net:{None}',
+                     'tc': False},
+            "eth0:1": {'family': 'inet', 'method': 'dhcp',
                      'stx-description': f'ifname:pxeboot,net:{constants.NETWORK_TYPE_PXEBOOT}',
                      'tc': False},
             "eth1": {'family': 'inet', 'method': 'manual',
@@ -3324,7 +3333,10 @@ class InterfaceComputeVlanOverBond(InterfaceHostTestCase):
                      'stx-description': f'ifname:eth0,net:{None}', 'tc': False},
             "eth1": {'family': 'inet', 'method': 'manual',
                      'stx-description': f'ifname:eth1,net:{None}', 'tc': False},
-            "pxeboot": {'family': 'inet', 'method': 'dhcp',
+            "pxeboot": {'family': 'inet', 'method': 'manual',
+                     'stx-description': f'ifname:pxeboot,net:{None}',
+                     'bond-slaves': 'eth0 eth1 ', 'tc': False},
+            "pxeboot:1": {'family': 'inet', 'method': 'dhcp',
                      'stx-description': f'ifname:pxeboot,net:{constants.NETWORK_TYPE_PXEBOOT}',
                      'bond-slaves': 'eth0 eth1 ', 'tc': False},
             "vlan1": {'family': 'inet', 'method': 'manual',
@@ -4323,6 +4335,8 @@ class InterfaceConfigTestMixin(InterfaceTestCaseMixin):
         self._add_ethernet('none')
         expected = {
             'pxe0': [
+                {NET: None, FAMILY: INET, METHOD: MANUAL,
+                    OPTIONS: {POST_UP: [IPV6_CFG]}},
                 {NET: constants.NETWORK_TYPE_PXEBOOT, FAMILY: INET, METHOD: STATIC,
                     OPTIONS: {POST_UP: [IPV6_CFG]}}],
             'mgmt0': [
@@ -4353,6 +4367,11 @@ class InterfaceConfigTestMixin(InterfaceTestCaseMixin):
                        constants.NETWORK_TYPE_CLUSTER_HOST)
         expected = {
             'pxe0': [
+                {NET: None, FAMILY: INET, METHOD: MANUAL,
+                    OPTIONS: {'bond-lacp-rate': 'fast', 'bond-miimon': '100',
+                              'bond-mode': '802.3ad', 'bond-slaves': True,
+                              'bond-xmit-hash-policy': 'layer2', 'hwaddress': True,
+                              POST_UP: [SET_TC, IPV6_CFG], UP: [SLEEP]}},
                 {NET: constants.NETWORK_TYPE_PXEBOOT, FAMILY: INET, METHOD: STATIC,
                     OPTIONS: {'bond-lacp-rate': 'fast', 'bond-miimon': '100',
                               'bond-mode': '802.3ad', 'bond-slaves': True,
@@ -4415,6 +4434,11 @@ class InterfaceConfigTestMixin(InterfaceTestCaseMixin):
                        [constants.NETWORK_TYPE_MGMT, constants.NETWORK_TYPE_CLUSTER_HOST])
         expected = {
             'pxe0': [
+                {NET: None, FAMILY: INET, METHOD: MANUAL,
+                    OPTIONS: {'bond-lacp-rate': 'fast', 'bond-miimon': '100',
+                              'bond-mode': '802.3ad', 'bond-slaves': True,
+                              'bond-xmit-hash-policy': 'layer2', 'hwaddress': True,
+                              POST_UP: [SET_TC, IPV6_CFG], UP: [SLEEP]}},
                 {NET: constants.NETWORK_TYPE_PXEBOOT, FAMILY: INET, METHOD: STATIC,
                     OPTIONS: {'bond-lacp-rate': 'fast', 'bond-miimon': '100',
                               'bond-mode': '802.3ad', 'bond-slaves': True,
@@ -4509,6 +4533,8 @@ class InterfaceConfigTestMixin(InterfaceTestCaseMixin):
                        constants.NETWORK_TYPE_CLUSTER_HOST)
         expected = {
             'pxe0': [
+                {NET: None, FAMILY: INET, METHOD: MANUAL,
+                    OPTIONS: {POST_UP: [IPV6_CFG]}},
                 {NET: constants.NETWORK_TYPE_PXEBOOT, FAMILY: INET, METHOD: STATIC,
                     OPTIONS: {POST_UP: [IPV6_CFG]}}],
             'mgmt0': [

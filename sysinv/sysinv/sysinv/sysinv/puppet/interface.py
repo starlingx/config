@@ -1682,17 +1682,8 @@ def process_interface_labels(config, context):
                     break
 
         if len(label_map[intf]) == 1:
-            label = next(iter(label_map[intf]))
-            if 'options' in config[NETWORK_CONFIG_RESOURCE][label].keys():
-                options = config[NETWORK_CONFIG_RESOURCE][label]['options']
-                if ('stx-description' in options.keys()):
-                    if (f"net:{constants.NETWORK_TYPE_PXEBOOT}" in options['stx-description']):
-                        merge_interface_operations(config, intf, label)
-                        # replace the base interface with the labeled one
-                        config[NETWORK_CONFIG_RESOURCE][intf] = config[NETWORK_CONFIG_RESOURCE][label]
-                        del config[NETWORK_CONFIG_RESOURCE][label]
-
-            # process DHCPv6, needs to be in the base interface
+            # process DHCPv6, needs to be in the base interface, limitation in ifupdown to handle
+            # this case (for now not used in StarlingX).
             for label in label_map[intf].keys():
                 intf_data = label_map[intf][label]
                 if (intf_data['family'] == 'inet6') and (intf_data['method'] == 'dhcp'):
