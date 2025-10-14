@@ -1084,14 +1084,19 @@ class PlatformPuppet(base.BasePuppet):
              os.path.isfile(constants.OLD_ANSIBLE_BOOTSTRAP_COMPLETED_FLAG))
 
         if bootstrap_completed:
-            cert_data = utils.get_admin_ep_cert(
-                system.distributed_cloud_role)
-
-            if cert_data is None:
-                return config
-
-            dc_root_ca_crt = cert_data['dc_root_ca_crt']
-            admin_ep_crt = cert_data['admin_ep_crt']
+            try:
+                cert_data = utils.get_admin_ep_cert(
+                    system.distributed_cloud_role)
+            except Exception as e:
+                LOG.error("Error retrieving adminep certificate data:\n%s" % e)
+                # Puppet doesn't update the CA files if the content is empty
+                dc_root_ca_crt = ''
+                admin_ep_crt = ''
+            else:
+                if cert_data is None:
+                    return config
+                dc_root_ca_crt = cert_data['dc_root_ca_crt']
+                admin_ep_crt = cert_data['admin_ep_crt']
 
             config.update({
                 'platform::config::dccert::params::dc_root_ca_crt':
