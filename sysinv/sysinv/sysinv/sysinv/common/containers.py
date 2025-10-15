@@ -38,7 +38,7 @@ def pull_image_to_crictl(image, crictl_auth, attempts=5, delay_on_retry=True):
     """
     start = time.time()
     try:
-        LOG.info("crictl pull image [%s] started." % (image))
+        LOG.info("crictl image pull [%s] started." % (image))
 
         cmd = ["crictl", "pull", "--creds", crictl_auth, image]
         cutils.execute(*cmd, attempts=attempts,
@@ -48,7 +48,7 @@ def pull_image_to_crictl(image, crictl_auth, attempts=5, delay_on_retry=True):
                                         "Error: [%s]" % (image, e))
 
     elapsed_time = time.time() - start
-    LOG.info("crictl pull image [%s] succeeded in %s seconds" % (image, elapsed_time))
+    LOG.info("crictl image pull [%s] succeeded in %s seconds" % (image, elapsed_time))
 
 
 def get_crictl_image_list():

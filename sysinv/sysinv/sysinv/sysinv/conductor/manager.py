@@ -2572,7 +2572,7 @@ class ConductorManager(service.PeriodicService):
         }
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
-    def docker_registry_image_list(self, context, filter_out_untagged):
+    def docker_registry_image_list(self, filter_out_untagged):
         try:
             image_list_response = docker_registry.docker_registry_get("_catalog")
         except requests.exceptions.SSLError:
@@ -2622,8 +2622,10 @@ class ConductorManager(service.PeriodicService):
             raise exception.DockerRegistryAPIException()
 
         if image_tags_response.status_code != 200:
-            LOG.error("Bad response from docker registry: %s"
-                % image_tags_response.status_code)
+            LOG.error(
+                "Bad response from docker registry: %s"
+                % image_tags_response.status_code
+            )
             return []
 
         image_tags_response = image_tags_response.json()
@@ -18129,25 +18131,27 @@ class ConductorManager(service.PeriodicService):
         local_image = None
 
         if not image.startswith(constants.DOCKER_REGISTRY_SERVER):
-            target_image = self._pull_image_to_docker(image, registries_info, docker_client)
-
-            if not target_image:
+            try:
+                # A retry error might be raised when reaching the max attempts
+                target_image = self._pull_image_to_docker(image, registries_info, docker_client)
+            except Exception as e:
+                LOG.error(f"Image pull failed for [{image}] with error {e}")
                 return False
 
+            local_image = f"{constants.DOCKER_REGISTRY_SERVER}/{image}"
             try:
-                LOG.info("Image tag and push started for [%s]" % (target_image))
+                LOG.info("Image tag and push started for [%s]" % (local_image))
                 # After pulling the image, it needs to be sent to the system's local
                 # registry, so it needs to be tagged to registry.local:9000
-                local_image = f"{constants.DOCKER_REGISTRY_SERVER}/{image}"
                 docker_client.tag(target_image, local_image)
                 docker_client.push(local_image, auth_config=local_registry_auth)
                 # Test inspecting the image. This avoids a scenario where the push command
                 # returns a false positive result during docker service restarts.
                 docker_client.inspect_distribution(local_image, auth_config=local_registry_auth)
-                LOG.info("Image tag and push successful for [%s]" % (target_image))
+                LOG.info("Image tag and push successful for [%s]" % (local_image))
             except Exception as e:
                 LOG.error("Image tag and push failed for [%s] with error [%s]"
-                         % (target_image, e))
+                         % (local_image, e))
                 return False
 
             try:
@@ -18166,35 +18170,6 @@ class ConductorManager(service.PeriodicService):
                             % (target_image, local_image, e))
         return True
 
-    def _pull_target_image(self, image, crictl_auth, registries,
-                           local_registry_auth, docker_client):
-        """Worker method to pull an image to both local registry and crictl
-
-        :param: image: image name
-        :param: crictl_auth: auth credentials for containerd
-        :param: registries: registries information from service parameters
-        :param: local_registry_auth: authentication for the local registry
-        :param: docker_client: docker's client object
-
-        :returns: True only if download to both local registry and crictl
-                  successful, False otherwise.
-        """
-        # Retun True only if both methods succeed otherwise return False
-        try:
-            if self._pull_image_from_upstream_tag_and_push_to_local_reg(
-                    docker_client, local_registry_auth, registries, image):
-                image = f"{constants.DOCKER_REGISTRY_SERVER}/{image}"
-                if self._pull_image_to_crictl(image, crictl_auth):
-                    LOG.info("Succesfully pulled image [%s] to the local registry and crictl "
-                             % (image))
-                    return True
-            LOG.error("Failed to pull image: [%s]" % (image))
-            return False
-        except Exception as ex:
-            LOG.error("Failed to pull image [%s] to local registry and crictl "
-                      "with error: [%s]" % (image, ex))
-            return False
-
     def download_images_from_upstream_to_local_reg_and_crictl(self, images):
         """Download images from upstream private/public registry to local
            registry and crictl
@@ -18202,53 +18177,89 @@ class ConductorManager(service.PeriodicService):
         This method retrieves required registry and crictl auth credentials
         and pulls all images to local registry and crictl concurrently.
 
-        :param: context: context object.
         :param: images: list of images to be pulled.
 
         :returns: True if success False otherwise
         """
-        failed_at_least_one_image = False
+
+        # Verify which image needs to be downloaded to docker and crictl
+        images = set(images)
+        # Create a list of images with the registry server prefix
+        images_with_prefix = {
+            f"{constants.DOCKER_REGISTRY_SERVER}/{image}"
+            for image in images
+        }
+
+        try:
+            # The list method returns a list of dictionaries in the format
+            # [{"name": "<image>"}, {"name": "<image>"}]
+            docker_images = {
+                image["name"]
+                for image in self.docker_registry_image_list(False)
+            }
+        except exception.DockerRegistryAPIException as e:
+            LOG.warning(f"An error occurred when retrieving docker image list: {e}")
+            docker_images = set()
+        except Exception as e:
+            LOG.error(f"An error occurred when retrieving docker image list: {e}")
+            raise e
+
+        try:
+            crictl_images = set(containers_util.get_crictl_image_list())
+        except exception.SysinvException as e:
+            LOG.warning(f"An error occurred when retrieving crictl image list: {e}")
+            crictl_images = set()
+        except Exception as e:
+            LOG.error(f"An error occurred when retrieving crictl image list: {e}")
+            raise e
+
+        docker_images_to_pull = images - docker_images
+        crictl_images_to_pull = images_with_prefix - crictl_images
+
+        # Check if there is any image to pull in either crictl or docker registry
+        if not (docker_images_to_pull and crictl_images_to_pull):
+            LOG.info("All images are already stored in local registry and crictl.")
+            return True
+
         try:
             docker_client = docker.APIClient(
-                timeout=constants.IMAGE_DOWNLOAD_TIMEOUT_IN_SECS)
+                timeout=constants.IMAGE_DOWNLOAD_TIMEOUT_IN_SECS
+            )
             local_registry_auth = cutils.get_local_docker_registry_auth()
             crictl_auth = (
                 f"{local_registry_auth['username']}:{local_registry_auth['password']}"
             )
             registries = self._docker.retrieve_specified_registries()
-            try:
-                crictl_images = containers_util.get_crictl_image_list()
-            except exception.SysinvException:
-                # Never mind, still proceed
-                crictl_images = []
-
-            # Skip images that are already present in crictl
-            images_to_be_pulled = []
-            for image in images:
-                if f"{constants.DOCKER_REGISTRY_SERVER}/{image}" in crictl_images:
-                    LOG.info("Image [%s] is already present in crictl. "
-                             "No need to download. Continuing..." % (image))
-                    continue
-                images_to_be_pulled.append(image)
-
-            pull_tasks = []
-            with ThreadPoolExecutor() as executor:
-                for image in images_to_be_pulled:
-                    pull_tasks.append(executor.submit(
-                        self._pull_target_image, image, crictl_auth,
-                        registries, local_registry_auth, docker_client))
-
-            # No need to log the results again as we have already logged them
-            # inside the worker method. Simply check for any failures.
-            if not all([task.result() for task in as_completed(pull_tasks)]):
-                failed_at_least_one_image = True
-
         except Exception as ex:
             # Handle an unexpected and unhandled exception
-            LOG.exception("An unknown error occured downloading images: [%s]" % (ex))
+            LOG.exception(f"An unknown error occured when downloading images: [{ex}]")
             return False
 
-        return not failed_at_least_one_image
+        # Pull all necessary images to docker first
+        docker_tasks = []
+        with ThreadPoolExecutor() as executor:
+            for image in docker_images_to_pull:
+                docker_tasks.append(executor.submit(
+                    self._pull_image_from_upstream_tag_and_push_to_local_reg,
+                    docker_client, local_registry_auth, registries, image
+                ))
+
+        # No need to log the results again as we have already logged them inside the
+        # worker method. Simply check for any failures.
+        if not all([task.result() for task in as_completed(docker_tasks)]):
+            return False
+
+        # Pull all necessary images to crictl if docker pull was successfull
+        crictl_tasks = []
+        with ThreadPoolExecutor() as executor:
+            for image in crictl_images_to_pull:
+                crictl_tasks.append(executor.submit(
+                    self._pull_image_to_crictl, image, crictl_auth
+                ))
+
+        # No need to log the results again as we have already logged them inside the
+        # worker method. Simply check for any failures.
+        return all([task.result() for task in as_completed(crictl_tasks)])
 
     def kube_download_images(self, context, kube_version):
         """Download the kubernetes images for this version"""

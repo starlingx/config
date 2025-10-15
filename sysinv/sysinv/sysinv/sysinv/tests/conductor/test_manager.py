@@ -1843,7 +1843,9 @@ class ManagerTestCase(base.DbTestCase):
         """Test download_images_from_upstream_to_local_reg_and_crictl: success case
         """
 
-        images_to_be_downloaded = ['fake_image1', 'fake_image2', 'fake_image3', 'fake_image4']
+        images_to_be_downloaded = [
+            'fake_image1', 'fake_image2', 'fake_image3', 'fake_image4', 'fake_image5'
+        ]
         fake_local_registry_auth = {'username': 'fake_username', 'password': 'fake_password'}
         fake_registries = {'fake_registries': 'fake_registries'}
         fake_crictl_auth = (
@@ -1866,14 +1868,20 @@ class ManagerTestCase(base.DbTestCase):
         mock_get_crictl_image_list = mock.MagicMock()
         p = mock.patch('sysinv.common.containers.get_crictl_image_list',
                        mock_get_crictl_image_list)
-        p.start().return_value = [f"{constants.DOCKER_REGISTRY_SERVER}/fake_image4",
-                                  f"{constants.DOCKER_REGISTRY_SERVER}/fake_image5"]
+        p.start().return_value = [f"{constants.DOCKER_REGISTRY_SERVER}/fake_image4"]
         self.addCleanup(p.stop)
 
         mock_get_img_tag_with_registry = mock.MagicMock()
         p = mock.patch('sysinv.conductor.kube_app.DockerHelper._get_img_tag_with_registry',
                        mock_get_img_tag_with_registry)
         p.start().return_value = get_img_tag_with_registry_output
+        self.addCleanup(p.stop)
+
+        p = mock.patch(
+            'sysinv.conductor.manager.ConductorManager.docker_registry_image_list',
+            mock.MagicMock()
+        )
+        p.start().return_value = [{"name": 'fake_image5'}]
         self.addCleanup(p.stop)
 
         mock_docker_apiclient_pull = mock.MagicMock()
@@ -1919,58 +1927,70 @@ class ManagerTestCase(base.DbTestCase):
         mock_retrieve_specified_registries.assert_called_once()
         mock_get_crictl_image_list.assert_called_once()
 
+        # Image 5 is already in docker, so it should not appear in any docker request
         expected_calls = [mock.call('fake_image1', fake_registries),
                           mock.call('fake_image2', fake_registries),
-                          mock.call('fake_image3', fake_registries)]
+                          mock.call('fake_image3', fake_registries),
+                          mock.call('fake_image4', fake_registries)]
         mock_get_img_tag_with_registry.assert_has_calls(expected_calls, any_order=True)
 
         mock_docker_apiclient_pull.assert_called_with(get_img_tag_with_registry_output[0],
                                                 auth_config=get_img_tag_with_registry_output[1])
-        self.assertEqual(mock_docker_apiclient_pull.call_count, 3)
+        self.assertEqual(mock_docker_apiclient_pull.call_count, 4)
 
         expected_calls = [mock.call(get_img_tag_with_registry_output[0],
                                     f"{constants.DOCKER_REGISTRY_SERVER}/fake_image1"),
                           mock.call(get_img_tag_with_registry_output[0],
                                     f"{constants.DOCKER_REGISTRY_SERVER}/fake_image2"),
                           mock.call(get_img_tag_with_registry_output[0],
-                                    f"{constants.DOCKER_REGISTRY_SERVER}/fake_image3")]
+                                    f"{constants.DOCKER_REGISTRY_SERVER}/fake_image3"),
+                          mock.call(get_img_tag_with_registry_output[0],
+                                    f"{constants.DOCKER_REGISTRY_SERVER}/fake_image4")]
         mock_docker_apiclient_tag.assert_has_calls(expected_calls, any_order=True)
-        self.assertEqual(mock_docker_apiclient_tag.call_count, 3)
+        self.assertEqual(mock_docker_apiclient_tag.call_count, 4)
 
         expected_calls = [mock.call(f"{constants.DOCKER_REGISTRY_SERVER}/fake_image1",
                                     auth_config=get_img_tag_with_registry_output[1]),
                           mock.call(f"{constants.DOCKER_REGISTRY_SERVER}/fake_image2",
                                     auth_config=get_img_tag_with_registry_output[1]),
                           mock.call(f"{constants.DOCKER_REGISTRY_SERVER}/fake_image3",
+                                    auth_config=get_img_tag_with_registry_output[1]),
+                          mock.call(f"{constants.DOCKER_REGISTRY_SERVER}/fake_image4",
                                     auth_config=get_img_tag_with_registry_output[1])]
         mock_docker_apiclient_push.assert_has_calls(expected_calls, any_order=True)
-        self.assertEqual(mock_docker_apiclient_push.call_count, 3)
+        self.assertEqual(mock_docker_apiclient_push.call_count, 4)
         mock_docker_apiclient_inspect.assert_has_calls(expected_calls, any_order=True)
-        self.assertEqual(mock_docker_apiclient_inspect.call_count, 3)
+        self.assertEqual(mock_docker_apiclient_inspect.call_count, 4)
 
         expected_calls = [mock.call(f"{constants.DOCKER_REGISTRY_SERVER}/fake_image1"),
                           mock.call(f"{constants.DOCKER_REGISTRY_SERVER}/fake_image2"),
                           mock.call(f"{constants.DOCKER_REGISTRY_SERVER}/fake_image3"),
+                          mock.call(f"{constants.DOCKER_REGISTRY_SERVER}/fake_image4"),
+                          mock.call("fake_target_image"),
                           mock.call("fake_target_image"),
                           mock.call("fake_target_image"),
                           mock.call("fake_target_image")]
         mock_docker_apiclient_remove_image.assert_has_calls(expected_calls, any_order=True)
-        self.assertEqual(mock_docker_apiclient_remove_image.call_count, 6)
+        self.assertEqual(mock_docker_apiclient_remove_image.call_count, 8)
 
         expected_calls = [mock.call(f"{constants.DOCKER_REGISTRY_SERVER}/fake_image1",
                                     fake_crictl_auth),
                           mock.call(f"{constants.DOCKER_REGISTRY_SERVER}/fake_image2",
                                     fake_crictl_auth),
                           mock.call(f"{constants.DOCKER_REGISTRY_SERVER}/fake_image3",
+                                    fake_crictl_auth),
+                          mock.call(f"{constants.DOCKER_REGISTRY_SERVER}/fake_image5",
                                     fake_crictl_auth)]
         mock_pull_image_to_crictl.assert_has_calls(expected_calls, any_order=True)
-        self.assertEqual(mock_pull_image_to_crictl.call_count, 3)
+        # Image 4 is in crictl, but 5 is not
+        self.assertEqual(mock_pull_image_to_crictl.call_count, 4)
 
     def test_download_images_from_upstream_to_local_reg_and_crictl_failure_docker_pull_fail(self):
         """Test download_images_from_upstream_to_local_reg_and_crictl: docker pull failed
 
         Also tests failure to get list of existing images from crictl
         """
+
         images_to_be_downloaded = ['fake_image1', 'fake_image2', 'fake_image3']
         fake_local_registry_auth = {'username': 'fake_username', 'password': 'fake_password'}
         fake_registries = {'fake_registries': 'fake_registries'}
@@ -1998,6 +2018,13 @@ class ManagerTestCase(base.DbTestCase):
         p = mock.patch('sysinv.conductor.kube_app.DockerHelper._get_img_tag_with_registry',
                        mock_get_img_tag_with_registry)
         p.start().return_value = get_img_tag_with_registry_output
+        self.addCleanup(p.stop)
+
+        p = mock.patch(
+            'sysinv.conductor.manager.ConductorManager.docker_registry_image_list',
+            mock.MagicMock()
+        )
+        p.start().return_value = []
         self.addCleanup(p.stop)
 
         mock_docker_apiclient_pull = mock.MagicMock()
@@ -2087,6 +2114,13 @@ class ManagerTestCase(base.DbTestCase):
         p.start().return_value = get_img_tag_with_registry_output
         self.addCleanup(p.stop)
 
+        p = mock.patch(
+            'sysinv.conductor.manager.ConductorManager.docker_registry_image_list',
+            mock.MagicMock()
+        )
+        p.start().return_value = []
+        self.addCleanup(p.stop)
+
         mock_docker_apiclient_pull = mock.MagicMock()
         p = mock.patch('docker.APIClient.pull', mock_docker_apiclient_pull)
         p.start()
@@ -2119,7 +2153,8 @@ class ManagerTestCase(base.DbTestCase):
         self.addCleanup(p.stop)
 
         result = self.service.download_images_from_upstream_to_local_reg_and_crictl(
-            images_to_be_downloaded)
+            images_to_be_downloaded
+        )
 
         # Assertions start here
         # Assert Main Result
@@ -2188,6 +2223,13 @@ class ManagerTestCase(base.DbTestCase):
         p = mock.patch('sysinv.conductor.kube_app.DockerHelper._get_img_tag_with_registry',
                        mock_get_img_tag_with_registry)
         p.start().return_value = get_img_tag_with_registry_output
+        self.addCleanup(p.stop)
+
+        p = mock.patch(
+            'sysinv.conductor.manager.ConductorManager.docker_registry_image_list',
+            mock.MagicMock()
+        )
+        p.start().return_value = []
         self.addCleanup(p.stop)
 
         mock_docker_apiclient_pull = mock.MagicMock()
@@ -2304,6 +2346,13 @@ class ManagerTestCase(base.DbTestCase):
         p = mock.patch('sysinv.conductor.kube_app.DockerHelper._get_img_tag_with_registry',
                        mock_get_img_tag_with_registry)
         p.start().return_value = get_img_tag_with_registry_output
+        self.addCleanup(p.stop)
+
+        p = mock.patch(
+            'sysinv.conductor.manager.ConductorManager.docker_registry_image_list',
+            mock.MagicMock()
+        )
+        p.start().return_value = []
         self.addCleanup(p.stop)
 
         mock_docker_apiclient_pull = mock.MagicMock()
