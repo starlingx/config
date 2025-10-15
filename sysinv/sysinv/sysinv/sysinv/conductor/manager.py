@@ -14024,7 +14024,7 @@ class ConductorManager(service.PeriodicService):
                 LOG.info("config runtime c=%s, h=%s host_uuids=%s host_intersection=%s" %
                         (c, h, host_uuids, host_intersection))
                 if c in classes_list:
-                    if host_intersection:
+                    if not host_uuids or host_intersection:
                         LOG.info("config runtime removing host_uuids=%s from %s" %
                                 (host_uuids, self._runtime_class_apply_in_progress))
                         self._runtime_class_apply_in_progress.remove((c, h))
