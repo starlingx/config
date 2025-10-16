@@ -7,10 +7,6 @@ behavior:
   platform_managed_app: true
   desired_state: applied
   evaluate_reapply:
-    after:
-      - metrics-server.1
-      - vault.1
-      - oran.3
     triggers:
       - type: kube-upgrade-complete
         filters:

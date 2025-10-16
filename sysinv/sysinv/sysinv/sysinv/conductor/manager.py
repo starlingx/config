@@ -383,7 +383,6 @@ class ConductorManager(service.PeriodicService):
             constants.APP_METADATA_PLATFORM_MANAGED_APPS: {},
             constants.APP_METADATA_DESIRED_STATES: {},
             constants.APP_METADATA_ORDERED_APPS: {},
-            constants.APP_METADATA_ORDERED_APPS_BY_AFTER_KEY: [],
             constants.APP_METADATA_CYCLIC_DEPENDENCIES: []
         }
 
@@ -8786,14 +8785,7 @@ class ConductorManager(service.PeriodicService):
                     self._auto_upload_managed_app(context, app_name)
 
         apps = []
-        # TODO(dbarbosa): remove determine_apps_reapply_order_by_after_key function after the
-        # previous release no longer use the after key in the metadata of the platform apps
-        if app_metadata.has_after_key_in_apps_metadata(
-                self.apps_metadata[constants.APP_METADATA_APPS]):
-            apps = self.determine_apps_reapply_order_by_after_key(
-                name_only=True, filter_active=False)
-        else:
-            apps = self.determine_apps_reapply_order(name_only=True,
+        apps = self.determine_apps_reapply_order(name_only=True,
                                                      filter_active=False)
 
         # Check the application state and take the appropriate action
@@ -8982,14 +8974,7 @@ class ConductorManager(service.PeriodicService):
             return
 
         apps = []
-        # TODO(dbarbosa): remove determine_apps_reapply_order_by_after_key function after the
-        # previous release no longer use the after key in the metadata of the platform apps
-        if app_metadata.has_after_key_in_apps_metadata(
-                self.apps_metadata[constants.APP_METADATA_APPS]):
-            apps = self.determine_apps_reapply_order_by_after_key(
-                name_only=True, filter_active=False)
-        else:
-            apps = self.determine_apps_reapply_order(name_only=True, filter_active=False)
+        apps = self.determine_apps_reapply_order(name_only=True, filter_active=False)
 
         # Pick first app that needs to be re-applied
         for index, app_name in enumerate(apps):
@@ -16347,44 +16332,6 @@ class ConductorManager(service.PeriodicService):
           """
         return self._fernet.get_fernet_keys(key_id)
 
-    # TODO(dbarbosa): remove determine_apps_reapply_order_by_after_key function after the
-    # previous release no longer use the after key in the metadata of the platform apps
-    def determine_apps_reapply_order_by_after_key(self, name_only, filter_active=True):
-        """ Order the apps for reapply
-
-        :param name_only: return list of app names if name_only is True
-                          return list of apps if name_only is False
-        :param filter_active: When true keep only applied apps in the list
-
-        :returns: list of apps or app names
-        """
-        try:
-            # Cached entry: precomputed order of reapply evaluation
-            if name_only and not filter_active:
-                return self.apps_metadata[constants.APP_METADATA_ORDERED_APPS_BY_AFTER_KEY]
-
-            ordered_apps = []
-            # Start from already ordered list
-            for app_name in self.apps_metadata[constants.APP_METADATA_ORDERED_APPS_BY_AFTER_KEY]:
-                try:
-                    app = self.dbapi.kube_app_get(app_name)
-                except exception.KubeAppNotFound:
-                    continue
-
-                if not filter_active or app.active:
-                    ordered_apps.append(app)
-
-            LOG.info("Apps reapply order: {}".format(
-                [app_.name for app_ in ordered_apps]))
-
-            if name_only:
-                ordered_apps = [app_.name for app_ in ordered_apps]
-        except Exception as e:
-            LOG.error("Error while ordering apps for reapply {}".format(str(e)))
-            ordered_apps = []
-
-        return ordered_apps
-
     def determine_apps_reapply_order(self, name_only, filter_active=True):
         """ Order the apps for reapply
 
@@ -16478,14 +16425,7 @@ class ConductorManager(service.PeriodicService):
         LOG.info("Evaluating apps reapply {} ".format(trigger))
 
         apps = []
-        # TODO(dbarbosa): remove determine_apps_reapply_order_by_after_key function after the
-        # previous release no longer use the after key in the metadata of the platform apps
-        if app_metadata.has_after_key_in_apps_metadata(
-                self.apps_metadata[constants.APP_METADATA_APPS]):
-            apps = self.determine_apps_reapply_order_by_after_key(name_only=False,
-                                                                  filter_active=True)
-        else:
-            apps = self.determine_apps_reapply_order(name_only=False, filter_active=True)
+        apps = self.determine_apps_reapply_order(name_only=False, filter_active=True)
 
         metadata_map = constants.APP_EVALUATE_REAPPLY_TRIGGER_TO_METADATA_MAP
 
@@ -17652,7 +17592,7 @@ class ConductorManager(service.PeriodicService):
 
         self._apps_update_operation = app_update_manager.AppUpdateManager(
             self.dbapi,
-            self.execute_automatic_operation_sync
+            self.perform_automatic_operation_in_parallel
         )
         self._apps_update_operation.rollback_apps(context)
 

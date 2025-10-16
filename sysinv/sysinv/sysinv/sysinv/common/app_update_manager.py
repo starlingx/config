@@ -238,11 +238,11 @@ class AppUpdateManager:  # noqa: H238
             The rollback order is determined by `_get_apps_update_order_to_rollback_op`,
             and each group is processed using `_update_a_list_of_apps`.
             The overall rollback status is stored in `self._status`.
-        :param context: The request context.
+            :param context: The request context.
         """
 
         try:
-            self._get_apps_update_order_to_rollback_op()
+            self._get_apps_update_order()
 
             if self._cyclic_dependencies:
                 LOG.error(
@@ -267,13 +267,17 @@ class AppUpdateManager:  # noqa: H238
             )
 
             LOG.info("Starting to rollback apps in applied status.")
-            self._update_a_list_of_apps(
-                context,
-                self.apps_to_update[constants.APP_UPDATE_OP],
-                constants.APP_UPDATE_OP,
-                async_update=False,
-                skip_validations=True,
-            )
+            for class_type in self.apps_to_update[constants.APP_UPDATE_OP]:
+                if class_type['class_type'] == 'unmanaged_apps':
+                    LOG.info("Starting the update of unmanaged apps with applied status.")
+                self._update_a_list_of_apps(
+                    context,
+                    class_type['apps'],
+                    constants.APP_UPDATE_OP,
+                    async_update=False,
+                    skip_validations=True,
+                    ignore_locks=True
+                )
             self._status = AppsUpdateStatus.COMPLETED
         except Exception as e:
             self._status = AppsUpdateStatus.FAILED

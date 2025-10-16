@@ -1,7 +1,0 @@
----
-app_name: app1
-behavior:
-  platform_managed_app: true
-  evaluate_reapply:
-    after:
-      - app1
