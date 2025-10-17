@@ -2572,7 +2572,7 @@ class ConductorManager(service.PeriodicService):
         }
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
-    def docker_registry_image_list(self, filter_out_untagged):
+    def docker_registry_image_list(self, context, filter_out_untagged):
         try:
             image_list_response = docker_registry.docker_registry_get("_catalog")
         except requests.exceptions.SSLError:
@@ -18195,7 +18195,9 @@ class ConductorManager(service.PeriodicService):
             # [{"name": "<image>"}, {"name": "<image>"}]
             docker_images = {
                 image["name"]
-                for image in self.docker_registry_image_list(False)
+                # The context parameter is unused in the method. It is just setup for
+                # RPC calls
+                for image in self.docker_registry_image_list(None, False)
             }
         except exception.DockerRegistryAPIException as e:
             LOG.warning(f"An error occurred when retrieving docker image list: {e}")
