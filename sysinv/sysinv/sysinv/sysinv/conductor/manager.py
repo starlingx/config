@@ -7823,7 +7823,7 @@ class ConductorManager(service.PeriodicService):
             self.app_lifecycle_actions(context, app, hook_info)
         except exception.LifecycleSemanticCheckException as e:
             LOG.info("Auto-apply failed prerequisites for {}: {}".format(app.name, e))
-            return False
+            return None
         except exception.SysinvException:
             LOG.exception("Internal sysinv error while auto applying {}"
                           .format(app.name))
@@ -8798,8 +8798,10 @@ class ConductorManager(service.PeriodicService):
 
         # Check the application state and take the appropriate action
         # App applies need to be done in a specific order
-        apps_to_apply = []
-        apps_to_update = []
+        operation_apps_map = {
+            constants.APP_APPLY_OP: [],
+            constants.APP_UPDATE_OP: []
+        }
         # TODO(dbarbosa): Add apps_to_reaply list and perform the reapply
         # call using the perform_automatic_operation_in_parallel function.
         # This way the platform cores will be taken into account to process
@@ -8821,7 +8823,7 @@ class ConductorManager(service.PeriodicService):
                 if app_name in self.apps_metadata[constants.APP_METADATA_DESIRED_STATES].keys() and \
                         self.apps_metadata[constants.APP_METADATA_DESIRED_STATES][
                             app_name] == constants.APP_APPLY_SUCCESS:
-                    apps_to_apply.append(app_name)
+                    operation_apps_map[constants.APP_APPLY_OP].append(app_name)
             elif status == constants.APP_APPLY_IN_PROGRESS:
                 # Action: do nothing
                 pass
@@ -8829,7 +8831,7 @@ class ConductorManager(service.PeriodicService):
                 self._auto_recover_managed_app(context, app_name)
             elif status == constants.APP_APPLY_SUCCESS:
                 self.check_pending_app_reapply(context)
-                apps_to_update.append(app_name)
+                operation_apps_map[constants.APP_UPDATE_OP].append(app_name)
 
         # Special case, we want to apply some logic to non-managed applications
         for app_name in self.apps_metadata[constants.APP_METADATA_APPS].keys():
@@ -8849,19 +8851,19 @@ class ConductorManager(service.PeriodicService):
             # Automatically update non-managed applications
             if status == constants.APP_APPLY_SUCCESS:
                 self.check_pending_app_reapply(context)
-                apps_to_update.append(app_name)
+                operation_apps_map[constants.APP_UPDATE_OP].append(app_name)
 
-        operation_result, _, _ = self.perform_automatic_operation_in_parallel(context,
-                                                            apps_to_apply,
-                                                            constants.APP_APPLY_OP)
-        if not operation_result:
-            LOG.error("Error while auto applying one or more apps")
-
-        operation_result, _, _ = self.perform_automatic_operation_in_parallel(context,
-                                                            apps_to_update,
-                                                            constants.APP_UPDATE_OP)
-        if not operation_result:
-            LOG.error("Error while auto updating one or more apps")
+        for operation in operation_apps_map:
+            result, _, _ = self.perform_automatic_operation_in_parallel(
+                context,
+                operation_apps_map[operation],
+                operation
+            )
+            if result is None:
+                LOG.warning(f"Auto-{operation} skipped for one or more apps")
+            elif result is False:
+                action = 'updating' if operation == constants.APP_UPDATE_OP else f'{operation}ing'
+                LOG.error(f"Error while auto {action} one or more apps")
 
         # Run alarm audit every 5 iterations (5 minutes)
         self._app_alarm_audit_counter += 1
@@ -8906,10 +8908,12 @@ class ConductorManager(service.PeriodicService):
                 - constants.APP_REAPPLY_OP: Automatically reapply managed applications.
                 - constants.APP_UPDATE_OP: Automatically update applications.
         Returns:
-            tuple: returns a tuple with two values (bool, list) - if all operations are completed
-            successfully, the boolean value is returned as True and the list is returned as an
-            empty list. Otherwise the boolean value is returned as False and the list is returned
-            with apps names that the operation failed.
+            tuple: returns a tuple with values values (bool, list, list) - if all operations are
+            completed successfully, the boolean value is returned as True. Otherwise the boolean
+            value is returned as False. If a None value is returned by the app operation, it means
+            the function execution was skipped, and the boolean value will also be returned as
+            None. The other two returned values contain the names of the apps with successful and
+            failed operations.
         """
         # Get the number of platform CPU cores
         core_count = cutils.get_platform_core_count(self.dbapi)
@@ -8947,6 +8951,7 @@ class ConductorManager(service.PeriodicService):
                     # If response is "False", the app operation failed, e.g. the app update failed.
                     if response is None:
                         LOG.info(f"Automatic operation '{op}' skipped for app {app_name}")
+                        result = None
                     elif response is True:
                         successful_executions.append(app_name)
                         LOG.info(f"Automatic operation '{op}' to the app {app_name} "
