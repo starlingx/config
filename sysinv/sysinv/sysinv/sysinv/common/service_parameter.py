@@ -632,6 +632,13 @@ def _validate_dns_host_record(name, value):
             "Parameter '%s' must contain valid ip address and host name." % name))
 
 
+def _validate_dns_local(name, value):
+    if not cutils.is_valid_dns_local(value):
+        raise wsme.exc.ClientSideError(_(
+            "Parameter '%s' includes an invalid domain '%s'." %
+            (name, value)))
+
+
 def _validate_max_cpu_min_percentage(name, value):
     return _validate_range(name, value, 60, 100)
 
@@ -1682,6 +1689,18 @@ DNS_HOST_RECORD_PARAMETER_DATA_FORMAT = {
     constants.SERVICE_PARAM_NAME_DNS_HOST_RECORD_HOSTS: SERVICE_PARAMETER_DATA_FORMAT_ARRAY,
 }
 
+DNS_LOCAL_PARAMETER_OPTIONAL = [
+    constants.SERVICE_PARAM_NAME_WILDCARD
+]
+
+DNS_LOCAL_PARAMETER_VALIDATOR = {
+    constants.SERVICE_PARAM_NAME_WILDCARD: _validate_dns_local,
+}
+
+DNS_LOCAL_PARAMETER_DATA_FORMAT = {
+    constants.SERVICE_PARAM_NAME_DNS_LOCAL_DOMAINS: SERVICE_PARAMETER_DATA_FORMAT_ARRAY,
+}
+
 PLATFORM_CLIENT_PARAMETER_OPTIONAL = [
     constants.SERVICE_PARAM_NAME_PLATFORM_CLI_CONFIRMATIONS
 ]
@@ -1964,6 +1983,11 @@ SERVICE_PARAMETER_SCHEMA = {
             SERVICE_PARAM_OPTIONAL: DNS_HOST_RECORD_PARAMETER_OPTIONAL,
             SERVICE_PARAM_VALIDATOR: DNS_HOST_RECORD_PARAMETER_VALIDATOR,
             SERVICE_PARAM_DATA_FORMAT: DNS_HOST_RECORD_PARAMETER_DATA_FORMAT,
+        },
+        constants.SERVICE_PARAM_SECTION_DNS_LOCAL: {
+            SERVICE_PARAM_OPTIONAL: DNS_LOCAL_PARAMETER_OPTIONAL,
+            SERVICE_PARAM_VALIDATOR: DNS_LOCAL_PARAMETER_VALIDATOR,
+            SERVICE_PARAM_DATA_FORMAT: DNS_LOCAL_PARAMETER_DATA_FORMAT,
         },
     },
     constants.SERVICE_TYPE_MODULE: {
