@@ -8,6 +8,8 @@ override_dh_install:
 	install -m 644 -p -D ipsec-server.service ${ROOT}/lib/systemd/system/ipsec-server.service
 	install -m 644 -p -D ipsec-auth.syslog ${ROOT}/etc/syslog-ng/conf.d/ipsec-auth.conf
 	install -m 644 -p -D ipsec-auth.logrotate ${ROOT}/etc/logrotate.d/ipsec-auth.conf
+	install -m 644 -p -D usr.sbin.swanctl ${ROOT}/etc/apparmor.d/local/usr.sbin.swanctl
+	install -m 644 -p -D usr.lib.ipsec.charon ${ROOT}/etc/apparmor.d/local/usr.lib.ipsec.charon
 	dh_install
 override_dh_installsystemd:
 	dh_installsystemd --no-enable ipsec-server.service
