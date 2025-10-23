@@ -46,6 +46,7 @@ from fm_api import constants as fm_constants
 from pecan import expose
 from pecan import rest
 
+from oslo_config import cfg
 from oslo_log import log
 from oslo_utils import uuidutils
 from sysinv import objects
@@ -107,6 +108,16 @@ from sysinv.openstack.common.rpc import common as rpc_common
 
 
 LOG = log.getLogger(__name__)
+
+host_unlock_opts = [
+    cfg.IntOpt('host_unlock_blocking_period',
+               default=120,
+               help='Set the host unlock blocking period in seconds'
+               )
+]
+CONF = cfg.CONF
+CONF.register_opts(host_unlock_opts)
+
 KEYRING_BM_SERVICE = "BM"
 ERR_CODE_LOCK_SOLE_SERVICE_PROVIDER = "-1003"
 HOST_XML_ATTRIBUTES = ['hostname', 'personality', 'subfunctions', 'mgmt_mac',
@@ -5415,6 +5426,15 @@ class HostController(rest.RestController):
         self.check_unlock_kernel_config_status(hostupdate, force_unlock)
         self.check_unlock_apparmor_config_status(hostupdate, force_unlock)
 
+        # Check if grub related runtime manifests are still pending
+        runtime_manifests = \
+            [
+                'platform::compute::grub::runtime'
+            ]
+        self.check_unlock_runtime_manifests(hostupdate,
+                                            force_unlock,
+                                            runtime_manifests)
+
         hostupdate.configure_required = True
         if ((os.path.isfile(constants.ANSIBLE_BOOTSTRAP_FLAG) or
              os.path.isfile(tsc.RESTORE_IN_PROGRESS_FLAG)) and
@@ -5443,6 +5463,37 @@ class HostController(rest.RestController):
             msg = (f'Can not unlock {hostname} '
                     'apparmor configuration in progress.')
             raise wsme.exc.ClientSideError(_(msg))
+
+    def check_unlock_runtime_manifests(self, hostupdate,
+                                       force_unlock, runtime_manifests):
+        """ Check whether a runtime manifest update is pending.
+            Scan the runtime config table and make sure there aren't any
+            pending runtime manifests
+        """
+
+        if force_unlock:
+            return
+
+        hostname = hostupdate.ihost_patch.get('hostname')
+        hostid = hostupdate.ihost_orig.get('id')
+        cutoff = datetime.datetime.now() - \
+                    datetime.timedelta(seconds=CONF.host_unlock_blocking_period)
+
+        pending_runtime_config = pecan.request.dbapi.runtime_config_get_all(
+            state=constants.RUNTIME_CONFIG_STATE_PENDING,
+            younger_than=cutoff,
+            forihostid=hostid)
+
+        for rc in pending_runtime_config:
+            config_uuid = rc.config_uuid
+            config_dict = json.loads(rc.config_dict)
+            for runtime_manifest in config_dict.get('classes', []):
+                if runtime_manifest in runtime_manifests:
+                    msg = (f'Can not unlock {hostname}; '
+                           f'runtime config {config_uuid} '
+                           f'{runtime_manifest} is pending. '
+                           f'Please wait a few seconds and retry.')
+                    raise wsme.exc.ClientSideError(_(msg))
 
     def check_unlock_kernel_config_status(self, hostupdate, force_unlock):
         """ Check whether kernel configuration is in progress.

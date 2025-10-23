@@ -9642,7 +9642,8 @@ class Connection(api.Connection):
 
     @db_objects.objectify(objects.runtime_config)
     def runtime_config_get_all(
-        self, config_uuid=None, state=None, older_than=None, forihostid=None
+        self, config_uuid=None, state=None,
+        older_than=None, younger_than=None, forihostid=None
     ):
         query = model_query(models.RuntimeConfig)
         if config_uuid:
@@ -9651,6 +9652,8 @@ class Connection(api.Connection):
             query = query.filter_by(state=state)
         if older_than:
             query = query.filter(models.RuntimeConfig.created_at < older_than)
+        if younger_than:
+            query = query.filter(models.RuntimeConfig.created_at > younger_than)
         if forihostid:
             query = query.filter(models.RuntimeConfig.forihostid == forihostid)
         return query.all()

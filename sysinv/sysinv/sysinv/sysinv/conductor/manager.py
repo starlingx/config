@@ -919,6 +919,11 @@ class ConductorManager(service.PeriodicService):
          'name': constants.SERVICE_PARAM_NAME_PLATFORM_CLI_CONFIRMATIONS,
          'value': constants.SERVICE_PARAM_DISABLED,
          },
+        {'service': constants.SERVICE_TYPE_PLATFORM,
+         'section': constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG,
+         'name': constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_HOST_UNLOCK_BLOCKING_PERIOD,
+         'value': constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_HOST_UNLOCK_BLOCKING_PERIOD_DEFAULT,
+         },
     ]
 
     def _create_default_service_parameter(self):
@@ -14279,6 +14284,12 @@ class ConductorManager(service.PeriodicService):
 
         # try to get the config from deferred list
         deferred_config = self._get_from_host_deferred_runtime_config(config_uuid)
+
+        # Enrollment special handling
+        if cutils.is_enrollment_in_progress():
+            manifests = set(config_dict.get('classes', []))
+            if manifests.intersection(constants.ANSIBLE_ENROLLMENT_SKIP_LIST):
+                skip_deferred_manifests = True
 
         # only apply runtime manifests to active controller if ready,
         # otherwise will append to the list of outstanding runtime manifests

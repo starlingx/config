@@ -1886,3 +1886,25 @@ def get_primary_address_by_name(address_name, networktype):
         pass
 
     return address
+
+
+def create_test_runtime_config(**kw):
+    config_dict = {
+        "personalities": kw.get('personalities', []),
+        "host_uuids": kw.get('host_uuids', []),
+        "classes": kw.get('classes', []),
+    }
+    runtime_config = {
+        "config_uuid": uuidutils.generate_uuid(),
+        "config_dict": json.dumps(config_dict),
+        "forihostid": kw.get('host_id')
+    }
+    dbapi = db_api.get_instance()
+    dbapi.runtime_config_create(runtime_config)
+    return runtime_config
+
+
+def update_test_runtime_config(config_uuid, state, host_id):
+    dbapi = db_api.get_instance()
+    runtime_config = dbapi.runtime_config_get(config_uuid, host_id=host_id)
+    dbapi.runtime_config_update(runtime_config.id, {"state": state})
