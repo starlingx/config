@@ -29,8 +29,8 @@ def do_ptp_parameter_show(cc, args):
 
 
 def _print_ptp_parameter_list(ptp_parameter_list):
-    fields = ['uuid', 'name', 'value']
-    labels = ['uuid', 'name', 'value']
+    fields = ['uuid', 'section', 'name', 'value']
+    labels = ['uuid', 'section', 'name', 'value']
     utils.print_list(ptp_parameter_list, fields, labels)
 
 

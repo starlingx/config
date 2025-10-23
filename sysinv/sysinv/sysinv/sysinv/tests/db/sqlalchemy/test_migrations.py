@@ -2113,3 +2113,15 @@ class TestMigrations(BaseMigrationTestCase, WalkVersionsMixin):
         for col, coltype in user_cols.items():
             self.assertTrue(isinstance(users.c[col].type,
                                        getattr(sqlalchemy.types, coltype)))
+
+    def _check_145(self, engine, data):
+        # 145_ptp_parameters_add_column_section.py
+        # Assert data types for new column in table "ptp_parameters"
+        ptp_parameters = db_utils.get_table(engine, 'ptp_parameters')
+        ptp_parameters_columns = {
+            'section': 'String'
+        }
+        for column, column_type in ptp_parameters_columns.items():
+            self.assertTrue(
+                isinstance(ptp_parameters.c[column].type,
+                getattr(sqlalchemy.types, column_type)))

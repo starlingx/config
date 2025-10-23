@@ -830,6 +830,7 @@ class PtpParameters(Base):
     id = Column(Integer, primary_key=True, nullable=False)
     uuid = Column(String(UUID_LENGTH), unique=True)
 
+    section = Column(String(255), default='global')
     name = Column(String(255), nullable=False)
     value = Column(String(255))
 
