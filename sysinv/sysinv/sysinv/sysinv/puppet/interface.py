@@ -1093,24 +1093,14 @@ def get_ethernet_network_config(context, iface, config):
 
 def get_route_config(route, ifname):
     """
-    Builds a basic route config dictionary with all of the fields required to
-    format a basic network_route puppet resource.
+    Builds a basic route config string with all of the fields required to
+    be used by the networking.service
     """
-    if route['prefix']:
-        name = '%s/%s' % (route['network'], route['prefix'])
-    else:
-        name = 'default'
+    options = 'metric ' + str(route['metric'])
     netmask = IPNetwork(route['network'] + "/" + str(route['prefix'])).netmask
-    config = {
-        'name': name,
-        'ensure': 'present',
-        'gateway': route['gateway'],
-        'interface': ifname,
-        'netmask': str(netmask) if route['prefix'] else '0.0.0.0',
-        'network': route['network'] if route['prefix'] else 'default',
-        'options': 'metric ' + str(route['metric'])
-
-    }
+    if route['network'] == '0.0.0.0' or route['network'] == '::':
+        route['network'] = 'default'
+    config = f"{route['network']} {netmask} {route['gateway']} {ifname} {options}\n"
     return config
 
 
@@ -1477,11 +1467,14 @@ def generate_network_config(context, hiera_config, iface):
                     format_network_config(net_config)
 
     # Add complementary puppet resource definitions (if needed)
+
+    # the puppet-network plugin is very inneficient when the number of routes is in the 1000s,
+    # generate the networking.service routes file content directly in the final format
+    route_config = "\n"
     for route in get_interface_routes(context, iface):
-        route_config = get_route_config(route, os_ifname)
-        hiera_config[ROUTE_CONFIG_RESOURCE].update({
-            route_config['name']: route_config
-        })
+        route_data = get_route_config(route, os_ifname)
+        route_config = route_config + route_data
+    hiera_config[ROUTE_CONFIG_RESOURCE] = f"{route_config}"
 
     interface_class = iface['ifclass']
     if interface_class == constants.INTERFACE_CLASS_PCI_SRIOV:
