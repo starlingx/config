@@ -4933,13 +4933,13 @@ def render_jinja_template_from_file(path_to_template, template_file_name,
 
 def verify_activate_rollback_in_progress(dbapi):
     """
-    Check if a platform upgrade is currently in the 'activate rollback' state.
-
+    Check if a platform upgrade is currently in the 'activate-rollback' or
+    'activate-rollback-failed' state.
     Args:
         dbapi: Database API object used to access upgrade information.
 
     Returns:
-        bool: True if an activate rollback is in progress, False otherwise.
+        bool: True if an activate rollback is in progress or failed, False otherwise.
     """
 
     result = False
@@ -4948,7 +4948,10 @@ def verify_activate_rollback_in_progress(dbapi):
     except exception.NotFound:
         pass
     else:
-        if upgrade.state in [constants.DEPLOY_STATE_ACTIVATE_ROLLBACK]:
+        if upgrade.state in [
+            constants.DEPLOY_STATE_ACTIVATE_ROLLBACK,
+            constants.DEPLOY_STATE_ACTIVATE_ROLLBACK_FAILED
+        ]:
             result = True
 
     return result
