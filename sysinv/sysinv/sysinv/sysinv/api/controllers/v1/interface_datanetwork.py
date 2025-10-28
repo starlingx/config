@@ -157,7 +157,12 @@ class InterfaceDataNetworkController(rest.RestController):
         result = pecan.request.dbapi.interface_datanetwork_create(
             interface_datanetwork_dict)
 
-        if interface_obj.ifclass == constants.INTERFACE_CLASS_PCI_SRIOV:
+        # The pci dp update is deferred to the unlock when a subcloud enrollment is
+        # being executed.
+        if (
+            interface_obj.ifclass == constants.INTERFACE_CLASS_PCI_SRIOV and
+            not cutils.is_enrollment_in_progress()
+        ):
             pecan.request.rpcapi.update_pcidp_config(
                 pecan.request.context, interface_obj.ihost_uuid)
 

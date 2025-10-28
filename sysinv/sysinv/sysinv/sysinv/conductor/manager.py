@@ -7246,11 +7246,6 @@ class ConductorManager(service.PeriodicService):
         PUPPET_RUNTIME_FILES_DOCKER_CERT_FILE
     ]
 
-    def _enrollment_in_progress(self):
-        """Check if enrollment is in progress"""
-        return os.path.isfile(constants.ANSIBLE_ENROLLMENT_FLAG) or \
-            os.path.isfile(constants.ANSIBLE_ENROLLMENT_COMPLETED_FLAG)
-
     def _check_ready_class_runtime(self, filter_class):
         if self._check_runtime_class_apply_in_progress(
                 [filter_class]):
@@ -7450,7 +7445,7 @@ class ConductorManager(service.PeriodicService):
         def _cs_audit_deferred_runtime_config(self, context):
             """Apply deferred config runtime manifests when ready"""
 
-            if self._enrollment_in_progress():
+            if cutils.is_enrollment_in_progress():
                 LOG.info("subcloud enrollment in progress, pausing audit "
                          "deferred config runtime manifest.")
                 return
