@@ -113,9 +113,6 @@ def validate_metadata_file(path, metadata_file, upgrade_from_release=None):
         desired_state: <uploaded/applied> - optional: state the app should
         reach
         evaluate_reapply: - optional: describe the reapply evaluation behaviour
-            TODO(dbarbosa): Once the implementation of key dependent apps is
-            complete the key after should be removed.
-            after: - optional: list of apps that should be evaluated before
             the current one
               - <app_name.1>
               - <app_name.2>
@@ -476,11 +473,6 @@ def validate_metadata_file(path, metadata_file, upgrade_from_release=None):
                         constants.APP_METADATA_EVALUATE_REAPPLY)
 
                 if evaluate_reapply:
-                    # TODO(dbarbosa): Once the implementation of key dependent apps is
-                    # complete the key after should be removed.
-                    validate_list_field(
-                        evaluate_reapply,
-                        constants.APP_METADATA_AFTER)
                     triggers = validate_list_field(
                         evaluate_reapply,
                         constants.APP_METADATA_TRIGGERS)
@@ -1024,7 +1016,6 @@ def get_reorder_apps(is_platform_rollback=False):
         constants.APP_METADATA_PLATFORM_MANAGED_APPS: {},
         constants.APP_METADATA_DESIRED_STATES: {},
         constants.APP_METADATA_ORDERED_APPS: {},
-        constants.APP_METADATA_ORDERED_APPS_BY_AFTER_KEY: [],
         constants.APP_METADATA_PLATFORM_UNMANAGED_APPS: set(),
         constants.APP_METADATA_CYCLIC_DEPENDENCIES: []
     }
@@ -1038,9 +1029,6 @@ def get_reorder_apps(is_platform_rollback=False):
         apps_metadata[constants.APP_METADATA_ORDERED_APPS][
             constants.APP_METADATA_CYCLIC_DEPENDENCIES] = \
                 apps_metadata[constants.APP_METADATA_CYCLIC_DEPENDENCIES]
-
-    if is_platform_rollback:
-        return apps_metadata[constants.APP_METADATA_ORDERED_APPS_BY_AFTER_KEY]
 
     return apps_metadata[constants.APP_METADATA_ORDERED_APPS]
 
@@ -1139,25 +1127,3 @@ def make_application_query(k8s_ver, include_path=False):
                 compatible_apps.append(app_name)
 
     return compatible_apps
-
-
-def has_after_key_in_apps_metadata(apps_metadata):
-    """
-    Checks if any item in the 'evaluate_reapply' section of the 'behavior'
-    metadata contains the key 'after'.
-    Args:
-        apps_metadata (dict): A dictionary containing application metadata.
-                              Expected to have a 'behavior' key, which may
-                              contain an 'evaluate_reapply' dictionary.
-    Returns:
-        bool: True if any item in the 'evaluate_reapply' dictionary contains
-              the key 'after', False otherwise.
-    """
-
-    return any(
-        constants.APP_METADATA_AFTER
-        in metadata.get(constants.APP_METADATA_BEHAVIOR, {}).get(
-            constants.APP_METADATA_EVALUATE_REAPPLY, {}
-        )
-        for metadata in apps_metadata.values()
-    )
