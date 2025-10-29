@@ -1424,17 +1424,7 @@ class AppOperator(object):
             if os.path.exists(overrides_file):
                 available_helm_overrides.append(overrides_file)
             else:
-                # Also check for the naming format used on previous releases.
-                # TODO(ipiresso): This can be removed when the master branch
-                # version moves on from stx 10.
-                # Story: https://storyboard.openstack.org/#!/story/2011171
-                overrides = helm_utils.build_overrides_filename(chart.name, chart.namespace)
-                overrides_file = os.path.join(overrides_dir, overrides)
-
-                if os.path.exists(overrides_file):
-                    available_helm_overrides.append(overrides_file)
-                else:
-                    missing_helm_overrides.append(overrides_file)
+                missing_helm_overrides.append(overrides_file)
 
         if missing_helm_overrides:
             LOG.error("Missing the following overrides: %s" % missing_helm_overrides)
