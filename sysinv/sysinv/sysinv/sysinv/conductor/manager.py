@@ -21038,7 +21038,7 @@ class ConductorManager(service.PeriodicService):
                   ("apiserver-kubelet-client", constants.AUTOMATIC,
                    "/etc/kubernetes/pki/apiserver-kubelet-client.crt"),
                   ("front-proxy-client", constants.AUTOMATIC, "/etc/kubernetes/pki/front-proxy-client.crt"),
-                  ("front-proxy-ca", constants.AUTOMATIC, "/etc/kubernetes/pki/front-proxy-ca.crt")]
+                  ("front-proxy-ca", constants.MANUAL, "/etc/kubernetes/pki/front-proxy-ca.crt")]
 
         # IPsec certificate
         try:
