@@ -1341,6 +1341,68 @@ class ApiServiceParameterPostTestSuiteMixin(ApiServiceParameterTestCaseMixin):
         self.cli_helper = CLIConfirmationTestHelper(self)
         self.cli_helper.validate_post()
 
+    def test_platform_kernel_sysctl_valid(self):
+        sysctl_kernel_parameters = {
+            "fs.epoll.max_user_watches": "29259397",
+            "kernel.bpf_stats_enabled": "0",
+            "kernel.panic_on_rcu_stall": "0",
+            "kernel.sched_rt_period_us": " 1000000",
+            "kernel.sched_rt_runtime_us": "950000",
+            "net.core.bpf_jit_enable": "1",
+            "net.ipv4.conf.all.forwarding": "1",
+            "user.max_inotify_instances": "128",
+            "vm.dirty_ratio": "20",
+            "vm.swappiness": "60",
+            "kernel.printk": "4 4 1 7",
+        }
+        for parm, value in sysctl_kernel_parameters.items():
+            service_parameter = \
+                {
+                    'service': constants.SERVICE_TYPE_PLATFORM,
+                    'section': constants.SERVICE_PARAM_SECTION_PLATFORM_SYSCTL,
+                    'name': parm,
+                    'value': value
+                }
+            response = self.post(service_parameter)
+            self.validate_data(service_parameter, response)
+
+    def test_platform_kernel_sysctl_readonly(self):
+        sysctl_kernel_parameters = {
+            "dev.cdrom.info": "CD-ROM information, Id: cdrom.c 3.20 2003/12/17",
+            "kernel.arch": "x86_64",
+            "kernel.osrelease": "6.12.0-1-amd64",
+            "kernel.ostype": "Linux",
+            "kernel.version": "#1 SMP PREEMPT_DYNAMIC StarlingX Debian",
+        }
+        for parm, value in sysctl_kernel_parameters.items():
+            service_parameter = \
+                {
+                    'service': constants.SERVICE_TYPE_PLATFORM,
+                    'section': constants.SERVICE_PARAM_SECTION_PLATFORM_SYSCTL,
+                    'name': parm,
+                    'value': value
+                }
+            self.post(service_parameter, expect_errors=True)
+
+    def test_platform_kernel_sysctl_invalid(self):
+        sysctl_kernel_parameters = {
+            "0net.ipv6.xyz": "1",
+            "0net.ipv4.x_9z": "0",
+            "*gssj.sjgsjs": "1",
+            "sjk.*sk.sj": "skjss",
+            "skjs.???.a183": "1",
+            "fake.a123.param": "1",
+        }
+        for parm, value in sysctl_kernel_parameters.items():
+            service_parameter = \
+                {
+                    'service': constants.SERVICE_TYPE_PLATFORM,
+                    'section': constants.SERVICE_PARAM_SECTION_PLATFORM_SYSCTL,
+                    'name': parm,
+                    'value': value
+                }
+            self.post(service_parameter, expect_errors=True)
+
 
 class ApiServiceParameterDeleteTestSuiteMixin(ApiServiceParameterTestCaseMixin):
     """ Tests deletion.

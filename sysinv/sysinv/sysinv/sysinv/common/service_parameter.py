@@ -7,10 +7,14 @@
 # coding=utf-8
 #
 
+import difflib
+import functools
 import json
 import netaddr
+import os
 import pecan
 import re
+import stat
 import wsme
 
 from oslo_log import log
@@ -30,6 +34,43 @@ SERVICE_PARAMETER_DATA_FORMAT_SKIP = 'skip'
 
 IDENTITY_CONFIG_TOKEN_EXPIRATION_MIN = 3600
 IDENTITY_CONFIG_TOKEN_EXPIRATION_MAX = 14400
+
+
+@functools.lru_cache(maxsize=1)
+def _get_supported_kernel_runtime_parameters() -> tuple[list[str], list[str]]:
+    """
+    Traverse the '/proc/sys' folder
+    and get the list supported kernel runtime parameters
+    """
+    supported_parameters, readonly_parameters = [], []
+    prefix = '/proc/sys/'
+    for root, directories, files in os.walk(f'{prefix}'):
+        for f in files:
+            fullpath = f"{root}/{f}"
+            path = fullpath[len(prefix):]
+            param = path.replace('/', '.')
+            current_permissions = os.stat(fullpath).st_mode
+            if (current_permissions & stat.S_IWUSR):
+                supported_parameters.append(param)
+            else:
+                readonly_parameters.append(param)
+    return supported_parameters, readonly_parameters
+
+
+def _validate_sysctl_kernel_parameter(name, value):
+    supported_list, readonly_list = _get_supported_kernel_runtime_parameters()
+    if name in readonly_list:
+        msg = f"Parameter '{name}={value}' cannot be modified. It is readonly."
+        LOG.error(_(msg))
+        raise wsme.exc.ClientSideError(_(msg))
+
+    if name not in supported_list:
+        msg = f"Parameter '{name}={value}' is not supported. "
+        matches = difflib.get_close_matches(name, supported_list)
+        if matches:
+            msg += f"Did you mean '{matches[0]}'?"
+        LOG.error(_(msg))
+        raise wsme.exc.ClientSideError(_(msg))
 
 
 def _validate_boolean(name, value):
@@ -1779,6 +1820,18 @@ MODULE_I801_I2C_INTERRUPTS_RESOURCE = {
         'platform::module::i801::params::i2c_interrupts',
 }
 
+PLATFORM_SYSCTL_KERNEL_PARAMETER_OPTIONAL = [
+    constants.SERVICE_PARAM_NAME_WILDCARD
+]
+
+PLATFORM_SYSCTL_KERNEL_PARAMETER_VALIDATOR = {
+    constants.SERVICE_PARAM_NAME_WILDCARD: _validate_sysctl_kernel_parameter,
+}
+
+PLATFORM_SYSCTL_KERNEL_PARAMETER_RESOURCE = {
+    constants.SERVICE_PARAM_NAME_WILDCARD: 'platform::sysctl::kernel::params',
+}
+
 # Service Parameter Schema
 SERVICE_PARAM_MANDATORY = 'mandatory'
 SERVICE_PARAM_OPTIONAL = 'optional'
@@ -1891,6 +1944,11 @@ SERVICE_PARAMETER_SCHEMA = {
             SERVICE_PARAM_VALIDATOR: PLATFORM_CLIENT_PARAMETER_VALIDATOR,
             SERVICE_PARAM_RESOURCE: PLATFORM_CLIENT_PARAMETER_RESOURCE,
         },
+        constants.SERVICE_PARAM_SECTION_PLATFORM_SYSCTL: {
+            SERVICE_PARAM_OPTIONAL: PLATFORM_SYSCTL_KERNEL_PARAMETER_OPTIONAL,
+            SERVICE_PARAM_VALIDATOR: PLATFORM_SYSCTL_KERNEL_PARAMETER_VALIDATOR,
+            SERVICE_PARAM_RESOURCE: PLATFORM_SYSCTL_KERNEL_PARAMETER_RESOURCE,
+        }
     },
     constants.SERVICE_TYPE_RADOSGW: {
         constants.SERVICE_PARAM_SECTION_RADOSGW_CONFIG: {

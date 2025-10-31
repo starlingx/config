@@ -1,9 +1,10 @@
 #
-# Copyright (c) 2017-2022 Wind River Systems, Inc.
+# Copyright (c) 2017-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
 
+import json
 from oslo_log import log as logging
 from sysinv.common import constants
 from sysinv.common import service_parameter
@@ -43,6 +44,19 @@ class ServiceParamPuppet(base.BasePuppet):
 
     def _format_boolean_parameter(self, resource, value):
         return {resource: bool(value.lower() == 'true')}
+
+    def _create_sysctl_json_data(self, _config):
+        prefix = 'platform::sysctl::kernel::params::'
+        # separate the sysctl kernel config parameters from the main config
+        config = dict()
+        sysctl_config = dict()
+        for key, value in _config.items():
+            if key.startswith(prefix):
+                sysctl_config[key[len(prefix):]] = value
+            else:
+                config[key] = value
+        config['platform::sysctl::params::json_string'] = json.dumps(sysctl_config)
+        return config
 
     def get_system_config(self):
         config = {}
@@ -95,7 +109,8 @@ class ServiceParamPuppet(base.BasePuppet):
             else:
                 config.update({resource: param.value})
 
-        return config
+        # special handling for sysctl kernel runtime parameters
+        return self._create_sysctl_json_data(config)
 
     def get_host_config(self, host):
         config = {}
