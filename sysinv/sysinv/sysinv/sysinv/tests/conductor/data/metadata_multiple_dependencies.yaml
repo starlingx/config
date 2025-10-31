@@ -1,0 +1,31 @@
+---
+app_name: multiple-app-dependency
+app_version: 1.0-1
+helm_repo: stx-platform
+behavior:
+  plataform_managed_app: true
+dependent_apps:
+  - name: common-dependency-app
+    version: 1.0-1
+    action: apply
+  - name: other-common-dependency-app
+    version: 1.0-1
+    action: apply
+supported_k8s_version:
+  minimum: 1.21.8
+---
+app_name: common-dependency-app
+app_version: 1.0-1
+helm_repo: stx-platform
+behavior:
+  plataform_managed_app: true
+supported_k8s_version:
+  minimum: 1.21.8
+---
+app_name: other-common-dependency-app
+app_version: 1.0-1
+helm_repo: stx-platform
+behavior:
+  plataform_managed_app: true
+supported_k8s_version:
+  minimum: 1.21.8
