@@ -769,6 +769,7 @@ class iuser(Base):
     root_sig = Column(String(255))
     passwd_expiry_days = Column(Integer)
     passwd_hash = Column(String(255))
+    passwd_last_change = Column(Integer)
     reserved_1 = Column(String(255))
     reserved_2 = Column(String(255))
     reserved_3 = Column(String(255))

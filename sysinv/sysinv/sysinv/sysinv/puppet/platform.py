@@ -299,6 +299,8 @@ class PlatformPuppet(base.BasePuppet):
                 user.passwd_hash,
             'platform::users::params::sysadmin_password_max_age':
                 user.passwd_expiry_days,
+            'platform::users::params::sysadmin_password_last_changed':
+                user.passwd_last_change,
         }
 
     def _get_haproxy_config(self):
