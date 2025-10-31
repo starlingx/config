@@ -10266,7 +10266,7 @@ class ConductorManager(service.PeriodicService):
                 "classes": ['platform::sm::disable_admin_config::runtime',
                             'platform::network::runtime',
                             'platform::haproxy::runtime',
-                            'openstack::keystone::endpoint::runtime',
+                            'openstack::keystone::endpoint::reconfig',
                             'platform::kubernetes::certsans::runtime',
                             'platform::firewall::runtime']
             }
@@ -10279,7 +10279,7 @@ class ConductorManager(service.PeriodicService):
                             'platform::network::runtime',
                             'platform::sm::enable_admin_config::runtime',
                             'platform::haproxy::runtime',
-                            'openstack::keystone::endpoint::runtime',
+                            'openstack::keystone::endpoint::reconfig',
                             'platform::kubernetes::certsans::runtime',
                             'platform::firewall::runtime',
                             'platform::nfv::runtime']
