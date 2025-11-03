@@ -5053,3 +5053,10 @@ def atomic_update_yaml_file(values, file_path):
                         f"{file_path} with temporary file {temp_file_path}: {e}")
     else:
         raise exception.SysinvException(f"File {file_path} does not exist. Cannot update.")
+
+
+def is_enrollment_in_progress():
+    """Check if enrollment is in progress"""
+
+    return os.path.isfile(constants.ANSIBLE_ENROLLMENT_FLAG) or \
+        os.path.isfile(constants.ANSIBLE_ENROLLMENT_COMPLETED_FLAG)

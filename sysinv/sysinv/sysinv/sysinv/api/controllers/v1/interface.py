@@ -655,7 +655,9 @@ class InterfaceController(rest.RestController):
                 for ifname in removed_members:
                     _update_interface_mtu(ifname, ihost, DEFAULT_MTU)
 
-            if sriov_update:
+            # The sriov update is deferred to the unlock when a subcloud enrollment is
+            # being executed.
+            if sriov_update and not cutils.is_enrollment_in_progress():
                 pecan.request.rpcapi.update_sriov_config(
                     pecan.request.context,
                     ihost['uuid'])
@@ -2227,7 +2229,9 @@ def _delete(interface):
 
         pecan.request.dbapi.iinterface_destroy(interface['uuid'])
 
-        if requires_pcidp_update:
+        # The pci dp update is deferred to the unlock when a subcloud enrollment is
+        # being executed.
+        if requires_pcidp_update and not cutils.is_enrollment_in_progress():
             pecan.request.rpcapi.update_pcidp_config(pecan.request.context,
                                                      ihost['uuid'])
 
