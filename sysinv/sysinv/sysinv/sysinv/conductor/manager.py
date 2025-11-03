@@ -1550,6 +1550,11 @@ class ConductorManager(service.PeriodicService):
                     section=constants.SERVICE_PARAM_SECTION_DNS_HOST_RECORD):
 
                 f_out_addn.write("host-record=%s\n" % host_record['value'])
+            for local_domain in self.dbapi.service_parameter_get_all(
+                    service=constants.SERVICE_TYPE_DNS,
+                    section=constants.SERVICE_PARAM_SECTION_DNS_LOCAL):
+
+                f_out_addn.write("local=/%s/\n" % local_domain['value'])
 
         # Update conf files atomically and reload dnsmasq
         if (not os.path.isfile(dnsmasq_addn_conf_file) or

@@ -2564,6 +2564,44 @@ def is_valid_dns_hostname(value):
         return False
 
 
+def is_valid_dns_local(value):
+    """
+    Validate domain names acceptable by dnsmasq 'local=' directive
+    with TLD based on RFC specs including IDN Punycode.
+    """
+    # If the name ends with a trailing dot (e.g. "example.local."),
+    # remove it — dnsmasq and DNS treat it as canonical but optional.
+    if value.endswith('.'):
+        value = value[:-1]
+
+    pattern = re.compile(
+        # length must be 1 to 253 chars
+        r'^(?=.{1,253}$)'
+        # dash can't be used in the first character of the first label
+        # dash can't be used as the last chareacter of the label
+        # labels must contains 1 to 63 alphanumeric or dash chars
+        r'(?!-)([A-Za-z0-9-]{1,63})(?<!-)'
+        # zero or more labels, each:
+        #  - preceded by a dot
+        #  - not starting or ending with a dash
+        r'(\.(?!-)([A-Za-z0-9-]{1,63})(?<!-))*$'
+    )
+
+    # Empty strings not allowed
+    if not value:
+        return False
+
+    # Doesn't contain underscore or double dots
+    if '..' in value or '_' in value:
+        return False
+
+    # Reject domain made only of digits only even with dots
+    if value.replace('.', '').isdigit():
+        return False
+
+    return bool(pattern.match(value))
+
+
 def verify_checksum(path):
     """ Find and validate the checksum file in a given directory. """
     rc = True

@@ -386,23 +386,33 @@ class ServiceParameterController(rest.RestController):
 
     @staticmethod
     def _check_duplicate_value(service, section, name, value):
-        # Check for duplicate value in case of dns host-records
-        if service == constants.SERVICE_TYPE_DNS and \
-                section == constants.SERVICE_PARAM_SECTION_DNS_HOST_RECORD:
 
-            host_records = pecan.request.dbapi.service_parameter_get_all(
-                service=constants.SERVICE_TYPE_DNS,
-                section=constants.SERVICE_PARAM_SECTION_DNS_HOST_RECORD)
-            value_set = set(x.strip() for x in value.split(','))
-            for host_record in host_records:
-                host_record_set = set(x.strip() for x in host_record.value.split(','))
-                if host_record_set == value_set:
-                    msg = _("Service parameter add failed: "
-                            "Value already exists: "
-                            "service=%s section=%s name=%s "
-                            "value=%s"
-                            % (service, section, name, value))
-                    raise wsme.exc.ClientSideError(msg)
+        def _check_duplicate_set(service, section, name, value, service_to_cmp, section_to_cmp):
+            # Check for duplicate value in case of dns host-records
+            if service == service_to_cmp and \
+                    section == section_to_cmp:
+
+                host_records = pecan.request.dbapi.service_parameter_get_all(
+                    service=service_to_cmp,
+                    section=section_to_cmp)
+                value_set = set(x.strip() for x in value.split(','))
+                for host_record in host_records:
+                    host_record_set = set(x.strip() for x in host_record.value.split(','))
+                    if host_record_set == value_set:
+                        msg = _("Service parameter add failed: "
+                                "Value already exists: "
+                                "service=%s section=%s name=%s "
+                                "value=%s"
+                                % (service, section, name, value))
+                        raise wsme.exc.ClientSideError(msg)
+
+        _check_duplicate_set(service, section, name, value,
+                     constants.SERVICE_TYPE_DNS,
+                     constants.SERVICE_PARAM_SECTION_DNS_HOST_RECORD)
+
+        _check_duplicate_set(service, section, name, value,
+                     constants.SERVICE_TYPE_DNS,
+                     constants.SERVICE_PARAM_SECTION_DNS_LOCAL)
 
     @staticmethod
     def _check_parameter_syntax(svc_param):
