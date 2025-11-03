@@ -491,16 +491,10 @@ class InterfaceTestCase1(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
                           gateway='1.2.3.1', interface='eth0',
                           netmask='0.0.0.0', network='default',
                           metric=1):
-        config = {'name': name,
-                  'ensure': ensure,
-                  'gateway': gateway,
-                  'interface': interface,
-                  'netmask': netmask,
-                  'network': network,
-                  'options': 'metric ' + str(metric)}
+        config = f"{network} {netmask} {gateway} {interface} metric {metric}\n"
         return config
 
-    def test_get_route_config(self):
+    def test_get_route_config_non_default(self):
         route = {'network': '1.2.3.0',
                  'prefix': 24,
                  'gateway': '1.2.3.1',
