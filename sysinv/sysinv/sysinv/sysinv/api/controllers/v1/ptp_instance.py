@@ -156,7 +156,7 @@ class PtpInstanceController(rest.RestController):
                   % (self._from_ihosts, host_uuid))
         if self._from_ihosts and not host_uuid:
             raise exception.InvalidParameterValue(_(
-                  "Host id not specified."))
+                "Host id not specified."))
 
         limit = utils.validate_limit(limit)
         sort_dir = utils.validate_sort_dir(sort_dir)
@@ -286,41 +286,53 @@ class PtpInstanceController(rest.RestController):
     @wsme_pecan.wsexpose(None, types.uuid, status_code=204)
     def delete(self, ptp_instance_uuid):
         """Delete a PTP instance."""
-        LOG.debug("PtpInstanceController.delete: %s" % ptp_instance_uuid)
+        LOG.info(f"PtpInstanceController.delete: {ptp_instance_uuid}")
         if self._from_ihosts:
             raise exception.OperationNotPermitted
-
         try:
             ptp_instance_obj = objects.ptp_instance.get_by_uuid(
                 pecan.request.context, ptp_instance_uuid)
         except exception.PtpInstanceNotFound:
-            raise
-
-        # Only allow delete if there are no associated hosts, interfaces and
-        # parameters
-        parameters = pecan.request.dbapi.ptp_parameters_get_list(
-            ptp_instance=ptp_instance_uuid)
-        if parameters:
             raise wsme.exc.ClientSideError(
-                "PTP instance %s is still associated with PTP parameter(s)"
-                % ptp_instance_uuid)
-
-        ptp_interfaces = pecan.request.dbapi.ptp_interfaces_get_list(
-            ptp_instance=ptp_instance_obj.id)
-        if ptp_interfaces:
+                _("No PTP instance found for %s" % ptp_instance_uuid))
+        except Exception as e:
+            LOG.error(f"Failed to retrieve PTP instance {ptp_instance_uuid}: {str(e)}")
             raise wsme.exc.ClientSideError(
-                "PTP instance %s is still associated with PTP interface(s)"
-                % ptp_instance_uuid)
+                _("Error retrieving PTP instance %s" % ptp_instance_uuid))
 
-        hosts = pecan.request.dbapi.ptp_instance_get_assignees(
-            ptp_instance_obj.id)
+        # Check host associations
+        try:
+            hosts = pecan.request.dbapi.ptp_instance_get_assignees(
+                ptp_instance_obj.id)
+        except (exception.NotFound, exception.InvalidParameterValue) as e:
+            LOG.error(
+                f"Failed to get host assignments for PTP instance {ptp_instance_uuid}: {e}")
+            raise wsme.exc.ClientSideError(
+                f"Error checking host associations for PTP instance {ptp_instance_uuid}")
+        except Exception as e:
+            LOG.error(
+                f"Unexpected error getting host assignments for {ptp_instance_uuid}: {e}")
+            raise wsme.exc.ClientSideError(
+                f"Error checking host associations for PTP instance {ptp_instance_uuid}")
+
         if hosts:
             raise wsme.exc.ClientSideError(
-                "PTP instance %s is still associated with host(s)"
-                % ptp_instance_uuid)
+                f"PTP instance {ptp_instance_uuid} is still associated with host(s)")
 
-        LOG.debug("PtpInstanceController.delete: all clear for %s" %
-                  ptp_instance_uuid)
+        # Handle global parameters
+        global_parameters_deleted = utils.cleanup_ptp_parameters(
+            ptp_instance_uuid, "instance")
+        if not global_parameters_deleted:
+            raise wsme.exc.ClientSideError(
+                f"PTP instance {ptp_instance_uuid} is still associated with PTP parameter(s)")
+
+        # Handle instance interfaces
+        ptp_interfaces_deleted = utils.cleanup_ptp_interfaces(ptp_instance_obj)
+        if not ptp_interfaces_deleted:
+            raise wsme.exc.ClientSideError(
+                f"PTP instance {ptp_instance_uuid} is still associated with PTP interface(s)")
+
+        LOG.info(f"PtpInstanceController.delete: all clear for {ptp_instance_uuid}")
         pecan.request.dbapi.ptp_instance_destroy(ptp_instance_uuid)
 
     @cutils.synchronized(LOCK_NAME)
@@ -328,7 +340,8 @@ class PtpInstanceController(rest.RestController):
     def apply(self):
         """Apply the ptp instance configuration."""
         try:
-            pecan.request.rpcapi.update_ptp_instances_config(pecan.request.context)
+            pecan.request.rpcapi.update_ptp_instances_config(
+                pecan.request.context)
         except exception.HTTPNotFound:
             msg = ("PTP Instance apply failed")
             raise wsme.exc.ClientSideError(msg)

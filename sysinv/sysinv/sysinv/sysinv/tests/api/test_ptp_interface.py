@@ -377,7 +377,7 @@ class TestDeletePtpInterface(BasePtpInterfaceTestCase):
         self.assertEqual(response.status_code, http_client.NOT_FOUND)
         self.assertIn(error_message, response.json['error_message'])
 
-    def test_delete_ptp_interface_with_interface_failed(self):
+    def test_delete_ptp_interface_with_interface_ok(self):
         response = self.patch_json(
             self.get_interface_url(self.interface.uuid),
             [{'path': constants.PTP_INTERFACE_ARRAY_PATH,
@@ -388,13 +388,18 @@ class TestDeletePtpInterface(BasePtpInterfaceTestCase):
         self.assertEqual(response.status_code, http_client.OK)
 
         response = self.delete(self.get_single_url(self.uuid),
-                               headers=self.API_HEADERS, expect_errors=True)
+                               headers=self.API_HEADERS, expect_errors=False)
+        self.assertEqual(response.status_code, http_client.NO_CONTENT)
+        # Check the PTP interface was indeed removed
+        error_message = \
+            'No PTP interface with id %s found' % self.uuid
+        response = self.get_json(self.get_single_url(self.uuid),
+                                 expect_errors=True)
         self.assertEqual('application/json', response.content_type)
-        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
-        self.assertIn('still associated with host interface',
-                      response.json['error_message'])
+        self.assertEqual(response.status_code, http_client.NOT_FOUND)
+        self.assertIn(error_message, response.json['error_message'])
 
-    def test_delete_ptp_interface_with_parameters_failed(self):
+    def test_delete_ptp_interface_with_parameters_ok(self):
         response = self.patch_json(
             self.get_single_url(self.uuid),
             [{'path': constants.PTP_PARAMETER_ARRAY_PATH,
@@ -405,8 +410,44 @@ class TestDeletePtpInterface(BasePtpInterfaceTestCase):
         self.assertEqual(response.status_code, http_client.OK)
 
         response = self.delete(self.get_single_url(self.uuid),
-                               headers=self.API_HEADERS, expect_errors=True)
+                               headers=self.API_HEADERS, expect_errors=False)
+        self.assertEqual(response.status_code, http_client.NO_CONTENT)
+        # Check the PTP interface was indeed removed
+        error_message = \
+            'No PTP interface with id %s found' % self.uuid
+        response = self.get_json(self.get_single_url(self.uuid),
+                                 expect_errors=True)
         self.assertEqual('application/json', response.content_type)
-        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
-        self.assertIn('still associated with PTP parameter',
-                      response.json['error_message'])
+        self.assertEqual(response.status_code, http_client.NOT_FOUND)
+        self.assertIn(error_message, response.json['error_message'])
+
+    def test_delete_ptp_interface_with_host_interface_ok(self):
+        test_host = self._create_test_host(constants.WORKER)
+        test_interface = dbutils.create_test_interface(
+            ifname='ptp1',
+            ifclass=constants.INTERFACE_CLASS_PLATFORM,
+            forihostid=test_host.id,
+            ihost_uuid=test_host.uuid)
+
+        # Associate the PTP interface with the test interface
+        response = self.patch_json(
+            self.get_interface_url(test_interface.uuid),
+            [{'path': constants.PTP_INTERFACE_ARRAY_PATH,
+            'value': self.ptp_interface['id'],
+            'op': constants.PTP_PATCH_OPERATION_ADD}],
+            headers=self.API_HEADERS)
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
+
+        # Delete the PTP interface
+        response = self.delete(self.get_single_url(self.uuid),
+                            headers=self.API_HEADERS)
+        self.assertEqual(response.status_code, http_client.NO_CONTENT)
+
+        # Verify the PTP interface was deleted
+        error_message = 'No PTP interface with id %s found' % self.uuid
+        response = self.get_json(self.get_single_url(self.uuid),
+                                expect_errors=True)
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(response.status_code, http_client.NOT_FOUND)
+        self.assertIn(error_message, response.json['error_message'])

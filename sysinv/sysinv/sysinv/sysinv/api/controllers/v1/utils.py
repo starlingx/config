@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2024 Wind River Systems, Inc.
+# Copyright (c) 2013-2025 Wind River Systems, Inc.
 #
 
 from eventlet.green import subprocess
@@ -1067,3 +1067,109 @@ def is_network_associated_to_interface(networktype, dbapi=None):
     if if_networks:
         return True
     return False
+
+
+def cleanup_ptp_parameters(ptp_uuid, ptp_type):
+    """Remove parameter associations and delete unused parameters"""
+    try:
+        # Iterate through params and delete parameter or remove association
+        # to instance/interface if used in other instances/interfaces
+        if ptp_type == "instance":
+            parameters = pecan.request.dbapi.ptp_parameters_get_list(
+                ptp_instance=ptp_uuid)
+        elif ptp_type == "interface":
+            parameters = pecan.request.dbapi.ptp_parameters_get_list(
+                ptp_interface=ptp_uuid)
+        else:
+            parameters = None
+
+        for p in parameters:
+            LOG.debug(f"PTP {ptp_type} parameter: {p.uuid}")
+            try:
+                param_owners = pecan.request.dbapi.ptp_parameter_get_owners(
+                    p.uuid)
+                if len(param_owners) == 1:
+                    # Param is owned by delete-pending instance/interface only, safe to delete
+                    LOG.info(f"Deleting ptp parameter {p.uuid}")
+                    pecan.request.dbapi.ptp_parameter_destroy(p.uuid)
+                else:
+                    # Param is owned by other instances/interfaces
+                    # Remove this association and move on
+                    LOG.info(
+                        f"Removing param association for {p.uuid} to {ptp_type} {ptp_uuid}")
+                    if ptp_type == "instance":
+                        pecan.request.dbapi.ptp_instance_parameter_remove(
+                            ptp_uuid, p.uuid)
+                    else:  # interface
+                        pecan.request.dbapi.ptp_interface_parameter_remove(
+                            ptp_uuid, p.uuid)
+            except exception.NotFound:
+                LOG.warning(f"Parameter {p.uuid} not found during cleanup")
+            except Exception as e:
+                LOG.error(f"Failed to cleanup parameter {p.uuid}: {str(e)}")
+                return False
+        # Recheck parameters to ensure that all associations are clear
+        # Expect this to be an empty list at this point
+        if ptp_type == "instance":
+            parameters = pecan.request.dbapi.ptp_parameters_get_list(
+                ptp_instance=ptp_uuid)
+        elif ptp_type == "interface":
+            parameters = pecan.request.dbapi.ptp_parameters_get_list(
+                ptp_interface=ptp_uuid)
+        return False if parameters else True
+    except Exception as e:
+        LOG.error(
+            f"Failed to cleanup {ptp_type} parameters for {ptp_uuid}: {e}")
+        return False
+
+
+def cleanup_host_if_associations(ptp_if_uuid):
+    """Remove associations between ptp-interface and host interfaces"""
+    try:
+        host_interfaces = pecan.request.dbapi.ptp_interface_get_assignees(
+            ptp_if_uuid)
+        for hostif in host_interfaces:
+            values = {'interface_id': hostif.id,
+                      'ptp_interface_id': ptp_if_uuid}
+            pecan.request.dbapi.ptp_interface_remove(values)
+        # Recheck host interface assignments; expecting an empty list
+        host_interfaces = pecan.request.dbapi.ptp_interface_get_assignees(
+            ptp_if_uuid)
+        return False if host_interfaces else True
+    except exception.NotFound:
+        LOG.warning(f"Host interface associations for {ptp_if_uuid} already removed")
+        return True
+    except Exception as e:
+        LOG.error(f"Failed to cleanup host interface associations for {ptp_if_uuid}: {e}")
+        return False
+
+
+def cleanup_ptp_interfaces(ptp_instance_obj):
+    """Iterate through ptp interfaces for a given instance and
+    remove any parameter or host interface associations"""
+    try:
+        ptp_interfaces = pecan.request.dbapi.ptp_interfaces_get_list(
+            ptp_instance=ptp_instance_obj.id)
+        for p in ptp_interfaces:
+            LOG.debug("PTP interface cleanup: %s" % p.uuid)
+            interface_parameters_cleared = cleanup_ptp_parameters(p.uuid, "interface")
+            host_interface_associations_cleared = cleanup_host_if_associations(p.id)
+            if interface_parameters_cleared and host_interface_associations_cleared:
+                LOG.info("PTP interface %s clear for deletion" % p.uuid)
+                try:
+                    pecan.request.dbapi.ptp_interface_destroy(p.uuid)
+                except Exception as e:
+                    LOG.error("Failed to destroy PTP interface %s: %s" % (p.uuid, str(e)))
+                    return False
+            else:
+                LOG.error("Cannot delete PTP interface %s; "
+                          "still associated with host interfaces or parameters" % p.uuid)
+                return False
+        # Recheck interfaces to ensure that all associations are clear
+        # Expect this to be an empty list
+        ptp_interfaces = pecan.request.dbapi.ptp_interfaces_get_list(
+            ptp_instance=ptp_instance_obj.id)
+        return False if ptp_interfaces else True
+    except Exception as e:
+        LOG.error(f"Failed to cleanup PTP interfaces for instance {ptp_instance_obj.id}: {e}")
+        return False
