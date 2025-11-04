@@ -44,6 +44,7 @@ from sysinv.common import exception
 from sysinv.common import kubernetes
 from sysinv.common import utils as cutils
 from sysinv.common import usm_service
+from sysinv.common.image_download import ContainerImageDownloader
 from sysinv.conductor import kube_app
 from sysinv.conductor import manager
 from sysinv.db import api as dbapi
@@ -250,6 +251,7 @@ class ManagerTestCase(base.DbTestCase):
         self.service = manager.ConductorManager('test-host', 'test-topic')
         self.service.dbapi = dbapi.get_instance()
         self.service._docker = kube_app.DockerHelper(self.service.dbapi)
+        self.service._image_downloader = ContainerImageDownloader(self.service.dbapi)
         self.context = context.get_admin_context()
         self.dbapi = dbapi.get_instance()
         self.system = utils.create_test_isystem()
@@ -1431,7 +1433,7 @@ class ManagerTestCase(base.DbTestCase):
 
         mock_download_images_from_upstream_to_local_reg_and_crictl = mock.MagicMock()
         p = mock.patch(
-            'sysinv.conductor.manager.ConductorManager.'
+            'sysinv.conductor.manager.ContainerImageDownloader.'
             'download_images_from_upstream_to_local_reg_and_crictl',
             mock_download_images_from_upstream_to_local_reg_and_crictl)
         p.start().return_value = True
@@ -1506,7 +1508,7 @@ class ManagerTestCase(base.DbTestCase):
 
         mock_download_images_from_upstream_to_local_reg_and_crictl = mock.MagicMock()
         p = mock.patch(
-            'sysinv.conductor.manager.ConductorManager.'
+            'sysinv.conductor.manager.ContainerImageDownloader.'
             'download_images_from_upstream_to_local_reg_and_crictl',
             mock_download_images_from_upstream_to_local_reg_and_crictl)
         p.start().return_value = True
@@ -1582,7 +1584,7 @@ class ManagerTestCase(base.DbTestCase):
 
         mock_download_images_from_upstream_to_local_reg_and_crictl = mock.MagicMock()
         p = mock.patch(
-            'sysinv.conductor.manager.ConductorManager.'
+            'sysinv.conductor.manager.ContainerImageDownloader.'
             'download_images_from_upstream_to_local_reg_and_crictl',
             mock_download_images_from_upstream_to_local_reg_and_crictl)
         p.start().return_value = False
@@ -1687,7 +1689,7 @@ class ManagerTestCase(base.DbTestCase):
 
         mock_download_images_from_upstream_to_local_reg_and_crictl = mock.MagicMock()
         p = mock.patch(
-            'sysinv.conductor.manager.ConductorManager.'
+            'sysinv.conductor.manager.ContainerImageDownloader.'
             'download_images_from_upstream_to_local_reg_and_crictl',
             mock_download_images_from_upstream_to_local_reg_and_crictl)
         p.start().return_value = True
@@ -1805,7 +1807,7 @@ class ManagerTestCase(base.DbTestCase):
 
         mock_download_images_from_upstream_to_local_reg_and_crictl = mock.MagicMock()
         p = mock.patch(
-            'sysinv.conductor.manager.ConductorManager.'
+            'sysinv.conductor.manager.ContainerImageDownloader.'
             'download_images_from_upstream_to_local_reg_and_crictl',
             mock_download_images_from_upstream_to_local_reg_and_crictl)
         p.start().return_value = True
@@ -1878,7 +1880,7 @@ class ManagerTestCase(base.DbTestCase):
         self.addCleanup(p.stop)
 
         p = mock.patch(
-            'sysinv.conductor.manager.ConductorManager.docker_registry_image_list',
+            'sysinv.conductor.manager.ContainerImageDownloader.docker_registry_image_list',
             mock.MagicMock()
         )
         p.start().return_value = [{"name": 'fake_image5'}]
@@ -1915,8 +1917,9 @@ class ManagerTestCase(base.DbTestCase):
         p.start()
         self.addCleanup(p.stop)
 
-        result = self.service.download_images_from_upstream_to_local_reg_and_crictl(
-            images_to_be_downloaded)
+        result = \
+            self.service._image_downloader.download_images_from_upstream_to_local_reg_and_crictl(
+                images_to_be_downloaded)
 
         # Assertions start here
         # Assert Main Result
@@ -2058,8 +2061,9 @@ class ManagerTestCase(base.DbTestCase):
         p.start()
         self.addCleanup(p.stop)
 
-        result = self.service.download_images_from_upstream_to_local_reg_and_crictl(
-            images_to_be_downloaded)
+        result = \
+            self.service._image_downloader.download_images_from_upstream_to_local_reg_and_crictl(
+                images_to_be_downloaded)
 
         # Assertions start here
         # Assert Main Result
@@ -2152,9 +2156,9 @@ class ManagerTestCase(base.DbTestCase):
         p.start()
         self.addCleanup(p.stop)
 
-        result = self.service.download_images_from_upstream_to_local_reg_and_crictl(
-            images_to_be_downloaded
-        )
+        result = \
+            self.service._image_downloader.download_images_from_upstream_to_local_reg_and_crictl(
+                images_to_be_downloaded)
 
         # Assertions start here
         # Assert Main Result
@@ -2263,8 +2267,9 @@ class ManagerTestCase(base.DbTestCase):
         p.start()
         self.addCleanup(p.stop)
 
-        result = self.service.download_images_from_upstream_to_local_reg_and_crictl(
-            images_to_be_downloaded)
+        result = \
+            self.service._image_downloader.download_images_from_upstream_to_local_reg_and_crictl(
+                images_to_be_downloaded)
 
         # Assertions start here
         # Assert Main Result
@@ -2386,8 +2391,9 @@ class ManagerTestCase(base.DbTestCase):
         p.start().side_effect = exception.SysinvException("Fake crictl pull error")
         self.addCleanup(p.stop)
 
-        result = self.service.download_images_from_upstream_to_local_reg_and_crictl(
-            images_to_be_downloaded)
+        result = \
+            self.service._image_downloader.download_images_from_upstream_to_local_reg_and_crictl(
+                images_to_be_downloaded)
 
         # Assertions start here
         # Assert Main Result
@@ -2628,7 +2634,7 @@ class ManagerTestCase(base.DbTestCase):
 
         mock_download_images_from_upstream_to_local_reg_and_crictl = mock.MagicMock()
         p = mock.patch(
-            'sysinv.conductor.manager.ConductorManager.'
+            'sysinv.conductor.manager.ContainerImageDownloader.'
             'download_images_from_upstream_to_local_reg_and_crictl',
             mock_download_images_from_upstream_to_local_reg_and_crictl)
         p.start().return_value = image_download_result
@@ -2788,7 +2794,7 @@ class ManagerTestCase(base.DbTestCase):
 
         mock_download_images_from_upstream_to_local_reg_and_crictl = mock.MagicMock()
         p = mock.patch(
-            'sysinv.conductor.manager.ConductorManager.'
+            'sysinv.conductor.manager.ContainerImageDownloader.'
             'download_images_from_upstream_to_local_reg_and_crictl',
             mock_download_images_from_upstream_to_local_reg_and_crictl)
         p.start().return_value = image_download_result
@@ -2949,7 +2955,7 @@ class ManagerTestCase(base.DbTestCase):
 
         mock_download_images_from_upstream_to_local_reg_and_crictl = mock.MagicMock()
         p = mock.patch(
-            'sysinv.conductor.manager.ConductorManager.'
+            'sysinv.conductor.manager.ContainerImageDownloader.'
             'download_images_from_upstream_to_local_reg_and_crictl',
             mock_download_images_from_upstream_to_local_reg_and_crictl)
         p.start().return_value = image_download_result
@@ -3110,7 +3116,7 @@ class ManagerTestCase(base.DbTestCase):
 
         mock_download_images_from_upstream_to_local_reg_and_crictl = mock.MagicMock()
         p = mock.patch(
-            'sysinv.conductor.manager.ConductorManager.'
+            'sysinv.conductor.manager.ContainerImageDownloader.'
             'download_images_from_upstream_to_local_reg_and_crictl',
             mock_download_images_from_upstream_to_local_reg_and_crictl)
         p.start().return_value = image_download_result
@@ -3245,7 +3251,7 @@ class ManagerTestCase(base.DbTestCase):
 
         mock_download_images_from_upstream_to_local_reg_and_crictl = mock.MagicMock()
         p = mock.patch(
-            'sysinv.conductor.manager.ConductorManager.'
+            'sysinv.conductor.manager.ContainerImageDownloader.'
             'download_images_from_upstream_to_local_reg_and_crictl',
             mock_download_images_from_upstream_to_local_reg_and_crictl)
         p.start()
@@ -3366,7 +3372,7 @@ class ManagerTestCase(base.DbTestCase):
 
         mock_download_images_from_upstream_to_local_reg_and_crictl = mock.MagicMock()
         p = mock.patch(
-            'sysinv.conductor.manager.ConductorManager.'
+            'sysinv.conductor.manager.ContainerImageDownloader.'
             'download_images_from_upstream_to_local_reg_and_crictl',
             mock_download_images_from_upstream_to_local_reg_and_crictl)
         p.start()
@@ -3482,7 +3488,7 @@ class ManagerTestCase(base.DbTestCase):
 
         mock_download_images_from_upstream_to_local_reg_and_crictl = mock.MagicMock()
         p = mock.patch(
-            'sysinv.conductor.manager.ConductorManager.'
+            'sysinv.conductor.manager.ContainerImageDownloader.'
             'download_images_from_upstream_to_local_reg_and_crictl',
             mock_download_images_from_upstream_to_local_reg_and_crictl)
         p.start().return_value = image_download_result
@@ -3597,7 +3603,7 @@ class ManagerTestCase(base.DbTestCase):
 
         mock_download_images_from_upstream_to_local_reg_and_crictl = mock.MagicMock()
         p = mock.patch(
-            'sysinv.conductor.manager.ConductorManager.'
+            'sysinv.conductor.manager.ContainerImageDownloader.'
             'download_images_from_upstream_to_local_reg_and_crictl',
             mock_download_images_from_upstream_to_local_reg_and_crictl)
         p.start().return_value = image_download_result
@@ -3715,7 +3721,7 @@ class ManagerTestCase(base.DbTestCase):
 
         mock_download_images_from_upstream_to_local_reg_and_crictl = mock.MagicMock()
         p = mock.patch(
-            'sysinv.conductor.manager.ConductorManager.'
+            'sysinv.conductor.manager.ContainerImageDownloader.'
             'download_images_from_upstream_to_local_reg_and_crictl',
             mock_download_images_from_upstream_to_local_reg_and_crictl)
         p.start().return_value = image_download_result
@@ -3834,7 +3840,7 @@ class ManagerTestCase(base.DbTestCase):
 
         mock_download_images_from_upstream_to_local_reg_and_crictl = mock.MagicMock()
         p = mock.patch(
-            'sysinv.conductor.manager.ConductorManager.'
+            'sysinv.conductor.manager.ContainerImageDownloader.'
             'download_images_from_upstream_to_local_reg_and_crictl',
             mock_download_images_from_upstream_to_local_reg_and_crictl)
         p.start().return_value = image_download_result
@@ -3952,7 +3958,7 @@ class ManagerTestCase(base.DbTestCase):
 
         mock_download_images_from_upstream_to_local_reg_and_crictl = mock.MagicMock()
         p = mock.patch(
-            'sysinv.conductor.manager.ConductorManager.'
+            'sysinv.conductor.manager.ContainerImageDownloader.'
             'download_images_from_upstream_to_local_reg_and_crictl',
             mock_download_images_from_upstream_to_local_reg_and_crictl)
         p.start().return_value = image_download_result
@@ -4064,7 +4070,7 @@ class ManagerTestCase(base.DbTestCase):
 
         mock_download_images_from_upstream_to_local_reg_and_crictl = mock.MagicMock()
         p = mock.patch(
-            'sysinv.conductor.manager.ConductorManager.'
+            'sysinv.conductor.manager.ContainerImageDownloader.'
             'download_images_from_upstream_to_local_reg_and_crictl',
             mock_download_images_from_upstream_to_local_reg_and_crictl)
         p.start().return_value = image_download_result
@@ -4154,7 +4160,7 @@ class ManagerTestCase(base.DbTestCase):
 
         mock_download_images_from_upstream_to_local_reg_and_crictl = mock.MagicMock()
         p = mock.patch(
-            'sysinv.conductor.manager.ConductorManager.'
+            'sysinv.conductor.manager.ContainerImageDownloader.'
             'download_images_from_upstream_to_local_reg_and_crictl',
             mock_download_images_from_upstream_to_local_reg_and_crictl)
         p.start().return_value = image_download_result
@@ -4226,7 +4232,7 @@ class ManagerTestCase(base.DbTestCase):
 
         mock_download_images_from_upstream_to_local_reg_and_crictl = mock.MagicMock()
         p = mock.patch(
-            'sysinv.conductor.manager.ConductorManager.'
+            'sysinv.conductor.manager.ContainerImageDownloader.'
             'download_images_from_upstream_to_local_reg_and_crictl',
             mock_download_images_from_upstream_to_local_reg_and_crictl)
         p.start().return_value = image_download_result
@@ -4286,7 +4292,7 @@ class ManagerTestCase(base.DbTestCase):
 
         mock_download_images_from_upstream_to_local_reg_and_crictl = mock.MagicMock()
         p = mock.patch(
-            'sysinv.conductor.manager.ConductorManager.'
+            'sysinv.conductor.manager.ContainerImageDownloader.'
             'download_images_from_upstream_to_local_reg_and_crictl',
             mock_download_images_from_upstream_to_local_reg_and_crictl)
         p.start().return_value = image_download_result
