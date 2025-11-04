@@ -9891,28 +9891,17 @@ class ConductorManager(service.PeriodicService):
         if cutils.is_initial_config_complete():
             controller_oam = cutils.format_address_name(constants.CONTROLLER_HOSTNAME,
                                                         constants.NETWORK_TYPE_OAM)
-            controller_mgmt = cutils.format_address_name(constants.CONTROLLER_HOSTNAME,
-                                                         constants.NETWORK_TYPE_MGMT)
             oam1 = cutils.get_primary_address_by_name(self.dbapi,
                                                       controller_oam,
                                                       constants.NETWORK_TYPE_OAM)
-            mgmt1 = cutils.get_primary_address_by_name(self.dbapi,
-                                                       controller_mgmt,
-                                                       constants.NETWORK_TYPE_MGMT)
             oam2 = cutils.get_secondary_address_by_name(self.dbapi,
                                                         controller_oam,
                                                         constants.NETWORK_TYPE_OAM)
-            mgmt2 = cutils.get_secondary_address_by_name(self.dbapi,
-                                                         controller_mgmt,
-                                                         constants.NETWORK_TYPE_MGMT)
             registry_sans = []
             restapi_sans = []
             for ip_addr in [oam1, oam2]:
                 if ip_addr is not None:
                     restapi_sans.append(ip_addr.address)
-                    registry_sans.append(ip_addr.address)
-            for ip_addr in [mgmt1, mgmt2]:
-                if ip_addr is not None:
                     registry_sans.append(ip_addr.address)
 
             kube_op = kubernetes.KubeOperator()
@@ -10058,11 +10047,9 @@ class ConductorManager(service.PeriodicService):
                                                          controller_mgmt,
                                                          constants.NETWORK_TYPE_MGMT)
             openldap_sans = []
-            registry_sans = []
             for ip_addr in [oam1, oam2, mgmt1, mgmt2]:
                 if ip_addr is not None:
                     openldap_sans.append(ip_addr.address)
-                    registry_sans.append(ip_addr.address)
 
             kube_op = kubernetes.KubeOperator()
             certobj = kube_op.get_custom_resource(kubernetes.CERT_MANAGER_GROUP,
@@ -10078,21 +10065,6 @@ class ConductorManager(service.PeriodicService):
                                               kubernetes.NAMESPACE_DEPLOYMENT,
                                               'certificates',
                                               constants.OPENLDAP_CERT_SECRET_NAME,
-                                              certobj)
-
-            certobj = kube_op.get_custom_resource(kubernetes.CERT_MANAGER_GROUP,
-                                                  kubernetes.CERT_MANAGER_VERSION,
-                                                  kubernetes.NAMESPACE_DEPLOYMENT,
-                                                  'certificates',
-                                                  constants.REGISTRY_CERT_SECRET_NAME)
-            if certobj is not None:
-                certobj['spec']['ipAddresses'] = list(set(certobj['spec']['ipAddresses']
-                                                    + registry_sans))
-                kube_op.apply_custom_resource(kubernetes.CERT_MANAGER_GROUP,
-                                              kubernetes.CERT_MANAGER_VERSION,
-                                              kubernetes.NAMESPACE_DEPLOYMENT,
-                                              'certificates',
-                                              constants.REGISTRY_CERT_SECRET_NAME,
                                               certobj)
 
         personalities = [constants.CONTROLLER]
