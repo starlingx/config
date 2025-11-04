@@ -263,7 +263,7 @@ class ihost(Base):
     peer_id = Column(Integer,
                      ForeignKey('peers.id'))
 
-    system = relationship("isystem", lazy="joined", join_depth=1)
+    system = relationship("isystem", lazy="selectin", join_depth=1)
 
     kube_host_upgrade = relationship("KubeHostUpgrade", uselist=False)
 
@@ -273,7 +273,7 @@ class ihost(Base):
         primaryjoin="ihost.id == foreign(PtpInstanceMaps.host_id)",
         secondaryjoin="PtpInstances.id == "
                       "foreign(PtpInstanceMaps.ptp_instance_id)",
-        back_populates="hosts", lazy="joined", join_depth=1)
+        back_populates="hosts", lazy="selectin", join_depth=1)
 
 
 class inode(Base):
@@ -287,7 +287,7 @@ class inode(Base):
 
     forihostid = Column(Integer, ForeignKey('i_host.id', ondelete='CASCADE'))
 
-    host = relationship("ihost", backref="nodes", lazy="joined", join_depth=1)
+    host = relationship("ihost", backref="nodes", lazy="selectin", join_depth=1)
 
     UniqueConstraint('numa_node', 'forihostid', name='u_hostnuma')
 
@@ -312,8 +312,8 @@ class icpu(Base):
     forihostid = Column(Integer, ForeignKey('i_host.id', ondelete='CASCADE'))
     forinodeid = Column(Integer, ForeignKey('i_node.id', ondelete='CASCADE'))
 
-    host = relationship("ihost", backref="cpus", lazy="joined", join_depth=1)
-    node = relationship("inode", backref="cpus", lazy="joined", join_depth=1)
+    host = relationship("ihost", backref="cpus", lazy="selectin", join_depth=1)
+    node = relationship("inode", backref="cpus", lazy="selectin", join_depth=1)
 
     UniqueConstraint('cpu', 'forihostid', name='u_hostcpu')
 
@@ -355,8 +355,8 @@ class imemory(Base):
     forihostid = Column(Integer, ForeignKey('i_host.id', ondelete='CASCADE'))
     forinodeid = Column(Integer, ForeignKey('i_node.id'))
 
-    host = relationship("ihost", backref="memory", lazy="joined", join_depth=1)
-    node = relationship("inode", backref="memory", lazy="joined", join_depth=1)
+    host = relationship("ihost", backref="memory", lazy="selectin", join_depth=1)
+    node = relationship("inode", backref="memory", lazy="selectin", join_depth=1)
 
     UniqueConstraint('forihostid', 'forinodeid', name='u_hostnode')
 
@@ -390,25 +390,25 @@ class Interfaces(Base):
         secondary=interfaces_to_interfaces,
         primaryjoin=id == interfaces_to_interfaces.c.used_by_id,
         secondaryjoin=id == interfaces_to_interfaces.c.uses_id,
-        backref=backref("uses", lazy="joined", join_depth=1),
+        backref=backref("uses", lazy="selectin", join_depth=1),
         cascade="all",
-        lazy="joined",
+        lazy="selectin",
         join_depth=1)
 
     host = relationship("ihost",
                         backref=backref("interfaces", cascade="all, delete"),
-                        lazy="joined")
+                        lazy="selectin")
 
     addresses = relationship("Addresses",
-                             backref=backref("interface", lazy="joined"),
+                             backref=backref("interface", lazy="selectin"),
                              cascade="all")
 
     routes = relationship("Routes",
-                          backref=backref("interface", lazy="joined"),
+                          backref=backref("interface", lazy="selectin"),
                           cascade="all")
 
-    address_modes = relationship("AddressModes", lazy="joined",
-                                 backref=backref("interface", lazy="joined"),
+    address_modes = relationship("AddressModes", lazy="selectin",
+                                 backref=backref("interface", lazy="selectin"),
                                  cascade="all")
 
     ptp_interfaces = relationship(
@@ -417,7 +417,7 @@ class Interfaces(Base):
         primaryjoin="Interfaces.id == foreign(PtpInterfaceMaps.interface_id)",
         secondaryjoin="PtpInterfaces.id == "
                       "foreign(PtpInterfaceMaps.ptp_interface_id)",
-        back_populates="interfaces", lazy="joined", join_depth=1)
+        back_populates="interfaces", lazy="selectin", join_depth=1)
 
     UniqueConstraint('ifname', 'forihostid', name='u_interfacenameihost')
 
@@ -517,11 +517,11 @@ class Ports(Base):
     capabilities = Column(JSONEncodedDict)
     # JSON{'speed':1000,'MTU':9600, 'duplex':'', 'autonegotiation':'false'}
 
-    node = relationship("inode", backref="ports", lazy="joined", join_depth=1)
+    node = relationship("inode", backref="ports", lazy="selectin", join_depth=1)
     host = relationship("ihost", backref=backref("ports", cascade="all, delete"),
-                        lazy="joined", join_depth=1)
+                        lazy="selectin", join_depth=1)
     interface = relationship("Interfaces", backref="port",
-                             lazy="joined", join_depth=1)
+                             lazy="selectin", join_depth=1)
 
     UniqueConstraint('pciaddr', 'dev_id', 'host_id', name='u_pciaddrdevihost')
 
@@ -610,7 +610,7 @@ class ilvg(Base):
                                             ondelete='CASCADE'))
 
     host = relationship("ihost", backref=backref("lvgs", cascade="all, delete"),
-                        lazy="joined", join_depth=1)
+                        lazy="selectin", join_depth=1)
 
     UniqueConstraint('lvm_vg_name', 'forihostid', name='u_vgnamehost')
 
@@ -654,8 +654,8 @@ class ipv(Base):
                                             ondelete='CASCADE'))
 
     host = relationship("ihost", backref=backref("pvs", cascade="all, delete"),
-                        lazy="joined", join_depth=1)
-    lvg = relationship("ilvg", backref="pv", lazy="joined", join_depth=1)
+                        lazy="selectin", join_depth=1)
+    lvg = relationship("ilvg", backref="pv", lazy="selectin", join_depth=1)
 
     UniqueConstraint('lvm_pv_name', 'forihostid', name='u_nodehost')
 
@@ -674,13 +674,13 @@ class istor(Base):
     capabilities = Column(JSONEncodedDict)
 
     forihostid = Column(Integer, ForeignKey('i_host.id', ondelete='CASCADE'))
-    host = relationship("ihost", backref="stors", lazy="joined", join_depth=1)
+    host = relationship("ihost", backref="stors", lazy="selectin", join_depth=1)
 
     fortierid = Column(Integer, ForeignKey('storage_tiers.id'))
     # 'tier' one-to-many backref created from StorageTier 'stors'
 
-    journal = relationship("journal", lazy="joined",
-                           backref=backref("i_istor", lazy="joined"),
+    journal = relationship("journal", lazy="selectin",
+                           backref=backref("i_istor", lazy="selectin"),
                            foreign_keys="[journal.foristorid]",
                            cascade="all")
 
@@ -710,9 +710,9 @@ class idisk(Base):
     foristorid = Column(Integer, ForeignKey('i_istor.id', ondelete='CASCADE'))
     foripvid = Column(Integer, ForeignKey('i_pv.id'))
 
-    host = relationship("ihost", backref="disks", lazy="joined", join_depth=1)
-    stor = relationship("istor", lazy="joined", join_depth=1)
-    pv = relationship("ipv", lazy="joined", join_depth=1)
+    host = relationship("ihost", backref="disks", lazy="selectin", join_depth=1)
+    stor = relationship("istor", lazy="selectin", join_depth=1)
+    pv = relationship("ipv", lazy="selectin", join_depth=1)
 
     UniqueConstraint('device_path', 'forihostid', name='u_devhost')
 
@@ -741,9 +741,9 @@ class partition(Base):
     forihostid = Column(Integer, ForeignKey('i_host.id'))
     status = Column(Integer)
 
-    disk = relationship("idisk", lazy="joined", join_depth=1)
-    pv = relationship("ipv", lazy="joined", join_depth=1)
-    host = relationship("ihost", backref="partitions", lazy="joined",
+    disk = relationship("idisk", lazy="selectin", join_depth=1)
+    pv = relationship("ipv", lazy="selectin", join_depth=1)
+    host = relationship("ihost", backref="partitions", lazy="selectin",
                         join_depth=1)
 
 
@@ -777,7 +777,7 @@ class iuser(Base):
     forisystemid = Column(Integer,
                           ForeignKey('i_system.id', ondelete='CASCADE'))
 
-    system = relationship("isystem", lazy="joined", join_depth=1)
+    system = relationship("isystem", lazy="selectin", join_depth=1)
 
 
 class idns(Base):
@@ -791,7 +791,7 @@ class idns(Base):
     forisystemid = Column(Integer,
                           ForeignKey('i_system.id', ondelete='CASCADE'))
 
-    system = relationship("isystem", lazy="joined", join_depth=1)
+    system = relationship("isystem", lazy="selectin", join_depth=1)
 
 
 class intp(Base):
@@ -805,7 +805,7 @@ class intp(Base):
     forisystemid = Column(Integer,
                           ForeignKey('i_system.id', ondelete='CASCADE'))
 
-    system = relationship("isystem", lazy="joined", join_depth=1)
+    system = relationship("isystem", lazy="selectin", join_depth=1)
 
 
 class PTP(Base):
@@ -821,7 +821,7 @@ class PTP(Base):
     system_id = Column(Integer,
                        ForeignKey('i_system.id', ondelete='CASCADE'))
 
-    system = relationship("isystem", lazy="joined", join_depth=1)
+    system = relationship("isystem", lazy="selectin", join_depth=1)
 
 
 class PtpParameters(Base):
@@ -840,7 +840,7 @@ class PtpParameters(Base):
                     "foreign(PtpParameterOwnerships.parameter_uuid)",
         secondaryjoin="PtpParameterOwners.uuid == "
                       "foreign(PtpParameterOwnerships.owner_uuid)",
-        back_populates="ptp_parameters", lazy="joined", join_depth=1)
+        back_populates="ptp_parameters", lazy="selectin", join_depth=1)
 
 
 class PtpParameterOwners(Base):
@@ -860,7 +860,7 @@ class PtpParameterOwners(Base):
                     "foreign(PtpParameterOwnerships.owner_uuid)",
         secondaryjoin="PtpParameters.uuid == "
                       "foreign(PtpParameterOwnerships.parameter_uuid)",
-        back_populates="ptp_parameter_owners", lazy="joined", join_depth=1)
+        back_populates="ptp_parameter_owners", lazy="selectin", join_depth=1)
 
     __mapper_args__ = {
         'polymorphic_identity': 'ptp_parameter_owner',
@@ -884,7 +884,7 @@ class PtpInstances(PtpParameterOwners):
         primaryjoin="PtpInstances.id == "
                     "foreign(PtpInstanceMaps.ptp_instance_id)",
         secondaryjoin="ihost.id == foreign(PtpInstanceMaps.host_id)",
-        back_populates="ptp_instances", lazy="joined", join_depth=1)
+        back_populates="ptp_instances", lazy="selectin", join_depth=1)
 
     __mapper_args__ = {
         'polymorphic_identity': constants.PTP_PARAMETER_OWNER_INSTANCE
@@ -903,7 +903,7 @@ class PtpInterfaces(PtpParameterOwners):
                                         ondelete='CASCADE'),
                              nullable=False)
 
-    ptp_instance = relationship("PtpInstances", lazy="joined", join_depth=1,
+    ptp_instance = relationship("PtpInstances", lazy="selectin", join_depth=1,
                                 primaryjoin="PtpInterfaces.ptp_instance_id == "
                                             "PtpInstances.id")
 
@@ -914,7 +914,7 @@ class PtpInterfaces(PtpParameterOwners):
                     "foreign(PtpInterfaceMaps.ptp_interface_id)",
         secondaryjoin="Interfaces.id == "
                       "foreign(PtpInterfaceMaps.interface_id)",
-        back_populates="ptp_interfaces", lazy="joined", join_depth=1)
+        back_populates="ptp_interfaces", lazy="selectin", join_depth=1)
 
     __mapper_args__ = {
         'polymorphic_identity': constants.PTP_PARAMETER_OWNER_INTERFACE
@@ -940,8 +940,8 @@ class PtpParameterOwnerships(Base):
                                    ondelete='CASCADE'),
                         nullable=False)
 
-    parameter = relationship("PtpParameters", lazy="joined", join_depth=1)
-    owner = relationship("PtpParameterOwners", lazy="joined", join_depth=1)
+    parameter = relationship("PtpParameters", lazy="selectin", join_depth=1)
+    owner = relationship("PtpParameterOwners", lazy="selectin", join_depth=1)
 
     UniqueConstraint('parameter_uuid', 'owner_uuid', name='u_paramowner')
 
@@ -963,8 +963,8 @@ class PtpInstanceMaps(Base):
         Integer, ForeignKey('ptp_instances.id', ondelete='CASCADE'),
         nullable=False)
 
-    host = relationship("ihost", lazy="joined", join_depth=1)
-    instance = relationship("PtpInstances", lazy="joined", join_depth=1)
+    host = relationship("ihost", lazy="selectin", join_depth=1)
+    instance = relationship("PtpInstances", lazy="selectin", join_depth=1)
 
     UniqueConstraint('host_id', 'ptp_instance_id', name='u_hostinstance')
 
@@ -986,8 +986,8 @@ class PtpInterfaceMaps(Base):
         Integer, ForeignKey('ptp_interfaces.id', ondelete='CASCADE'),
         nullable=False)
 
-    interface = relationship("Interfaces", lazy="joined", join_depth=1)
-    ptp_interface = relationship("PtpInterfaces", lazy="joined", join_depth=1)
+    interface = relationship("Interfaces", lazy="selectin", join_depth=1)
+    ptp_interface = relationship("PtpInterfaces", lazy="selectin", join_depth=1)
 
     UniqueConstraint('interface_id', 'ptp_interface_id',
                      name='u_ifaceptpiface')
@@ -1012,8 +1012,8 @@ class StorageTier(Base):
                           ForeignKey('clusters.id', ondelete='CASCADE'))
     # 'cluster' one-to-many backref created from Clusters 'tiers'
 
-    stors = relationship("istor", lazy="joined",
-                         backref=backref("tier", lazy="joined"),
+    stors = relationship("istor", lazy="selectin",
+                         backref=backref("tier", lazy="selectin"),
                          foreign_keys="[istor.fortierid]",
                          cascade="all")
 
@@ -1034,7 +1034,7 @@ class StorageBackend(Base):
     forisystemid = Column(Integer,
                           ForeignKey('i_system.id', ondelete='CASCADE'))
 
-    system = relationship("isystem", lazy="joined", join_depth=1)
+    system = relationship("isystem", lazy="selectin", join_depth=1)
 
     __mapper_args__ = {
         'polymorphic_identity': 'storage_backend',
@@ -1058,8 +1058,8 @@ class StorageCeph(StorageBackend):
     tier_id = Column(Integer,
                      ForeignKey('storage_tiers.id'))
 
-    tier = relationship("StorageTier", lazy="joined", uselist=False,
-                         backref=backref("stor_backend", lazy="joined"),
+    tier = relationship("StorageTier", lazy="selectin", uselist=False,
+                         backref=backref("stor_backend", lazy="selectin"),
                          foreign_keys="[StorageTier.forbackendid]",
                          cascade="all")
 
@@ -1136,7 +1136,7 @@ class CephMon(Base):
     task = Column(String(255))
     forihostid = Column(Integer, ForeignKey('i_host.id', ondelete='CASCADE'))
 
-    host = relationship("ihost", lazy="joined", join_depth=1)
+    host = relationship("ihost", lazy="selectin", join_depth=1)
 
 
 class ControllerFs(Base):
@@ -1155,7 +1155,7 @@ class ControllerFs(Base):
     forisystemid = Column(Integer,
                           ForeignKey('i_system.id', ondelete='CASCADE'))
 
-    system = relationship("isystem", lazy="joined", join_depth=1)
+    system = relationship("isystem", lazy="selectin", join_depth=1)
 
 
 class drbdconfig(Base):
@@ -1171,7 +1171,7 @@ class drbdconfig(Base):
     forisystemid = Column(Integer,
                           ForeignKey('i_system.id', ondelete='CASCADE'))
 
-    system = relationship("isystem", lazy="joined", join_depth=1)
+    system = relationship("isystem", lazy="selectin", join_depth=1)
 
 
 class remotelogging(Base):
@@ -1193,7 +1193,7 @@ class remotelogging(Base):
     system_id = Column(Integer,
                        ForeignKey('i_system.id', ondelete='CASCADE'))
 
-    system = relationship("isystem", lazy="joined", join_depth=1)
+    system = relationship("isystem", lazy="selectin", join_depth=1)
 
 
 class Services(Base):
@@ -1248,23 +1248,23 @@ class AddressPools(Base):
                                 ForeignKey('addresses.id', ondelete="CASCADE"),
                                 nullable=True)
 
-    ranges = relationship("AddressPoolRanges", lazy="joined",
-                          backref=backref("address_pool", lazy="joined"),
+    ranges = relationship("AddressPoolRanges", lazy="selectin",
+                          backref=backref("address_pool", lazy="selectin"),
                           cascade="all, delete-orphan")
     controller0_address = relationship(
-        "Addresses", lazy="joined", join_depth=1,
+        "Addresses", lazy="selectin", join_depth=1,
         foreign_keys=[controller0_address_id])
 
     controller1_address = relationship(
-        "Addresses", lazy="joined", join_depth=1,
+        "Addresses", lazy="selectin", join_depth=1,
         foreign_keys=[controller1_address_id])
 
     floating_address = relationship(
-        "Addresses", lazy="joined", join_depth=1,
+        "Addresses", lazy="selectin", join_depth=1,
         foreign_keys=[floating_address_id])
 
     gateway_address = relationship(
-        "Addresses", lazy="joined", join_depth=1,
+        "Addresses", lazy="selectin", join_depth=1,
         foreign_keys=[gateway_address_id])
 
     @classmethod
@@ -1315,7 +1315,7 @@ class Addresses(Base):
                                         ondelete='CASCADE'),
                              nullable=True)
 
-    address_pool = relationship("AddressPools", lazy="joined",
+    address_pool = relationship("AddressPools", lazy="selectin",
                                 foreign_keys="Addresses.address_pool_id")
 
     UniqueConstraint('family', 'address', 'interface_id',
@@ -1337,7 +1337,7 @@ class AddressModes(Base):
                              ForeignKey('address_pools.id',
                                         ondelete='CASCADE'))
 
-    address_pool = relationship("AddressPools", lazy="joined")
+    address_pool = relationship("AddressPools", lazy="selectin")
 
     UniqueConstraint('family', 'interface_id',
                      name='u_family@interface')
@@ -1359,7 +1359,7 @@ class Networks(Base):
 
     primary_pool_family = Column(String(4))
 
-    address_pool = relationship("AddressPools", lazy="joined",
+    address_pool = relationship("AddressPools", lazy="selectin",
                                 backref=backref("networks", cascade="all, delete"))
 
 
@@ -1371,10 +1371,10 @@ class NetworkAddressPools(Base):
     address_pool_id = Column(Integer, ForeignKey('address_pools.id', ondelete='CASCADE'))
     network_id = Column(Integer, ForeignKey('networks.id', ondelete='CASCADE'))
 
-    address_pool = relationship("AddressPools", lazy="joined",
+    address_pool = relationship("AddressPools", lazy="selectin",
                                 backref=backref("network_addresspools",
                                                 cascade="all, delete"))
-    network = relationship("Networks", lazy="joined",
+    network = relationship("Networks", lazy="selectin",
                            backref=backref("network_addresspools",
                                            cascade="all, delete"))
 
@@ -1390,10 +1390,10 @@ class InterfaceNetworks(Base):
     interface_id = Column(Integer, ForeignKey('interfaces.id', ondelete='CASCADE'))
     network_id = Column(Integer, ForeignKey('networks.id', ondelete='CASCADE'))
 
-    interface = relationship("Interfaces", lazy="joined",
+    interface = relationship("Interfaces", lazy="selectin",
                              backref=backref("interface_networks",
-                                             lazy="joined"))
-    network = relationship("Networks", lazy="joined",
+                                             lazy="selectin"))
+    network = relationship("Networks", lazy="selectin",
                            backref=backref("interface_networks", cascade="all, delete"))
     UniqueConstraint('interface_id', 'network_id', name='u_interface_id@network_id')
 
@@ -1471,9 +1471,9 @@ class InterfaceDataNetworks(Base):
         Integer, ForeignKey('datanetworks.id', ondelete='CASCADE'))
 
     interface = relationship(
-        "Interfaces", lazy="joined", backref=backref("interface_datanetworks", lazy="joined"))
+        "Interfaces", lazy="selectin", backref=backref("interface_datanetworks", lazy="selectin"))
     datanetwork = relationship(
-        "DataNetworks", lazy="joined", backref="interface_datanetworks")
+        "DataNetworks", lazy="selectin", backref="interface_datanetworks")
     UniqueConstraint(
         'interface_id', 'datanetwork_id', name='u_interface_id@datanetwork_id')
 
@@ -1509,7 +1509,7 @@ class SensorGroups(Base):
     actions_major_choices = Column(String(255))
     actions_minor_choices = Column(String(255))
 
-    host = relationship("ihost", lazy="joined", join_depth=1)
+    host = relationship("ihost", lazy="selectin", join_depth=1)
 
     # probably shouldnt be joined in this way?
     # sensors = relationship("Sensors",
@@ -1598,8 +1598,8 @@ class Sensors(Base):
 
     capabilities = Column(JSONEncodedDict)
 
-    host = relationship("ihost", lazy="joined", join_depth=1)
-    sensorgroup = relationship("SensorGroups", lazy="joined", join_depth=1)
+    host = relationship("ihost", lazy="selectin", join_depth=1)
+    sensorgroup = relationship("SensorGroups", lazy="selectin", join_depth=1)
 
     UniqueConstraint('sensorname', 'path', 'host_id',
                      name='u_sensorname_path_host_id')
@@ -1671,8 +1671,8 @@ class PciDevice(Base):
     enabled = Column(Boolean)
     extra_info = Column(Text)
 
-    host = relationship("ihost", lazy="joined", join_depth=1)
-    fpga = relationship("FpgaDevice", lazy="joined", uselist=False, join_depth=1)
+    host = relationship("ihost", lazy="selectin", join_depth=1)
+    fpga = relationship("FpgaDevice", lazy="selectin", uselist=False, join_depth=1)
     UniqueConstraint('pciaddr', 'host_id', name='u_pciaddrhost')
 
 
@@ -1693,8 +1693,8 @@ class FpgaDevice(Base):
     boot_page = Column(String(16))
     bitstream_id = Column(String(32))
 
-    host = relationship("ihost", lazy="joined", join_depth=1)
-    pcidevice = relationship("PciDevice", lazy="joined", join_depth=1)
+    host = relationship("ihost", lazy="selectin", join_depth=1)
+    pcidevice = relationship("PciDevice", lazy="selectin", join_depth=1)
     UniqueConstraint('pciaddr', 'host_id', name='u_pciaddrhost')
 
 
@@ -1708,8 +1708,8 @@ class FpgaPorts(Base):
     fpga_id = Column(Integer,
                      ForeignKey('fpga_devices.id', ondelete='CASCADE'))
 
-    ports = relationship("Ports", lazy="joined", join_depth=1)
-    fpga_device = relationship("FpgaDevice", lazy="joined",
+    ports = relationship("Ports", lazy="selectin", join_depth=1)
+    fpga_device = relationship("FpgaDevice", lazy="selectin",
                                backref="fpga_ports", join_depth=1)
     UniqueConstraint('port_id', 'fpga_id', name='u_port_id@fpga_id')
 
@@ -1784,8 +1784,8 @@ class DeviceLabel(Base):
                                               ondelete='CASCADE'))
     capabilities = Column(JSONEncodedDict)
 
-    host = relationship("ihost", lazy="joined", join_depth=1)
-    pcidevice = relationship("PciDevice", lazy="joined", join_depth=1)
+    host = relationship("ihost", lazy="selectin", join_depth=1)
+    pcidevice = relationship("PciDevice", lazy="selectin", join_depth=1)
     label_key = Column(String(384))
     label_value = Column(String(128))
 
@@ -1804,9 +1804,9 @@ class DeviceImageLabel(Base):
     capabilities = Column(JSONEncodedDict)
 
     image = relationship(
-        "DeviceImage", lazy="joined", backref="device_image_labels")
+        "DeviceImage", lazy="selectin", backref="device_image_labels")
     label = relationship(
-        "DeviceLabel", lazy="joined", backref="device_image_labels")
+        "DeviceLabel", lazy="selectin", backref="device_image_labels")
     UniqueConstraint('image_id', 'label_id', name='u_image_id@label_id')
 
 
@@ -1825,11 +1825,11 @@ class DeviceImageState(Base):
     update_start_time = Column(DateTime(timezone=False))
     capabilities = Column(JSONEncodedDict)
 
-    host = relationship("ihost", lazy="joined", join_depth=1)
+    host = relationship("ihost", lazy="selectin", join_depth=1)
     pcidevice = relationship(
-        "PciDevice", lazy="joined", backref="device_image_state")
+        "PciDevice", lazy="selectin", backref="device_image_state")
     image = relationship(
-        "DeviceImage", lazy="joined", backref="device_image_state")
+        "DeviceImage", lazy="selectin", backref="device_image_state")
 
 
 class Restore(Base):
@@ -1869,14 +1869,14 @@ class Clusters(Base):
 
     system_id = Column(Integer, ForeignKey('i_system.id', ondelete='CASCADE'))
 
-    system = relationship("isystem", lazy="joined", join_depth=1)
+    system = relationship("isystem", lazy="selectin", join_depth=1)
 
-    peers = relationship("Peers", lazy="joined",
-                          backref=backref("cluster", lazy="joined"),
+    peers = relationship("Peers", lazy="selectin",
+                          backref=backref("cluster", lazy="selectin"),
                           cascade="all, delete-orphan")
 
-    tiers = relationship("StorageTier", lazy="joined",
-                         backref=backref("cluster", lazy="joined"),
+    tiers = relationship("StorageTier", lazy="selectin",
+                         backref=backref("cluster", lazy="selectin"),
                          foreign_keys="[StorageTier.forclusterid]",
                          cascade="all")
 
@@ -1891,7 +1891,7 @@ class Peers(Base):
     info = Column(JSONEncodedDict)
     capabilities = Column(JSONEncodedDict)
 
-    hosts = relationship("ihost", lazy="joined",
+    hosts = relationship("ihost", lazy="selectin",
                           backref="peer",
                           cascade="all, delete-orphan")
 
@@ -1915,8 +1915,8 @@ class LldpAgents(Base):
                              backref=backref("lldpagents", lazy="subquery"),
                              cascade="all")
 
-    host = relationship("ihost", lazy="joined", join_depth=1)
-    port = relationship("Ports", lazy="joined", join_depth=1)
+    host = relationship("ihost", lazy="selectin", join_depth=1)
+    port = relationship("Ports", lazy="selectin", join_depth=1)
 
 
 class LldpNeighbours(Base):
@@ -1935,8 +1935,8 @@ class LldpNeighbours(Base):
         backref=backref("lldpneighbours", lazy="subquery"),
         cascade="all")
 
-    host = relationship("ihost", lazy="joined", join_depth=1)
-    port = relationship("Ports", lazy="joined", join_depth=1)
+    host = relationship("ihost", lazy="selectin", join_depth=1)
+    port = relationship("Ports", lazy="selectin", join_depth=1)
 
     UniqueConstraint('msap', 'port_id', name='u_msap_port_id')
 
@@ -1956,13 +1956,13 @@ class LldpTlvs(Base):
     lldp_agent = relationship("LldpAgents",
                               backref=backref("lldptlvs", lazy="subquery"),
                               cascade="all",
-                              lazy="joined")
+                              lazy="selectin")
 
     lldp_neighbour = relationship(
         "LldpNeighbours",
         backref=backref("lldptlvs", lazy="subquery"),
         cascade="all",
-        lazy="joined")
+        lazy="selectin")
 
     UniqueConstraint('type', 'agent_id',
                      name='u_type@agent')
@@ -2003,7 +2003,7 @@ class tpmdevice(Base):
 
     host_id = Column(Integer, ForeignKey('i_host.id',
                                          ondelete='CASCADE'))
-    host = relationship("ihost", lazy="joined", join_depth=1)
+    host = relationship("ihost", lazy="selectin", join_depth=1)
 
 
 class certificate(Base):
@@ -2031,7 +2031,7 @@ class HelmOverrides(Base):
     user_overrides = Column(Text, nullable=True)
     system_overrides = Column(JSONEncodedDict, nullable=True)
     app_id = Column(Integer, ForeignKey('kube_app.id', ondelete='CASCADE'))
-    kube_app = relationship("KubeApp", lazy="joined", join_depth=1)
+    kube_app = relationship("KubeApp", lazy="selectin", join_depth=1)
     UniqueConstraint('name', 'namespace', 'app_id', name='u_app_name_namespace')
 
 
@@ -2042,7 +2042,7 @@ class Label(Base):
     uuid = Column(String(36))
     host_id = Column(Integer, ForeignKey('i_host.id',
                                          ondelete='CASCADE'))
-    host = relationship("ihost", lazy="joined", join_depth=1)
+    host = relationship("ihost", lazy="selectin", join_depth=1)
     label_key = Column(String(384))
     label_value = Column(String(128))
     UniqueConstraint('host_id', 'label_key', name='u_host_id@label_key')
@@ -2075,7 +2075,7 @@ class KubeAppReleases(Base):
     namespace = Column(String(255), nullable=True)
     version = Column(Integer)
     app_id = Column(Integer, ForeignKey('kube_app.id', ondelete='CASCADE'))
-    kube_app = relationship("KubeApp", lazy="joined", join_depth=1)
+    kube_app = relationship("KubeApp", lazy="selectin", join_depth=1)
     UniqueConstraint('release', 'namespace', 'app_id', name='u_app_release_namespace')
 
 
@@ -2125,7 +2125,7 @@ class HostFs(Base):
 
     forihostid = Column(Integer, ForeignKey('i_host.id', ondelete='CASCADE'))
 
-    host = relationship("ihost", lazy="joined", join_depth=1)
+    host = relationship("ihost", lazy="selectin", join_depth=1)
 
 
 class KubeRootCAUpdate(Base):
@@ -2156,7 +2156,7 @@ class KubeRootCAHostUpdate(Base):
     reserved_2 = Column(String(255))
     reserved_3 = Column(String(255))
 
-    host = relationship("ihost", lazy="joined", join_depth=1)
+    host = relationship("ihost", lazy="selectin", join_depth=1)
 
 
 class KubeCmdVersions(Base):
