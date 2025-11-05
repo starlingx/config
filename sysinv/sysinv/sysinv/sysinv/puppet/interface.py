@@ -1340,8 +1340,8 @@ def get_interface_network_config(context, iface, network=None, address=None):
         if network and network.type == constants.NETWORK_TYPE_PXEBOOT:
             # the name format for pxeboot does not need to contain the address id as
             # this network does not have dual-stack support and MTCE uses the format
-            # below to identify the pxeboot address
-            ifname = "%s:%d" % (os_ifname, net_num)
+            # below to identify the pxeboot address, it is fixed to ":2".
+            ifname = "%s:2" % (os_ifname)
         else:
             ifname = "%s:%d-%d" % (os_ifname, net_num, addr_num)
     else:
