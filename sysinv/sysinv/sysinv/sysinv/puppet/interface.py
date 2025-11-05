@@ -1470,8 +1470,12 @@ def generate_network_config(context, hiera_config, iface):
 
     # the puppet-network plugin is very inneficient when the number of routes is in the 1000s,
     # generate the networking.service routes file content directly in the final format
-    route_config = "\n"
-    for route in get_interface_routes(context, iface):
+    if hiera_config[ROUTE_CONFIG_RESOURCE]:
+        route_config = hiera_config[ROUTE_CONFIG_RESOURCE]
+    else:
+        route_config = "\n"
+    route_list = get_interface_routes(context, iface)
+    for route in route_list:
         route_data = get_route_config(route, os_ifname)
         route_config = route_config + route_data
     hiera_config[ROUTE_CONFIG_RESOURCE] = f"{route_config}"
