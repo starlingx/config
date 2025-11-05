@@ -2477,3 +2477,10 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         """
         return self.call(context, self.make_msg('configure_stalld',
                                                 host_uuid=host_uuid))
+
+    def upgrade_flux_controllers(self, context):
+        """Synchronously, upgrade Flux controllers.
+
+        :param context: request context.
+        """
+        return self.call(context, self.make_msg('upgrade_flux_controllers'))

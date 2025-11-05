@@ -26,6 +26,7 @@ usr/bin/sysinv-app
 usr/bin/sysinv-conductor
 usr/bin/sysinv-dbsync
 usr/bin/sysinv-dnsmasq-lease-update
+usr/bin/sysinv-flux
 usr/bin/sysinv-helm
 usr/bin/sysinv-k8s-health
 usr/bin/sysinv-puppet

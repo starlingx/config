@@ -138,6 +138,7 @@ from sysinv.puppet import common as puppet_common
 from sysinv.puppet import puppet
 from sysinv.puppet import interface as pinterface
 from sysinv.helm import helm
+from sysinv.helm.flux import FluxDeploymentManager
 from sysinv.helm.lifecycle_constants import LifecycleConstants
 from sysinv.helm.lifecycle_hook import LifecycleHookInfo
 from sysinv.zmq_rpc.zmq_rpc import ZmqRpcServer
@@ -21007,6 +21008,16 @@ class ConductorManager(service.PeriodicService):
         self._config_apply_runtime_manifest(context,
                                             config_uuid,
                                             config_dict)
+
+    def upgrade_flux_controllers(self, context):
+        """ Upgrade Flux controllers
+
+        :param context: admin context
+        :returns: True if successful. False otherwise.
+        """
+
+        flux_deployment_manager = FluxDeploymentManager(self.dbapi)
+        return flux_deployment_manager.upgrade_controllers()
 
 
 def device_image_state_sort_key(dev_img_state):
