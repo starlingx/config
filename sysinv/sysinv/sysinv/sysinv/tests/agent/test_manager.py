@@ -66,7 +66,7 @@ class TestHostFileSystems(base.TestCase):
         # Mock get_current_fs_size utility
         self.scratch_fs_size = 16
         self.backup_fs_size = 20
-        self.docker_fs_size = 30
+        self.docker_fs_size = 40
         self.kubelet_fs_size = 10
         self.log_fs_size = 8
         self.var_fs_size = 20
@@ -109,7 +109,7 @@ class TestHostFileSystems(base.TestCase):
         expected_filesystems = [
             {'logical_volume': 'scratch-lv', 'name': 'scratch', 'size': 16},
             {'logical_volume': 'backup-lv', 'name': 'backup', 'size': 25},
-            {'logical_volume': 'docker-lv', 'name': 'docker', 'size': 30},
+            {'logical_volume': 'docker-lv', 'name': 'docker', 'size': 40},
             {'logical_volume': 'kubelet-lv', 'name': 'kubelet', 'size': 10},
             {'logical_volume': 'log-lv', 'name': 'log', 'size': 8},
             {'logical_volume': 'var-lv', 'name': 'var', 'size': 20},
@@ -134,7 +134,7 @@ class TestHostFileSystems(base.TestCase):
         expected_filesystems = [
             {'logical_volume': 'scratch-lv', 'name': 'scratch', 'size': 16},
             {'logical_volume': 'backup-lv', 'name': 'backup', 'size': 20},
-            {'logical_volume': 'docker-lv', 'name': 'docker', 'size': 30},
+            {'logical_volume': 'docker-lv', 'name': 'docker', 'size': 40},
             {'logical_volume': 'kubelet-lv', 'name': 'kubelet', 'size': 10},
             {'logical_volume': 'log-lv', 'name': 'log', 'size': 8},
             {'logical_volume': 'var-lv', 'name': 'var', 'size': 20},
@@ -206,7 +206,7 @@ class TestHostFileSystems(base.TestCase):
         # Verify expected filesystems and sizes
         expected_filesystems = [
             {'logical_volume': 'scratch-lv', 'name': 'scratch', 'size': 16},
-            {'logical_volume': 'docker-lv', 'name': 'docker', 'size': 30},
+            {'logical_volume': 'docker-lv', 'name': 'docker', 'size': 40},
             {'logical_volume': 'kubelet-lv', 'name': 'kubelet', 'size': 10},
             {'logical_volume': 'log-lv', 'name': 'log', 'size': 8},
             {'logical_volume': 'var-lv', 'name': 'var', 'size': 20},
@@ -230,7 +230,7 @@ class TestHostFileSystems(base.TestCase):
         # Verify expected filesystems and sizes
         expected_filesystems = [
             {'logical_volume': 'scratch-lv', 'name': 'scratch', 'size': 16},
-            {'logical_volume': 'docker-lv', 'name': 'docker', 'size': 30},
+            {'logical_volume': 'docker-lv', 'name': 'docker', 'size': 40},
             {'logical_volume': 'kubelet-lv', 'name': 'kubelet', 'size': 10},
             {'logical_volume': 'log-lv', 'name': 'log', 'size': 8},
             {'logical_volume': 'var-lv', 'name': 'var', 'size': 20},
@@ -254,7 +254,7 @@ class TestHostFileSystems(base.TestCase):
         # Verify expected filesystems and sizes
         expected_filesystems = [
             {'logical_volume': 'scratch-lv', 'name': 'scratch', 'size': 16},
-            {'logical_volume': 'docker-lv', 'name': 'docker', 'size': 30},
+            {'logical_volume': 'docker-lv', 'name': 'docker', 'size': 40},
             {'logical_volume': 'kubelet-lv', 'name': 'kubelet', 'size': 10},
             {'logical_volume': 'log-lv', 'name': 'log', 'size': 8},
             {'logical_volume': 'var-lv', 'name': 'var', 'size': 20},
@@ -278,7 +278,7 @@ class TestHostFileSystems(base.TestCase):
         # Verify expected filesystems and sizes
         expected_filesystems = [
             {'logical_volume': 'scratch-lv', 'name': 'scratch', 'size': 16},
-            {'logical_volume': 'docker-lv', 'name': 'docker', 'size': 30},
+            {'logical_volume': 'docker-lv', 'name': 'docker', 'size': 40},
             {'logical_volume': 'kubelet-lv', 'name': 'kubelet', 'size': 10},
             {'logical_volume': 'log-lv', 'name': 'log', 'size': 8},
             {'logical_volume': 'var-lv', 'name': 'var', 'size': 20},
@@ -302,7 +302,7 @@ class TestHostFileSystems(base.TestCase):
         # Verify expected filesystems and sizes
         expected_filesystems = [
             {'logical_volume': 'scratch-lv', 'name': 'scratch', 'size': 16},
-            {'logical_volume': 'docker-lv', 'name': 'docker', 'size': 30},
+            {'logical_volume': 'docker-lv', 'name': 'docker', 'size': 40},
             {'logical_volume': 'kubelet-lv', 'name': 'kubelet', 'size': 10},
             {'logical_volume': 'log-lv', 'name': 'log', 'size': 8},
             {'logical_volume': 'var-lv', 'name': 'var', 'size': 20},
@@ -326,7 +326,7 @@ class TestHostFileSystems(base.TestCase):
         # Verify expected filesystems and sizes
         expected_filesystems = [
             {'logical_volume': 'scratch-lv', 'name': 'scratch', 'size': 16},
-            {'logical_volume': 'docker-lv', 'name': 'docker', 'size': 30},
+            {'logical_volume': 'docker-lv', 'name': 'docker', 'size': 40},
             {'logical_volume': 'kubelet-lv', 'name': 'kubelet', 'size': 10},
             {'logical_volume': 'log-lv', 'name': 'log', 'size': 8},
             {'logical_volume': 'var-lv', 'name': 'var', 'size': 20},
@@ -349,7 +349,7 @@ class TestHostFileSystems(base.TestCase):
         expected_filesystems = [
             {'logical_volume': 'scratch-lv', 'name': 'scratch', 'size': 16},
             {'logical_volume': 'backup-lv', 'name': 'backup', 'size': 25},
-            {'logical_volume': 'docker-lv', 'name': 'docker', 'size': 30},
+            {'logical_volume': 'docker-lv', 'name': 'docker', 'size': 40},
             {'logical_volume': 'kubelet-lv', 'name': 'kubelet', 'size': 10},
             {'logical_volume': 'log-lv', 'name': 'log', 'size': 8},
             {'logical_volume': 'var-lv', 'name': 'var', 'size': 20},
@@ -372,7 +372,7 @@ class TestHostFileSystems(base.TestCase):
         expected_filesystems = [
             {'logical_volume': 'scratch-lv', 'name': 'scratch', 'size': 16},
             {'logical_volume': 'backup-lv', 'name': 'backup', 'size': 20},
-            {'logical_volume': 'docker-lv', 'name': 'docker', 'size': 30},
+            {'logical_volume': 'docker-lv', 'name': 'docker', 'size': 40},
             {'logical_volume': 'kubelet-lv', 'name': 'kubelet', 'size': 10},
             {'logical_volume': 'log-lv', 'name': 'log', 'size': 8},
             {'logical_volume': 'var-lv', 'name': 'var', 'size': 20},
@@ -395,7 +395,7 @@ class TestHostFileSystems(base.TestCase):
         expected_filesystems = [
             {'logical_volume': 'scratch-lv', 'name': 'scratch', 'size': 16},
             {'logical_volume': 'backup-lv', 'name': 'backup', 'size': 35},
-            {'logical_volume': 'docker-lv', 'name': 'docker', 'size': 30},
+            {'logical_volume': 'docker-lv', 'name': 'docker', 'size': 40},
             {'logical_volume': 'kubelet-lv', 'name': 'kubelet', 'size': 10},
             {'logical_volume': 'log-lv', 'name': 'log', 'size': 8},
             {'logical_volume': 'var-lv', 'name': 'var', 'size': 20},
@@ -418,7 +418,7 @@ class TestHostFileSystems(base.TestCase):
         expected_filesystems = [
             {'logical_volume': 'scratch-lv', 'name': 'scratch', 'size': 16},
             {'logical_volume': 'backup-lv', 'name': 'backup', 'size': 20},
-            {'logical_volume': 'docker-lv', 'name': 'docker', 'size': 30},
+            {'logical_volume': 'docker-lv', 'name': 'docker', 'size': 40},
             {'logical_volume': 'kubelet-lv', 'name': 'kubelet', 'size': 10},
             {'logical_volume': 'log-lv', 'name': 'log', 'size': 8},
             {'logical_volume': 'var-lv', 'name': 'var', 'size': 20},
@@ -440,7 +440,7 @@ class TestHostFileSystems(base.TestCase):
         # Verify expected filesystems and sizes
         expected_filesystems = [
             {'logical_volume': 'scratch-lv', 'name': 'scratch', 'size': 16},
-            {'logical_volume': 'docker-lv', 'name': 'docker', 'size': 30},
+            {'logical_volume': 'docker-lv', 'name': 'docker', 'size': 40},
             {'logical_volume': 'kubelet-lv', 'name': 'kubelet', 'size': 10},
             {'logical_volume': 'log-lv', 'name': 'log', 'size': 8},
             {'logical_volume': 'var-lv', 'name': 'var', 'size': 20},
@@ -462,7 +462,7 @@ class TestHostFileSystems(base.TestCase):
         # Verify expected filesystems and sizes
         expected_filesystems = [
             {'logical_volume': 'scratch-lv', 'name': 'scratch', 'size': 16},
-            {'logical_volume': 'docker-lv', 'name': 'docker', 'size': 30},
+            {'logical_volume': 'docker-lv', 'name': 'docker', 'size': 40},
             {'logical_volume': 'kubelet-lv', 'name': 'kubelet', 'size': 10},
             {'logical_volume': 'log-lv', 'name': 'log', 'size': 8},
             {'logical_volume': 'var-lv', 'name': 'var', 'size': 20},
