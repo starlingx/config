@@ -17580,38 +17580,6 @@ class ConductorManager(service.PeriodicService):
         )
         self._apps_update_operation.rollback_apps(context)
 
-    # TODO (mdecastr): This method is to support upgrades to stx 11,
-    # it can be removed in later releases.
-    def flag_k8s_port_update_rollback(self, context):
-        personalities = [constants.CONTROLLER]
-        config_uuid = self._config_update_hosts(context, personalities)
-        config_dict = {
-            "personalities": personalities,
-            "classes": ['platform::kubernetes::master::rollback_flag']
-        }
-        self._config_apply_runtime_manifest(
-            context, config_uuid, config_dict, force=True)
-        LOG.info("K8s port update rollback flag requested.")
-
-    # TODO (mdecastr): This method is to support upgrades to stx 11,
-    # it can be removed in later releases.
-    def update_kube_apiserver_cert_sans(self, context):
-        personalities = [constants.CONTROLLER]
-        config_uuid = self._config_update_hosts(context, personalities)
-        config_dict = {
-            "personalities": personalities,
-            "classes": ['platform::kubernetes::certsans::runtime']
-        }
-        self._config_apply_runtime_manifest(
-            context, config_uuid, config_dict, force=True)
-        LOG.info("K8s cert sans update requested.")
-
-    # TODO (mdecastr): This method is to support upgrades to stx 11,
-    # it can be removed in later releases.
-    def run_kubernetes_health_audit(self, context):
-        LOG.info("Running kubernetes audit manually.")
-        self._audit_kubernetes_cluster_health(context)
-
     def run_local_registry_secrets_audit(self, context):
         LOG.info("Running registry secrets audit manually.")
         self._app.audit_local_registry_secrets(context)
