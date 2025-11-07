@@ -15,7 +15,6 @@ import tempfile
 import yaml
 import tsconfig.tsconfig as tsc
 
-from stevedore import extension
 from tsconfig import tsconfig
 from sysinv.common import constants
 
@@ -23,6 +22,8 @@ from oslo_log import log as logging
 from sysinv.puppet import common
 from sysinv.common import usm_service as usm_service
 from sysinv.common import utils
+from sysinv.common.plugin_manager import PluginManager
+from sysinv.common.plugin_manager import PLUGIN_NS_PUPPET_OPS
 
 
 LOG = logging.getLogger(__name__)
@@ -55,14 +56,24 @@ class PuppetOperator(object):
         # Set the helm operator for helm plugin based puppet value generation
         self._helm_operator = helm_operator
 
-        puppet_plugins = extension.ExtensionManager(
-            namespace='systemconfig.puppet_plugins',
-            invoke_on_load=True, invoke_args=(self,))
-        self.puppet_plugins = sorted(puppet_plugins, key=lambda x: x.name)
+        # Sometimes the helm_operator is not passed to PuppetOperator, e.g., during the ansible
+        # bootstrap. In these cases, it's necessary to create a new PluginManager instance. For
+        # cases where the helm_operator exists, this is not necessary, as it already carries a
+        # PluginManager instance.
+        if self._helm_operator:
+            plugin_manager = self._helm_operator.plugins
+        else:
+            plugin_manager = PluginManager()
+
+        self.puppet_plugins = plugin_manager.load_plugins(
+            namespace=PLUGIN_NS_PUPPET_OPS,
+            args=(self,)
+        )
+
+        self.puppet_plugins = [plugin for plugin in self.puppet_plugins.values()]
 
         for plugin in self.puppet_plugins:
-            plugin_name = plugin.name[4:]
-            setattr(self, plugin_name, plugin.obj)
+            setattr(self, plugin.name, plugin.operator)
             LOG.debug("Loaded puppet plugin %s" % plugin.name)
 
     @property
@@ -105,7 +116,7 @@ class PuppetOperator(object):
         try:
             self.context['config'] = config = {}
             for puppet_plugin in self.puppet_plugins:
-                config.update(puppet_plugin.obj.get_static_config())
+                config.update(puppet_plugin.operator.get_static_config())
 
             filename = 'static.yaml'
             self._write_config(filename, config)
@@ -143,7 +154,7 @@ class PuppetOperator(object):
         try:
             self.context['config'] = config = {}
             for puppet_plugin in self.puppet_plugins:
-                config.update(puppet_plugin.obj.get_secure_static_config())
+                config.update(puppet_plugin.operator.get_secure_static_config())
 
             filename = 'secure_static.yaml'
             self._write_config(filename, config)
@@ -167,7 +178,7 @@ class PuppetOperator(object):
             # NOTE: order is important due to cached context data
             self.context['config'] = config = {}
             for puppet_plugin in self.puppet_plugins:
-                config.update(puppet_plugin.obj.get_system_config())
+                config.update(puppet_plugin.operator.get_system_config())
 
             filename = 'system.yaml'
             self._write_config(filename, config)
@@ -191,7 +202,7 @@ class PuppetOperator(object):
             # NOTE: order is important due to cached context data
             self.context['config'] = config = {}
             for puppet_plugin in self.puppet_plugins:
-                config.update(puppet_plugin.obj.get_secure_system_config())
+                config.update(puppet_plugin.operator.get_secure_system_config())
 
             filename = 'secure_system.yaml'
             self._write_config(filename, config)
@@ -239,7 +250,7 @@ class PuppetOperator(object):
         LOG.info("Updating hiera for host: %s "
                  "with config_uuid: %s" % (host.hostname, config_uuid))
         for puppet_plugin in self.puppet_plugins:
-            config.update(puppet_plugin.obj.get_host_config(host))
+            config.update(puppet_plugin.operator.get_host_config(host))
 
         self._write_host_config(host, config)
 
@@ -266,7 +277,7 @@ class PuppetOperator(object):
         self.config_uuid = config_uuid
         self.context['config_upgrade'] = config = {}
         for puppet_plugin in self.puppet_plugins:
-            config.update(puppet_plugin.obj.get_host_config_upgrade(host))
+            config.update(puppet_plugin.operator.get_host_config_upgrade(host))
 
         self._merge_host_config(host, target_load, config)
         LOG.info("Updating hiera for host: %s with config_uuid: %s "

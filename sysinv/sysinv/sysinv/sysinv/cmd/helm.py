@@ -44,11 +44,23 @@ def create_fluxcd_app_overrides_action(path, app_name=None, namespace=None):
                  "not supported via this command." % app_name)
     else:
         if db_app.status == constants.APP_UPLOAD_SUCCESS:
-            app_operator.activate_app_plugins(db_app)
+            app = kube_app.AppOperator.Application(db_app)
+            helm_operator.plugins.activate_plugins(
+                app_name=app.name,
+                app_version=app.version,
+                has_plugin_path=app.system_app,
+                sync_plugins_dir=app.sync_plugins_dir,
+                args=(app_operator,)
+            )
             helm_operator.generate_helm_application_overrides(
                 path, app_name, mode=None, cnamespace=namespace,
                 chart_info=None, combined=False)
-            app_operator.deactivate_app_plugins(db_app)
+            helm_operator.plugins.deactivate_plugins(
+                app_name=app.name,
+                app_version=app.version,
+                has_plugin_path=app.system_app,
+                sync_plugins_dir=app.sync_plugins_dir,
+            )
         else:
             helm_operator.generate_helm_application_overrides(
                 path, app_name, mode=None, cnamespace=namespace)

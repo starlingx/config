@@ -16140,10 +16140,22 @@ class ConductorManager(service.PeriodicService):
             overrides = self._helm.get_helm_chart_overrides(chart_name,
                                                             cnamespace)
         else:
-            self._app.activate_app_plugins(app)
+            app = self._app.Application(app)
+            self._helm.plugins.activate_plugins(
+                app_name=app.name,
+                app_version=app.version,
+                has_plugin_path=app.system_app,
+                sync_plugins_dir=app.sync_plugins_dir,
+                args=(self._helm,)
+            )
             overrides = self._helm.get_helm_chart_overrides(chart_name,
                                                             cnamespace)
-            self._app.deactivate_app_plugins(app)
+            self._helm.plugins.deactivate_plugins(
+                app_name=app.name,
+                app_version=app.version,
+                has_plugin_path=app.system_app,
+                sync_plugins_dir=app.sync_plugins_dir,
+            )
 
         return overrides
 
