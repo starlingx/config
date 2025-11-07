@@ -1001,7 +1001,15 @@ def get_bond_network_config(context, iface, config):
         options.update(bonding_options)
 
     if bonding_options:
-        fill_interface_config_option_operation(options, IFACE_UP_OP, 'sleep 10')
+        # Wait up to 10s for both IPv6 and IPv4 conf dirs to exist
+        fill_interface_config_option_operation(
+            options,
+            IFACE_UP_OP,
+            ('end=$((SECONDS+10)); while { '
+             '[ ! -d /proc/sys/net/ipv6/conf/$IFACE ] || '
+             '[ ! -d /proc/sys/net/ipv4/conf/$IFACE ]; } && '
+             '[ $SECONDS -lt $end ]; do sleep 1; done')
+        )
     config['options'].update(options)
     return config
 
