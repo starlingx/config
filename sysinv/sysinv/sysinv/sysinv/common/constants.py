@@ -30,8 +30,6 @@ RESTORE_IN_PROGRESS_FLAG = tsc.RESTORE_IN_PROGRESS_FLAG
 
 USM_UPGRADE_IN_PROGRESS = os.path.join(tsc.PLATFORM_CONF_PATH,
                                        '.usm_upgrade_in_progress')
-KUBE_APISERVER_PORT_UPDATED = os.path.join(tsc.PLATFORM_CONF_PATH,
-                                           '.upgrade_kube_apiserver_port_updated')
 
 # Minimum password length
 MINIMUM_PASSWORD_LENGTH = 8
