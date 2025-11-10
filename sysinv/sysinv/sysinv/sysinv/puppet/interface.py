@@ -1614,13 +1614,14 @@ def process_interface_labels(config, context):
     #             of the interfaces
     #               - the selected label interface will follow the precedence
     #                   - oam
-    #                   - mgmt
     #                   - admin
+    #                   - mgmt
     #                   - cluster-host
     #                   - pxeboot
     #                   - storage
-    #               - if a vlan is shared by mgmt and another network,
-    #                 the mgmt interface will not have the address deprecated
+    #               - if a VLAN is shared by mgmt and another network,
+    #                 the mgmt interface will not have the address deprecated,
+    #                 except when the other network is admin (admin takes precedence over mgmt)
     #       - DHCPv6 cannot use label (pxeboot for now is only IPv4, so we don't
     #         have a use case for now for platform interfaces), move the label
     #         to interface
@@ -1653,38 +1654,15 @@ def process_interface_labels(config, context):
                 undeprecate = "ip -6 addr replace" + \
                                 f" {intf_data['ipaddress']}/{intf_data['netmask']}" + \
                                 f" dev {intf} preferred_lft forever"
-                if ('vlan' in label and len(networktypelist) > 1
-                        and constants.NETWORK_TYPE_MGMT in networktypelist):
-                    if net == constants.NETWORK_TYPE_MGMT:
-                        fill_interface_config_option_operation(intf_data['options'],
-                                                            IFACE_POST_UP_OP, undeprecate)
-                        break
-                    else:
-                        continue
-                elif constants.NETWORK_TYPE_OAM in networktypelist:
-                    fill_interface_config_option_operation(intf_data['options'],
-                                                            IFACE_POST_UP_OP, undeprecate)
+
+                preferred_net = _get_preferred_network(networktypelist)
+
+                if preferred_net and net == preferred_net:
+                    fill_interface_config_option_operation(
+                        intf_data['options'], IFACE_POST_UP_OP, undeprecate)
                     break
-                elif constants.NETWORK_TYPE_MGMT in networktypelist:
-                    fill_interface_config_option_operation(intf_data['options'],
-                                                            IFACE_POST_UP_OP, undeprecate)
-                    break
-                elif constants.NETWORK_TYPE_ADMIN in networktypelist:
-                    fill_interface_config_option_operation(intf_data['options'],
-                                                            IFACE_POST_UP_OP, undeprecate)
-                    break
-                elif constants.NETWORK_TYPE_CLUSTER_HOST in networktypelist:
-                    fill_interface_config_option_operation(intf_data['options'],
-                                                            IFACE_POST_UP_OP, undeprecate)
-                    break
-                elif constants.NETWORK_TYPE_PXEBOOT in networktypelist:
-                    fill_interface_config_option_operation(intf_data['options'],
-                                                            IFACE_POST_UP_OP, undeprecate)
-                    break
-                elif constants.NETWORK_TYPE_STORAGE in networktypelist:
-                    fill_interface_config_option_operation(intf_data['options'],
-                                                            IFACE_POST_UP_OP, undeprecate)
-                    break
+                else:
+                    continue
 
         if len(label_map[intf]) == 1:
             # process DHCPv6, needs to be in the base interface, limitation in ifupdown to handle
@@ -1696,6 +1674,24 @@ def process_interface_labels(config, context):
                     config[NETWORK_CONFIG_RESOURCE][intf] = config[NETWORK_CONFIG_RESOURCE][label]
                     del config[NETWORK_CONFIG_RESOURCE][label]
                     break
+
+
+def _get_preferred_network(networktypelist):
+    """Return the preferred network type for this label/interface"""
+    precedence = [
+        constants.NETWORK_TYPE_OAM,
+        constants.NETWORK_TYPE_ADMIN,
+        constants.NETWORK_TYPE_MGMT,
+        constants.NETWORK_TYPE_CLUSTER_HOST,
+        constants.NETWORK_TYPE_PXEBOOT,
+        constants.NETWORK_TYPE_STORAGE,
+    ]
+
+    for net_type in precedence:
+        if net_type in networktypelist:
+            return net_type
+
+    return None
 
 
 def merge_interface_operations(config, intf, label):
