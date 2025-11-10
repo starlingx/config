@@ -212,7 +212,7 @@ class KubernetesPuppet(base.BasePuppet):
 
             # The root CA cert/key are not stored in kubernetes yet
             if not secret:
-                return 'undef', 'undef'
+                return None, None
             if hasattr(secret, 'data') and secret.data:
                 cert = secret.data.get('tls.crt', None)
                 key = secret.data.get('tls.key', None)
@@ -223,7 +223,7 @@ class KubernetesPuppet(base.BasePuppet):
         except exception.KubeNotConfigured:
             # During ansible bootstrap, kubernetes is not configured.
             # Set the cert and key to 'undef'
-            return 'undef', 'undef'
+            return None, None
 
     @staticmethod
     def _get_kubernetes_components_cert_and_key(secret_names):
@@ -238,7 +238,7 @@ class KubernetesPuppet(base.BasePuppet):
                                                 KUBE_ROOTCA_CERT_NS)
                 # The respective cert/key are not stored in kubernetes yet
                 if not secret:
-                    certificate_dict[secret_name] = 'undef', 'undef'
+                    certificate_dict[secret_name] = None, None
                 if hasattr(secret, 'data') and secret.data:
                     cert = secret.data.get('tls.crt', None)
                     key = secret.data.get('tls.key', None)
@@ -247,7 +247,7 @@ class KubernetesPuppet(base.BasePuppet):
             except exception.KubeNotConfigured:
                 # During ansible bootstrap, kubernetes is not configured.
                 # Set the cert and key to 'undef'
-                certificate_dict[secret_name] = 'undef', 'undef'
+                certificate_dict[secret_name] = None, None
         return certificate_dict
 
     @staticmethod
