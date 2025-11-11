@@ -1,6 +1,6 @@
 [Unit]
 Description=StarlingX System Inventory Agent
-After=nfscommon.service sw-patch.service
+After=nfscommon.service
 After=network-online.target systemd-udev-settle.service remote-fs.target
 Before=pmon.service
 

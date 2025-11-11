@@ -85,7 +85,6 @@ from sysinv.api.controllers.v1 import utils
 from sysinv.api.controllers.v1 import interface_network
 from sysinv.api.controllers.v1 import interface_datanetwork
 from sysinv.api.controllers.v1 import vim_api
-from sysinv.api.controllers.v1 import patch_api
 from sysinv.api.controllers.v1 import ptp_instance
 from sysinv.api.controllers.v1 import ptp_interface
 from sysinv.api.controllers.v1 import kernel
@@ -2765,23 +2764,6 @@ class HostController(rest.RestController):
         # tell conductor to delete the barbican entry associated with this host (if present)
         pecan.request.rpcapi.delete_barbican_secret(pecan.request.context,
                                                     ihost.uuid)
-
-        # Notify patching to drop the host
-        if ihost.hostname is not None:
-            try:
-                # TODO: if self._api_token is None or \
-                #   self._api_token.is_expired():
-                #    self._api_token = rest_api.get_token()
-                system = pecan.request.dbapi.isystem_get_one()
-                patch_api.patch_drop_host(
-                    token=self._api_token,
-                    timeout=constants.PATCH_DEFAULT_TIMEOUT_IN_SECS,
-                    hostname=ihost.hostname,
-                    region_name=system.region_name)
-            except Exception as e:
-                LOG.warn(_("No response from drop-host patch api %s e=%s" %
-                           (ihost.hostname, e)))
-                pass
 
         personality = ihost.personality
         if (personality is not None and

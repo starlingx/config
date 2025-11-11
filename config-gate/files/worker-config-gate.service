@@ -1,6 +1,6 @@
 [Unit]
 Description=STX worker config gate
-After=sw-patch.service workerconfig.service
+After=workerconfig.service
 Before=serial-getty@ttyS0.service getty@tty1.service
 
 [Service]

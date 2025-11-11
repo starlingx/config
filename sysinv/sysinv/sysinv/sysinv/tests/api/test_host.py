@@ -102,11 +102,6 @@ class TestHost(base.FunctionalTest, dbbase.BaseHostTestCase):
         self.mock_sm_api_swact_pre_check.return_value = {'error_code': '0'}
         self.addCleanup(p.stop)
 
-        # Mock the patch API
-        p = mock.patch('sysinv.api.controllers.v1.patch_api.patch_drop_host')
-        self.mock_patch_api_drop_host = p.start()
-        self.addCleanup(p.stop)
-
         # Mock the USM API
         p = mock.patch('sysinv.common.usm_service.UsmHostUpgrade.get_by_hostname')
         self.mock_usm_service_get_by_hostname = p.start()
@@ -523,27 +518,6 @@ class TestPostKubeUpgrades(TestHost):
             mock_get_kube_versions)
         self.mocked_get_kube_versions.start()
         self.addCleanup(self.mocked_get_kube_versions.stop)
-
-        # Mock the patching API
-        self.mock_patch_is_applied_result = True
-
-        def mock_patch_is_applied(token, timeout, region_name, patches):
-            return self.mock_patch_is_applied_result
-        self.mocked_patch_is_applied = mock.patch(
-            'sysinv.api.controllers.v1.patch_api.patch_is_applied',
-            mock_patch_is_applied)
-        self.mocked_patch_is_applied.start()
-        self.addCleanup(self.mocked_patch_is_applied.stop)
-
-        self.mock_patch_is_available_result = True
-
-        def mock_patch_is_available(token, timeout, region_name, patches):
-            return self.mock_patch_is_available_result
-        self.mocked_patch_is_available = mock.patch(
-            'sysinv.api.controllers.v1.patch_api.patch_is_available',
-            mock_patch_is_available)
-        self.mocked_patch_is_available.start()
-        self.addCleanup(self.mocked_patch_is_available.stop)
 
     def test_kube_upgrade_control_plane_controller_0(self):
         # Test upgrading kubernetes control plane on controller-0
@@ -1662,27 +1636,6 @@ class TestSimplexPostKubeUpgrades(TestHost):
         self.mocked_get_kube_versions.start()
         self.addCleanup(self.mocked_get_kube_versions.stop)
 
-        # Mock the patching API
-        self.mock_patch_is_applied_result = True
-
-        def mock_patch_is_applied(token, timeout, region_name, patches):
-            return self.mock_patch_is_applied_result
-        self.mocked_patch_is_applied = mock.patch(
-            'sysinv.api.controllers.v1.patch_api.patch_is_applied',
-            mock_patch_is_applied)
-        self.mocked_patch_is_applied.start()
-        self.addCleanup(self.mocked_patch_is_applied.stop)
-
-        self.mock_patch_is_available_result = True
-
-        def mock_patch_is_available(token, timeout, region_name, patches):
-            return self.mock_patch_is_available_result
-        self.mocked_patch_is_available = mock.patch(
-            'sysinv.api.controllers.v1.patch_api.patch_is_available',
-            mock_patch_is_available)
-        self.mocked_patch_is_available.start()
-        self.addCleanup(self.mocked_patch_is_available.stop)
-
     def test_force_kube_upgrade_kubelet_controller_0_wrong_host_state(self):
         # Test upgrading kubernetes kubelet on controller-0 with controller
         # in the wrong state using force option.
@@ -1832,8 +1785,6 @@ class TestSimplexHostDelete(TestHost):
         self.fake_conductor_api.delete_barbican_secret.assert_called_once()
         # Verify that the apps reapply was called
         self.fake_conductor_api.evaluate_apps_reapply.assert_called_once()
-        # Verify that the host was dropped from patching
-        self.mock_patch_api_drop_host.assert_called_once()
 
         response = self.get_json('/ihosts/%s' % ndict1['hostname'],
                                  expect_errors=True)
@@ -1887,8 +1838,6 @@ class TestDelete(TestHost):
         self.fake_conductor_api.delete_barbican_secret.assert_called_once()
         # Verify that the apps reapply was called
         self.fake_conductor_api.evaluate_apps_reapply.assert_called_once()
-        # Verify that the host was dropped from patching
-        self.mock_patch_api_drop_host.assert_called_once()
         # Verify the host no longer exists
         response = self.get_json('/ihosts/%s' % ndict['hostname'],
                                  expect_errors=True)
@@ -1917,8 +1866,6 @@ class TestDelete(TestHost):
         self.fake_conductor_api.unconfigure_ihost.assert_called_once()
         # Verify that the host was deleted from barbican
         self.fake_conductor_api.delete_barbican_secret.assert_called_once()
-        # Verify that the patch drop host was not invoked
-        self.mock_patch_api_drop_host.assert_not_called()
 
         # Verify the host no longer exists
         response = self.get_json('/ihosts/%s' % ndict['uuid'],
