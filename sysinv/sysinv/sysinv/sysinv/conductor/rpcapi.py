@@ -1890,33 +1890,6 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         """
         return self.call(context, self.make_msg('get_apps_update_status'))
 
-    # TODO (mdecastr): This method is to support upgrades to stx 11,
-    # it can be removed in later releases.
-    def flag_k8s_port_update_rollback(self, context):
-        """Signal upgrade rollback for k8s port update during upgrade
-        :param context: request context.
-        """
-        return self.call(context,
-                         self.make_msg('flag_k8s_port_update_rollback'))
-
-    # TODO (mdecastr): This method is to support upgrades to stx 11,
-    # it can be removed in later releases.
-    def update_kube_apiserver_cert_sans(self, context):
-        """Update kube-apiserver certificate SANs
-        :param context: request context.
-        """
-        return self.call(context,
-                         self.make_msg('update_kube_apiserver_cert_sans'))
-
-    # TODO (mdecastr): This method is to support upgrades to stx 11,
-    # it can be removed in later releases.
-    def run_kubernetes_health_audit(self, context):
-        """Execute audit for kubernetes cluster health
-        :param context: request context.
-        """
-        return self.call(context,
-                         self.make_msg('run_kubernetes_health_audit'))
-
     def run_local_registry_secrets_audit(self, context):
         """Execute audit to update the registry secrets in each namespace
         :param context: request context.
