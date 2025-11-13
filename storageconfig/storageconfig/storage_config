@@ -125,6 +125,34 @@ validate_ca_cert_update()
     fi
 }
 
+check_pxe_connectivity() {
+    local pxe_host="pxecontroller"
+    local log_prefix="[PXE Check]"
+    local paylod_size="8992" # resulting in an ICMP packet of 9000 bytes (9kB jumbo frame test)
+
+    if timeout 10 getent hosts "$pxe_host" > /dev/null 2>&1; then
+        logger -t $0 -p info "$log_prefix PASS: resolved $pxe_host."
+    else
+        logger -t $0 -p warn  "$log_prefix cannot resolve $pxe_host"
+        return 1
+    fi
+
+    if timeout 10 ping -s $paylod_size -i 0.1 -c3 "$pxe_host" > /dev/null 2>&1; then
+        logger -t $0 -p info "$log_prefix PASS: test of jumbo frame (9kB) to $pxe_host."
+        return 0
+    else
+        logger -t $0 -p warn "$log_prefix cannot send/receive jumbo frame (9kB) to $pxe_host."
+    fi
+
+    if timeout 10 ping -i 0.1 -c3 "$pxe_host" > /dev/null 2>&1; then
+        logger -t $0 -p info "$log_prefix PASS: Ping to $pxe_host successful."
+        return 0
+    else
+        logger -t $0 -p warn "$log_prefix cannot ping to $pxe_host"
+        return 1
+    fi
+}
+
 start()
 {
     if [ -f /etc/platform/installation_failed ] ; then
@@ -156,6 +184,10 @@ start()
             fatal_error "${IMA_LOAD_PATH} not available. Aborting."
         fi
     fi
+
+    # check and log if pxecontroller is
+    # available and can handle 9kB packets
+    check_pxe_connectivity
 
     # Call ipsec-auth-client to config and enable IPsec for the node
     if [ -e ${FIRST_BOOT} ]
