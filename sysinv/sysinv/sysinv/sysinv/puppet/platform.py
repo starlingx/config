@@ -755,7 +755,6 @@ class PlatformPuppet(base.BasePuppet):
                 'platform::compute::grub::params::n_cpus': n_cpus,
                 'platform::compute::grub::params::cpu_options': cpu_options,
                 'platform::compute::grub::params::ignore_recovery': ignore_recovery,
-                'platform::compute::grub::params::bios_cstate': True
             })
         return config
 
