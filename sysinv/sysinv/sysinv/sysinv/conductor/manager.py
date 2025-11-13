@@ -21019,6 +21019,16 @@ class ConductorManager(service.PeriodicService):
         flux_deployment_manager = FluxDeploymentManager(self.dbapi)
         return flux_deployment_manager.upgrade_controllers()
 
+    def rollback_flux_controllers(self, context):
+        """ Rollback Flux controllers
+
+        :param context: admin context
+        :returns: True if successful. False otherwise.
+        """
+
+        flux_deployment_manager = FluxDeploymentManager(self.dbapi)
+        return flux_deployment_manager.rollback_controllers()
+
 
 def device_image_state_sort_key(dev_img_state):
     if dev_img_state.bitstream_type == dconstants.BITSTREAM_TYPE_ROOT_KEY:

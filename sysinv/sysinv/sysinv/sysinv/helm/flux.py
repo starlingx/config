@@ -12,6 +12,7 @@ from oslo_log import log as logging
 
 from sysinv.common import utils
 from sysinv.common.image_download import ContainerImageDownloader
+from sysinv.helm import utils as helm_utils
 
 KUBECONFIG = "/etc/kubernetes/admin.conf"
 CONFIG_DIR = "/usr/share/ansible/stx-ansible/playbooks/roles/common/fluxcd-controllers/"
@@ -142,7 +143,108 @@ class FluxDeploymentManager(object):
 
         return success
 
+    @staticmethod
+    def is_target_version_installed(history, target_version):
+        """ Retrieve the target Helm release revision for rollback
+
+        Args:
+            history (list): list of records of the release history.
+            target_version (string): target version for rollback.
+
+        Returns:
+            bool: True if the target release is installed. False otherwise.
+        """
+
+        if len(history) == 0:
+            raise Exception("Flux release has an empty history")
+
+        if f"-{target_version}" in history[-1]["chart"] and history[-1]["status"] == 'deployed':
+            LOG.warning("Already running target Flux release. Skipping rollback.")
+            return True
+
+        return False
+
+    @staticmethod
+    def get_target_revision(history, target_version):
+        """ Retrieve the target Helm release revision for rollback
+
+        Args:
+            history (list): list of records of the release history.
+            target_version (string): target version for rollback.
+
+        Returns:
+            integer: Revision number.
+        """
+
+        for record in reversed(history[:-1]):
+            if f"-{target_version}" in record["chart"]:
+                return record["revision"]
+        return None
+
+    # Workaround for portieris issue when helm-controller is restarting during activate-rollback
+    def wait_helm_controller_pod_ready(self):
+        """ Wait for helm-controller pod to be Ready
+        """
+
+        LOG.info("Waiting for helm-controller pod to be Ready")
+
+        try:
+            subprocess.run(
+                ["kubectl", "wait", "--for=condition=Ready", "pods",
+                 "-l", "app=helm-controller",
+                 "-n", self.conf_dict['fluxcd_namespace'],
+                 "--timeout=60s",
+                 "--kubeconfig", KUBECONFIG],
+                check=True
+            )
+        except Exception as e:
+            # Warning and proceeding with the rollback, as the issue might be fixed by it
+            LOG.warning(f"Error waiting for helm-controller pod to be Ready: {e}")
+        else:
+            LOG.info("helm-controller pod is Ready. Proceeding.")
+
     def rollback_controllers(self):
         """ Rollback Flux controllers to the previous version """
 
-        raise NotImplementedError
+        success = False
+        try:
+            previous_version = helm_utils.get_chart_version(
+                self.conf_dict['flux_legacy_charts_path'])
+            history = helm_utils.get_history(self.conf_dict['flux_helm_release_name'],
+                                             self.conf_dict['fluxcd_namespace'],
+                                             KUBECONFIG)
+
+            # Rollback only if not already in the target version
+            if not self.is_target_version_installed(history, previous_version):
+                target_revision = self.get_target_revision(history, previous_version)
+
+                if target_revision:
+                    self.wait_helm_controller_pod_ready()
+
+                    LOG.info(f"Rolling back Flux release to revision {target_revision}")
+
+                    subprocess.run(
+                        ["helm", "rollback",
+                         self.conf_dict['flux_helm_release_name'],
+                         str(target_revision),
+                         "-n", self.conf_dict['fluxcd_namespace'],
+                         "--kubeconfig", KUBECONFIG,
+                         "--wait",
+                         "--wait-for-jobs"],
+                        check=True,
+                        capture_output=True
+                    )
+
+                    success = True
+                    LOG.info("Flux release successfully rolled back")
+                else:
+                    LOG.warning(f"Flux chart version {previous_version} is not available in "
+                                "revision history. Skipping rollback.")
+                    success = True
+
+        except subprocess.CalledProcessError as e:
+            LOG.error(f"Error while rolling back flux controllers: {e.stderr}")
+        except Exception as e:
+            LOG.error(f"Cannot rollback flux controllers: {e}")
+
+        return success
