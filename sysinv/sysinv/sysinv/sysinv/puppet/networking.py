@@ -471,14 +471,27 @@ class NetworkingPuppet(base.BasePuppet):
             'eec_invalid_value': constants.PTP_SYNCE_EEC_INVALID_VALUE
         }
 
-        allowed_instance_fields = ['global_parameters', 'interfaces', 'name', 'service',
-                                   'cmdline_opts', 'id', 'pmc_gm_settings', 'device_parameters',
-                                   'gnss_uart_disable', 'external_source']
+        allowed_instance_fields = [
+            'global_parameters', 'section_parameters', 'interfaces', 'name', 'service',
+            'cmdline_opts', 'id', 'pmc_gm_settings', 'device_parameters',
+            'gnss_uart_disable', 'external_source'
+        ]
         ptp_config = {}
 
         for instance in ptp_instances:
             # Add default global parameters the instance
             instance['global_parameters'] = {}
+
+            # instance["section_parameters"] format:
+            # {'sectionA': [
+            #    {'paramA': valueA},
+            #    {'paramA': valueA1}, <---repetitive paramA
+            #    {'paramB': valueB}
+            #   ],
+            #  'sectionB':[..],
+            #  ..
+            # }
+            instance["section_parameters"] = {}
             instance['cmdline_opts'] = ""
             instance['global_parameters'].update(default_global_parameters[instance['service']])
             instance['cmdline_opts'] = default_cmdline_opts[instance['service']]
@@ -516,8 +529,9 @@ class NetworkingPuppet(base.BasePuppet):
                 })
 
             for global_param in ptp_parameters_instance:
+                is_instance_param = instance["uuid"] in global_param["owners"]
                 # Add the supplied instance parameters to global_parameters
-                if instance['uuid'] in global_param['owners']:
+                if is_instance_param and global_param["section"] == "global":
                     if instance['service'] != constants.PTP_INSTANCE_TYPE_SYNCE4L:
                         instance['global_parameters'][global_param['name']] = global_param['value']
                     else:
@@ -527,6 +541,16 @@ class NetworkingPuppet(base.BasePuppet):
                             instance['global_parameters'][global_param['name']] = global_param['value']
                         else:
                             instance['device_parameters'][global_param['name']] = global_param['value']
+                # Add the supplied instance parameters other than global section to section_parameters
+                elif is_instance_param:
+                    # section parameters except global
+                    # To avoid peer_address: ::1 or UDPv6: ::1 on yaml dump, forcing quote for value
+                    key_value = {global_param["name"]: self.quoted_str(global_param["value"])}
+                    if global_param["section"] not in instance["section_parameters"]:
+                        instance["section_parameters"][global_param["section"]] = [key_value]
+                    else:
+                        instance["section_parameters"][global_param["section"]].append(key_value)
+
                 if 'cmdline_opts' in instance['global_parameters']:
                     cmdline = instance['global_parameters'].pop('cmdline_opts')
                     quotes = {"'", "\\'", '"', '\\"'}
