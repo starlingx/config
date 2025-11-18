@@ -241,22 +241,6 @@ class JsonPatchType(wtypes.Base):
         return ret
 
 
-class JsonSectionalPatchType(JsonPatchType):
-    """ Add section to JsonPatchType """
-    section = apiutils.ValidTypes(wtypes.text)
-
-    @staticmethod
-    def validate(patch):
-        ret = JsonPatchType.validate(patch)
-        if patch.section is not None and not isinstance(patch.section, wtypes.UnsetType):
-            ret['section'] = patch.section
-        else:
-            # sectional parameter, default section is global.
-            ret['section'] = "global"
-
-        return ret
-
-
 class MultiType(wtypes.UserType):
     """A complex type that represents one or more types.
 

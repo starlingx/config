@@ -4082,9 +4082,6 @@ class Connection(api.Connection):
     def ptp_parameter_create(self, values):
         if not values.get('uuid'):
             values['uuid'] = uuidutils.generate_uuid()
-        # Set default section to global, if not specified.
-        if not values.get("section"):
-            values["section"] = "global"
         ptp_parameter = models.PtpParameters(**values)
         with _session_for_write() as session:
             try:
@@ -4099,33 +4096,13 @@ class Connection(api.Connection):
         return self._ptp_parameter_get(ptp_parameter_id)
 
     @db_objects.objectify(objects.ptp_parameter)
-    def ptp_parameter_get_by_namevalue(self, name, value, section="global"):
+    def ptp_parameter_get_by_namevalue(self, name, value):
         query = model_query(models.PtpParameters)
-        query = query.filter_by(name=name, value=value, section=section)
+        query = query.filter_by(name=name, value=value)
         try:
             return query.one()
         except NoResultFound:
             raise exception.NotFound
-
-    @db_objects.objectify(objects.ptp_parameter)
-    def ptp_parameter_get_by_name(
-        self, name, section="global",
-        limit=None, marker=None, sort_key=None, sort_dir=None
-    ):
-        query = model_query(models.PtpParameters)
-        query = query.filter_by(name=name, section=section)
-        return _paginate_query(models.PtpParameters, limit, marker,
-                               sort_key, sort_dir, query)
-
-    @db_objects.objectify(objects.ptp_parameter)
-    def ptp_parameter_get_by_namevalue_anysection(
-        self, name, value,
-        limit=None, marker=None, sort_key=None, sort_dir=None
-    ):
-        query = model_query(models.PtpParameters)
-        query = query.filter_by(name=name, value=value)
-        return _paginate_query(models.PtpParameters, limit, marker,
-                               sort_key, sort_dir, query)
 
     @db_objects.objectify(objects.ptp_parameter)
     def ptp_parameters_get_list(self, ptp_instance=None, ptp_interface=None,

@@ -103,17 +103,6 @@ def list_of_strings_or_none(val):
     return val
 
 
-def dict_of_list_of_strings_or_none(val):
-    """comply to {'A':[str,..], 'B':[str, ..]}"""
-    if val is None:
-        return val
-    if not isinstance(val, dict):
-        raise ValueError(_('A dict of list of strings is required here'))
-    for key in val:
-        list_of_strings_or_none(val[key])
-    return val
-
-
 def dict_or_none(val):
     """Attempt to dictify a value, or None."""
     if val is None:

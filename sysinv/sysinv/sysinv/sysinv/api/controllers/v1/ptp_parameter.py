@@ -24,7 +24,7 @@ from sysinv import objects
 LOG = log.getLogger(__name__)
 
 
-class PtpParameterPatchType(types.JsonSectionalPatchType):
+class PtpParameterPatchType(types.JsonPatchType):
     @staticmethod
     def mandatory_attrs():
         return []
@@ -50,9 +50,6 @@ class PtpParameter(base.APIBase):
     uuid = types.uuid
     "Unique UUID for this PTP parameter"
 
-    section = wtypes.text
-    "Section name of PTP parameter"
-
     name = wtypes.text
     "Name of PTP parameter"
 
@@ -74,7 +71,6 @@ class PtpParameter(base.APIBase):
         ptp_parameter = PtpParameter(**rpc_ptp_parameter.as_dict())
         if not expand:
             ptp_parameter.unset_fields_except(['uuid',
-                                               'section',
                                                'name',
                                                'value',
                                                'owners',
