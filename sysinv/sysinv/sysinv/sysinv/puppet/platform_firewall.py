@@ -22,9 +22,11 @@ FIREWALL_GNP_CLUSTER_HOST_CFG = 'platform::firewall::calico::cluster_host::confi
 FIREWALL_GNP_PXEBOOT_CFG = 'platform::firewall::calico::pxeboot::config'
 FIREWALL_GNP_STORAGE_CFG = 'platform::firewall::calico::storage::config'
 FIREWALL_GNP_ADMIN_CFG = 'platform::firewall::calico::admin::config'
-FIREWALL_HE_INTERFACE_CFG = 'platform::firewall::calico::hostendpoint::config'
 FIREWALL_GNP_OAM_CFG = 'platform::firewall::calico::oam::config'
+FIREWALL_HE_INTERFACE_CFG = 'platform::firewall::calico::hostendpoint::config'
 FIREWALL_EXTRA_FILTER_CFG = 'platform::firewall::extra::config'
+FIREWALL_GNSET_ADMIN_CFG = 'platform::firewall::calico::gnset::admin::config'
+FIREWALL_GNSET_MGMT_CFG = 'platform::firewall::calico::gnset::mgmt::config'
 
 PLATFORM_FIREWALL_CLASSES = {constants.NETWORK_TYPE_PXEBOOT: FIREWALL_GNP_PXEBOOT_CFG,
                              constants.NETWORK_TYPE_MGMT: FIREWALL_GNP_MGMT_CFG,
@@ -32,6 +34,10 @@ PLATFORM_FIREWALL_CLASSES = {constants.NETWORK_TYPE_PXEBOOT: FIREWALL_GNP_PXEBOO
                              constants.NETWORK_TYPE_STORAGE: FIREWALL_GNP_STORAGE_CFG,
                              constants.NETWORK_TYPE_ADMIN: FIREWALL_GNP_ADMIN_CFG,
                              constants.NETWORK_TYPE_OAM: FIREWALL_GNP_OAM_CFG}
+
+
+PLATFORM_GNSET_CLASSES = {constants.NETWORK_TYPE_ADMIN: FIREWALL_GNSET_ADMIN_CFG,
+                          constants.NETWORK_TYPE_MGMT: FIREWALL_GNSET_MGMT_CFG}
 
 LINK_LOCAL = "fe80::/64"
 LINK_LOCAL_MC = "ff02::/16"
@@ -74,7 +80,9 @@ class PlatformFirewallPuppet(base.BasePuppet):
             FIREWALL_GNP_STORAGE_CFG: {},
             FIREWALL_GNP_ADMIN_CFG: {},
             FIREWALL_GNP_OAM_CFG: {},
-            FIREWALL_EXTRA_FILTER_CFG: {}
+            FIREWALL_EXTRA_FILTER_CFG: {},
+            FIREWALL_GNSET_ADMIN_CFG: {},
+            FIREWALL_GNSET_MGMT_CFG: {}
         }
 
         dc_role = _get_dc_role(self.dbapi)
@@ -109,7 +117,7 @@ class PlatformFirewallPuppet(base.BasePuppet):
 
         # since we selected the networks that will receive firewall in the interface_network DB,
         # when the pxeboot is not present we need to allow the pxeboot firewall in the management
-        # interface, if the mgmt is an ethernet device.
+        # interface, if the mgmt is an ethernet or bonding device.
         is_pxeboot_present = [network.type for network in firewall_networks
                               if network.type == constants.NETWORK_TYPE_PXEBOOT]
         is_mgmt_present = [network.type for network in firewall_networks
@@ -161,19 +169,35 @@ class PlatformFirewallPuppet(base.BasePuppet):
             if (host.personality == constants.CONTROLLER):
                 if (dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD):
                     if config[FIREWALL_GNP_ADMIN_CFG]:
+                        self._get_global_network_set(constants.NETWORK_TYPE_ADMIN, config)
                         self._set_rules_subcloud_admin(config[FIREWALL_GNP_ADMIN_CFG],
+                                                    config[FIREWALL_GNSET_ADMIN_CFG],
                                                     networks[constants.NETWORK_TYPE_ADMIN],
                                                     host.personality)
+                        if not config[FIREWALL_GNSET_ADMIN_CFG]["spec"]["nets"]:
+                            # there is nothing to configure
+                            config[FIREWALL_GNSET_ADMIN_CFG] = {}
+
                     elif config[FIREWALL_GNP_MGMT_CFG]:
+                        self._get_global_network_set(constants.NETWORK_TYPE_MGMT, config)
                         self._set_rules_subcloud_mgmt(config[FIREWALL_GNP_MGMT_CFG],
+                                                    config[FIREWALL_GNSET_MGMT_CFG],
                                                     networks[constants.NETWORK_TYPE_MGMT],
                                                     host.personality)
+                        if not config[FIREWALL_GNSET_MGMT_CFG]["spec"]["nets"]:
+                            # there is nothing to configure
+                            config[FIREWALL_GNSET_MGMT_CFG] = {}
 
                 elif (dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER and
                         config[FIREWALL_GNP_MGMT_CFG]):
+                    self._get_global_network_set(constants.NETWORK_TYPE_MGMT, config)
                     self._set_rules_systemcontroller(config[FIREWALL_GNP_MGMT_CFG],
+                                                    config[FIREWALL_GNSET_MGMT_CFG],
                                                     networks[constants.NETWORK_TYPE_MGMT],
                                                     host.personality)
+                    if not config[FIREWALL_GNSET_MGMT_CFG]["spec"]["nets"]:
+                        # there is nothing to configure
+                        config[FIREWALL_GNSET_MGMT_CFG] = {}
 
         self._set_extra_rules(config)
         return config
@@ -287,6 +311,17 @@ class PlatformFirewallPuppet(base.BasePuppet):
                     self._add_gnp_proto_rules(host, network, ip_version, firewall_gnp, "ESP", 50)
 
             config[PLATFORM_FIREWALL_CLASSES[network.type]] = firewall_gnp
+
+    def _get_global_network_set(self, network_type, config):
+        gns_name = f"trusted-{network_type}-subnets"
+        global_network_set = dict()
+        global_network_set["apiVersion"] = "crd.projectcalico.org/v1"
+        global_network_set["kind"] = "GlobalNetworkSet"
+        global_network_set["metadata"] = {"name": f"stx-{gns_name}-gns",
+                                          "labels": {"subnets": gns_name}}
+        global_network_set["spec"] = dict()
+        global_network_set["spec"]["nets"] = list()
+        config[PLATFORM_GNSET_CLASSES[network_type]] = global_network_set
 
     def _set_rules_oam(self, gnp_config, network, host, dc_role):
         """ Fill the OAM network specific filtering data
@@ -512,7 +547,7 @@ class PlatformFirewallPuppet(base.BasePuppet):
             else:
                 rule.update({"destination": {"nets": [destination_net]}})
 
-    def _set_rules_subcloud_admin(self, gnp_config, network, host_personality):
+    def _set_rules_subcloud_admin(self, gnp_config, gns_config, network, host_personality):
         """ Add filtering rules for admin network in a subcloud installation
 
         :param gnp_config: the dict containing the hiera data to be filled
@@ -529,6 +564,9 @@ class PlatformFirewallPuppet(base.BasePuppet):
             if ip_version == 6:
                 ICMP = "ICMPv6"
 
+            for route_network in routes_networks[ip_version]:
+                gns_config["spec"]["nets"].append(route_network)
+
             rules = list()
             for proto in ["TCP", "UDP", ICMP]:
                 rule = {"metadata": dict()}
@@ -542,15 +580,15 @@ class PlatformFirewallPuppet(base.BasePuppet):
                     rule.update({"destination": {"ports": self._get_subcloud_tcp_ports()}})
                 elif (proto == "UDP"):
                     rule.update({"destination": {"ports": self._get_subcloud_udp_ports()}})
+                if gns_config["spec"]["nets"]:
+                    subnets = gns_config["metadata"]["labels"]["subnets"]
+                    rule.update({"source": {"selector": f"subnets == '{subnets}'"}})
                 rules.append(rule)
-
-            for route_network in routes_networks[ip_version]:
-                self._add_source_net_filter(rules, route_network, ip_version)
 
             for rule in rules:
                 gnp_config["spec"]["ingress"].append(rule)
 
-    def _set_rules_subcloud_mgmt(self, gnp_config, network, host_personality):
+    def _set_rules_subcloud_mgmt(self, gnp_config, gns_config, network, host_personality):
         """ Add filtering rules for mgmt network in a subcloud installation
 
         If the subcloud keeps using the mgmt network to communicate with the system controller
@@ -570,6 +608,9 @@ class PlatformFirewallPuppet(base.BasePuppet):
             if ip_version == 6:
                 ICMP = "ICMPv6"
 
+            for route_network in routes_networks[ip_version]:
+                gns_config["spec"]["nets"].append(route_network)
+
             rules = list()
             for proto in ["TCP", "UDP", ICMP]:
                 rule = {"metadata": dict()}
@@ -583,11 +624,11 @@ class PlatformFirewallPuppet(base.BasePuppet):
                     rule.update({"destination": {"ports": self._get_subcloud_tcp_ports()}})
                 elif (proto == "UDP"):
                     rule.update({"destination": {"ports": self._get_subcloud_udp_ports()}})
+                if gns_config["spec"]["nets"]:
+                    subnets = gns_config["metadata"]["labels"]["subnets"]
+                    rule.update({"source": {"selector": f"subnets == '{subnets}'"}})
                 gnp_config["spec"]["ingress"].append(rule)
                 rules.append(rule)
-
-            for route_network in routes_networks[ip_version]:
-                self._add_source_net_filter(rules, route_network, ip_version)
 
     def _get_routes_networks(self, network_type):
         routes = self.dbapi.routes_get_by_network_type_and_host_personality(
@@ -603,7 +644,7 @@ class PlatformFirewallPuppet(base.BasePuppet):
             networks[family] = net_list
         return networks
 
-    def _set_rules_systemcontroller(self, gnp_config, network, host_personality):
+    def _set_rules_systemcontroller(self, gnp_config, gns_config, network, host_personality):
         """ Add filtering rules for mgmt network in a system controller installation
 
         :param gnp_config: the dict containing the hiera data to be filled
@@ -621,6 +662,9 @@ class PlatformFirewallPuppet(base.BasePuppet):
             if ip_version == 6:
                 ICMP = "ICMPv6"
 
+            for route_network in routes_networks[ip_version]:
+                gns_config["spec"]["nets"].append(route_network)
+
             for proto in ["TCP", "UDP", ICMP]:
                 rule = {"metadata": dict()}
                 rule["metadata"] = {"annotations": dict()}
@@ -635,11 +679,11 @@ class PlatformFirewallPuppet(base.BasePuppet):
                 elif (proto == "UDP"):
                     udp_list = self._get_systemcontroller_udp_ports()
                     rule.update({"destination": {"ports": udp_list}})
+                if gns_config["spec"]["nets"]:
+                    subnets = gns_config["metadata"]["labels"]["subnets"]
+                    rule.update({"source": {"selector": f"subnets == '{subnets}'"}})
                 gnp_config["spec"]["ingress"].append(rule)
                 rules.append(rule)
-
-            for route_network in routes_networks[ip_version]:
-                self._add_source_net_filter(rules, route_network, ip_version)
 
     def _set_extra_rules(self, config):
         pass

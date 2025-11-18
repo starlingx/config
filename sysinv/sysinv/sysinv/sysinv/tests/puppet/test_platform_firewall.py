@@ -692,6 +692,13 @@ class PlatformFirewallTestCaseMixin(base.PuppetTestCaseMixin):
                     f"stx-ingr-{self.host.personality}-subcloud-{ICMP.lower()}{ip_version}")
             self.assertEqual(filtered_rules['ingress'][idx]['ipVersion'], ip_version)
 
+    def _check_gnset_values(self, gnset, net_type, subnet_list):
+        self.assertEqual(gnset['apiVersion'], "crd.projectcalico.org/v1")
+        self.assertEqual(gnset['kind'], "GlobalNetworkSet")
+        self.assertEqual(gnset['metadata']['name'], f"stx-trusted-{net_type}-subnets-gns")
+        self.assertEqual(gnset['metadata']['labels']['subnets'], f"trusted-{net_type}-subnets")
+        self.assertEqual(gnset['spec']['nets'], subnet_list)
+
 
 # Controller, non-DC
 #   eth0:oam       [oam]
@@ -1608,18 +1615,18 @@ class PlatformFirewallTestCaseControllerDcSubcloud_Setup01(PlatformFirewallTestC
 
         idx = 4  # admin routes, TCP
         self.assertEqual(gnp['spec']['ingress'][idx]['protocol'], "TCP")
-        self.assertEqual(gnp['spec']['ingress'][idx]['source']['nets'][0], "192.168.3.0/24")
-        self.assertEqual(gnp['spec']['ingress'][idx]['source']['nets'][1], "192.168.4.0/24")
+        self.assertEqual(gnp['spec']['ingress'][idx]['source']['selector'],
+                         "subnets == 'trusted-admin-subnets'")
 
         idx = 5  # admin routes, UDP
         self.assertEqual(gnp['spec']['ingress'][idx]['protocol'], "UDP")
-        self.assertEqual(gnp['spec']['ingress'][idx]['source']['nets'][0], "192.168.3.0/24")
-        self.assertEqual(gnp['spec']['ingress'][idx]['source']['nets'][1], "192.168.4.0/24")
+        self.assertEqual(gnp['spec']['ingress'][idx]['source']['selector'],
+                         "subnets == 'trusted-admin-subnets'")
 
         idx = 6  # admin routes, ICMP
         self.assertEqual(gnp['spec']['ingress'][idx]['protocol'], "ICMP")
-        self.assertEqual(gnp['spec']['ingress'][idx]['source']['nets'][0], "192.168.3.0/24")
-        self.assertEqual(gnp['spec']['ingress'][idx]['source']['nets'][1], "192.168.4.0/24")
+        self.assertEqual(gnp['spec']['ingress'][idx]['source']['selector'],
+                         "subnets == 'trusted-admin-subnets'")
 
     def test_generate_firewall_config(self):
         hieradata_directory = self._create_hieradata_directory()
@@ -1638,6 +1645,8 @@ class PlatformFirewallTestCaseControllerDcSubcloud_Setup01(PlatformFirewallTestC
         self.assertTrue('platform::firewall::calico::pxeboot::config' in hiera_data.keys())
         self.assertTrue('platform::firewall::calico::storage::config' in hiera_data.keys())
         self.assertTrue('platform::firewall::calico::hostendpoint::config' in hiera_data.keys())
+        self.assertTrue("platform::firewall::calico::gnset::admin::config" in hiera_data.keys())
+        self.assertTrue("platform::firewall::calico::gnset::mgmt::config" in hiera_data.keys())
 
         # these GNPs are filled
         self.assertTrue(hiera_data['platform::firewall::calico::cluster_host::config'])
@@ -1696,6 +1705,14 @@ class PlatformFirewallTestCaseControllerDcSubcloud_Setup01(PlatformFirewallTestC
         self._check_he_values(hiera_data['platform::firewall::calico::hostendpoint::config'],
                               self.test_interfaces[constants.NETWORK_TYPE_OAM],
                               [constants.NETWORK_TYPE_OAM])
+
+        # check GlobalNetworkSet
+        self.assertTrue(hiera_data['platform::firewall::calico::gnset::admin::config'])
+        self._check_gnset_values(hiera_data['platform::firewall::calico::gnset::admin::config'],
+                                 constants.NETWORK_TYPE_ADMIN,
+                                 ['192.168.3.0/24', '192.168.4.0/24'])
+
+        self.assertFalse(hiera_data['platform::firewall::calico::gnset::mgmt::config'])
 
 
 # Controller, DC, SystemController
@@ -1840,15 +1857,14 @@ class PlatformFirewallTestCaseControllerDcSysCtrl_Setup01(PlatformFirewallTestCa
 
         ip_version = gnp['spec']['ingress'][0]['ipVersion']
 
-        subcloud_networks = ['192.168.1.0/26', '192.168.1.128/26', '192.168.1.64/26']
-
         # ingress rules
         idx = 6
         self.assertEqual(gnp['spec']['ingress'][idx]['protocol'], "TCP")
         self.assertEqual(gnp['spec']['ingress'][idx]['metadata']['annotations']['name'],
                 f"stx-ingr-{self.host.personality}-systemcontroller-tcp{ip_version}")
         self.assertEqual(gnp['spec']['ingress'][idx]['ipVersion'], ip_version)
-        self.assertEqual(gnp['spec']['ingress'][idx]['source']['nets'], subcloud_networks)
+        self.assertEqual(gnp['spec']['ingress'][idx]['source']['selector'],
+                         "subnets == 'trusted-mgmt-subnets'")
 
         tcp_ports = list(firewall.SYSTEMCONTROLLER["tcp"].keys())
         tcp_ports.append(constants.SERVICE_PARAM_HTTP_PORT_HTTP_DEFAULT)
@@ -1860,7 +1876,8 @@ class PlatformFirewallTestCaseControllerDcSysCtrl_Setup01(PlatformFirewallTestCa
         self.assertEqual(gnp['spec']['ingress'][idx]['metadata']['annotations']['name'],
                 f"stx-ingr-{self.host.personality}-systemcontroller-udp{ip_version}")
         self.assertEqual(gnp['spec']['ingress'][idx]['ipVersion'], ip_version)
-        self.assertEqual(gnp['spec']['ingress'][idx]['source']['nets'], subcloud_networks)
+        self.assertEqual(gnp['spec']['ingress'][idx]['source']['selector'],
+                         "subnets == 'trusted-mgmt-subnets'")
 
         udp_ports = list(firewall.SYSTEMCONTROLLER["udp"].keys())
         udp_ports.sort()
@@ -1871,7 +1888,8 @@ class PlatformFirewallTestCaseControllerDcSysCtrl_Setup01(PlatformFirewallTestCa
         self.assertEqual(gnp['spec']['ingress'][idx]['metadata']['annotations']['name'],
                 f"stx-ingr-{self.host.personality}-systemcontroller-icmp{ip_version}")
         self.assertEqual(gnp['spec']['ingress'][idx]['ipVersion'], ip_version)
-        self.assertEqual(gnp['spec']['ingress'][idx]['source']['nets'], subcloud_networks)
+        self.assertEqual(gnp['spec']['ingress'][idx]['source']['selector'],
+                         "subnets == 'trusted-mgmt-subnets'")
 
     def test_generate_firewall_config(self):
         hieradata_directory = self._create_hieradata_directory()
@@ -1950,6 +1968,14 @@ class PlatformFirewallTestCaseControllerDcSysCtrl_Setup01(PlatformFirewallTestCa
         self._check_he_values(hiera_data['platform::firewall::calico::hostendpoint::config'],
                               self.test_interfaces[0][constants.NETWORK_TYPE_OAM],
                               [constants.NETWORK_TYPE_OAM])
+
+        # check GlobalNetworkSet
+        self.assertTrue(hiera_data['platform::firewall::calico::gnset::mgmt::config'])
+        self._check_gnset_values(hiera_data['platform::firewall::calico::gnset::mgmt::config'],
+                                 constants.NETWORK_TYPE_MGMT,
+                                 ['192.168.1.0/26', '192.168.1.128/26', '192.168.1.64/26'])
+
+        self.assertFalse(hiera_data['platform::firewall::calico::gnset::admin::config'])
 
 
 # Controller, DC, SystemController
@@ -2063,15 +2089,14 @@ class PlatformFirewallTestCaseControllerDcSysCtrl_Setup02(PlatformFirewallTestCa
 
         ip_version = gnp['spec']['ingress'][0]['ipVersion']
 
-        subcloud_networks = ['192.168.1.0/26', '192.168.1.128/26', '192.168.1.64/26']
-
         # ingress rules
         idx = 5
         self.assertEqual(gnp['spec']['ingress'][idx]['protocol'], "TCP")
         self.assertEqual(gnp['spec']['ingress'][idx]['metadata']['annotations']['name'],
                 f"stx-ingr-{self.host.personality}-systemcontroller-tcp{ip_version}")
         self.assertEqual(gnp['spec']['ingress'][idx]['ipVersion'], ip_version)
-        self.assertEqual(gnp['spec']['ingress'][idx]['source']['nets'], subcloud_networks)
+        self.assertEqual(gnp['spec']['ingress'][idx]['source']['selector'],
+                         "subnets == 'trusted-mgmt-subnets'")
 
         tcp_ports = list(firewall.SYSTEMCONTROLLER["tcp"].keys())
         tcp_ports.append(constants.SERVICE_PARAM_HTTP_PORT_HTTP_DEFAULT)
@@ -2083,7 +2108,8 @@ class PlatformFirewallTestCaseControllerDcSysCtrl_Setup02(PlatformFirewallTestCa
         self.assertEqual(gnp['spec']['ingress'][idx]['metadata']['annotations']['name'],
                 f"stx-ingr-{self.host.personality}-systemcontroller-udp{ip_version}")
         self.assertEqual(gnp['spec']['ingress'][idx]['ipVersion'], ip_version)
-        self.assertEqual(gnp['spec']['ingress'][idx]['source']['nets'], subcloud_networks)
+        self.assertEqual(gnp['spec']['ingress'][idx]['source']['selector'],
+                         "subnets == 'trusted-mgmt-subnets'")
 
         udp_ports = list(firewall.SYSTEMCONTROLLER["udp"].keys())
         udp_ports.sort()
@@ -2094,7 +2120,8 @@ class PlatformFirewallTestCaseControllerDcSysCtrl_Setup02(PlatformFirewallTestCa
         self.assertEqual(gnp['spec']['ingress'][idx]['metadata']['annotations']['name'],
                 f"stx-ingr-{self.host.personality}-systemcontroller-icmp{ip_version}")
         self.assertEqual(gnp['spec']['ingress'][idx]['ipVersion'], ip_version)
-        self.assertEqual(gnp['spec']['ingress'][idx]['source']['nets'], subcloud_networks)
+        self.assertEqual(gnp['spec']['ingress'][idx]['source']['selector'],
+                         "subnets == 'trusted-mgmt-subnets'")
 
     def test_generate_firewall_config(self):
         hieradata_directory = self._create_hieradata_directory()
@@ -2161,6 +2188,10 @@ class PlatformFirewallTestCaseControllerDcSysCtrl_Setup02(PlatformFirewallTestCa
         self._check_he_values(hiera_data['platform::firewall::calico::hostendpoint::config'],
                               self.test_interfaces[0][constants.NETWORK_TYPE_OAM],
                               [constants.NETWORK_TYPE_OAM])
+
+        # check GlobalNetworkSet
+        self.assertFalse(hiera_data['platform::firewall::calico::gnset::mgmt::config'])
+        self.assertFalse(hiera_data['platform::firewall::calico::gnset::admin::config'])
 
 
 # Controller, DC, SystemController
@@ -2326,9 +2357,6 @@ class PlatformFirewallTestCaseControllerDcSysCtrl_Setup03(PlatformFirewallTestCa
 
     def _check_gnp_values_mgmt_sysctrl(self, gnp):
 
-        subcloud_networks_ipv4 = ['192.168.1.0/26', '192.168.1.128/26', '192.168.1.64/26']
-        subcloud_networks_ipv6 = ['c0ca:c01a::/64', 'c0ca:c02a::/64', 'dead:beef::/64']
-
         tcp_ports = list(firewall.SYSTEMCONTROLLER["tcp"].keys())
         tcp_ports.append(constants.SERVICE_PARAM_HTTP_PORT_HTTP_DEFAULT)
         tcp_ports.sort()
@@ -2342,7 +2370,8 @@ class PlatformFirewallTestCaseControllerDcSysCtrl_Setup03(PlatformFirewallTestCa
         self.assertEqual(gnp['spec']['ingress'][idx]['metadata']['annotations']['name'],
                 f"stx-ingr-{self.host.personality}-systemcontroller-tcp4")
         self.assertEqual(gnp['spec']['ingress'][idx]['ipVersion'], 4)
-        self.assertEqual(gnp['spec']['ingress'][idx]['source']['nets'], subcloud_networks_ipv4)
+        self.assertEqual(gnp['spec']['ingress'][idx]['source']['selector'],
+                         "subnets == 'trusted-mgmt-subnets'")
         self.assertEqual(gnp['spec']['ingress'][idx]['destination']['ports'], tcp_ports)
 
         idx += 1
@@ -2350,7 +2379,8 @@ class PlatformFirewallTestCaseControllerDcSysCtrl_Setup03(PlatformFirewallTestCa
         self.assertEqual(gnp['spec']['ingress'][idx]['metadata']['annotations']['name'],
                 f"stx-ingr-{self.host.personality}-systemcontroller-udp4")
         self.assertEqual(gnp['spec']['ingress'][idx]['ipVersion'], 4)
-        self.assertEqual(gnp['spec']['ingress'][idx]['source']['nets'], subcloud_networks_ipv4)
+        self.assertEqual(gnp['spec']['ingress'][idx]['source']['selector'],
+                         "subnets == 'trusted-mgmt-subnets'")
         self.assertEqual(gnp['spec']['ingress'][idx]['destination']['ports'], udp_ports)
 
         idx += 1
@@ -2358,14 +2388,16 @@ class PlatformFirewallTestCaseControllerDcSysCtrl_Setup03(PlatformFirewallTestCa
         self.assertEqual(gnp['spec']['ingress'][idx]['metadata']['annotations']['name'],
                 f"stx-ingr-{self.host.personality}-systemcontroller-icmp4")
         self.assertEqual(gnp['spec']['ingress'][idx]['ipVersion'], 4)
-        self.assertEqual(gnp['spec']['ingress'][idx]['source']['nets'], subcloud_networks_ipv4)
+        self.assertEqual(gnp['spec']['ingress'][idx]['source']['selector'],
+                         "subnets == 'trusted-mgmt-subnets'")
 
         idx += 1
         self.assertEqual(gnp['spec']['ingress'][idx]['protocol'], "TCP")
         self.assertEqual(gnp['spec']['ingress'][idx]['metadata']['annotations']['name'],
                 f"stx-ingr-{self.host.personality}-systemcontroller-tcp6")
         self.assertEqual(gnp['spec']['ingress'][idx]['ipVersion'], 6)
-        self.assertEqual(gnp['spec']['ingress'][idx]['source']['nets'], subcloud_networks_ipv6)
+        self.assertEqual(gnp['spec']['ingress'][idx]['source']['selector'],
+                         "subnets == 'trusted-mgmt-subnets'")
         self.assertEqual(gnp['spec']['ingress'][idx]['destination']['ports'], tcp_ports)
 
         idx += 1
@@ -2373,7 +2405,8 @@ class PlatformFirewallTestCaseControllerDcSysCtrl_Setup03(PlatformFirewallTestCa
         self.assertEqual(gnp['spec']['ingress'][idx]['metadata']['annotations']['name'],
                 f"stx-ingr-{self.host.personality}-systemcontroller-udp6")
         self.assertEqual(gnp['spec']['ingress'][idx]['ipVersion'], 6)
-        self.assertEqual(gnp['spec']['ingress'][idx]['source']['nets'], subcloud_networks_ipv6)
+        self.assertEqual(gnp['spec']['ingress'][idx]['source']['selector'],
+                         "subnets == 'trusted-mgmt-subnets'")
         self.assertEqual(gnp['spec']['ingress'][idx]['destination']['ports'], udp_ports)
 
         idx += 1
@@ -2381,7 +2414,8 @@ class PlatformFirewallTestCaseControllerDcSysCtrl_Setup03(PlatformFirewallTestCa
         self.assertEqual(gnp['spec']['ingress'][idx]['metadata']['annotations']['name'],
                 f"stx-ingr-{self.host.personality}-systemcontroller-icmpv66")
         self.assertEqual(gnp['spec']['ingress'][idx]['ipVersion'], 6)
-        self.assertEqual(gnp['spec']['ingress'][idx]['source']['nets'], subcloud_networks_ipv6)
+        self.assertEqual(gnp['spec']['ingress'][idx]['source']['selector'],
+                         "subnets == 'trusted-mgmt-subnets'")
 
     def test_generate_firewall_config(self):
         hieradata_directory = self._create_hieradata_directory()
@@ -2463,6 +2497,15 @@ class PlatformFirewallTestCaseControllerDcSysCtrl_Setup03(PlatformFirewallTestCa
                               self.test_interfaces[0][constants.NETWORK_TYPE_OAM],
                               [constants.NETWORK_TYPE_OAM])
 
+        # check GlobalNetworkSet
+        self.assertTrue(hiera_data['platform::firewall::calico::gnset::mgmt::config'])
+        self._check_gnset_values(hiera_data['platform::firewall::calico::gnset::mgmt::config'],
+                                 constants.NETWORK_TYPE_MGMT,
+                                 ['192.168.1.0/26', '192.168.1.128/26', '192.168.1.64/26',
+                                  'c0ca:c01a::/64', 'c0ca:c02a::/64', 'dead:beef::/64'])
+
+        self.assertFalse(hiera_data['platform::firewall::calico::gnset::admin::config'])
+
 
 # AIO-DX, Controller, DC, Subcloud
 #   eth0:              oam
@@ -2539,8 +2582,8 @@ class PlatformFirewallTestCaseControllerDcSubcloud_Setup02(PlatformFirewallTestC
         tcp_ports.append(constants.SERVICE_PARAM_HTTP_PORT_HTTP_DEFAULT)
         tcp_ports.sort()
         self.assertEqual(gnp['spec']['ingress'][idx]['destination']['ports'], tcp_ports)
-        self.assertEqual(gnp['spec']['ingress'][idx]['source']['nets'][0], "192.168.1.0/26")
-        self.assertEqual(gnp['spec']['ingress'][idx]['source']['nets'][1], "192.168.1.64/26")
+        self.assertEqual(gnp['spec']['ingress'][idx]['source']['selector'],
+                         "subnets == 'trusted-mgmt-subnets'")
 
         idx += 1
         self.assertEqual(gnp['spec']['ingress'][idx]['protocol'], "UDP")
@@ -2551,16 +2594,16 @@ class PlatformFirewallTestCaseControllerDcSubcloud_Setup02(PlatformFirewallTestC
         udp_ports = list(firewall.SUBCLOUD["udp"].keys())
         udp_ports.sort()
         self.assertEqual(gnp['spec']['ingress'][idx]['destination']['ports'], udp_ports)
-        self.assertEqual(gnp['spec']['ingress'][idx]['source']['nets'][0], "192.168.1.0/26")
-        self.assertEqual(gnp['spec']['ingress'][idx]['source']['nets'][1], "192.168.1.64/26")
+        self.assertEqual(gnp['spec']['ingress'][idx]['source']['selector'],
+                         "subnets == 'trusted-mgmt-subnets'")
 
         idx += 1
         self.assertEqual(gnp['spec']['ingress'][idx]['protocol'], "ICMP")
         self.assertEqual(gnp['spec']['ingress'][idx]['metadata']['annotations']['name'],
                 f"stx-ingr-{self.host.personality}-subcloud-icmp{ip_version}")
         self.assertEqual(gnp['spec']['ingress'][idx]['ipVersion'], ip_version)
-        self.assertEqual(gnp['spec']['ingress'][idx]['source']['nets'][0], "192.168.1.0/26")
-        self.assertEqual(gnp['spec']['ingress'][idx]['source']['nets'][1], "192.168.1.64/26")
+        self.assertEqual(gnp['spec']['ingress'][idx]['source']['selector'],
+                         "subnets == 'trusted-mgmt-subnets'")
 
     def test_generate_firewall_config(self):
         hieradata_directory = self._create_hieradata_directory()
@@ -2630,6 +2673,14 @@ class PlatformFirewallTestCaseControllerDcSubcloud_Setup02(PlatformFirewallTestC
         self._check_he_values(hiera_data['platform::firewall::calico::hostendpoint::config'],
                               self.test_interfaces[constants.NETWORK_TYPE_OAM],
                               [constants.NETWORK_TYPE_OAM])
+
+        # check GlobalNetworkSet
+        self.assertTrue(hiera_data['platform::firewall::calico::gnset::mgmt::config'])
+        self._check_gnset_values(hiera_data['platform::firewall::calico::gnset::mgmt::config'],
+                                 constants.NETWORK_TYPE_MGMT,
+                                 ['192.168.1.0/26', '192.168.1.64/26'])
+
+        self.assertFalse(hiera_data['platform::firewall::calico::gnset::admin::config'])
 
 
 # Controller, DC, Subcloud, IPv6
@@ -2721,18 +2772,18 @@ class PlatformFirewallTestCaseControllerDcSubcloud_Setup03(PlatformFirewallTestC
 
         idx = 3  # admin routes, TCP
         self.assertEqual(gnp['spec']['ingress'][idx]['protocol'], "TCP")
-        self.assertEqual(gnp['spec']['ingress'][idx]['source']['nets'][0], "2001::/64")
-        self.assertEqual(gnp['spec']['ingress'][idx]['source']['nets'][1], "baba:baba::/64")
+        self.assertEqual(gnp['spec']['ingress'][idx]['source']['selector'],
+                         "subnets == 'trusted-admin-subnets'")
 
         idx = 4  # admin routes, UDP
         self.assertEqual(gnp['spec']['ingress'][idx]['protocol'], "UDP")
-        self.assertEqual(gnp['spec']['ingress'][idx]['source']['nets'][0], "2001::/64")
-        self.assertEqual(gnp['spec']['ingress'][idx]['source']['nets'][1], "baba:baba::/64")
+        self.assertEqual(gnp['spec']['ingress'][idx]['source']['selector'],
+                         "subnets == 'trusted-admin-subnets'")
 
         idx = 5  # admin routes, ICMPv6
         self.assertEqual(gnp['spec']['ingress'][idx]['protocol'], "ICMPv6")
-        self.assertEqual(gnp['spec']['ingress'][idx]['source']['nets'][0], "2001::/64")
-        self.assertEqual(gnp['spec']['ingress'][idx]['source']['nets'][1], "baba:baba::/64")
+        self.assertEqual(gnp['spec']['ingress'][idx]['source']['selector'],
+                         "subnets == 'trusted-admin-subnets'")
 
     def test_generate_firewall_config(self):
         hieradata_directory = self._create_hieradata_directory()
@@ -2804,6 +2855,14 @@ class PlatformFirewallTestCaseControllerDcSubcloud_Setup03(PlatformFirewallTestC
                               self.test_interfaces[constants.NETWORK_TYPE_OAM],
                               [constants.NETWORK_TYPE_OAM])
 
+        # check GlobalNetworkSet
+        self.assertTrue(hiera_data['platform::firewall::calico::gnset::admin::config'])
+        self._check_gnset_values(hiera_data['platform::firewall::calico::gnset::admin::config'],
+                                 constants.NETWORK_TYPE_ADMIN,
+                                 ['2001::/64', 'baba:baba::/64'])
+
+        self.assertFalse(hiera_data['platform::firewall::calico::gnset::mgmt::config'])
+
 
 # AIO-DX, Controller, DC, Subcloud
 #   eth0:              oam
@@ -2869,8 +2928,8 @@ class PlatformFirewallTestCaseControllerDcSubcloud_Setup04(PlatformFirewallTestC
         tcp_ports.append(constants.SERVICE_PARAM_HTTP_PORT_HTTP_DEFAULT)
         tcp_ports.sort()
         self.assertEqual(gnp['spec']['ingress'][idx]['destination']['ports'], tcp_ports)
-        self.assertEqual(gnp['spec']['ingress'][idx]['source']['nets'][0], "192.168.1.0/26")
-        self.assertEqual(gnp['spec']['ingress'][idx]['source']['nets'][1], "192.168.1.64/26")
+        self.assertEqual(gnp['spec']['ingress'][idx]['source']['selector'],
+                         "subnets == 'trusted-mgmt-subnets'")
 
         idx += 1
         self.assertEqual(gnp['spec']['ingress'][idx]['protocol'], "UDP")
@@ -2881,16 +2940,16 @@ class PlatformFirewallTestCaseControllerDcSubcloud_Setup04(PlatformFirewallTestC
         udp_ports = list(firewall.SUBCLOUD["udp"].keys())
         udp_ports.sort()
         self.assertEqual(gnp['spec']['ingress'][idx]['destination']['ports'], udp_ports)
-        self.assertEqual(gnp['spec']['ingress'][idx]['source']['nets'][0], "192.168.1.0/26")
-        self.assertEqual(gnp['spec']['ingress'][idx]['source']['nets'][1], "192.168.1.64/26")
+        self.assertEqual(gnp['spec']['ingress'][idx]['source']['selector'],
+                         "subnets == 'trusted-mgmt-subnets'")
 
         idx += 1
         self.assertEqual(gnp['spec']['ingress'][idx]['protocol'], "ICMP")
         self.assertEqual(gnp['spec']['ingress'][idx]['metadata']['annotations']['name'],
                 f"stx-ingr-{self.host.personality}-subcloud-icmp{ip_version}")
         self.assertEqual(gnp['spec']['ingress'][idx]['ipVersion'], ip_version)
-        self.assertEqual(gnp['spec']['ingress'][idx]['source']['nets'][0], "192.168.1.0/26")
-        self.assertEqual(gnp['spec']['ingress'][idx]['source']['nets'][1], "192.168.1.64/26")
+        self.assertEqual(gnp['spec']['ingress'][idx]['source']['selector'],
+                         "subnets == 'trusted-mgmt-subnets'")
 
     def test_generate_firewall_config(self):
         hieradata_directory = self._create_hieradata_directory()
@@ -2950,6 +3009,10 @@ class PlatformFirewallTestCaseControllerDcSubcloud_Setup04(PlatformFirewallTestC
         self._check_he_values(hiera_data['platform::firewall::calico::hostendpoint::config'],
                               self.test_interfaces[constants.NETWORK_TYPE_OAM],
                               [constants.NETWORK_TYPE_OAM])
+
+        # check GlobalNetworkSet
+        self.assertFalse(hiera_data['platform::firewall::calico::gnset::admin::config'])
+        self.assertFalse(hiera_data['platform::firewall::calico::gnset::mgmt::config'])
 
 
 # Controller, DC, Subcloud, Dual Stack primary IPv6
@@ -3070,33 +3133,33 @@ class PlatformFirewallTestCaseControllerDcSubcloud_Setup05(PlatformFirewallTestC
 
         idx += 1  # admin routes, TCP IPv6
         self.assertEqual(gnp['spec']['ingress'][idx]['protocol'], "TCP")
-        self.assertEqual(gnp['spec']['ingress'][idx]['source']['nets'][0], "2001::/64")
-        self.assertEqual(gnp['spec']['ingress'][idx]['source']['nets'][1], "baba:baba::/64")
+        self.assertEqual(gnp['spec']['ingress'][idx]['source']['selector'],
+                         "subnets == 'trusted-admin-subnets'")
 
         idx += 1  # admin routes, UDP IPv6
         self.assertEqual(gnp['spec']['ingress'][idx]['protocol'], "UDP")
-        self.assertEqual(gnp['spec']['ingress'][idx]['source']['nets'][0], "2001::/64")
-        self.assertEqual(gnp['spec']['ingress'][idx]['source']['nets'][1], "baba:baba::/64")
+        self.assertEqual(gnp['spec']['ingress'][idx]['source']['selector'],
+                         "subnets == 'trusted-admin-subnets'")
 
         idx += 1  # admin routes, ICMPv6 IPv6
         self.assertEqual(gnp['spec']['ingress'][idx]['protocol'], "ICMPv6")
-        self.assertEqual(gnp['spec']['ingress'][idx]['source']['nets'][0], "2001::/64")
-        self.assertEqual(gnp['spec']['ingress'][idx]['source']['nets'][1], "baba:baba::/64")
+        self.assertEqual(gnp['spec']['ingress'][idx]['source']['selector'],
+                         "subnets == 'trusted-admin-subnets'")
 
         idx += 1  # admin routes, TCP IPv4
         self.assertEqual(gnp['spec']['ingress'][idx]['protocol'], "TCP")
-        self.assertEqual(gnp['spec']['ingress'][idx]['source']['nets'][0], "192.168.3.0/24")
-        self.assertEqual(gnp['spec']['ingress'][idx]['source']['nets'][1], "192.168.4.0/24")
+        self.assertEqual(gnp['spec']['ingress'][idx]['source']['selector'],
+                         "subnets == 'trusted-admin-subnets'")
 
         idx += 1  # admin routes, UDP IPv4
         self.assertEqual(gnp['spec']['ingress'][idx]['protocol'], "UDP")
-        self.assertEqual(gnp['spec']['ingress'][idx]['source']['nets'][0], "192.168.3.0/24")
-        self.assertEqual(gnp['spec']['ingress'][idx]['source']['nets'][1], "192.168.4.0/24")
+        self.assertEqual(gnp['spec']['ingress'][idx]['source']['selector'],
+                         "subnets == 'trusted-admin-subnets'")
 
         idx += 1  # admin routes, ICMP IPv4
         self.assertEqual(gnp['spec']['ingress'][idx]['protocol'], "ICMP")
-        self.assertEqual(gnp['spec']['ingress'][idx]['source']['nets'][0], "192.168.3.0/24")
-        self.assertEqual(gnp['spec']['ingress'][idx]['source']['nets'][1], "192.168.4.0/24")
+        self.assertEqual(gnp['spec']['ingress'][idx]['source']['selector'],
+                         "subnets == 'trusted-admin-subnets'")
 
     def test_generate_firewall_config(self):
         hieradata_directory = self._create_hieradata_directory()
@@ -3167,6 +3230,14 @@ class PlatformFirewallTestCaseControllerDcSubcloud_Setup05(PlatformFirewallTestC
         self._check_he_values(hiera_data['platform::firewall::calico::hostendpoint::config'],
                               self.test_interfaces[constants.NETWORK_TYPE_OAM],
                               [constants.NETWORK_TYPE_OAM])
+        # check GlobalNetworkSet
+        self.assertTrue(hiera_data['platform::firewall::calico::gnset::admin::config'])
+        self._check_gnset_values(hiera_data['platform::firewall::calico::gnset::admin::config'],
+                                 constants.NETWORK_TYPE_ADMIN,
+                                 ['2001::/64', 'baba:baba::/64',
+                                  '192.168.3.0/24', '192.168.4.0/24'])
+
+        self.assertFalse(hiera_data['platform::firewall::calico::gnset::mgmt::config'])
 
 
 # Worker, non-DC
