@@ -20,6 +20,7 @@ import tempfile
 import random
 import string
 import threading
+import yaml as pyaml
 import zlib
 
 from eventlet.green import subprocess
@@ -482,3 +483,70 @@ def call_fluxcd_repository_reconciliation(helm_repos):
         except Exception as e:
             raise exception.SysinvException(f"Error trying to force repository reconciliation \
                                             via {cmd}, reason: {e}")
+
+
+def get_chart_version(tgz_path):
+    """ Retrieve the version from a chart tarball
+
+    Args:
+        tgz_path (path): path to the chart tarball
+
+    Returns:
+        string: chart version.
+    """
+
+    try:
+        result = subprocess.run(
+            ["helm", "show", "chart", tgz_path],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        chart_yaml = pyaml.safe_load(result.stdout)
+        return chart_yaml.get("version")
+    except subprocess.CalledProcessError as e:
+        print(f"Error while retrieving chart version: {e.stderr}")
+    except Exception as e:
+        raise exception.SysinvException(f"Cannot retrieve chart version: {e}")
+
+    return None
+
+
+def get_history(release_name, release_namespace, kubeconfig=None):
+    """ Retrieve the Helm history for a given release
+
+    Args:
+        release_name (str): name of the Helm release.
+        release_namespace (str): namespace of the Helm release.
+        kubeconfig (path): path to the Kubernetes config file.
+
+    Returns:
+        list: Records of each revision of the given Helm release.
+    """
+
+    command = ["helm",
+               "history", release_name,
+               "-n", release_namespace,
+               "--output", "json"]
+
+    if kubeconfig:
+        command.extend(["--kubeconfig", kubeconfig])
+
+    try:
+        result = subprocess.run(
+            command,
+            check=True,
+            capture_output=True,
+            text=True
+        )
+
+        history = json.loads(result.stdout)
+        return history
+    except subprocess.CalledProcessError as e:
+        if 'not found' in e.stderr:
+            LOG.warning(f"Helm release {release_name} not found in {release_namespace} namespace")
+            return []
+        raise exception.SysinvException("Error while attempting to retrieve Helm "
+                                        f"release history: {e.stderr}")
+    except Exception as e:
+        raise exception.SysinvException(f"Cannot retrieve Helm release history: {e}")

@@ -2443,3 +2443,10 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         :param context: request context.
         """
         return self.call(context, self.make_msg('upgrade_flux_controllers'))
+
+    def rollback_flux_controllers(self, context):
+        """Synchronously, rollback Flux controllers.
+
+        :param context: request context.
+        """
+        return self.call(context, self.make_msg('rollback_flux_controllers'))

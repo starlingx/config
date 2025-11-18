@@ -14,3 +14,7 @@ class FluxManager(base.Manager):
     def upgrade_controllers(self):
         _, response = self.api.json_request('UPDATE', f"{self.path}flux/")
         return response
+
+    def rollback_controllers(self):
+        _, response = self.api.json_request('POST', f"{self.path}flux/rollback/")
+        return response
