@@ -27,7 +27,6 @@ class PtpParameter(base.SysinvObject):
     fields = {
             'id': int,
             'uuid': utils.str_or_none,
-            'section': utils.str_or_none,
             'name': utils.str_or_none,
             'value': utils.str_or_none,
             'owners': utils.list_of_strings_or_none

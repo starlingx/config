@@ -7,7 +7,6 @@
 ########################################################################
 
 from cgtsclient.common import constants
-from cgtsclient.common import unicast_master_table as umt
 from cgtsclient.common import utils
 from cgtsclient import exc
 from cgtsclient.v1 import ihost as ihost_utils
@@ -82,7 +81,7 @@ def do_ptp_instance_delete(cc, args):
     print('Deleted PTP instance: %s' % uuid)
 
 
-def _ptp_instance_parameter_op(cc, op, instance, section, parameters):
+def _ptp_instance_parameter_op(cc, op, instance, parameters):
     if len(parameters) == 0:
         raise exc.CommandError('Missing PTP parameter')
     ptp_instance = ptp_instance_utils._find_ptp_instance(cc, instance)
@@ -99,39 +98,11 @@ def _ptp_instance_parameter_op(cc, op, instance, section, parameters):
                     f"Parameter {param_name} is not supported. Supported parameters:"
                     f"{constants.PTP_INSTANCE_TYPE_GNSS_MONITOR_SUPPORTED_PARAMETERS}"
                 )
-    # sanity check for PTP4l's unicast_master_table sectional parameters
-    elif (
-        ptp_instance.service == constants.PTP_INSTANCE_TYPE_PTP4L
-        and section.startswith("unicast_master_table")
-    ):
-        umt_data = umt.UnicastMasterTable()
-        for param_keypair in parameters:
-            if param_keypair.find("=") < 0:
-                raise exc.CommandError(f"Bad PTP parameter keypair: {param_keypair}")
-            (param_name, param_value) = param_keypair.split("=", 1)
-
-            if param_name not in constants.PTP_INSTANCE_TYPE_PTP4L_UMT_SUPPORTED_PARAMETERS:
-                raise exc.CommandError(
-                    f"Parameter {param_name} is not supported. Supported parameters:"
-                    f"{constants.PTP_INSTANCE_TYPE_PTP4L_UMT_SUPPORTED_PARAMETERS}"
-                )
-            # compliance to value format
-            err_msg = umt_data.add(param_name, param_value)
-            if err_msg is not None:
-                raise exc.CommandError(
-                    f"Bad PTP parameter keypair: {param_keypair} error: {err_msg}"
-                )
-
-        # check compliance
-        err_msg = umt_data.comply()
-        if err_msg is not None:
-            raise exc.CommandError(f"Bad PTP parameter keypair, error: {err_msg}")
 
     patch = []
     for parameter in parameters:
         patch.append({'op': op,
                       'path': '/ptp_parameters/-',
-                      'section': section,
                       'value': parameter})
     ptp_instance = cc.ptp_instance.update(ptp_instance.uuid, patch)
     _print_ptp_instance_show(ptp_instance)
@@ -140,10 +111,6 @@ def _ptp_instance_parameter_op(cc, op, instance, section, parameters):
 @utils.arg('nameoruuid',
            metavar='<name or UUID>',
            help="Name or UUID of PTP instance")
-@utils.arg('--section',
-           metavar='<section_name>',
-           default='global',
-           help='Section name of PTP parameters (default: global)')
 @utils.arg('parameters',
            metavar='<name=value>',
            nargs='+',
@@ -153,17 +120,12 @@ def _ptp_instance_parameter_op(cc, op, instance, section, parameters):
 def do_ptp_instance_parameter_add(cc, args):
     """Add parameter(s) to a PTP instance."""
     _ptp_instance_parameter_op(cc, op='add', instance=args.nameoruuid,
-                               section=args.section,
                                parameters=args.parameters[0])
 
 
 @utils.arg('nameoruuid',
            metavar='<name or UUID>',
            help="Name or UUID of PTP instance")
-@utils.arg('--section',
-           metavar='<section_name>',
-           default='global',
-           help='Section name of PTP parameters (default: global)')
 @utils.arg('parameters',
            metavar='<name=value>',
            nargs='+',
@@ -173,7 +135,6 @@ def do_ptp_instance_parameter_add(cc, args):
 def do_ptp_instance_parameter_delete(cc, args):
     """Delete parameter(s) from a PTP instance."""
     _ptp_instance_parameter_op(cc, op='remove', instance=args.nameoruuid,
-                               section=args.section,
                                parameters=args.parameters[0])
 
 
