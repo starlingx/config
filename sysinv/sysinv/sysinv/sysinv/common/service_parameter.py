@@ -688,33 +688,6 @@ def _validate_drbd_net_hmac(name, value):
          constants.SERVICE_PARAM_PLATFORM_DRBD_HMAC_SHA256)))
 
 
-def _validate_oot(name, value):
-    """Check if specified value is supported"""
-
-    # Convert the input value to a list for validation against
-    # constants.SERVICE_PARAM_PLAT_KERNEL_OOT_VALUES
-    driver_list = list(map(str.strip, value.split(',')))
-
-    # first check none should not be co exists with other values
-    # it should be none or any other combination
-    if len(driver_list) > 1 and 'none' in value:
-        msg = "'none' should be the only value, it cannot coexist with others"
-        raise wsme.exc.ClientSideError(_(msg))
-
-    # Ensure that the driver list is a subset of
-    # constants.SERVICE_PARAM_PLAT_KERNEL_OOT_VALUES, and raise
-    # an error if it does not match the predefined OOT values.
-    # it checks whether all elements in the driver_list
-    # are also present in the constants.SERVICE_PARAM_PLAT_KERNEL_OOT_VALUES.
-    # If they are, the expression evaluates to True; otherwise, it evaluates to False
-
-    if not (all(x in constants.SERVICE_PARAM_PLAT_KERNEL_OOT_VALUES
-            for x in driver_list)):
-        msg = "Parameter '{}' value must be one of '{}' .".format(
-            name, constants.SERVICE_PARAM_PLAT_KERNEL_OOT_VALUES)
-        raise wsme.exc.ClientSideError(_(msg))
-
-
 def _validate_cli_confirmations(name, value):
     """Check if specified value is supported"""
     try:
@@ -1152,7 +1125,6 @@ PLATFORM_MTCE_PARAMETER_RESOURCE = {
 
 PLATFORM_KERNEL_PARAMETER_OPTIONAL = [
     constants.SERVICE_PARAM_NAME_PLATFORM_AUDITD,
-    constants.SERVICE_PARAM_NAME_PLATFORM_OOT,
     constants.SERVICE_PARAM_PLATFORM_KSOFTIRQD_PRIO,
     constants.SERVICE_PARAM_PLATFORM_IRQ_WORK_PRIO,
     constants.SERVICE_PARAM_PLATFORM_KTHREAD_PRIO,
@@ -1196,7 +1168,6 @@ PLATFORM_DRBD_PARAMETER_OPTIONAL = [
 
 PLATFORM_KERNEL_PARAMETER_VALIDATOR = {
     constants.SERVICE_PARAM_NAME_PLATFORM_AUDITD: _validate_kernel_audit,
-    constants.SERVICE_PARAM_NAME_PLATFORM_OOT: _validate_oot,
     constants.SERVICE_PARAM_PLATFORM_KSOFTIRQD_PRIO: _validate_sched_rt_prio,
     constants.SERVICE_PARAM_PLATFORM_IRQ_WORK_PRIO: _validate_sched_rt_prio,
     constants.SERVICE_PARAM_PLATFORM_KTHREAD_PRIO: _validate_sched_rt_prio,
@@ -1258,8 +1229,6 @@ PLATFORM_DRBD_PARAMETER_VALIDATOR = {
 PLATFORM_KERNEL_PARAMETER_RESOURCE = {
     constants.SERVICE_PARAM_NAME_PLATFORM_AUDITD:
         'platform::compute::grub::params::g_audit',
-    constants.SERVICE_PARAM_NAME_PLATFORM_OOT:
-        'platform::compute::grub::params::g_out_of_tree_drivers',
     constants.SERVICE_PARAM_PLATFORM_KSOFTIRQD_PRIO:
         'platform::params::ksoftirqd_priority',
     constants.SERVICE_PARAM_PLATFORM_IRQ_WORK_PRIO:

@@ -905,11 +905,6 @@ class ConductorManager(service.PeriodicService):
          'value': constants.SERVICE_PARAM_PLATFORM_KEEP_FREE_DEFAULT
          },
         {'service': constants.SERVICE_TYPE_PLATFORM,
-         'section': constants.SERVICE_PARAM_SECTION_PLATFORM_KERNEL,
-         'name': constants.SERVICE_PARAM_NAME_PLATFORM_OOT,
-         'value': ",".join(constants.SERVICE_PARAM_PLAT_KERNEL_OOT_VALUES[1:]),
-         },
-        {'service': constants.SERVICE_TYPE_PLATFORM,
          'section': constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG,
          'name': constants.SERVICE_PARAM_NAME_PLATFORM_SCTP_AUTOLOAD,
          'value': constants.SERVICE_PARAM_PLATFORM_SCTP_AUTOLOAD_ENABLED,

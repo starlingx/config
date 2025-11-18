@@ -1265,14 +1265,6 @@ SERVICE_PARAM_PLAT_MTCE_MNFA_TIMEOUT_DEFAULT = 0
 
 SERVICE_PARAM_NAME_PLAT_CONFIG_VIRTUAL = 'virtual_system'
 
-# Intel NIC out of tree drivers parameter
-SERVICE_PARAM_NAME_PLATFORM_OOT = 'out_of_tree_drivers'
-SERVICE_PARAM_PLAT_KERNEL_OOT_VALUES = (
-    "none",
-    "ice",
-    "i40e",
-    "iavf")
-
 SERVICE_PARAM_NAME_PLAT_CONFIG_INTEL_PSTATE = 'intel_pstate'
 # Valid 'intel_pstate' values
 # Kernel Command Line Options for intel_pstate at
