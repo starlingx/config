@@ -28,22 +28,16 @@ case $nodetype in
 esac
 
 while :; do
-    status="$(systemctl status ${SERVICE} 2>&1)"
-    # verify systemctl status response format
-    # <service> - <Description>
-    # ...
-    if echo "${status}" | grep -q "${SERVICE}"
-    then
-            if ! echo "${status}" | grep -q running
-            then
-                msg="${SERVICE} has finished running."
-                logger -t "${script_name}" "${msg}"
-                echo "${script_name} - ${msg}"
-                exit 0
-            fi
-    else
-        logger -t "${script_name}" "${status}"
-        echo "${script_name} - ${status}"
+    read -r RESULT ACTIVE_STATE SUB_STATE < <(
+        systemctl show "$SERVICE" -p ActiveState -p SubState -p Result --value |
+            paste - - -
+    )
+    if [[ "$ACTIVE_STATE" == "inactive" && "$RESULT" == "success" && "$SUB_STATE" == "dead" ]]; then
+        exit 0
+    elif [[ "$ACTIVE_STATE" == "active" && "$RESULT" == "success" && "$SUB_STATE" == "exited" ]]; then
+        exit 0
+    elif [[ "$ACTIVE_STATE" == "failed" || "$RESULT" == "failed" ]]; then
+        exit 1
     fi
     sleep 1
 done
