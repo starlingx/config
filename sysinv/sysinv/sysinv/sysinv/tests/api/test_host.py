@@ -3275,6 +3275,189 @@ class TestPatch(TestHost):
         self.assertEqual(response.content_type, 'application/json')
         self.assertEqual(response.status_code, http_client.OK)
 
+    def test_controller_unlock_while_grub_update_pending(self):
+        """
+        Test that a pending grub runtime manifest will block host-unlock
+        """
+        # Create controller-0
+        c0_host = self._create_controller_0(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_LOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+        self._create_test_host_platform_interface(c0_host)
+
+        dbutils.create_test_pv(lvm_vg_name='cgts-vg',
+                               forihostid=c0_host.id,
+                               pv_state='provisioned')
+
+        personalities = [constants.CONTROLLER]
+        classes = ['platform::compute::grub::runtime']
+        dbutils.create_test_runtime_config(personalities=personalities,
+                                           classes=classes,
+                                           host_uuids=[c0_host.uuid],
+                                           host_id=c0_host.id)
+
+        # Unlock host
+        response = self._patch_host_action(c0_host['hostname'],
+                                           constants.UNLOCK_ACTION,
+                                           'sysinv-test',
+                                           expect_errors=True)
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+        self.assertTrue(response.json['error_message'])
+
+    def test_worker_unlock_while_grub_update_pending(self):
+        """
+        Test that a pending grub runtime manifest will block host-unlock
+        """
+        # Create controller-0
+        self._create_controller_0(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Create controller-1
+        self._create_controller_1(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Create worker-0
+        w0_host = self._create_worker(
+            mgmt_ip='192.168.204.5',
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_LOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        dbutils.create_test_pv(lvm_vg_name='cgts-vg',
+                               forihostid=w0_host.id,
+                               pv_state='provisioned')
+
+        self._create_test_host_platform_interface(w0_host)
+        self._create_test_host_addresses(w0_host.hostname)
+
+        personalities = [constants.WORKER]
+        classes = ['platform::compute::grub::runtime']
+        dbutils.create_test_runtime_config(personalities=personalities,
+                                           classes=classes,
+                                           host_uuids=[w0_host.uuid],
+                                           host_id=w0_host.id)
+
+        # Unlock host
+        response = self._patch_host_action(w0_host['hostname'],
+                                           constants.UNLOCK_ACTION,
+                                           'sysinv-test',
+                                           expect_errors=True)
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+        self.assertTrue(response.json['error_message'])
+
+    def test_storage_unlock_while_grub_update_pending(self):
+        # Note: Can't do storage host testcases yet because additional code
+        # is required to populate the storage (OSDs) for the host.
+        self.skipTest("Not yet implemented")
+
+    def test_controller_unlock_while_grub_update_pending_expires(self):
+        """
+        Test that a grub runtime manifest will not block host-unlock
+        if it has been applied already
+        """
+        # Create controller-0
+        c0_host = self._create_controller_0(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_LOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+        self._create_test_host_platform_interface(c0_host)
+
+        dbutils.create_test_pv(lvm_vg_name='cgts-vg',
+                               forihostid=c0_host.id,
+                               pv_state='provisioned')
+
+        personalities = [constants.CONTROLLER]
+        classes = ['platform::compute::grub::runtime']
+        rc = dbutils.create_test_runtime_config(personalities=personalities,
+                                                classes=classes,
+                                                host_uuids=[c0_host.uuid],
+                                                host_id=c0_host.id)
+
+        # update runtime config - simulates config applied
+        config_uuid = rc.get('config_uuid')
+        runtime_state = constants.RUNTIME_CONFIG_STATE_APPLIED
+        dbutils.update_test_runtime_config(config_uuid=config_uuid,
+                                           state=runtime_state,
+                                           host_id=c0_host.id)
+
+        response = self._patch_host_action(c0_host['hostname'],
+                                            constants.UNLOCK_ACTION,
+                                            'sysinv-test')
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
+
+    def test_worker_unlock_while_grub_update_pending_expires(self):
+        """
+        Test that a grub runtime manifest will not block host-unlock
+        if it has been applied already
+        """
+        # Create controller-0
+        self._create_controller_0(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Create controller-1
+        self._create_controller_1(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Create worker-0
+        w0_host = self._create_worker(
+            mgmt_ip='192.168.204.5',
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_LOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        dbutils.create_test_pv(lvm_vg_name='cgts-vg',
+                               forihostid=w0_host.id,
+                               pv_state='provisioned')
+
+        self._create_test_host_platform_interface(w0_host)
+        self._create_test_host_cpus(w0_host, platform=1, vswitch=2, application=12)
+        self._create_test_host_addresses(w0_host.hostname)
+
+        personalities = [constants.WORKER]
+        classes = ['platform::compute::grub::runtime']
+        rc = dbutils.create_test_runtime_config(personalities=personalities,
+                                                classes=classes,
+                                                host_uuids=[w0_host.uuid],
+                                                host_id=w0_host.id)
+
+        # update runtime config - simulates config applied
+        config_uuid = rc.get('config_uuid')
+        runtime_state = constants.RUNTIME_CONFIG_STATE_APPLIED
+        dbutils.update_test_runtime_config(config_uuid=config_uuid,
+                                           state=runtime_state,
+                                           host_id=w0_host.id)
+        # Unlock host
+        response = self._patch_host_action(w0_host['hostname'],
+                                           constants.UNLOCK_ACTION,
+                                           'sysinv-test')
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
+
+    def test_storage_unlock_while_grub_update_pending_expires(self):
+        # Note: Can't do storage host testcases yet because additional code
+        # is required to populate the storage (OSDs) for the host.
+        self.skipTest("Not yet implemented")
+
 
 class TestPatchStdDuplexControllerAction(TestHost):
 

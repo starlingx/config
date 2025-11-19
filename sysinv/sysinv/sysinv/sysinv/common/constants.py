@@ -1544,6 +1544,10 @@ SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_POOL_SIZE = 'database_max_pool_s
 SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_POOL_TIMEOUT = 'database_max_pool_timeout'
 SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_OVERFLOW_SIZE = 'database_max_overflow_size'
 
+# The host-unlock blocking period
+SERVICE_PARAM_NAME_PLATFORM_SYSINV_HOST_UNLOCK_BLOCKING_PERIOD = 'host_unlock_blocking_period'
+SERVICE_PARAM_NAME_PLATFORM_SYSINV_HOST_UNLOCK_BLOCKING_PERIOD_DEFAULT = 120
+
 # SCTP Config parameters
 # enables/disables SCTP module load by default
 SERVICE_PARAM_NAME_PLATFORM_SCTP_AUTOLOAD = 'sctp_autoload'
@@ -2413,6 +2417,11 @@ ANSIBLE_BOOTSTRAP_COMPLETED_FLAG = os.path.join(tsc.PLATFORM_CONF_PATH,
 ANSIBLE_ENROLLMENT_FLAG = os.path.join(tsc.VOLATILE_PATH, ".enrollment_in_progress")
 ANSIBLE_ENROLLMENT_COMPLETED_FLAG = \
     os.path.join(tsc.VOLATILE_PATH, ".subcloud_enrollment_completed")
+ANSIBLE_ENROLLMENT_SKIP_LIST = \
+    {
+        # 'set' of runtime manifests that shouldn't be deferred during enrolment
+        'platform::compute::grub::runtime',
+    }
 
 SKIP_KEYSTONE_PASSWORD_UPDATE = \
     os.path.join(tsc.VOLATILE_PATH, ".skip_keystone_password_update")
