@@ -114,10 +114,17 @@ SB_SUPPORTED_NETWORKS = {
 }
 
 # PTP definitions
+PTP_INSTANCE_TYPE_PTP4L = 'ptp4l'
 PTP_INSTANCE_TYPE_GNSS_MONITOR = "gnss-monitor"
 PTP_INSTANCE_TYPE_GNSS_MONITOR_SUPPORTED_PARAMETERS = [
     "devices", "satellite_count", "signal_quality_db",
     "cmdline_opts"
+]
+
+# PTP4L unicast_master_table supported parameters
+PTP_INSTANCE_TYPE_PTP4L_UMT_SUPPORTED_PARAMETERS = [
+    "table_id", "logQueryInterval", "peer_address",
+    "L2", "UDPv4", "UDPv6"
 ]
 
 EXPIRED = "--expired"

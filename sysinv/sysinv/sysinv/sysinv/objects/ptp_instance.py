@@ -30,12 +30,12 @@ class PtpInstance(ptp_paramowner.PtpParameterOwner):
             'name': utils.str_or_none,
             'service': utils.str_or_none,
             'hostnames': utils.list_of_strings_or_none,
-            'parameters': utils.list_of_strings_or_none
+            'parameters': utils.dict_of_list_of_strings_or_none
              }, **ptp_paramowner.PtpParameterOwner.fields)
 
     _foreign_fields = {
         'hostnames': get_hostnames,
-        'parameters': ptp_paramowner.get_parameters
+        'parameters': ptp_paramowner.get_sectional_parameters
     }
 
     @base.remotable_classmethod
