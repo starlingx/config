@@ -471,11 +471,6 @@ class NetworkingPuppet(base.BasePuppet):
             'eec_invalid_value': constants.PTP_SYNCE_EEC_INVALID_VALUE
         }
 
-        allowed_instance_fields = [
-            'global_parameters', 'section_parameters', 'interfaces', 'name', 'service',
-            'cmdline_opts', 'id', 'pmc_gm_settings', 'device_parameters',
-            'gnss_uart_disable', 'external_source'
-        ]
         ptp_config = {}
 
         for instance in ptp_instances:
@@ -500,6 +495,7 @@ class NetworkingPuppet(base.BasePuppet):
             instance['device_parameters'] = {}
             instance['gnss_uart_disable'] = True
             instance['external_source'] = {}
+            instance['monitoring_parameters'] = {}
 
             # Additional defaults for ptp4l instances
             if instance['service'] == constants.PTP_INSTANCE_TYPE_PTP4L:
@@ -586,13 +582,22 @@ class NetworkingPuppet(base.BasePuppet):
                     instance['global_parameters'][constants.PTP_PARAMETER_BC_JBOD] = (
                         constants.PTP_BOUNDARY_CLOCK_JBOD_1)
 
-            # Prune fields and add the instance to the config
-            # Change 'name' key to '_name' because it is unusable in puppet
+        # Convert list to dict and return
+        for instance in ptp_instances:
+            ptp_config[instance['name']] = instance
+        return ptp_config
+
+    def _prune_ptp_config_fields(self, ptp_instances):
+        allowed_instance_fields = ['global_parameters', 'interfaces', 'name', 'service',
+                                   'cmdline_opts', 'id', 'pmc_gm_settings', 'device_parameters',
+                                   'gnss_uart_disable', 'external_source', 'monitoring_parameters',
+                                   'section_parameters']
+        for instance_name in ptp_instances:
+            instance = ptp_instances[instance_name]
             pruned_instance = {r: instance[r] for r in allowed_instance_fields}
             pruned_instance['_name'] = pruned_instance.pop('name')
-            ptp_config[pruned_instance['_name']] = pruned_instance
-
-        return ptp_config
+            ptp_instances[instance_name] = pruned_instance
+        return ptp_instances
 
     def _set_ptp_instance_interfaces(self, host, ptp_instances, ptp_interfaces):
         allowed_interface_fields = ['ifname',
@@ -689,6 +694,51 @@ class NetworkingPuppet(base.BasePuppet):
                 for param in ptp_parameters_interface:
                     if iface['uuid'] in param['owners']:
                         iface['parameters'][param['name']] = param['value']
+
+        return ptp_instances
+
+    def _set_ptp_instance_monitoring_parameters(self, ptp_instances, ptp_parameters_monitoring):
+        """Set PTP monitoring parameters for each PTP instance.
+
+        The monitoring parameters are added to the puppet hieradata and written to a
+        instance-monitoring.conf file. This file can be consumed by collectd and ptp-notification
+        to set instance specific monitoring thresholds.
+        """
+
+        # Default parameter values
+        default_monitoring_parameters = {
+            'ptp4l': {
+                'holdover_seconds': constants.PTP_MONITORING_HOLDOVER_SECONDS,
+                'offset_threshold_minor_msec': constants.PTP_MONITORING_OFFSET_THRESHOLD_MINOR_MSEC,
+                'offset_threshold_major_msec': constants.PTP_MONITORING_OFFSET_THRESHOLD_MAJOR_MSEC
+            },
+            'phc2sys': {
+                'holdover_seconds': constants.PTP_MONITORING_HOLDOVER_SECONDS,
+                'offset_threshold_minor_msec': constants.PTP_MONITORING_OFFSET_THRESHOLD_MINOR_MSEC,
+                'offset_threshold_major_msec': constants.PTP_MONITORING_OFFSET_THRESHOLD_MAJOR_MSEC
+            },
+            'ts2phc': {},   # No default monitoring parameters for ts2phc
+            'clock': {},    # No default monitoring parameters for clock
+            'synce4l': {},  # No default monitoring parameters for synce4l
+        }
+        for instance_name in ptp_instances:
+            instance = ptp_instances[instance_name]
+            if 'monitoring_parameters' not in instance:
+                instance['monitoring_parameters'] = {}
+
+            # Add default monitoring parameters to the instance
+            instance['monitoring_parameters'].update(
+                default_monitoring_parameters[instance['service']]
+            )
+
+            # Add supplied monitoring parameters to the instance and remove them
+            # from section_parameters if present
+            # Will override default values if the same parameter is supplied
+            for param in ptp_parameters_monitoring:
+                if param['section'] == 'monitoring' and instance['uuid'] in param['owners']:
+                    instance['monitoring_parameters'][param['name']] = param['value']
+            if instance['section_parameters'].get('monitoring'):
+                instance['section_parameters'].pop('monitoring')
 
         return ptp_instances
 
@@ -830,21 +880,16 @@ class NetworkingPuppet(base.BasePuppet):
         monitoring_instance_configs = []
 
         for index, instance in enumerate(ptp_instances):
-            if ptp_instances[index]['service'] == constants.PTP_INSTANCE_TYPE_CLOCK:
-                clock_instance = ptp_instances[index]
-                nic_clocks[instance['name']] = clock_instance.as_dict()
-                nic_clocks[instance['name']]['interfaces'] = []
-            elif (
-                ptp_instances[index]["service"]
-                == constants.PTP_INSTANCE_TYPE_GNSS_MONITOR
-            ):
-                ptp_instances[index][instance["name"]] = instance.as_dict()
-                ptp_instances[index][instance["name"]]["interfaces"] = []
-                monitoring_instance_configs.append(ptp_instances[index])
+            instance_dict = instance.as_dict()
+            if instance_dict['service'] == constants.PTP_INSTANCE_TYPE_CLOCK:
+                nic_clocks[instance_dict['name']] = instance_dict
+                nic_clocks[instance_dict['name']]['interfaces'] = []
+            elif instance_dict["service"] == constants.PTP_INSTANCE_TYPE_GNSS_MONITOR:
+                instance_dict["interfaces"] = []
+                monitoring_instance_configs.append(instance_dict)
             else:
-                ptp_instances[index][instance['name']] = instance.as_dict()
-                ptp_instances[index][instance['name']]['interfaces'] = []
-                ptp_instance_configs.append(ptp_instances[index])
+                instance_dict['interfaces'] = []
+                ptp_instance_configs.append(instance_dict)
         for index, iface in enumerate(ptp_interfaces):
             ptp_interfaces[index] = iface.as_dict()
         for index, param in enumerate(ptp_parameters_instance):
@@ -870,9 +915,12 @@ class NetworkingPuppet(base.BasePuppet):
                                                            ptp_interfaces)
             ptp_config = self._set_ptp_instance_interface_parameters(host, ptp_config,
                                                                      ptp_parameters_interface)
+            ptp_config = self._set_ptp_instance_monitoring_parameters(ptp_config,
+                                                                      ptp_parameters_instance)
+            ptp_config = self._prune_ptp_config_fields(ptp_config)
         else:
             ptp_config = {}
-
+        LOG.info(f"PTP Config for host id {host.id}: {ptp_config}")
         # Generate the gnss-monitor config
         monitoring_enabled = False
         monitoring_config = {}
