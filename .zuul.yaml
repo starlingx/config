@@ -163,6 +163,8 @@
     nodeset: debian-bullseye
     files:
       - sysinv/cgts-client/*
+    required-projects:
+      - starlingx/utilities
     vars:
       python_version: 3.9
       tox_envlist: py39
@@ -176,6 +178,8 @@
     nodeset: debian-bullseye
     files:
       - sysinv/cgts-client/*
+    required-projects:
+      - starlingx/utilities
     vars:
       tox_envlist: pep8
       tox_extra_args: -c sysinv/cgts-client/cgts-client/tox.ini
@@ -188,6 +192,8 @@
     nodeset: debian-bullseye
     files:
       - sysinv/cgts-client/*
+    required-projects:
+      - starlingx/utilities
     vars:
       tox_envlist: pylint
       tox_extra_args: -c sysinv/cgts-client/cgts-client/tox.ini

@@ -27,6 +27,7 @@ import requests
 from requests_toolbelt import MultipartEncoder
 import socket
 
+from platform_util.oidc import oidc_utils
 import six
 from six.moves.urllib.parse import urlparse
 
@@ -47,7 +48,7 @@ from cgtsclient import exc as exceptions
 _logger = logging.getLogger(__name__)
 
 CHUNKSIZE = 1024 * 64  # 64kB
-SENSITIVE_HEADERS = ('X-Auth-Token',)
+SENSITIVE_HEADERS = ('X-Auth-Token', 'OIDC-Token',)
 UPLOAD_REQUEST_TIMEOUT = 1800
 USER_AGENT = 'cgtsclient'
 API_VERSION = '/v1'
@@ -335,6 +336,12 @@ class HTTPClient(httplib2.Http):
         self.ca_file = kwargs.get('ca_file', None)
         self.cert_file = kwargs.get('cert_file', None)
         self.key_file = kwargs.get('key_file', None)
+        self.oidc_auth = kwargs.get('oidc_auth', None)
+        self.oidc_token = kwargs.get('oidc_token', None)
+
+        if self.oidc_auth:
+            self.auth_strategy = 'oidc'
+            self.oidc_username = kwargs.get('oidc_username', None)
 
         self.service_catalog = None
 
@@ -391,7 +398,9 @@ class HTTPClient(httplib2.Http):
             kargs['headers']['Content-Type'] = self.content_type
             kargs['headers']['Accept'] = self.content_type
 
-        if self.auth_token:
+        if self.oidc_auth and self.oidc_token:
+            kargs['headers']['OIDC-Token'] = self.oidc_token
+        elif self.auth_token:
             kargs['headers']['X-Auth-Token'] = self.auth_token
 
         if 'body' in kwargs:
@@ -432,15 +441,15 @@ class HTTPClient(httplib2.Http):
             raise exceptions.HTTPUnauthorized(body)
         elif status_code == 403:
             reason = "Not allowed/Proper role is needed"
-            if body_str is not None:
-                error_json = self._extract_error_json(body_str)
+            if body is not None:
+                error_json = self._extract_error_json(body)
                 reason = error_json.get('faultstring')
                 if reason is None:
                     reason = error_json.get('description')
             raise exceptions.Forbidden(reason)
         elif 400 <= status_code < 600:
             _logger.warn("Request returned failure status: %s", status_code)  # pylint: disable=deprecated-method
-            error_json = self._extract_error_json(body_str)
+            error_json = self._extract_error_json(body)
             raise exceptions.from_response(
                 resp, error_json.get('faultstring'),
                 error_json.get('debuginfo'), *args)
@@ -501,7 +510,10 @@ class HTTPClient(httplib2.Http):
     def upload_request_with_data(self, method, url, **kwargs):
         self.authenticate_and_fetch_endpoint_url()
         connection_url = self._get_connection_url(url)
-        headers = {"X-Auth-Token": self.auth_token}
+        if self.oidc_auth:
+            headers = {"OIDC-Token": self.oidc_token}
+        else:
+            headers = {"X-Auth-Token": self.auth_token}
         files = {'file': ("for_upload",
                           kwargs['body'],
                           )}
@@ -531,8 +543,12 @@ class HTTPClient(httplib2.Http):
             fields[k] = (v, open(v, 'rb'),)
 
         enc = MultipartEncoder(fields)
-        headers = {'Content-Type': enc.content_type,
-                   "X-Auth-Token": self.auth_token}
+        if self.oidc_auth:
+            headers = {'Content-Type': enc.content_type,
+                       "OIDC-Token": self.oidc_token}
+        else:
+            headers = {'Content-Type': enc.content_type,
+                       "X-Auth-Token": self.auth_token}
         if self.disable_ssl_certificate_validation:
             verify = False
         else:
@@ -562,14 +578,35 @@ class HTTPClient(httplib2.Http):
     #################
 
     def authenticate_and_fetch_endpoint_url(self):
+        if self.oidc_auth:
+            return self.oidc_authentication()
         if not self.auth_token:
             self.authenticate()
         if not self.endpoint_url:
             self._get_endpoint_url()
 
+    def oidc_authentication(self):
+        if self.auth_url is None:
+            raise exceptions.HTTPException("No auth_url provided")
+
+        if not self.oidc_username:
+            raise exceptions.HTTPException("OIDC username is required")
+
+        try:
+            self.oidc_token = oidc_utils.get_oidc_token(self.oidc_username)
+        except KeyError as e:
+            raise exceptions.HTTPException(f"OIDC token retrieval failed: {e}")
+        except Exception as e:
+            raise exceptions.HTTPException(f"OIDC authentication error: {e}")
+
+        return
+
     def authenticate(self):
-        if self.auth_strategy != 'keystone':
-            raise exceptions.HTTPUnauthorized('Unknown auth strategy')
+        if self.oidc_auth:
+            return self.oidc_authentication()
+
+        if self.auth_strategy not in ('keystone', 'oidc'):
+            raise exceptions.HTTPException('Unknown auth strategy')
 
         if self.auth_url is None:
             raise exceptions.HTTPUnauthorized("No auth_url provided")
