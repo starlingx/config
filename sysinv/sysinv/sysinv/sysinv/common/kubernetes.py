@@ -167,7 +167,7 @@ KUBE_ROOTCA_UPDATED_HOST_TRUSTNEWCA = 'updated-host-trust-new-ca'
 KUBE_ROOTCA_UPDATING_HOST_TRUSTNEWCA_FAILED = 'updating-host-trust-new-ca-failed'
 
 # Kubeadm and Kubelet initial versions
-K8S_INITIAL_CMD_VERSION = '1.29.2'
+K8S_INITIAL_CMD_VERSION = '1.32.2'
 
 # Kubernetes constants
 MANIFEST_APPLY_TIMEOUT = 60 * 15
@@ -435,24 +435,6 @@ def get_kube_versions():
     """Provides a list of supported kubernetes versions in
        increasing order."""
     return [
-        {'version': 'v1.29.2',
-         'upgrade_from': ['v1.28.4'],
-         'downgrade_to': [],
-         'applied_patches': [],
-         'available_patches': [],
-         },
-        {'version': 'v1.30.6',
-         'upgrade_from': ['v1.29.2'],
-         'downgrade_to': [],
-         'applied_patches': [],
-         'available_patches': [],
-         },
-        {'version': 'v1.31.5',
-         'upgrade_from': ['v1.30.6'],
-         'downgrade_to': [],
-         'applied_patches': [],
-         'available_patches': [],
-         },
         {'version': 'v1.32.2',
          'upgrade_from': ['v1.31.5'],
          'downgrade_to': [],
