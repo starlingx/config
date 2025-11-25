@@ -14,7 +14,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2021,2024-2025 Wind River Systems, Inc.
+# Copyright (c) 2013-2021,2024-2026 Wind River Systems, Inc.
 # Copyright (c) 2020 Intel Corporation, Inc
 #
 
@@ -811,6 +811,21 @@ def _patch(storcephrook_uuid, patch):
             p['value'] = jsonutils.loads(p['value'])
 
     ostorcephrook = copy.deepcopy(rpc_storcephrook)
+
+    # Handle Rook Migration
+    first_patch_value = patch_obj.patch[0].get('value', {})
+    if 'migration_type' in first_patch_value:
+        if first_patch_value['migration_type'] not in constants.ROOK_MIGRATION_TYPES:
+            raise wsme.exc.ClientSideError(_(
+                "Rook Migration type not supported. "
+                "Must be one of: %s." % ', '.join(constants.ROOK_MIGRATION_TYPES)
+            ))
+
+        pecan.request.rpcapi.execute_rook_migration(
+            pecan.request.context,
+            migration_type=first_patch_value['migration_type'],
+        )
+        return StorageCephRook.convert_with_links(rpc_storcephrook)
 
     # perform checks based on the current vs.requested modifications
     _pre_patch_checks(rpc_storcephrook, patch_obj)

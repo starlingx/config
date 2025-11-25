@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2021 Wind River Systems, Inc.
+# Copyright (c) 2013-2021,2026 Wind River Systems, Inc.
 #
 
 import pecan
@@ -327,6 +327,6 @@ def _patch(storage_backend_uuid, patch):
 
     # Get and call the specific backend patching function based on the backend
     # provided.
-    backend_patch = getattr(eval('storage_' + rpc_storage_backend.backend),
+    backend_patch = getattr(eval('storage_' + rpc_storage_backend.backend.replace('-', '_')),
                             '_patch')
     return backend_patch(storage_backend_uuid, patch)
