@@ -12420,7 +12420,22 @@ class ConductorManager(service.PeriodicService):
                 # Do not update target config for hosts
                 personalities = None
         elif service == constants.SERVICE_TYPE_PLATFORM:
-            if section == constants.SERVICE_PARAM_SECTION_COLLECTD:
+            if section == constants.SERVICE_PARAM_SECTION_PLATFORM_SYSCTL:
+                personalities = [constants.CONTROLLER,
+                                 constants.WORKER,
+                                 constants.STORAGE]
+                classes = ["platform::sysctl::config_update::runtime"]
+                config_dict = {
+                    'personalities': personalities,
+                    'classes': classes
+                }
+                config_uuid = self._config_update_hosts(context,
+                                                        personalities,
+                                                        reboot=False)
+                self._config_apply_runtime_manifest(context,
+                                                    config_uuid,
+                                                    config_dict)
+            elif section == constants.SERVICE_PARAM_SECTION_COLLECTD:
                 reboot = True
                 personalities = [constants.CONTROLLER,
                                  constants.WORKER,
