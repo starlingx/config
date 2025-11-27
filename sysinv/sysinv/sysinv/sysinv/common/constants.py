@@ -1570,6 +1570,9 @@ SERVICE_PARAM_NAME_PLATFORM_CLI_CONFIRMATIONS = 'cli_confirmations'
 SERVICE_PARAM_DISABLED = 'disabled'
 SERVICE_PARAM_ENABLED = 'enabled'
 
+# app-fmk parameters
+SERVICE_PARAM_NAME_K8S_APPLICATION_AUDIT = 'k8s_application_audit'
+
 # systemd related
 SYSTEMCTL_PATH = '/usr/bin/systemctl'
 PMON_START_FULL_PATH = '/usr/local/sbin/pmon-start'
