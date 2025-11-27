@@ -63,6 +63,7 @@ as it allows particular rules to be explicitly disabled.
 import abc
 import re
 import six
+import yaml
 from six.moves.urllib.parse import urlencode
 from six.moves.urllib.request import urlopen
 
@@ -76,6 +77,28 @@ _rules = None
 _checks = {}
 
 
+def parse_file_contents(data):
+    """Parse the raw contents of a policy file.
+
+    Parses the contents of a policy file which currently can be in either
+    yaml or json format. Both can be parsed as yaml.
+
+    :param data: A string containing the contents of a policy file.
+    :returns: A dict of of the form {'policy_name1': 'policy1',
+                                     'policy_name2': 'policy2,...}
+    """
+    try:
+        parsed = jsonutils.loads(data)
+    except ValueError:
+        try:
+            parsed = yaml.safe_load(data) or {}
+        except yaml.YAMLError as e:
+            # For backwards-compatibility, convert yaml error to ValueError,
+            # which is what JSON loader raised.
+            raise ValueError(six.text_type(e))
+    return parsed
+
+
 class Rules(dict):
     """
     A store for rules.  Handles the default_rule setting directly.
@@ -84,12 +107,12 @@ class Rules(dict):
     @classmethod
     def load_rules(cls, data, default_rule, default_list):
         """
-        Load rules from defaults and from JSON data.
+        Load rules from defaults and from JSON or YAML data.
         """
         rules = {}
         for default in default_list:
             rules[default.name] = parse_rule(default.check_str)
-        for k, v in jsonutils.loads(data).items():
+        for k, v in parse_file_contents(data).items():
             rules[k] = parse_rule(v)
         return cls(rules, default_rule)
 
