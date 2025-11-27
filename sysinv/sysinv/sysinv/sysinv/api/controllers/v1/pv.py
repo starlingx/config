@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2024 Wind River Systems, Inc.
+# Copyright (c) 2013-2024,2026 Wind River Systems, Inc.
 #
 
 import jsonpatch
@@ -440,6 +440,16 @@ def _create(pv):
     if ret_pv.lvm_vg_name == constants.LVG_CGTS_VG:
         pecan.request.rpcapi.update_lvm_config(pecan.request.context)
 
+    lvg = pecan.request.dbapi.ilvg_get(ret_pv.ilvg_uuid)
+    lvg_lvm_function = lvg.capabilities.get('lvm_function', None)
+    if lvg_lvm_function and \
+       lvg_lvm_function == constants.LVM_CSI_PROVISIONING_FUNCTION:
+        lvg_lvm_type = lvg.capabilities.get('lvm_type', 'thick')
+        pecan.request.rpcapi.create_lvm_csi(pecan.request.context,
+                                            ihost['uuid'],
+                                            ret_pv,
+                                            lvg_lvm_type)
+
     return ret_pv
 
 
@@ -562,9 +572,10 @@ def _check_lvg(op, pv):
 
     # Get the associated volume group record
     ilvg = pecan.request.dbapi.ilvg_get(ilvgid)
+    ilvg.lvm_function = ilvg.capabilities.get('lvm_function', None)
 
     # In a combo node we also have cinder and drbd physical volumes.
-    if ilvg.lvm_vg_name not in constants.LVG_ALLOWED_VGS:
+    if not ilvg.lvm_function and ilvg.lvm_vg_name not in constants.LVG_ALLOWED_VGS:
         raise wsme.exc.ClientSideError(_("This operation can not be performed"
                                          " on Local Volume Group %s"
                                          % ilvg.lvm_vg_name))
@@ -586,6 +597,9 @@ def _check_lvg(op, pv):
                         "to finish before adding a physical volume to the cgts-vg "
                         "volume group." % controller_fs.name)
                     raise wsme.exc.ClientSideError(msg)
+        if ilvg.lvm_function \
+           and ilvg.lvm_function == constants.LVM_CSI_PROVISIONING_FUNCTION:
+            pv['capabilities'] = {'lvm_function': ilvg.lvm_function}
 
     elif op == "delete":
         if (ilvg.lvm_vg_name == constants.LVG_CGTS_VG):

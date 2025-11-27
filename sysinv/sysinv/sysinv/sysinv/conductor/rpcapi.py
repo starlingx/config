@@ -929,6 +929,40 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         """
         return self.call(context, self.make_msg('update_lvm_config'))
 
+    def create_lvm_csi(self, context, host_uuid, pv, lvg_lvm_type):
+        """Create a LVM Volume Group for CSI-Provisioning usage.
+
+        :param context: request context.
+        """
+        return self.call(
+            context,
+            self.make_msg('create_lvm_csi', host_uuid=host_uuid, pv=pv,
+                          lvg_lvm_type=lvg_lvm_type)
+        )
+
+    def delete_lvm_csi_lvg_pv(self, context, host_uuid, lvg, pv):
+        """Delete a LVM Volume Group for CSI-Provisioning usage.
+
+        :param context: request context.
+        """
+        return self.call(
+            context,
+            self.make_msg('delete_lvm_csi_lvg_pv', host_uuid=host_uuid,
+                          lvg=lvg, pv=pv)
+        )
+
+    def update_cgts_vg_lvm_csi_capabilities(self, context, host_uuid, vg_uuid,
+                                            resizing=False):
+        """Update CGTS-VG capabilities for LVM-CSI."""
+
+        return self.call(
+            context,
+            self.make_msg('update_cgts_vg_lvm_csi_capabilities',
+                          host_uuid=host_uuid,
+                          vg_uuid=vg_uuid,
+                          resizing=resizing)
+        )
+
     def update_ceph_base_config(self, context, personalities):
         """Synchronously, have the conductor update the configuration
         for monitors and ceph.conf.

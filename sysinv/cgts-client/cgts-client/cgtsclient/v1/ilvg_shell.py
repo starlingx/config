@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2022 Wind River Systems, Inc.
+# Copyright (c) 2013-2022,2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -19,12 +19,14 @@ def _print_ilvg_show(ilvg):
     labels = ['lvm_vg_name', 'vg_state', 'uuid', 'ihost_uuid', 'lvm_vg_access',
               'lvm_max_lv', 'lvm_cur_lv', 'lvm_max_pv', 'lvm_cur_pv',
               'lvm_vg_size_gib', 'lvm_vg_avail_size_gib', 'lvm_vg_total_pe',
-              'lvm_vg_free_pe', 'created_at', 'updated_at', 'parameters']
+              'lvm_vg_free_pe', 'lvm_function', 'lvm_type', 'lvm_pool_size',
+              'created_at', 'updated_at', 'parameters']
 
     fields = ['lvm_vg_name', 'vg_state', 'uuid', 'ihost_uuid', 'lvm_vg_access',
               'lvm_max_lv', 'lvm_cur_lv', 'lvm_max_pv', 'lvm_cur_pv',
               'lvm_vg_size', 'lvm_vg_avail_size', 'lvm_vg_total_pe',
-              'lvm_vg_free_pe', 'created_at', 'updated_at']
+              'lvm_vg_free_pe', 'lvm_function', 'lvm_type', 'lvm_pool_size',
+              'created_at', 'updated_at']
 
     # convert size from Byte to GiB
     ilvg.lvm_vg_avail_size = \
@@ -32,6 +34,10 @@ def _print_ilvg_show(ilvg):
 
     # convert size from Byte to GiB
     ilvg.lvm_vg_size = utils.size_unit_conversion(ilvg.lvm_vg_size, 3)
+
+    ilvg.lvm_function = ilvg.capabilities.pop('lvm_function', None)
+    ilvg.lvm_type = ilvg.capabilities.pop('lvm_type', None)
+    ilvg.lvm_pool_size = ilvg.capabilities.pop('lvm_pool_size', None)
 
     data = [(f, getattr(ilvg, f, '')) for f in fields]
 
@@ -69,12 +75,15 @@ def do_host_lvg_show(cc, args):
 
 
 # Make the LVG state data clearer to the end user
-def _adjust_state_data(vg_name, state):
-    if state == "adding":
-        state = "adding (on unlock)"
-    if state == "removing":
-        state = "removing (on unlock)"
-    return state
+def _adjust_state_data(lvg):
+    if lvg.lvm_function:
+        return lvg.vg_state
+
+    if lvg.vg_state == "adding":
+        lvg.vg_state = "adding (on unlock)"
+    if lvg.vg_state == "removing":
+        lvg.vg_state = "removing (on unlock)"
+    return lvg.vg_state
 
 
 @utils.arg('hostnameorid',
@@ -89,7 +98,11 @@ def do_host_lvg_list(cc, args):
 
     # Adjust state to be more user friendly
     for lvg in ilvgs:
-        lvg.vg_state = _adjust_state_data(lvg.lvm_vg_name, lvg.vg_state)
+        lvg.lvm_function = lvg.capabilities.get('lvm_function', None)
+        lvg.lvm_type = lvg.capabilities.get('lvm_type', None)
+        lvg.lvm_pool_size = lvg.capabilities.get('lvm_pool_size', None)
+
+        lvg.vg_state = _adjust_state_data(lvg)
 
         # convert size from Byte to GiB
         lvg.lvm_vg_avail_size = \
@@ -99,11 +112,12 @@ def do_host_lvg_list(cc, args):
         lvg.lvm_vg_size = \
             utils.size_unit_conversion(lvg.lvm_vg_size, 3)
 
-    field_labels = ['UUID', 'LVG Name', 'State', 'Access',
-                    'Total Size (GiB)', 'Avail Size (GiB)',
-                    'Current PVs', 'Current LVs']
-    fields = ['uuid', 'lvm_vg_name', 'vg_state', 'lvm_vg_access',
-              'lvm_vg_size', 'lvm_vg_avail_size', 'lvm_cur_pv', 'lvm_cur_lv']
+    field_labels = ['UUID', 'LVG Name', 'State', 'Function', 'Type',
+                    'Pool Size', 'Access', 'Total Size (GiB)',
+                    'Avail Size (GiB)', 'Current PVs', 'Current LVs']
+    fields = ['uuid', 'lvm_vg_name', 'vg_state', 'lvm_function', 'lvm_type',
+              'lvm_pool_size', 'lvm_vg_access', 'lvm_vg_size',
+              'lvm_vg_avail_size', 'lvm_cur_pv', 'lvm_cur_lv']
     utils.print_list(ilvgs, fields, field_labels, sortby=0)
 
 
@@ -113,10 +127,21 @@ def do_host_lvg_list(cc, args):
 @utils.arg('lvm_vg_name',
            metavar='<lvg name>',
            help="Name of the Local Volume Group [REQUIRED]")
+@utils.arg('-f', '--lvm_function',
+           metavar='<lvm_function>',
+           choices=['lvm-csi'],
+           help=('Optional function of the Volume Group. The possible value '
+                 'is [lvm-csi]'))
+@utils.arg('-t', '--lvm_type',
+           metavar='<lvm_type>',
+           choices=['thick', 'thin'],
+           help=('Determines the thick or thin provisioning format '
+                 'of the LVM volume group. The possible values are '
+                 '[thin, thick], and the standard value is [thick]'))
 def do_host_lvg_add(cc, args):
     """Add a Local Volume Group."""
 
-    field_list = ['lvm_vg_name']
+    field_list = ['lvm_vg_name', 'lvm_function', 'lvm_type']
 
     # default values
     fields = {'lvm_vg_name': 'nova-local'}
@@ -130,6 +155,7 @@ def do_host_lvg_add(cc, args):
     if 'lvm_vg_name' in list(user_specified_fields.keys()):
         user_specified_fields['lvm_vg_name'] =\
             user_specified_fields['lvm_vg_name'].replace(" ", "")
+
     fields.update(user_specified_fields)
 
     try:
@@ -176,20 +202,25 @@ def do_host_lvg_delete(cc, args):
 @utils.arg('lvgnameoruuid',
            metavar='<lvg name or uuid>',
            help="Name or UUID of lvg [REQUIRED]")
-@utils.arg('-l', '--lvm_type',
-           metavar='<lvm_type>',
-           choices=['thick', 'thin'],
-           help=("Determines the thick or thin provisioning format "
-                 "of the LVM volume group. [cinder-volumes]"))
+@utils.arg('-f', '--lvm_function',
+           metavar='<lvm_function>',
+           choices=['lvm-csi', 'none'],
+           help='Optional function of the Volume Group. Possible values '
+                '[lvm-csi, none]')
+@utils.arg('-s', '--lvm_pool_size',
+           metavar='<lvm_pool_size>',
+           help=('Determines the maximum size of the thin pool when its '
+                 'configured in cgts-vg. Value need to be an integer in GB'))
 def do_host_lvg_modify(cc, args):
     """Modify the attributes of a Local Volume Group."""
 
     # Get all the fields from the command arguments
-    field_list = ['hostnameorid', 'lvgnameoruuid', 'lvm_type']
+    field_list = ['hostnameorid', 'lvgnameoruuid', 'lvm_function',
+                  'lvm_pool_size']
     fields = dict((k, v) for (k, v) in vars(args).items()
                   if k in field_list and not (v is None))
 
-    all_caps_list = ['lvm_type']
+    all_caps_list = ['lvm_function', 'lvm_pool_size']
     requested_caps_dict = {}
 
     for cap in all_caps_list:

@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2015 Wind River Systems, Inc.
+# Copyright (c) 2013-2015,2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -29,7 +29,7 @@ class LVG(base.SysinvObject):
         'lvm_cur_lv': utils.int_or_none,
         'lvm_max_pv': utils.int_or_none,
         'lvm_cur_pv': utils.int_or_none,
-        'lvm_vg_size': utils.str_or_none,
+        'lvm_vg_size': utils.int_or_none,
         'lvm_vg_total_pe': utils.int_or_none,
         'lvm_vg_free_pe': utils.int_or_none,
 

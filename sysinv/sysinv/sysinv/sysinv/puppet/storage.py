@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2017-2019,2024 Wind River Systems, Inc.
+# Copyright (c) 2017-2019,2024,2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -195,11 +195,44 @@ class StoragePuppet(base.BasePuppet):
         nova_transition_devices = []
         ceph_mon_devices = []
         rook_osd_devices = []
+        lvm_csi_thick_vg = ""
+        lvm_csi_thick_devices = []
+        lvm_csi_thin_vg = ""
+        lvm_csi_thin_devices = []
+        cgts_thin_pool_enabled = False
+        cgts_thin_pool_size = 0
+        removing_lvgs = []
 
         # LVM Global Filter is driven by:
         # - cgts-vg PVs       : all nodes
         # - cinder-volumes PVs: controllers
         # - nova-local PVs    : controllers and all workers
+        # - lvm-csi           : selected nodes
+
+        vgs = self.dbapi.ilvg_get_by_ihost(host.id)
+        for vg in vgs:
+            function = vg.capabilities.get('lvm_function', None)
+            lvm_type = vg.capabilities.get('lvm_type', None)
+            lvm_pool_size = vg.capabilities.get('lvm_pool_size', 0)
+
+            if function \
+               and function == constants.LVM_CSI_PROVISIONING_FUNCTION:
+                if vg.vg_state == constants.LVG_DEL:
+                    removing_lvgs.append(vg.lvm_vg_name)
+                    continue
+                # If CGTS-VG is configured for lvm-csi function, then puppet
+                # needs to configure the thin pool for the VG
+                if vg.lvm_vg_name == constants.LVG_CGTS_VG:
+                    lvm_type = constants.LVM_CSI_PROVISIONING_MODE_THIN \
+                        if not lvm_type else lvm_type
+                    cgts_thin_pool_enabled = True
+                    cgts_thin_pool_size = lvm_pool_size
+
+                if not lvm_type or \
+                   lvm_type == constants.LVM_CSI_PROVISIONING_MODE_THICK:
+                    lvm_csi_thick_vg = vg.lvm_vg_name
+                elif lvm_type == constants.LVM_CSI_PROVISIONING_MODE_THIN:
+                    lvm_csi_thin_vg = vg.lvm_vg_name
 
         # Go through the PVs and
         pvs = self.dbapi.ipv_get_by_ihost(host.id)
@@ -214,6 +247,14 @@ class StoragePuppet(base.BasePuppet):
                     nova_transition_devices.append(pv.disk_or_part_device_path)
                 else:
                     nova_final_devices.append(pv.disk_or_part_device_path)
+            elif pv.lvm_vg_name == lvm_csi_thick_vg:
+                # Associated with VGs with lvm-csi function and thick
+                # provisioning mode
+                lvm_csi_thick_devices.append(pv.disk_or_part_device_path)
+            elif pv.lvm_vg_name == lvm_csi_thin_vg:
+                # Associated with VGs with lvm-csi function and thin
+                # provisioning mode
+                lvm_csi_thin_devices.append(pv.disk_or_part_device_path)
             elif pv.lvm_vg_name.startswith("ceph"):
                 rook_osd_devices.append(pv.disk_or_part_device_path)
 
@@ -221,6 +262,7 @@ class StoragePuppet(base.BasePuppet):
         # contains the transient list of removing devices as well
         final_devices = cgts_devices + nova_final_devices + ceph_mon_devices
         final_devices += rook_osd_devices
+        final_devices += lvm_csi_thick_devices + lvm_csi_thin_devices
         final_filter = self._operator.storage.format_lvm_filter(final_devices)
 
         transition_filter = self._operator.storage.format_lvm_filter(
@@ -232,9 +274,21 @@ class StoragePuppet(base.BasePuppet):
         return {
             'platform::lvm::params::final_filter': final_filter,
             'platform::lvm::params::transition_filter': transition_filter,
+            'platform::lvm::params::cgts_thin_pool_enabled':
+                cgts_thin_pool_enabled,
+            'platform::lvm::params::cgts_thin_pool_size':
+                cgts_thin_pool_size,
+            'platform::lvm::params::removing_lvgs': removing_lvgs,
 
             'platform::lvm::vg::cgts_vg::physical_volumes': cgts_devices,
             'platform::lvm::vg::nova_local::physical_volumes': nova_final_devices,
+
+            'platform::lvm::csi::params::thick::vg_name': lvm_csi_thick_vg,
+            'platform::lvm::csi::params::thick::physical_volumes':
+                lvm_csi_thick_devices,
+            'platform::lvm::csi::params::thin::vg_name': lvm_csi_thin_vg,
+            'platform::lvm::csi::params::thin::physical_volumes':
+                lvm_csi_thin_devices,
         }
 
     def set_lvm_devices(self, devices):
@@ -374,6 +428,8 @@ class StoragePuppet(base.BasePuppet):
         adding_pvs = []
         removing_pvs = []
         for pv in pvs:
+            capabilities = (None if not pv.capabilities
+                            else pv.capabilities.get('lvm_function', None))
             if (pv.lvm_vg_name == constants.LVG_NOVA_LOCAL and
                     pv.pv_state != constants.PV_ERR):
                 pv_path = pv.disk_or_part_device_path
@@ -392,6 +448,10 @@ class StoragePuppet(base.BasePuppet):
                     removing_pvs.append(pv_path)
                 else:
                     final_pvs.append(pv_path)
+
+            if capabilities == constants.LVM_CSI_PROVISIONING_FUNCTION and \
+               pv.pv_state == constants.PV_DEL:
+                removing_pvs.append(pv.disk_or_part_device_path)
 
         global_filter, update_filter = self._get_lvm_global_filter(host)
 

@@ -16,12 +16,11 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2021 Wind River Systems, Inc.
+# Copyright (c) 2013-2021,2026 Wind River Systems, Inc.
 #
 
 import copy
 import jsonpatch
-import math
 import pecan
 from pecan import rest
 import six
@@ -49,7 +48,6 @@ LOG = log.getLogger(__name__)
 
 HIERA_DATA = {
     'backend': [],
-    constants.SB_SVC_CINDER: []
 }
 
 
@@ -84,7 +82,7 @@ class StorageLVM(base.APIBase):
     "The name of the backend (to differentiate between multiple common backends)."
 
     state = wtypes.text
-    "The state of the backend. It can be configured or configuring."
+    "The state of the backend. It can be configured or configuring-with-app."
 
     task = wtypes.text
     "Current task of the corresponding cinder backend."
@@ -106,7 +104,7 @@ class StorageLVM(base.APIBase):
 
     def __init__(self, **kwargs):
         defaults = {'uuid': uuidutils.generate_uuid(),
-                    'state': constants.SB_STATE_CONFIGURING,
+                    'state': constants.SB_STATE_CONFIGURING_WITH_APP,
                     'task': constants.SB_TASK_NONE,
                     'capabilities': {},
                     'services': None,
@@ -254,242 +252,46 @@ class StorageLVMController(rest.RestController):
         """Delete a backend."""
 
         _delete(storagelvm_uuid)
-
 #
 # Common operation functions
 #
-
-
-def _get_options_string(storage_lvm):
-    opt_str = ""
-    caps = storage_lvm.get('capabilities', {})
-    services = api_helper.getListFromServices(storage_lvm)
-
-    # get the backend parameters
-    backend_dict = caps.get("backend", {})
-    be_str = ""
-    for key in backend_dict:
-        be_str += "\t%s: %s\n" % (key, backend_dict[key])
-
-    # Only show the backend values if any are present
-    if len(be_str) > 0:
-        opt_str = "Backend:\n%s" % be_str
-
-    # Get any supported service parameters
-    for svc in constants.SB_LVM_SVCS_SUPPORTED:
-        svc_dict = caps.get(svc, None)
-        if svc_dict and svc in services:
-            svc_str = ""
-            for key in svc_dict:
-                svc_str += "\t%s: %s\n" % (key, svc_dict.get(key, None))
-
-            if len(svc_str) > 0:
-                opt_str += "%s:\n%s" % (svc.title(), svc_str)
-
-    if len(opt_str) > 0:
-        opt_str = "Applying the following options:\n\n" + opt_str
-    return opt_str
-
-
-def _discover_and_validate_backend_hiera_data(caps_dict):
-    # Currently there is no backend specific hiera_data for this backend
-    pass
-
-
-def _validate_lvm_data(host):
-    ilvgs = pecan.request.dbapi.ilvg_get_by_ihost(host.uuid)
-
-    cinder_lvg = None
-    for lvg in ilvgs:
-        if lvg.lvm_vg_name == constants.LVG_CINDER_VOLUMES:
-            cinder_lvg = lvg
-            break
-
-    if not cinder_lvg or cinder_lvg.vg_state == constants.LVG_DEL:
-        msg = (_('%s volume group for host %s must be in the "%s" or "%s" state to enable'
-                 ' the %s backend.') % (constants.LVG_CINDER_VOLUMES,
-                                        host.hostname,
-                                        constants.LVG_ADD,
-                                        constants.PROVISIONED,
-                                        constants.SB_TYPE_LVM))
-        raise wsme.exc.ClientSideError(msg)
-
-    # Make sure we have at least one physical volume in the adding/provisioned
-    # state
-    pvs = pecan.request.dbapi.ipv_get_by_ihost(host.uuid)
-    cinder_pv = None
-    for pv in pvs:
-        if pv.forilvgid == cinder_lvg.id:
-            cinder_pv = pv
-            break
-
-    if (not cinder_pv or cinder_pv.pv_state == constants.PV_DEL or
-            cinder_pv.pv_state == constants.PV_ERR):
-        msg = (_('%s volume group for host %s must have physical volumes in the "%s" or'
-                 ' "%s" state to enable the %s backend.') %
-               (constants.LVG_CINDER_VOLUMES,
-                host.hostname,
-                constants.PV_ADD,
-                constants.PROVISIONED, constants.SB_TYPE_LVM))
-        raise wsme.exc.ClientSideError(msg)
-
-    lvg_caps = cinder_lvg.capabilities
-    if 'lvm_type' not in lvg_caps:
-        # Note: Defensive programming: This should never happen. We set a
-        # default on LVG creation
-        msg = (_('%s volume group for host %s must have the lvm_type parameter defined') %
-               (constants.LVG_CINDER_VOLUMES, host.hostname))
-        raise wsme.exc.ClientSideError(msg)
-
-
-def _discover_and_validate_cinder_hiera_data(caps_dict):
-    # Update floating IP details: 'cinder-float-ip', 'cinder-float-ip-mask-length'
-    # NOTE: Should check for and reserve the IP info here, then validate the values
-    # pecan.request.rpcapi.reserve_ip_for_cinder(pecan.request.context)
-
-    # Check for a cinder-volumes volume group, physical volumes
-    ctrls = pecan.request.dbapi.ihost_get_by_personality(constants.CONTROLLER)
-    valid_ctrls = [ctrl for ctrl in ctrls if
-                   (ctrl.administrative == constants.ADMIN_LOCKED and
-                    ctrl.availability == constants.AVAILABILITY_ONLINE) or
-                   (ctrl.administrative == constants.ADMIN_UNLOCKED and
-                    ctrl.operational == constants.OPERATIONAL_ENABLED)]
-
-    for host in valid_ctrls:
-        _validate_lvm_data(host)
-
-    # If multiple controllers are available make sure that PV size is correct
-    pv_sizes = []
-    for host in valid_ctrls:
-        pvs = pecan.request.dbapi.ipv_get_by_ihost(host.uuid)
-        cinder_pv = None
-        for pv in pvs:
-            if pv.lvm_vg_name == constants.LVG_CINDER_VOLUMES:
-                cinder_pv = pv
-                break
-        else:
-            msg = (_('Internal error: Error getting %s PV for host %s') %
-                   (constants.LVG_CINDER_VOLUMES, host.hostname))
-            raise wsme.exc.ClientSideError(msg)
-        # cinder's pv is always a single partition
-        part = pecan.request.dbapi.partition_get_by_ipv(cinder_pv.uuid)
-        pv_sizes.append({"host": host.hostname, "size": part[0].size_mib})
-
-    LOG.debug("storage_lvm PV size: %s" % pv_sizes)
-
-    if len(valid_ctrls) == 2:
-        if pv_sizes[0]['size'] != pv_sizes[1]['size']:
-            msg = (_('Allocated storage for %s PVs must be equal and greater than '
-                     '%s GiB on both controllers. Allocation for %s is %s GiB '
-                     'while for %s is %s GiB.') %
-                   (constants.LVG_CINDER_VOLUMES,
-                    constants.CINDER_LVM_MINIMUM_DEVICE_SIZE_GIB,
-                    pv_sizes[0]['host'], math.floor(float(pv_sizes[0]['size']) /  # pylint: disable=W1619
-                                                    1024 * 1000) / 1000.0,
-                    pv_sizes[1]['host'], math.floor(float(pv_sizes[1]['size']) /  # pylint: disable=W1619
-                                                    1024 * 1000) / 1000.0))
-            raise wsme.exc.ClientSideError(msg)
-
-    if pv_sizes[0]['size'] < (constants.CINDER_LVM_MINIMUM_DEVICE_SIZE_GIB * 1024):
-        msg = (_('Minimum allocated storage for %s PVs is: %s GiB. '
-                 'Current allocation is: %s GiB.') %
-               (constants.LVG_CINDER_VOLUMES,
-                constants.CINDER_LVM_MINIMUM_DEVICE_SIZE_GIB,
-                math.floor(float(pv_sizes[0]['size']) / 1024 * 1000) / 1000.0))  # pylint: disable=W1619
-        raise wsme.exc.ClientSideError(msg)
-
-    # Log all the LVM parameters
-    for k, v in caps_dict.items():
-        LOG.info("Cinder LVM Data %s = %s" % (k, v))
 
 
 def _check_backend_lvm(req, storage_lvm, confirmed=False):
     # check for the backend parameters
     capabilities = storage_lvm.get('capabilities', {})
 
-    # Discover the latest hiera_data for the supported service
-    _discover_and_validate_backend_hiera_data(capabilities)
-
     for k in HIERA_DATA['backend']:
         if not capabilities.get(k, None):
             raise wsme.exc.ClientSideError("Missing required backend "
                                            "parameter: %s" % k)
 
-    # go through the service list and validate
-    req_services = api_helper.getListFromServices(storage_lvm)
-
-    # Cinder is mandatory for lvm backend
-    if constants.SB_SVC_CINDER not in req_services:
-        raise wsme.exc.ClientSideError("Service %s is mandatory for "
-                                       "the %s backend." %
-                                       (constants.SB_SVC_CINDER, constants.SB_TYPE_LVM))
-
-    for svc in req_services:
-        if svc not in constants.SB_LVM_SVCS_SUPPORTED:
-            raise wsme.exc.ClientSideError("Service %s is not supported for the"
-                                           " %s backend" %
-                                           (svc, constants.SB_TYPE_LVM))
-
-        # Service is valid. Discover the latest hiera_data for the supported service
-        discover_func = eval('_discover_and_validate_' + svc + '_hiera_data')
-        discover_func(capabilities)
-
-        # Service is valid. Check the params
-        for k in HIERA_DATA[svc]:
-            if not capabilities.get(k, None):
-                raise wsme.exc.ClientSideError("Missing required %s service "
-                                               "parameter: %s" % (svc, k))
     # Update based on any discovered values
     storage_lvm['capabilities'] = capabilities
 
-    # TODO (rchurch): Put this back in some form for delivery OR move to specific
-    # backend checks to limit operations based on the backend
-    #
-    # if req == constants.SB_API_OP_MODIFY or req == constants.SB_API_OP_DELETE:
-    #     raise wsme.exc.ClientSideError("API Operation %s is not supported for "
-    #                                    "the %s backend" %
-    #                                    (req, constants.SB_TYPE_LVM))
-
-    # Check for confirmation
-    if not confirmed:
-        _options_str = _get_options_string(storage_lvm)
-        raise wsme.exc.ClientSideError(
-            _("%s\nWARNING : THIS OPERATION IS NOT REVERSIBLE AND CANNOT BE CANCELLED. \n"
-              "\nBy confirming this operation, the LVM backend will be created.\n\n"
-              "Please refer to the system admin guide for minimum spec for LVM\n"
-              "storage. Set the 'confirmed' field to execute this operation\n"
-              "for the %s backend.") % (_options_str,
-                                        constants.SB_TYPE_LVM))
-
-
-def _apply_backend_changes(op, sb_obj):
-    if op == constants.SB_API_OP_CREATE:
-        services = api_helper.getListFromServices(sb_obj.as_dict())
-        if constants.SB_SVC_CINDER in services:
-
-            # Services are specified: Update backend + service actions
-            api_helper.enable_backend(sb_obj,
-                                      pecan.request.rpcapi.update_lvm_cinder_config)
-
-    elif op == constants.SB_API_OP_MODIFY:
-        if sb_obj.state == constants.SB_STATE_CONFIG_ERR:
-            api_helper.enable_backend(sb_obj,
-                                      pecan.request.rpcapi.update_lvm_cinder_config)
-
-    elif op == constants.SB_API_OP_DELETE:
-        pass
-
-
+    if req == constants.SB_API_OP_MODIFY:
+        raise wsme.exc.ClientSideError("API Operation %s is not supported for "
+                                       "the %s backend" %
+                                       (req, constants.SB_TYPE_LVM))
 #
 # Create
 #
 
+
 def _set_default_values(storage_lvm):
+
+    try:
+        app = pecan.request.dbapi.kube_app_get(constants.SB_APP_MAP[
+            constants.SB_TYPE_LVM])
+        def_task = app.status
+    except exception.KubeAppNotFound:
+        def_task = constants.APP_NOT_PRESENT
+
     defaults = {
         'backend': constants.SB_TYPE_LVM,
         'name': constants.SB_DEFAULT_NAMES[constants.SB_TYPE_LVM],
-        'state': constants.SB_STATE_CONFIGURING,
-        'task': constants.SB_TASK_NONE,
+        'state': constants.SB_STATE_CONFIGURING_WITH_APP,
+        'task': def_task,
         'services': None,
         'capabilities': {}
     }
@@ -504,6 +306,15 @@ def _set_default_values(storage_lvm):
 def _create(storage_lvm):
     # Set the default for the storage backend
     storage_lvm = _set_default_values(storage_lvm)
+
+    # Validate LVM backend uniqueness
+    lvm_backend = pecan.request.dbapi.storage_backend_get_list_by_type(
+        backend_type=constants.SB_TYPE_LVM
+    )
+    if lvm_backend:
+        raise wsme.exc.ClientSideError(
+            _("It's not possible to add the backend. Only one %s backend "
+              "is allowed.") % constants.SB_TYPE_LVM)
 
     # Execute the common semantic checks for all backends, if a specific backend
     # is not specified this will not return
@@ -524,15 +335,34 @@ def _create(storage_lvm):
     # Retreive the main StorageBackend object.
     storage_backend_obj = pecan.request.dbapi.storage_backend_get(storage_lvm_obj.id)
 
-    # Enable the backend:
-    _apply_backend_changes(constants.SB_API_OP_CREATE, storage_backend_obj)
-
     return storage_backend_obj
+#
+# Delete
+#
 
 
+def _delete(sb_uuid):
+    storage_lvm_obj = pecan.request.dbapi.storage_lvm_get(sb_uuid)
+
+    # Execute the common semantic checks for all backends, if backend is not
+    # present this will not return
+    api_helper.common_checks(constants.SB_API_OP_DELETE,
+                             storage_lvm_obj.as_dict())
+
+    # Run the backend specific semantic checks
+    _check_backend_lvm(constants.SB_API_OP_DELETE,
+                        storage_lvm_obj.as_dict(),
+                        True)
+
+    try:
+        pecan.request.dbapi.storage_backend_destroy(storage_lvm_obj.uuid)
+    except exception.HTTPNotFound:
+        msg = _("Deletion of backend %s failed" % storage_lvm_obj.uuid)
+        raise wsme.exc.ClientSideError(msg)
 #
 # Update/Modify/Patch
 #
+
 
 def _hiera_data_semantic_checks(caps_dict):
     """ Validate each individual data value to make sure it's of the correct
@@ -629,43 +459,10 @@ def _patch(storlvm_uuid, patch):
 
     try:
         rpc_storlvm.save()
-
-        # Enable the backend changes:
-        _apply_backend_changes(constants.SB_API_OP_MODIFY,
-                               rpc_storlvm)
-
         return StorageLVM.convert_with_links(rpc_storlvm)
 
     except exception.HTTPNotFound:
         msg = _("Storlvm update failed: storlvm %s : "
                 " patch %s"
                 % (storlvm_config, patch))
-        raise wsme.exc.ClientSideError(msg)
-
-#
-# Delete
-#
-
-
-def _delete(sb_uuid):
-
-    storage_lvm_obj = pecan.request.dbapi.storage_lvm_get(sb_uuid)
-
-    # Execute the common semantic checks for all backends, if backend is not
-    # present this will not return
-    api_helper.common_checks(constants.SB_API_OP_DELETE,
-                             storage_lvm_obj.as_dict())
-
-    # Run the backend specific semantic checks
-    _check_backend_lvm(constants.SB_API_OP_DELETE,
-                        storage_lvm_obj.as_dict(),
-                        True)
-
-    # Enable the backend changes:
-    _apply_backend_changes(constants.SB_API_OP_DELETE, storage_lvm_obj)
-
-    try:
-        pecan.request.dbapi.storage_backend_destroy(storage_lvm_obj.uuid)
-    except exception.HTTPNotFound:
-        msg = _("Deletion of backend %s failed" % storage_lvm_obj.uuid)
         raise wsme.exc.ClientSideError(msg)

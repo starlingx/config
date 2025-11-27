@@ -474,13 +474,18 @@ SB_SUPPORTED = [SB_TYPE_CEPH,
                 SB_TYPE_LVM]
 
 # Storage backends that need apps to complete the configuration (vs puppet)
-SB_APP_DRIVEN_CONFIGURATION = [SB_TYPE_CEPH_ROOK]
+SB_APP_DRIVEN_CONFIGURATION = [SB_TYPE_CEPH_ROOK,
+                               SB_TYPE_LVM]
 
 # Apps used for backend configuraion
 HELM_APP_ROOK_CEPH = 'rook-ceph'
+HELM_APP_LVM = 'lvm-csi'
 
 # Map storage backends to corresponding apps
-SB_APP_MAP = {SB_TYPE_CEPH_ROOK: HELM_APP_ROOK_CEPH}
+SB_APP_MAP = {
+    SB_TYPE_CEPH_ROOK: HELM_APP_ROOK_CEPH,
+    SB_TYPE_LVM: HELM_APP_LVM
+}
 
 # Storage backend default names
 SB_DEFAULT_NAME_SUFFIX = "-store"
@@ -513,7 +518,7 @@ SB_SVC_CEPH_ROOK_FILESYSTEM = 'filesystem'
 SB_SVC_CEPH_ROOK_OBJECT = 'object'
 
 SB_FILE_SVCS_SUPPORTED = [SB_SVC_GLANCE]
-SB_LVM_SVCS_SUPPORTED = [SB_SVC_CINDER]
+SB_LVM_SVCS_SUPPORTED = []
 # Primary tier supported services.
 SB_CEPH_SVCS_SUPPORTED = [SB_SVC_GLANCE, SB_SVC_CINDER, SB_SVC_SWIFT,
                           SB_SVC_NOVA, SB_SVC_RBD_PROVISIONER]
@@ -626,6 +631,10 @@ ISTOR_ACTIVE_STATES = {
 # volume is actually a thin pool.  (And thin volumes will
 # be created in the thin pool.)
 LVM_POOL_SUFFIX = '-pool'
+LVM_CSI_PROVISIONING_MODE_THIN = 'thin'
+LVM_CSI_PROVISIONING_MODE_THICK = 'thick'
+LVM_CSI_PROVISIONING_FUNCTION = 'lvm-csi'
+LVM_CSI_POOL_NAME = 'lvmcsi-pool'
 
 # Host-fs States
 HOST_FS_STATUS_CREATE_IN_SVC = "Creating"
@@ -2412,6 +2421,7 @@ KUBE_TOPOLOGY_MANAGER_LABEL = 'kube-topology-mgr-policy'
 KUBE_CPU_MANAGER_LABEL = 'kube-cpu-mgr-policy'
 KUBE_MEMORY_MANAGER_LABEL = 'kube-memory-mgr-policy'
 KUBE_POWER_MANAGER_LABEL = 'power-management'
+KUBE_LVM_CSI_LABEL = 'lvm-csi'
 
 
 # Accepted label values
@@ -2426,6 +2436,7 @@ KUBE_CPU_MEMORY_MANAGER_VALUES = [
     'static'
 ]
 KUBE_POWER_MANAGER_VALUE = 'enabled'
+KUBE_LVM_CSI_VALUE = 'enabled'
 # Default DNS service domain
 DEFAULT_DNS_SERVICE_DOMAIN = 'cluster.local'
 

@@ -1,4 +1,4 @@
-# Copyright (c) 2018-2024,2025 Wind River Systems, Inc.
+# Copyright (c) 2018-2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -555,6 +555,11 @@ def _semantic_check_worker_labels(body):
                 raise wsme.exc.ClientSideError(
                     _(
                         "Invalid value for %s label." % constants.KUBE_POWER_MANAGER_LABEL))
+        elif label_key == constants.KUBE_LVM_CSI_LABEL:
+            if label_value != constants.KUBE_LVM_CSI_VALUE:
+                raise wsme.exc.ClientSideError(
+                    _("Invalid value for %s label."
+                      % constants.KUBE_LVM_CSI_LABEL))
         elif label_key in [constants.KUBE_MEMORY_MANAGER_LABEL, constants.KUBE_CPU_MANAGER_LABEL,
                            constants.KUBE_TOPOLOGY_MANAGER_LABEL]:
             evaluate_case_agnostic_policy_name(label_key, label_value)

@@ -645,6 +645,10 @@ class SBApiHelper(object):
             raise wsme.exc.ClientSideError("Supplied storage backend (%s) is "
                                            "not supported." % backend)
 
+        if backend == constants.SB_TYPE_LVM:
+            backend_list = pecan.request.dbapi\
+                .storage_backend_get_list_by_type(backend_type=backend)
+
         name = storage_backend_dict.get('name')
         if not name:
             # Get the list of backends of this type. If none are present, then
@@ -735,7 +739,13 @@ class SBApiHelper(object):
                            constants.SB_DEFAULT_NAMES[backend_type]))
                 raise wsme.exc.ClientSideError(msg)
 
+            elif (backend_type == constants.SB_TYPE_LVM):
+                # No restrictions for LVM backends beyond this point
+                pass
+
             else:
+                # TODO: This logic needs to be revisited.
+                #       LVM was hitting this else clause.
                 exclusive_ceph_backend_list = [constants.SB_TYPE_CEPH, constants.SB_TYPE_CEPH_ROOK]
                 for backend in exclusive_ceph_backend_list:
                     if (backend in existing_backends_by_type and
