@@ -4867,6 +4867,13 @@ class ConductorManager(service.PeriodicService):
                             LOG.info("Disk uuid: %s changed serial_id from %s "
                                      "to %s", idisk.uuid, idisk.serial_id,
                                      i.get('serial_id'))
+
+                            ceph_backend = StorageBackendConfig.get_backend_conf(
+                                     self.dbapi, constants.SB_TYPE_CEPH)
+                            stor = None
+                            if (ceph_backend and idisk.foristorid):
+                                stor = self.dbapi.istor_get(idisk.foristorid)
+
                             # If the clone label is in the serial id, this is
                             # install-from-clone scenario. Skip gpt formatting.
                             if ((constants.CLONE_ISO_DISK_SID +
@@ -4878,6 +4885,13 @@ class ConductorManager(service.PeriodicService):
                             elif (ihost.rootfs_device == idisk.device_path or
                                     ihost.rootfs_device in idisk.device_node):
                                 LOG.info("Disk uuid: %s is a root disk, "
+                                         "skipping gpt formatting."
+                                         % idisk.uuid)
+                            # Ceph formats OSD disks via puppet, so skip it
+                            elif (stor and stor.function in (
+                                     constants.STOR_FUNCTION_OSD,
+                                     constants.STOR_FUNCTION_JOURNAL)):
+                                LOG.info("Disk uuid: %s is a ceph OSD disk, "
                                          "skipping gpt formatting."
                                          % idisk.uuid)
                             else:
