@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2024 Wind River Systems, Inc.
+# Copyright (c) 2013-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -14,6 +14,7 @@
 from eventlet.green import subprocess
 import glob
 import os
+import re
 import shlex
 import time
 
@@ -24,8 +25,16 @@ from sysinv.common import constants
 from sysinv.common import device as dconstants
 from sysinv.common import utils
 
+from sysinv.common import query_pci_id
+
 CONF = cfg.CONF
 LOG = logging.getLogger(__name__)
+
+# This looks for speed formats like "1000baseT" or "40000baseSR4"
+# and captures the numeric part
+NOMINAL_SPEED_REGEX = re.compile(r"(\d+)base")
+# Regex to catch "Speed: 10000Mb/s" and capture the numeric part
+CURRENT_SPEED_REGEX = re.compile(r"Speed:\s+(\d+)")
 
 # Look for PCI class 0x0200 and 0x0280 so that we get generic ethernet
 # controllers and those that may report as "other" network controllers.
@@ -589,6 +598,71 @@ class PCIOperator(object):
         LOG.warning("%s did not become operational after %d attempts" %
                 (iface, num_tries))
 
+    def _get_interface_speed(self, interface_name):
+        """
+        Gets the interface speed using ethtool.
+
+        This function runs 'ethtool <interface_name>' and parses the "Speed"
+        output to get the current speed. If the speed is reported as "Unknown!",
+        which will happen if the interface is down, it will instead parse the
+        "Supported link modes" section to find the highest nominal speed.
+
+        Args:
+            interface_name (str): The name of the network interface (e.g., "eth0").
+
+        Returns:
+            str: The maximum speed in Mbps (e.g., "10000") as a string,
+                or None if the speed could not be determined.
+        """
+        cmd = ['ethtool', interface_name]
+
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                check=True,
+                encoding='utf-8'
+            )
+
+            output = result.stdout
+
+            match = CURRENT_SPEED_REGEX.search(output)
+            if match:
+                current_speed = match.group(1)
+                if current_speed not in VALID_PORT_SPEED:
+                    LOG.error(f"Invalid port speed = {current_speed} for {interface_name}")
+                    current_speed = None
+                return current_speed
+
+            LOG.debug(
+                f"Current speed for {interface_name} is unknown. "
+                "Attempting to parse supported link modes."
+            )
+
+            # Find all occurrences of "Nbase" in the entire output.
+            matches = NOMINAL_SPEED_REGEX.findall(output)
+
+            if not matches:
+                LOG.warning(
+                    f"Could not parse nominal speed for {interface_name} "
+                    "from ethtool. No 'Nbase' link modes found in output.")
+                return None
+
+            supported_speeds = [int(speed) for speed in matches]
+            max_speed = str(max(supported_speeds))
+            if max_speed not in VALID_PORT_SPEED:
+                LOG.error("Invalid port speed = %s for %s " % (max_speed, interface_name))
+                max_speed = None
+            return max_speed
+
+        except subprocess.CalledProcessError as e:
+            LOG.warning(f"ethtool failed for {interface_name}: {e.stderr.strip()}")
+            return None
+        except Exception as e:
+            LOG.error(f"An unexpected error occurred while processing {interface_name}: {e}")
+            return None
+
     def pci_get_net_attrs(self, pciaddr):
         ''' For this pciaddr, build a list of network attributes per port '''
         pci_attrs_array = []
@@ -613,7 +687,6 @@ class PCIOperator(object):
                 # as the sriov_vf_driver. This is used to determine the driver
                 # to use if an interface has an SR-IOV VF driver of 'netdevice'
                 sriov_vf_driver = self.get_pci_sriov_vf_module_name(a, sriov_vfs_pci_address)
-
                 sriov_vf_pdevice_id = self.get_pci_sriov_vf_device_id(a, sriov_vfs_pci_address)
                 driver = self.get_pci_driver_name(a)
 
@@ -636,31 +709,16 @@ class PCIOperator(object):
                     device = None
 
                 try:
-                    with open(os.devnull, "w") as fnull:
-                        query_pci_id_cmd = ["query_pci_id",
-                                            "-v " + str(vendor),
-                                            "-d " + str(device)]
-                        if(CONF.dpdk.dpdk_elf is not None):
-                            elf_arg = "-e " + str(CONF.dpdk.dpdk_elf)
-                            query_pci_id_cmd.append(elf_arg)
-                        subprocess.check_call(query_pci_id_cmd,  # pylint: disable=not-callable
-                                              stdout=fnull, stderr=fnull)
-                        dpdksupport = True
-                        LOG.debug("DPDK does support NIC "
-                                  "(vendor: %s device: %s)",
-                                  vendor, device)
-                except subprocess.CalledProcessError as e:
+                    dpdksupport, msg = query_pci_id.call_query_pci_id(
+                        vendor, device, elf=CONF.dpdk.dpdk_elf
+                    )
+                    LOG.debug(msg)
+                except Exception:
                     dpdksupport = False
-                    if e.returncode == 1:
-                        # NIC is not supprted
-                        LOG.debug("DPDK does not support NIC "
-                                  "(vendor: %s device: %s)",
-                                  vendor, device)
-                    else:
-                        # command failed, default to DPDK support to False
-                        LOG.info("Could not determine DPDK support for "
-                                 "NIC (vendor %s device: %s), defaulting "
-                                 "to False", vendor, device)
+                    # call_query_pci_id failed, default to DPDK support to False
+                    LOG.info("Could not determine DPDK support for "
+                             "NIC (vendor %s device: %s), defaulting "
+                             "to False", vendor, device)
 
                 # determine the net directory for this device
                 dirpcinet = self.get_pci_net_directory(a)
@@ -713,37 +771,7 @@ class PCIOperator(object):
                         LOG.debug("ATTR mtu unknown for: %s " % n)
                         mtu = None
 
-                    # Check the administrative state before reading the speed
-                    flags = self._get_netdev_flags(dirpcinet, n)
-
-                    # If administrative state is down, bring it up momentarily
-                    if not(flags & IFF_UP):
-                        LOG.warning("Enabling device %s to query link speed" % n)
-                        cmd = 'ip link set dev %s up' % n
-                        _p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
-                                              shell=True)
-                        _p.wait()
-
-                        self._pci_wait_for_operational_state(n, a, driver)
-
-                    # Read the speed
-                    speed = self._get_netdev_speed(dirpcinet, n)
-                    if speed is None:
-                        LOG.warning("ATTR speed unknown for: %s (flags: %s)" % (n, hex(flags)))
-                    elif speed == '-1':
-                        LOG.warning("Port speed detected as -1 for: %s (link operstate: %s)" %
-                            (n, self._get_netdev_operstate(dirpcinet, n)))
-                        speed = None
-                    elif speed not in VALID_PORT_SPEED:
-                        LOG.error("Invalid port speed = %s for %s " % (speed, n))
-                        speed = None
-                    # If the administrative state was down, take it back down
-                    if not(flags & IFF_UP):
-                        LOG.warning("Disabling device %s after querying link speed" % n)
-                        cmd = 'ip link set dev %s down' % n
-                        _p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
-                                              shell=True)
-                        _p.wait()
+                    speed = self._get_interface_speed(n)
 
                     flink_mode = dirpcinet + n + '/' + "link_mode"
                     try:
