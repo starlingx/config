@@ -29,8 +29,8 @@ def update_gunicorn_bind(bind):
 def barbican_bootstrap_config(puppet_operator: puppet.PuppetOperator):
     """Apply the barbican config changes since initial puppet apply"""
     puppet_plugins = puppet_operator.puppet_plugins
-    puppet_plugins_dict = {plugin.name[4:]: plugin for plugin in puppet_plugins}
-    barbican_plugin = puppet_plugins_dict['barbican'].obj
+    puppet_plugins_dict = {plugin.name: plugin for plugin in puppet_plugins}
+    barbican_plugin = puppet_plugins_dict['barbican'].operator
 
     host = (constants.CONTROLLER_FQDN
             if utils.is_fqdn_ready_to_use()

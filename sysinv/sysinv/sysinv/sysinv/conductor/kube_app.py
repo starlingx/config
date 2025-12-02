@@ -13,26 +13,21 @@ import copy
 
 import docker
 from eventlet.green import subprocess
-import glob
 import grp
 import functools
 import json
 import io
 import os
-import pkg_resources
 import pwd
 import random
 import re
 import ruamel.yaml as yaml
 import shutil
-import site
 import six
 from six.moves.urllib.parse import urlparse
-import sys
 import tempfile
 import threading
 import time
-import zipfile
 
 from collections import namedtuple
 from distutils.util import strtobool
@@ -142,7 +137,6 @@ class AppOperator(object):
         self._dbapi = dbapi
         self._helm = helm_op
         self._apps_metadata = apps_metadata
-        self._plugins = PluginHelper(self._dbapi, self._helm)
         self._fm_api = fm_api.FaultAPIs()
         self._docker = DockerHelper(self._dbapi)
         self._kube = kubernetes.KubeOperator()
@@ -159,15 +153,30 @@ class AppOperator(object):
         if not os.path.isfile(constants.ANSIBLE_BOOTSTRAP_FLAG):
             self._clear_stuck_applications()
 
-        self._plugins.activate_apps_plugins()
+        self.activate_apps_plugins()
 
-    def activate_app_plugins(self, rpc_app):
-        app = AppOperator.Application(rpc_app)
-        self._plugins.activate_plugins(app)
-
-    def deactivate_app_plugins(self, rpc_app):
-        app = AppOperator.Application(rpc_app)
-        self._plugins.deactivate_plugins(app)
+    def activate_apps_plugins(self):
+        # Examine existing applications in an applying/restoring state and make
+        # sure they are activated
+        apps = self._dbapi.kube_app_get_all()
+        for app in apps:
+            # If the app is in some form of apply/restore then the plugins
+            # should be enabled
+            if app.status in [constants.APP_APPLY_IN_PROGRESS,
+                            constants.APP_APPLY_SUCCESS,
+                            constants.APP_APPLY_FAILURE,
+                            constants.APP_RESTORE_REQUESTED]:
+                try:
+                    app = AppOperator.Application(app)
+                    self._helm.plugins.activate_plugins(
+                        app_name=app.name,
+                        app_version=app.version,
+                        has_plugin_path=app.system_app,
+                        sync_plugins_dir=app.sync_plugins_dir,
+                        args=(self._helm,)
+                    )
+                except exception.SysinvException:
+                    LOG.exception("Error while loading plugins for {}".format(app.name))
 
     def app_has_system_plugins(self, rpc_app):
         app = AppOperator.Application(rpc_app)
@@ -267,7 +276,7 @@ class AppOperator(object):
 
     def _cleanup(self, app, app_dir=True):
         """" Remove application directories and override files """
-        self._plugins.uninstall_plugins(app)
+        self._helm.plugins.uninstall_plugins(sync_plugins_dir=app.sync_plugins_dir)
         try:
             if os.path.exists(app.sync_overrides_dir):
                 shutil.rmtree(app.sync_overrides_dir)
@@ -779,13 +788,23 @@ class AppOperator(object):
         # applicable. Save the list to the same location as the fluxcd manifest
         # so it can be sync'ed.
         app.charts = self._get_list_of_charts(app, include_disabled=True)
-
-        self._plugins.activate_plugins(app)
+        self._helm.plugins.activate_plugins(
+            app_name=app.name,
+            app_version=app.version,
+            has_plugin_path=app.system_app,
+            sync_plugins_dir=app.sync_plugins_dir,
+            args=(self._helm,)
+        )
         LOG.info("Generating application overrides to discover required images.")
         self._helm.generate_helm_application_overrides(
             app.sync_overrides_dir, app.name, mode=None, cnamespace=None,
             chart_info=app.charts, combined=True)
-        self._plugins.deactivate_plugins(app)
+        self._helm.plugins.deactivate_plugins(
+            app_name=app.name,
+            app_version=app.version,
+            has_plugin_path=app.system_app,
+            sync_plugins_dir=app.sync_plugins_dir,
+        )
 
         self._save_images_list_by_charts(app)
         # Get the list of images from the updated images overrides
@@ -1064,7 +1083,13 @@ class AppOperator(object):
 
         # For system applications with plugin support, establish user override
         # entries and disable charts based on application metadata.
-        self._plugins.activate_plugins(app)
+        self._helm.plugins.activate_plugins(
+            app_name=app.name,
+            app_version=app.version,
+            has_plugin_path=app.system_app,
+            sync_plugins_dir=app.sync_plugins_dir,
+            args=(self._helm,)
+        )
         db_app = self._dbapi.kube_app_get(app.name)
         app_ns = self._helm.get_helm_application_namespaces(db_app.name)
         for chart, namespaces in six.iteritems(app_ns):
@@ -1093,7 +1118,12 @@ class AppOperator(object):
                                                       system_overrides})
                 except exception.HelmOverrideNotFound:
                     LOG.exception("Helm Override Not Found")
-        self._plugins.deactivate_plugins(app)
+        self._helm.plugins.deactivate_plugins(
+            app_name=app.name,
+            app_version=app.version,
+            has_plugin_path=app.system_app,
+            sync_plugins_dir=app.sync_plugins_dir,
+        )
 
     def _validate_labels(self, labels):
         expr = re.compile(r'[a-z0-9]([-a-z0-9]*[a-z0-9])')
@@ -1453,10 +1483,9 @@ class AppOperator(object):
     def _remove_chart_overrides(self, overrides_dir, app):
         charts = self._get_list_of_charts(app)
         for chart in charts:
-            if chart.name in self._helm.chart_operators:
-                self._helm.remove_helm_chart_overrides(overrides_dir,
-                                                       chart.name,
-                                                       chart.namespace)
+            chart_op = self._helm.plugins.get_chart_operator(chart.name)
+            if chart_op:
+                self._helm.remove_helm_chart_overrides(overrides_dir, chart.name, chart.namespace)
 
     def _update_app_releases_version(self, app_name):
         """Update application helm releases records
@@ -2091,7 +2120,13 @@ class AppOperator(object):
 
         def _activate_old_app_plugins(old_app):
             # Enable the old app plugins.
-            self._plugins.activate_plugins(old_app)
+            self._helm.plugins.activate_plugins(
+                app_name=old_app.name,
+                app_version=old_app.version,
+                has_plugin_path=old_app.system_app,
+                sync_plugins_dir=old_app.sync_plugins_dir,
+                args=(self._helm,)
+            )
 
         LOG.info("Starting recover Application %s from version: %s to version: %s" %
                  (old_app.name, new_app.version, old_app.version))
@@ -2115,7 +2150,12 @@ class AppOperator(object):
                 )
 
         # Ensure that the the failed app plugins are disabled prior to cleanup
-        self._plugins.deactivate_plugins(new_app)
+        self._helm.plugins.deactivate_plugins(
+            app_name=new_app.name,
+            app_version=new_app.version,
+            has_plugin_path=new_app.system_app,
+            sync_plugins_dir=new_app.sync_plugins_dir,
+        )
 
         self._update_app_status(
             old_app, constants.APP_RECOVER_IN_PROGRESS,
@@ -2249,7 +2289,12 @@ class AppOperator(object):
             self.app_lifecycle_actions(None, None, old_app._kube_app,
                                        lifecycle_hook_info_app_recover)
         else:
-            self._plugins.deactivate_plugins(old_app)
+            self._helm.plugins.deactivate_plugins(
+                app_name=old_app.name,
+                app_version=old_app.version,
+                has_plugin_path=old_app.system_app,
+                sync_plugins_dir=old_app.sync_plugins_dir,
+            )
             self._update_app_status(
                 old_app, constants.APP_APPLY_FAILURE,
                 constants.APP_PROGRESS_UPDATE_ABORTED.format(old_app.version, new_app.version) +
@@ -2303,7 +2348,11 @@ class AppOperator(object):
 
             with self._lock:
                 self._extract_tarfile(app)
-                self._plugins.install_plugins(app)
+                self._helm.plugins.install_plugins(
+                    app_name=app.name,
+                    inst_plugins_dir=app.inst_plugins_dir,
+                    sync_plugins_dir=app.sync_plugins_dir,
+                )
 
             manifest_sync_path = app.sync_fluxcd_manifest
             manifest_sync_dir_path = app.sync_fluxcd_manifest_dir
@@ -2513,10 +2562,13 @@ class AppOperator(object):
 
         app = AppOperator.Application(rpc_app)
 
-        # TODO(dvoicule): activate plugins once on upload, deactivate once during delete
-        # create another commit for this
-        self.activate_app_plugins(rpc_app)
-
+        self._helm.plugins.activate_plugins(
+            app_name=app.name,
+            app_version=app.version,
+            has_plugin_path=app.system_app,
+            sync_plugins_dir=app.sync_plugins_dir,
+            args=(self._helm,)
+        )
         LOG.info("lifecycle hook for application {} ({}) started {}."
                  .format(app.name, app.version, hook_info))
 
@@ -3190,7 +3242,12 @@ class AppOperator(object):
             # generate overrides for images. Disable the plugins for the current
             # application as the new plugin module will have the same name. Only
             # one version of the module can be enabled at any given moment
-            self._plugins.deactivate_plugins(from_app)
+            self._helm.plugins.deactivate_plugins(
+                app_name=from_app.name,
+                app_version=from_app.version,
+                has_plugin_path=from_app.system_app,
+                sync_plugins_dir=from_app.sync_plugins_dir,
+            )
 
             to_app = self.perform_app_upload(
                 to_rpc_app,
@@ -3658,7 +3715,12 @@ class AppOperator(object):
                 LifecycleConstants.APP_LIFECYCLE_TYPE_RESOURCE
             self.app_lifecycle_actions(None, None, rpc_app, lifecycle_hook_info_app_delete)
 
-            self._plugins.deactivate_plugins(app)
+            self._helm.plugins.deactivate_plugins(
+                app_name=app.name,
+                app_version=app.version,
+                has_plugin_path=app.system_app,
+                sync_plugins_dir=app.sync_plugins_dir,
+            )
 
             self._dbapi.kube_app_destroy(app.name)
             app.charts = self._get_list_of_charts(app, include_disabled=True)
@@ -4332,196 +4394,6 @@ class AppImageParser(object):
                 self.generate_download_images_list(v, download_imgs_list)
 
         return list(set(download_imgs_list))
-
-
-class PluginHelper(object):
-    """ Utility class to help manage application plugin lifecycle """
-
-    def __init__(self, dbapi, helm_op):
-        self._dbapi = dbapi
-        self._helm_op = helm_op
-
-    def _get_pth_fqpn(self, app):
-        return "{}/{}{}-{}.pth".format(
-            common.APP_PLUGIN_PATH, common.APP_PTH_PREFIX, app.name, app.version)
-
-    def activate_apps_plugins(self):
-        # Examine existing applications in an applying/restoring state and make
-        # sure they are activated
-        apps = self._dbapi.kube_app_get_all()
-        for app in apps:
-            # If the app is in some form of apply/restore the the plugins
-            # should be enabled
-            if app.status in [constants.APP_APPLY_IN_PROGRESS,
-                              constants.APP_APPLY_SUCCESS,
-                              constants.APP_APPLY_FAILURE,
-                              constants.APP_RESTORE_REQUESTED]:
-                try:
-                    self.activate_plugins(AppOperator.Application(app))
-                except exception.SysinvException:
-                    LOG.exception("Error while loading plugins for {}".format(app.name))
-
-    def install_plugins(self, app):
-        """ Install application plugins. """
-
-        # An app may be packaged with multiple wheels, discover and install them
-        # in the synced app plugin directory
-
-        pattern = '{}/*.whl'.format(app.inst_plugins_dir)
-        discovered_whls = glob.glob(pattern)
-
-        if not discovered_whls:
-            LOG.info("PluginHelper: %s does not contains any platform plugins." %
-                     app.name)
-            return
-
-        if not os.path.isdir(app.sync_plugins_dir):
-            LOG.info("PluginHelper: Creating %s plugin directory %s." % (
-                app.name, app.sync_plugins_dir))
-            os.makedirs(app.sync_plugins_dir)
-
-        for whl in discovered_whls:
-            LOG.info("PluginHelper: Installing %s plugin %s to %s." % (
-                app.name, whl, app.sync_plugins_dir))
-            with zipfile.ZipFile(whl) as zf:
-                zf.extractall(app.sync_plugins_dir)
-
-    def uninstall_plugins(self, app):
-        """ Uninstall application plugins."""
-        if os.path.isdir(app.sync_plugins_dir):
-            try:
-                LOG.info("PluginHelper: Removing plugin directory %s" %
-                         app.sync_plugins_dir)
-                shutil.rmtree(app.sync_plugins_dir)
-            except OSError:
-                LOG.exception("PluginHelper: Failed to remove plugin directory:"
-                              " %s" % app.sync_plugins_dir)
-        else:
-            LOG.info("PluginHelper: Plugin directory %s does not exist. No "
-                     "need to remove." % app.sync_plugins_dir)
-
-    def activate_plugins(self, app):
-        pth_fqpn = self._get_pth_fqpn(app)
-
-        # Check if plugins are available for the given app and already loaded
-        if app.system_app and app.sync_plugins_dir in site.removeduppaths():
-            return
-
-        # If a plugin path does not exist but a .pth files does then raise an
-        # exception because the path was supposed to be available at this point.
-        # If a plugin path does exist then activate the plugins.
-        # Otherwise, the app does not have any plugins and activation should
-        # be skipped.
-        # Note: If app.system_app equals true that implies that app.sync_plugins_dir
-        # exists and is readable.
-        if not app.system_app and os.path.isfile(pth_fqpn):
-            raise exception.SysinvException(_(
-                    "Error while activating plugins for {}. "
-                    "File {} was found but the required plugin "
-                    "directory {} does not exist."
-                    .format(app.name, pth_fqpn, app.sync_plugins_dir)))
-        elif app.system_app:
-            # Add a .pth file to a site-packages directory so the plugin is picked
-            # automatically on a conductor restart
-            if not os.path.isfile(pth_fqpn):
-                with open(pth_fqpn, 'w') as f:
-                    f.write(app.sync_plugins_dir + '\n')
-                    LOG.info("PluginHelper: Enabled plugin directory %s: created %s" % (
-                        app.sync_plugins_dir, pth_fqpn))
-
-            # Make sure the sys.path reflects enabled plugins Add the plugin to
-            # sys.path
-            site.addsitedir(app.sync_plugins_dir)
-
-            # Find the distribution and add it to the resources working set
-            for d in pkg_resources.find_distributions(app.sync_plugins_dir,
-                                                      only=True):
-                pkg_resources.working_set.add(d, entry=None, insert=True,
-                                              replace=True)
-
-            if self._helm_op:
-                self._helm_op.discover_plugins()
-
-    def deactivate_plugins(self, app):
-        # If the application doesn't have any plugins, skip deactivation
-        if not app.system_app:
-            return
-
-        if self._helm_op:
-            LOG.info("PluginHelper: Purge cache for plugins located"
-                     " in directory %s " % app.sync_plugins_dir)
-            # purge this plugin from the stevedore plugin cache so this version
-            # of the plugin endpoints are not discoverable
-            self._helm_op.purge_cache_by_location(app.sync_plugins_dir)
-
-        pth_fqpn = self._get_pth_fqpn(app)
-        if os.path.exists(pth_fqpn):
-            # Remove the pth file, so on a conductor restart this installed
-            # plugin is not discoverable
-            try:
-                os.remove(pth_fqpn)
-                LOG.info("PluginHelper: Disabled plugin directory %s: removed "
-                         "%s" % (app.sync_plugins_dir, pth_fqpn))
-            except OSError as e:
-                # Not present, should be, but continue on...
-                LOG.warning("PluginHelper: Failed to remove plugin directory:"
-                            " %s. Error: %s" % (pth_fqpn, e))
-                pass
-
-        # Make sure the sys.path reflects only enabled plugins
-        try:
-            sys.path.remove(app.sync_plugins_dir)
-        except ValueError:
-            # Not present, should be, but continue on...
-            LOG.warning("sys.path (%s) is missing plugin (%s)" % (
-                sys.path, app.sync_plugins_dir))
-
-        # Determine distributions installed by this plugin
-        plugins_realpath = os.path.realpath(app.sync_plugins_dir)
-        if plugins_realpath in pkg_resources.working_set.entry_keys:
-            plugin_distributions = pkg_resources.working_set.entry_keys[plugins_realpath]
-            LOG.info("PluginHelper: Disabling distributions: %s" % plugin_distributions)
-
-            # Clean up the distribution(s) module names
-            module_name_cleanup = []
-            for module_name, value in six.iteritems(sys.modules):
-                for distribution in plugin_distributions:
-                    distribution_module_name = distribution.replace('-', '_')
-                    if ((module_name == distribution_module_name) or
-                            (module_name.startswith(distribution_module_name + '.'))):
-                        LOG.debug("PluginHelper: Removing module name: %s: %s" % (module_name, value))
-                        module_name_cleanup.append(module_name)
-
-            for module_name in module_name_cleanup:
-                del sys.modules[module_name]
-
-            # Clean up the working set
-            for distribution in plugin_distributions:
-                try:
-                    del pkg_resources.working_set.by_key[distribution]
-                except KeyError:
-                    LOG.warn("Plugin distribution %s not enabled for version %s"
-                             ", but expected to be. Continuing with plugin "
-                             "deactivation." % (distribution, app.version))
-
-            try:
-                del pkg_resources.working_set.entry_keys[plugins_realpath]
-            except Exception:
-                pass
-            try:
-                pkg_resources.working_set.entries.remove(plugins_realpath)
-            except Exception:
-                pass
-
-            if plugins_realpath != app.sync_plugins_dir:
-                try:
-                    del pkg_resources.working_set.entry_keys[app.sync_plugins_dir]
-                except Exception:
-                    pass
-                try:
-                    pkg_resources.working_set.entries.remove(app.sync_plugins_dir)
-                except Exception:
-                    pass
 
 
 class FluxCDHelper(object):

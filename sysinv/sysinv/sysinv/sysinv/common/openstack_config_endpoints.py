@@ -413,7 +413,7 @@ def get_service_url(puppet_plugins, service, interface, region_name):
             service in SERVICES_PORTS_PATHS_MAP):
         # Use dcorch puppet object as it contains all necessary ports
         # for the system controller region
-        puppet_object = puppet_plugins['dcorch'].obj
+        puppet_object = puppet_plugins['dcorch'].operator
         interface_url_functions = {
             'admin': puppet_object.get_proxy_admin_url,
             'internal': puppet_object.get_proxy_internal_url,
@@ -423,7 +423,7 @@ def get_service_url(puppet_plugins, service, interface, region_name):
         port = getattr(puppet_object, mapping['port'])
         path = getattr(puppet_object, mapping['path'])
         return interface_url_functions[interface](port, path)
-    puppet_object = puppet_plugins[service].obj
+    puppet_object = puppet_plugins[service].operator
     interface_url_functions = {
         'admin': puppet_object.get_admin_url,
         'internal': puppet_object.get_internal_url,
@@ -464,13 +464,13 @@ def build_endpoint_list(services, region_name, puppet_plugins):
 def run_endpoint_config(puppet_operator: puppet.PuppetOperator,
                         openstack_operator: openstack.OpenStackOperator):
     puppet_plugins = puppet_operator.puppet_plugins
-    puppet_plugins_dict = {plugin.name[4:]: plugin for plugin in puppet_plugins}
+    puppet_plugins_dict = {plugin.name: plugin for plugin in puppet_plugins}
 
     # Rename 'nfv' service to 'vim' to align with service naming convention
     puppet_plugins_dict['vim'] = puppet_plugins_dict.pop('nfv')
 
     # Use keystone puppet plugin to get base system info
-    keystone_plugin = puppet_plugins_dict['keystone'].obj
+    keystone_plugin = puppet_plugins_dict['keystone'].operator
     dc_role = keystone_plugin._distributed_cloud_role()
     region_name = keystone_plugin._region_name()
     is_systemcontroller = dc_role == \
@@ -504,8 +504,7 @@ def run_endpoint_config(puppet_operator: puppet.PuppetOperator,
     users_to_create = []
     for username in usernames:
         # Generate users_to_create_list with passwords from puppet plugins
-        password = puppet_plugins_dict[username].obj\
-            ._get_service_password(username)
+        password = puppet_plugins_dict[username].operator._get_service_password(username)
         email = f'{username}@localhost'
         user = {'name': username, 'password': password, 'email': email}
         users_to_create.append(user)

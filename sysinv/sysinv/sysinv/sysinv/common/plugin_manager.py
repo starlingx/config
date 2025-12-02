@@ -189,9 +189,12 @@ class PluginManager:  # noqa: H238
             loaded_entrypoint = entrypoint.load()
             project_name, project_path = self._get_project_name_and_location(loaded_entrypoint)
             # In order to control the order of the plugins without changing their names, some
-            # plugins use a prefix following the pattern '###__PLUGINNAME'. The regex below removes
-            # this prefix, as the entry points have already been ordered.
-            plugin_name = re.sub(r'^\d{3}_', '', entrypoint.name)
+            # plugins use a prefix following the pattern '###__PLUGINNAME'. Also to allow
+            # overriding with a newer version of the AppLifecycle operator, some plugins have the
+            # convention to use an optional suffix with the pattern 'PLUGINNAME_###'. As the
+            # entry points have already been ordered, the regex below removes both, prefix and
+            # suffix if they exist.
+            plugin_name = re.sub(r'^(?:\d{3}_)?(.*?)(?:_\d{3})?$', r'\1', entrypoint.name)
             loaded_plugins[plugin_name] = Plugin(
                 name=plugin_name,
                 project_path=project_path,
@@ -287,7 +290,7 @@ class PluginManager:  # noqa: H238
                                            activate.
             :param args (tuple): Arguments to pass to the plugins upon loading.
         """
-        pth_fqpn = f"{APP_PLUGIN_PATH}/{APP_PTH_PREFIX}{app_name}-{app_version}"
+        pth_fqpn = f"{APP_PLUGIN_PATH}/{APP_PTH_PREFIX}{app_name}-{app_version}.pth"
 
         if has_plugin_path and sync_plugins_dir in site.removeduppaths():
             return
@@ -332,7 +335,7 @@ class PluginManager:  # noqa: H238
         if not has_plugin_path:
             return
 
-        pth_fqpn = f"{APP_PLUGIN_PATH}/{APP_PTH_PREFIX}{app_name}-{app_version}"
+        pth_fqpn = f"{APP_PLUGIN_PATH}/{APP_PTH_PREFIX}{app_name}-{app_version}.pth"
 
         try:
             # Remove the pth file, so on a conductor restart this installed plugin is not
@@ -469,7 +472,7 @@ class PluginManager:  # noqa: H238
         return self._subnamespace_plugins.get(namespace, {})
 
     def get_subnamespace_relation_by_plugin_name(self, namespace, plugin_name):
-        return self._subnamespace_plugins[namespace].get(plugin_name, [])
+        return self._subnamespace_plugins.get(namespace, {}).get(plugin_name, [])
 
     def audit_plugins(self, dbapi):
         """
@@ -533,3 +536,17 @@ class PluginManager:  # noqa: H238
                 os.remove(pth)
             except ValueError:
                 LOG.error(f"PluginManager: Failed to remove invalid plugin pth: {pth}.")
+
+    def list_plugins(self):
+        loaded_plugins = []
+        for ns, plugins in self._plugins.items():
+            for plugin in plugins.values():
+                loaded_plugins.append(
+                    {
+                        'name': plugin.name,
+                        'project_name': plugin.project_name,
+                        'project_path': plugin.project_path,
+                        'namespace': ns
+                    }
+                )
+        return loaded_plugins
