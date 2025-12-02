@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2021-2023 Wind River Systems, Inc.
+# Copyright (c) 2021-2023,2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -89,27 +89,6 @@ def do_kube_rootca_update_start(cc, args):
                                % uuid)
 
     _print_kube_rootca_update_show(kube_rootca_update)
-
-
-@utils.arg('certificate_file',
-           metavar='<certificate_file>',
-           help='Path to the kubernetes certificate file (in PEM format) to upload.')
-def do_kube_rootca_update_upload_cert(cc, args):
-    """Upload new kubernetes rootCA """
-
-    certificate_file = args.certificate_file
-    try:
-        with open(certificate_file, 'rb') as sec_file:
-            cert_upload = cc.kube_rootca_update.rootCA_upload(sec_file)
-    except Exception:
-        raise exc.CommandError("Error: Could not open file %s." %
-                               certificate_file)
-
-    if cert_upload.get("error"):
-        print(cert_upload.get("error"))
-    else:
-        # Show new rootca certificate identifier <issuer_hash>-<serial_number>
-        print("Uploaded new rootca certificate: %s" % cert_upload.get("success"))
 
 
 def do_kube_rootca_get_cert_id(cc, args):

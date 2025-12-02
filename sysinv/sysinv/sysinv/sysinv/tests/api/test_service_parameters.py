@@ -68,12 +68,6 @@ class ApiServiceParameterTestCaseMixin(object):
         },
         {
             'service': constants.SERVICE_TYPE_KUBERNETES,
-            'section': constants.SERVICE_PARAM_SECTION_KUBERNETES_CERTIFICATES,
-            'name': constants.SERVICE_PARAM_NAME_KUBERNETES_API_SAN_LIST,
-            'value': 'localurl'
-        },
-        {
-            'service': constants.SERVICE_TYPE_KUBERNETES,
             'section': constants.SERVICE_PARAM_SECTION_KUBERNETES_APISERVER,
             'name': constants.SERVICE_PARAM_NAME_OIDC_USERNAME_CLAIM,
             'value': 'wad'
@@ -1006,23 +1000,23 @@ class ApiServiceParameterPostTestSuiteMixin(ApiServiceParameterTestCaseMixin):
         # valid configs are (none)
         # (oidc_issuer_url, oidc_client_id, oidc_username_claim)
         # (the previous 3 plus oidc_groups_claim)
-        post_object = self.service_parameter_data[3]
+        post_object = self.service_parameter_data[2]
         response = self.post(post_object)
         self.validate_data(post_object, response)
         response = self.apply('kubernetes', expect_errors=True)
         self.assertEqual(http_client.BAD_REQUEST, response.status_int)
 
         # the other 2 valid configs
-        post_object = self.service_parameter_data[4]
+        post_object = self.service_parameter_data[3]
         response = self.post(post_object)
         self.validate_data(post_object, response)
-        post_object = self.service_parameter_data[5]
+        post_object = self.service_parameter_data[4]
         response = self.post(post_object)
         self.validate_data(post_object, response)
         response = self.apply('kubernetes')
         self.assertEqual(http_client.NO_CONTENT, response.status_int)
 
-        post_object = self.service_parameter_data[6]
+        post_object = self.service_parameter_data[5]
         response = self.post(post_object)
         self.validate_data(post_object, response)
         response = self.apply('kubernetes')
@@ -1030,52 +1024,52 @@ class ApiServiceParameterPostTestSuiteMixin(ApiServiceParameterTestCaseMixin):
 
     def test_coredump_values_and_formats(self):
         # test invalid value format
-        for param in range(11, 17):
+        for param in range(10, 16):
             post_object = self.service_parameter_data[param]
             self.post(post_object, expect_errors=True, error_message="Parameter '" +
                 self.service_parameter_data[param]['name'] + "' has invalid value format.")
 
         # test empty value
-        for param in range(17, 21):
+        for param in range(16, 20):
             post_object = self.service_parameter_data[param]
             self.post(post_object, expect_errors=True,
                 error_message="The service parameter value is mandatory")
 
         # test minimum value greater than or equal to 0
-        for param in range(21, 24):
+        for param in range(20, 23):
             post_object = self.service_parameter_data[param]
             self.post(post_object, expect_errors=True, error_message="Parameter '" +
                 self.service_parameter_data[param]['name'] +
                 "' must be greater than or equal to 0.")
 
         # test minimum value greater than or equal to 1G
-        for param in range(24, 27):
+        for param in range(23, 26):
             post_object = self.service_parameter_data[param]
             self.post(post_object, expect_errors=True, error_message="Parameter '" +
                 self.service_parameter_data[param]['name'] +
                 "' must be greater than or equal to 1G.")
 
         # test valid values
-        for param in range(7, 11):
+        for param in range(6, 10):
             post_object = self.service_parameter_data[param]
             response = self.post(post_object)
             self.validate_data(post_object, response)
 
     def test_crashdump_formats(self):
         # Test invalid max_files format
-        post_object = self.service_parameter_data[37]
+        post_object = self.service_parameter_data[36]
         self.post(post_object, expect_errors=True, error_message="Parameter '" +
-            self.service_parameter_data[37]['name'] +
+            self.service_parameter_data[36]['name'] +
             "' must be positive integer.")
 
-        for param in range(38, 40):
+        for param in range(37, 39):
             post_object = self.service_parameter_data[param]
             self.post(post_object, expect_errors=True, error_message="Parameter '" +
                 self.service_parameter_data[param]['name'] +
                 "' must be an integer value.")
 
         # Test invalid max_size, max_used and min_available format
-        for param in range(40, 49):
+        for param in range(39, 48):
             post_object = self.service_parameter_data[param]
             self.post(post_object, expect_errors=True, error_message="Parameter '" +
                 self.service_parameter_data[param]['name'] +
@@ -1083,19 +1077,19 @@ class ApiServiceParameterPostTestSuiteMixin(ApiServiceParameterTestCaseMixin):
                 "e.g., '100M', '2.5Gi', '500K', etc.")
 
         # test empty value
-        for param in range(65, 69):
+        for param in range(64, 68):
             post_object = self.service_parameter_data[param]
             self.post(post_object, expect_errors=True,
                 error_message="The service parameter value is mandatory")
 
         # Test valid max_files, max_size, max_used and min_available format
-        for param in range(49, 53):
+        for param in range(48, 52):
             post_object = self.service_parameter_data[param]
             response = self.post(post_object)
             self.validate_data(post_object, response)
 
     def test_dns_host_records(self):
-        dns_index = 69
+        dns_index = 68
         # Test empty value host-record value
         post_object = self.service_parameter_data[dns_index]
         self.post(post_object, expect_errors=True,
@@ -1162,7 +1156,7 @@ class ApiServiceParameterPostTestSuiteMixin(ApiServiceParameterTestCaseMixin):
             self.validate_data(post_object, response)
 
     def test_dns_local_invalid_domains(self):
-        dns_local_index = 94
+        dns_local_index = 93
         # Test empty value
         post_object = self.service_parameter_data[dns_local_index]
         self.post(post_object, expect_errors=True,
@@ -1273,7 +1267,7 @@ class ApiServiceParameterPostTestSuiteMixin(ApiServiceParameterTestCaseMixin):
             self.service_parameter_data[dns_local_index]['value'] + "\'.")
 
     def test_dns_local_valid_domains(self):
-        dns_local_index = 108
+        dns_local_index = 107
 
         # valid 253 domain with 63 and dash
         post_object = self.service_parameter_data[dns_local_index]
@@ -1311,7 +1305,7 @@ class ApiServiceParameterPostTestSuiteMixin(ApiServiceParameterTestCaseMixin):
         self.validate_data(post_object, response)
 
     def test_dns_local_invalid_duplicate_domains(self):
-        dns_local_index = 109
+        dns_local_index = 108
 
         # valid simple domain
         post_object = self.service_parameter_data[dns_local_index]

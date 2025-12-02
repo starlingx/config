@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2021-2023 Wind River Systems, Inc.
+# Copyright (c) 2021-2023,2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -11,7 +11,6 @@ Tests for the API /kube_rootca_update/ methods.
 import datetime
 import json
 import mock
-import os
 from six.moves import http_client
 from sysinv.common import constants
 from sysinv.common import exception
@@ -531,40 +530,6 @@ class TestKubeRootCAGetCertID(TestKubeRootCAUpdate,
         self.assertFalse(resp.get('error'))
 
 
-class TestKubeRootCAUpload(TestKubeRootCAUpdate,
-                        dbbase.ProvisionedControllerHostTestCase):
-
-    def setUp(self):
-        super(TestKubeRootCAUpload, self).setUp()
-        self.fake_conductor_api.service.dbapi = self.dbapi
-
-    def test_upload_rootca(self):
-        dbutils.create_test_kube_rootca_update(state=kubernetes.KUBE_ROOTCA_UPDATE_STARTED)
-        certfile = os.path.join(os.path.dirname(__file__), "data",
-                                'rootca-with-key.pem')
-
-        fake_save_rootca_return = {'success': '137813-123', 'error': ''}
-
-        self.fake_conductor_api.\
-            setup_config_certificate(fake_save_rootca_return)
-
-        files = [('file', certfile)]
-        response = self.post_with_files('%s/%s' % ('/kube_rootca_update', 'upload_cert'),
-                                  {},
-                                  upload_files=files,
-                                  headers=self.headers,
-                                  expect_errors=False)
-
-        self.assertEqual(response.content_type, 'application/json')
-        self.assertEqual(response.status_code, http_client.OK)
-
-        resp = json.loads(response.body)
-
-        self.assertTrue(resp.get('success'))
-        self.assertEqual(resp.get('success'), fake_save_rootca_return.get('success'))
-        self.assertFalse(resp.get('error'))
-
-
 class TestKubeRootCAGenerate(TestKubeRootCAUpdate,
                         dbbase.ProvisionedControllerHostTestCase):
     def setUp(self):
@@ -806,24 +771,6 @@ class TestKubeRootCAHostUpdateTrustBothCAs(TestKubeRootCAHostUpdate,
         super(TestKubeRootCAHostUpdateTrustBothCAs, self).setUp()
         # Set host root CA update phase
         self.set_phase(constants.KUBE_CERT_UPDATE_TRUSTBOTHCAS)
-
-    def test_create_from_uploaded_cert(self):
-        # Test creation of kubernetes rootca host update
-        create_dict = {'phase': self.phase}
-
-        dbutils.create_test_kube_rootca_update(
-            state=kubernetes.KUBE_ROOTCA_UPDATE_CERT_UPLOADED)
-
-        result = self.post_json(self.post_url, create_dict,
-                                headers=self.headers)
-        # Verify that the rootca host update has the expected attributes
-        self.assertEqual(result.json['state'],
-                        kubernetes.KUBE_ROOTCA_UPDATING_HOST_TRUSTBOTHCAS)
-
-        # Verify that the overall rootca update has the expected attributes
-        result = dbutils.get_kube_rootca_update()
-        self.assertEqual(result.state,
-                        kubernetes.KUBE_ROOTCA_UPDATING_HOST_TRUSTBOTHCAS)
 
     def test_create_from_generated_cert(self):
         # Test creation of kubernetes rootca host update

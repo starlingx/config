@@ -144,7 +144,6 @@ KUBE_HOST_UPGRADED_KUBELET = 'upgraded-kubelet'
 
 # Kubernetes rootca update states
 KUBE_ROOTCA_UPDATE_STARTED = 'update-started'
-KUBE_ROOTCA_UPDATE_CERT_UPLOADED = 'update-new-rootca-cert-uploaded'
 KUBE_ROOTCA_UPDATE_CERT_GENERATED = 'update-new-rootca-cert-generated'
 KUBE_ROOTCA_UPDATING_PODS_TRUSTBOTHCAS = 'updating-pods-trust-both-cas'
 KUBE_ROOTCA_UPDATED_PODS_TRUSTBOTHCAS = 'updated-pods-trust-both-cas'

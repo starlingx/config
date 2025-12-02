@@ -541,12 +541,6 @@ class PlatformFirewallTestCaseMixin(base.PuppetTestCaseMixin):
             },
             {
                 'service': constants.SERVICE_TYPE_KUBERNETES,
-                'section': constants.SERVICE_PARAM_SECTION_KUBERNETES_CERTIFICATES,
-                'name': constants.SERVICE_PARAM_NAME_KUBERNETES_API_SAN_LIST,
-                'value': 'localurl'
-            },
-            {
-                'service': constants.SERVICE_TYPE_KUBERNETES,
                 'section': constants.SERVICE_PARAM_SECTION_KUBERNETES_APISERVER,
                 'name': constants.SERVICE_PARAM_NAME_OIDC_USERNAME_CLAIM,
                 'value': 'wad'
