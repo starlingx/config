@@ -668,11 +668,11 @@ class TestKubeOperator(base.TestCase):
 
         self.single_helmrepository_result = {
             'kind': 'HelmRepositoryList',
-            'apiVersion': 'source.toolkit.fluxcd.io/v1beta1',
+            'apiVersion': 'source.toolkit.fluxcd.io/v1',
             'items': [
                 {
 
-                    'apiVersion': 'source.toolkit.fluxcd.io/v1beta1',
+                    'apiVersion': 'source.toolkit.fluxcd.io/v1',
                     'kind': 'HelmRepository',
                     'spec': {
                         'url': 'http://192.168.206.1:8877/helm_charts/'
@@ -692,7 +692,7 @@ class TestKubeOperator(base.TestCase):
                         'resourceVersion': '2176218',
                         'creationTimestamp': '2022-05-31T16:59:27Z',
                         'annotations': {},  # Ommiting some stuff here too
-                        'selfLink': '/apis/source.toolkit.fluxcd.io/v1beta1/'
+                        'selfLink': '/apis/source.toolkit.fluxcd.io/v1/'
                                     'namespaces/cert-manager/helmrepositories/'
                                     'stx-platform',
                         'uid': '95989df9-b7bd-413a-bd1b-5f746c54e7c6',
@@ -703,11 +703,11 @@ class TestKubeOperator(base.TestCase):
 
         self.multiple_helmrepository_result = {
             'kind': 'HelmRepositoryList',
-            'apiVersion': 'source.toolkit.fluxcd.io/v1beta1',
+            'apiVersion': 'source.toolkit.fluxcd.io/v1',
             'items': [
                 {
 
-                    'apiVersion': 'source.toolkit.fluxcd.io/v1beta1',
+                    'apiVersion': 'source.toolkit.fluxcd.io/v1',
                     'kind': 'HelmRepository',
                     'spec': {
                         'url': 'http://192.168.206.1:8877/helm_charts/'
@@ -727,7 +727,7 @@ class TestKubeOperator(base.TestCase):
                         'resourceVersion': '2176218',
                         'creationTimestamp': '2022-05-31T16:59:27Z',
                         'annotations': {},  # Ommiting some stuff here too
-                        'selfLink': '/apis/source.toolkit.fluxcd.io/v1beta1/'
+                        'selfLink': '/apis/source.toolkit.fluxcd.io/v1/'
                                     'namespaces/cert-manager/helmrepositories/'
                                     'stx-platform',
                         'uid': '95989df9-b7bd-413a-bd1b-5f746c54e7c6',
@@ -735,7 +735,7 @@ class TestKubeOperator(base.TestCase):
                 },
                 {
 
-                    'apiVersion': 'source.toolkit.fluxcd.io/v1beta1',
+                    'apiVersion': 'source.toolkit.fluxcd.io/v1',
                     'kind': 'HelmRepository',
                     'spec': {
                         'url': 'http://192.168.206.1:8877/helm_charts/'
@@ -755,7 +755,7 @@ class TestKubeOperator(base.TestCase):
                         'resourceVersion': '2176116',
                         'creationTimestamp': '2022-05-31T16:49:21Z',
                         'annotations': {},  # Ommiting some stuff here too
-                        'selfLink': '/apis/source.toolkit.fluxcd.io/v1beta1/'
+                        'selfLink': '/apis/source.toolkit.fluxcd.io/v1/'
                                     'namespaces/kube-system/helmrepositories/'
                                     'stx-platform',
                         'uid': '2d5a9df9-b7bd-413a-bd1b-5f746cab4f',
@@ -766,7 +766,7 @@ class TestKubeOperator(base.TestCase):
 
         self.no_helmrepository_result = {
             'kind': 'HelmRepositoryList',
-            'apiVersion': 'source.toolkit.fluxcd.io/v1beta1',
+            'apiVersion': 'source.toolkit.fluxcd.io/v1',
             'items': []
         }
 
