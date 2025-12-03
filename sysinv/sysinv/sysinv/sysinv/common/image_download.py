@@ -50,11 +50,23 @@ class ContainerImageDownloader(object):
                 self._docker._get_img_tag_with_registry(image, registries_info)
             )
             docker_client.pull(target_image, auth_config=registry_auth)
-            LOG.info("Image [%s] download from upstream public/private registry"
-                     " to docker successful" % (image))
+
+            # Once the image is pulled, make sure it is in the local docker.
+            # In high scale environments, if several subclouds make a pull
+            # at the same time, a false positive might occur where the pull
+            # complete, but the image is not saved locally
+            docker_client.inspect_image(target_image)
+            LOG.info(
+                "Image [%s] download from upstream public/private registry"
+                " to docker successful " % (image)
+            )
+        except docker.errors.ImageNotFound:
+            LOG.warn("Image [%s] pull was not successful" % (image))
+            return None
         except Exception:
             LOG.error("Failed to download image [%s] from upstream registry." % (image))
             return None
+
         return target_image
 
     def docker_registry_image_list(self, filter_out_untagged):
