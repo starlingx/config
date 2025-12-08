@@ -3323,7 +3323,7 @@ class HostController(rest.RestController):
                     and host['config_status'] == constants.CONFIG_STATUS_OUT_OF_DATE
                     and host['administrative'] == constants.ADMIN_LOCKED):
                 flip = utils.config_flip_reboot_required(host['config_target'])
-                if (utils.config_is_reboot_required(host['config_target'])
+                if (cutils.config_is_reboot_required(host['config_target'])
                         and flip == host['config_applied']):
                     check_sriov_port_data = False
 

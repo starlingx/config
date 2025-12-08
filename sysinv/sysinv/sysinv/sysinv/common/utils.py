@@ -4929,3 +4929,12 @@ def is_enrollment_in_progress():
 
     return os.path.isfile(constants.ANSIBLE_ENROLLMENT_FLAG) or \
         os.path.isfile(constants.ANSIBLE_ENROLLMENT_COMPLETED_FLAG)
+
+
+def config_is_reboot_required(config_uuid):
+    """Check if the supplied config_uuid has the reboot required flag
+
+    :param config_uuid UUID object or UUID string
+    :return True if reboot is required, False otherwise
+    """
+    return int(uuid.UUID(config_uuid)) & constants.CONFIG_REBOOT_REQUIRED

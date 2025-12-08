@@ -548,8 +548,10 @@ class ConductorManager(service.PeriodicService):
         # process has been restarted
         if self.host_uuid and os.path.exists(ACTIVE_CONFIG_REBOOT_REQUIRED):
             ahost = self.dbapi.ihost_get(self.host_uuid)
-            self._host_reboot_config_uuid[self.host_uuid] = \
-                [ahost.config_target]
+            self._host_reboot_config_uuid[self.host_uuid] = {
+                'original': ahost.config_target,
+                'latest': ahost.config_target
+            }
 
     def _check_dnsmasq_not_ready(self, ex):
         # DNSMASQ starts before the sysinv-conductor but it may not be ready
@@ -2437,7 +2439,7 @@ class ConductorManager(service.PeriodicService):
                 # flag after they have been applied.
                 config_uuid = self._config_update_hosts(context, personalities,
                                                         host_uuids=[host.uuid])
-                if utils.config_is_reboot_required(host.config_target):
+                if cutils.config_is_reboot_required(host.config_target):
                     config_uuid = self._config_set_reboot_required(config_uuid)
 
                 config_dict = {
@@ -2451,7 +2453,7 @@ class ConductorManager(service.PeriodicService):
 
             # Regenerate config target uuid, node is going for reboot!
             config_uuid = self._config_update_hosts(context, personalities)
-            if utils.config_is_reboot_required(host.config_target):
+            if cutils.config_is_reboot_required(host.config_target):
                 config_uuid = self._config_set_reboot_required(config_uuid)
             self._puppet.update_host_config(host, config_uuid)
 
@@ -6646,6 +6648,11 @@ class ConductorManager(service.PeriodicService):
                     ihost.save(context)
                 self._clear_device_image_alarm(context)
 
+    def _handle_reboot_completion(self, ihost, config_uuid):
+        """Handle reboot completion"""
+        LOG.info("Host %s completed reboot for config %s" % (ihost.hostname, config_uuid))
+        self._remove_config_from_reboot_config_list(ihost.uuid, config_uuid)
+
     def iconfig_update_by_ihost(self, context,
                                 ihost_uuid, imsg_dict):
         """Update applied iconfig for an ihost with the supplied data.
@@ -6678,6 +6685,12 @@ class ConductorManager(service.PeriodicService):
                                              error))
 
         config_uuid = imsg_dict['config_applied']
+
+        # Handle reboot completion
+        if imsg_dict.get('reboot_completed', None):
+            threads.append(thread_pool.spawn(self._handle_reboot_completion,
+                                             ihost, config_uuid))
+
         threads.append(thread_pool.spawn(self._update_host_config_applied,
                                          context,
                                          ihost,
@@ -7217,9 +7230,9 @@ class ConductorManager(service.PeriodicService):
         PUPPET_RUNTIME_FILES_DOCKER_CERT_FILE
     ]
 
-    def _check_ready_class_runtime(self, filter_class):
+    def _check_ready_class_runtime(self, filter_class, host_uuids):
         if self._check_runtime_class_apply_in_progress(
-                [filter_class]):
+                [filter_class], host_uuids):
             return False
         return True
 
@@ -7257,31 +7270,33 @@ class ConductorManager(service.PeriodicService):
         check_wait = False
         for filter_class in filter_classes:
             if filter_class == self.PUPPET_RUNTIME_CLASS_PCI:
-                if not self._check_ready_class_runtime(self.PUPPET_RUNTIME_CLASS_PCI):
+                if not self._check_ready_class_runtime(self.PUPPET_RUNTIME_CLASS_PCI, host_uuids):
+                    LOG.info("config type %s filter_mapping %s False (wait) host_uuids %s" %
+                             (CONFIG_APPLY_RUNTIME_MANIFEST, filter_class, host_uuids))
                     return False
             if filter_class == self.PUPPET_RUNTIME_CLASS_ROUTES:
-                if not self._check_ready_class_runtime(self.PUPPET_RUNTIME_CLASS_ROUTES):
-                    LOG.info("config type %s filter_mapping %s False (check)" %
-                             (CONFIG_APPLY_RUNTIME_MANIFEST, filter_class))
+                if not self._check_ready_class_runtime(self.PUPPET_RUNTIME_CLASS_ROUTES, host_uuids):
+                    LOG.info("config type %s filter_mapping %s False (check) host_uuids %s" %
+                             (CONFIG_APPLY_RUNTIME_MANIFEST, filter_class, host_uuids))
                     check_wait = True
             if filter_class == self.PUPPET_RUNTIME_CLASS_DOCKERDISTRIBUTION:
                 if self.check_restoring_apps_in_progress():
-                    LOG.info("config type %s filter_mapping %s False (wait)" %
-                             (CONFIG_APPLY_RUNTIME_MANIFEST, filter_class))
+                    LOG.info("config type %s filter_mapping %s False (wait), host_uuids %s" %
+                             (CONFIG_APPLY_RUNTIME_MANIFEST, filter_class, host_uuids))
                     # This is not dependent on RPC message, so continue to wait
                     return False
             if filter_class == self.PUPPET_RUNTIME_CLASS_OSDS:
-                if not self._check_ready_class_runtime(self.PUPPET_RUNTIME_CLASS_OSDS):
-                    LOG.info("config type %s filter_mapping %s False (wait)" %
-                             (CONFIG_APPLY_RUNTIME_MANIFEST, filter_class))
+                if not self._check_ready_class_runtime(self.PUPPET_RUNTIME_CLASS_OSDS, host_uuids):
+                    LOG.info("config type %s filter_mapping %s False (wait) host_uuids %s" %
+                             (CONFIG_APPLY_RUNTIME_MANIFEST, filter_class, host_uuids))
                     check_wait = True
             if filter_class == self.PUPPET_RUNTIME_CLASS_USERS:
-                if not self._check_ready_class_runtime(self.PUPPET_RUNTIME_CLASS_USERS):
-                    LOG.info("config type %s filter_mapping %s False (check)" %
-                             (CONFIG_APPLY_RUNTIME_MANIFEST, filter_class))
+                if not self._check_ready_class_runtime(self.PUPPET_RUNTIME_CLASS_USERS, host_uuids):
+                    LOG.info("config type %s filter_mapping %s False (check) host_uuids %s" %
+                             (CONFIG_APPLY_RUNTIME_MANIFEST, filter_class, host_uuids))
                     check_wait = True
-            LOG.info("config type %s filter_mapping %s True (continue)" %
-                     (CONFIG_APPLY_RUNTIME_MANIFEST, filter_class))
+            LOG.info("config type %s filter_mapping %s True (continue) host_uuids %s" %
+                     (CONFIG_APPLY_RUNTIME_MANIFEST, filter_class, host_uuids))
 
         if check_wait:
             # Limit the wait time for deferred config for robustness, in the
@@ -7303,11 +7318,11 @@ class ConductorManager(service.PeriodicService):
         for filter_file in filter_files:
             if filter_file in self.PUPPET_FILTER_FILES_RESTORING_APPS:
                 if self.check_restoring_apps_in_progress():
-                    LOG.info("config type %s filter_mapping %s False (wait)" %
-                             (CONFIG_UPDATE_FILE, filter_file))
+                    LOG.info("config type %s filter_mapping %s False (wait) host_uuids %s" %
+                             (CONFIG_UPDATE_FILE, filter_file, host_uuids))
                     return False
-            LOG.info("config type %s filter_mapping %s True (continue)" %
-                     (CONFIG_UPDATE_FILE, filter_file))
+            LOG.info("config type %s filter_mapping %s True (continue) host_uuids %s" %
+                     (CONFIG_UPDATE_FILE, filter_file, host_uuids))
 
         return True
 
@@ -13381,7 +13396,10 @@ class ConductorManager(service.PeriodicService):
                   (ihost_uuid, config_uuid))
         if ihost_uuid in self._host_reboot_config_uuid:
             try:
-                self._host_reboot_config_uuid[ihost_uuid].remove(config_uuid)
+                reboot_info = self._host_reboot_config_uuid[ihost_uuid]
+                if config_uuid == reboot_info['original'] or config_uuid == reboot_info['latest']:
+                    del self._host_reboot_config_uuid[ihost_uuid]
+
             except ValueError:
                 LOG.info("_remove_config_from_reboot_config_list fail"
                          " host:%s config_uuid %s" % (ihost_uuid, config_uuid))
@@ -13391,7 +13409,7 @@ class ConductorManager(service.PeriodicService):
         LOG.info("_clear_config_from_reboot_config_list host:%s", ihost_uuid)
         if ihost_uuid in self._host_reboot_config_uuid:
             try:
-                del self._host_reboot_config_uuid[ihost_uuid][:]
+                del self._host_reboot_config_uuid[ihost_uuid]
             except ValueError:
                 LOG.info("_clear_config_from_reboot_config_list fail"
                          " host: %s", ihost_uuid)
@@ -13446,7 +13464,7 @@ class ConductorManager(service.PeriodicService):
                 return False
         elif target == applied_reboot:
             if ihost_obj.uuid in self._host_reboot_config_uuid:
-                if len(self._host_reboot_config_uuid[ihost_obj.uuid]) == 0:
+                if not self._host_reboot_config_uuid[ihost_obj.uuid]:
                     # There are no further config required for host, update config_target
                     _align_config_target(context, ihost_obj, applied)
                     return False
@@ -13615,12 +13633,23 @@ class ConductorManager(service.PeriodicService):
         def _sync_update_host_config_target(self,
                                             context, ihost_obj, config_uuid):
             if ihost_obj.config_target != config_uuid:
-                # promote the current config to reboot required if a pending
-                # reboot required is still present
-                if (ihost_obj.config_target and
-                        ihost_obj.config_applied != ihost_obj.config_target):
-                    if utils.config_is_reboot_required(ihost_obj.config_target):
-                        config_uuid = self._config_set_reboot_required(config_uuid)
+                # Check if host is in reboot-related task state
+                if ihost_obj.task and ihost_obj.task in [constants.TASK_REBOOTING,
+                                                        constants.TASK_REBOOT_REQUEST]:
+                    LOG.info("Host %s in reboot task state %s, skipping reboot inheritance" %
+                            (ihost_obj.hostname, ihost_obj.task))
+                else:
+                    # promote the current config to reboot required if a pending
+                    # reboot required is still present
+                    if (ihost_obj.config_target and
+                            ihost_obj.config_applied != ihost_obj.config_target):
+                        if cutils.config_is_reboot_required(ihost_obj.config_target):
+                            config_uuid = self._config_set_reboot_required(config_uuid)
+
+                            # Replace latest with inherited in reboot tracking
+                            if ihost_obj.uuid in self._host_reboot_config_uuid:
+                                self._host_reboot_config_uuid[ihost_obj.uuid]['latest'] = config_uuid
+
                 LOG.info("Setting config target of "
                          "host '%s' to '%s'." % (ihost_obj.hostname, config_uuid))
                 ihost_obj.config_target = config_uuid
@@ -13638,10 +13667,16 @@ class ConductorManager(service.PeriodicService):
         @cutils.synchronized(lock_name, external=False)
         def _sync_update_host_config_applied(self,
                                              context, ihost_obj, config_uuid):
-            self._remove_config_from_reboot_config_list(ihost_obj.uuid,
-                    config_uuid)
+            old_target = ihost_obj.config_target
+            old_applied = ihost_obj.config_applied
+
             if ihost_obj.config_applied != config_uuid:
                 ihost_obj.config_applied = config_uuid
+
+                # Auto-align target if system was in sync
+                if old_target == old_applied and config_uuid != old_target:
+                    ihost_obj.config_target = config_uuid
+                    LOG.info("Auto-aligned target for deferred config: %s" % config_uuid)
                 ihost_obj.save(context)
             if cutils.is_initial_config_complete():
                 self._update_alarm_status(context, ihost_obj)
@@ -13715,11 +13750,13 @@ class ConductorManager(service.PeriodicService):
         for host in hosts:
             if host.personality and host.personality in personalities:
                 if reboot:
-                    if host.uuid in self._host_reboot_config_uuid:
-                        self._host_reboot_config_uuid[host.uuid].append(config_uuid)
-                    else:
-                        self._host_reboot_config_uuid[host.uuid] = []
-                        self._host_reboot_config_uuid[host.uuid].append(config_uuid)
+                    if host.uuid not in self._host_reboot_config_uuid:
+                        self._host_reboot_config_uuid[host.uuid] = {}
+                    self._host_reboot_config_uuid[host.uuid] = {
+                        'original': config_uuid,
+                        'latest': config_uuid
+                    }
+
                     if host.uuid == self.host_uuid:
                         # This ensures that the host_reboot_config_uuid tracking
                         # on this controller is aware that a reboot is required
@@ -14017,7 +14054,7 @@ class ConductorManager(service.PeriodicService):
 
         for c, h in self._runtime_class_apply_in_progress:
             if c in classes_list:
-                if not host_uuids or next((host for host in host_uuids if host in h)):
+                if not host_uuids or next((host for host in host_uuids if host in h), None):
                     LOG.info("config runtime in progress (%s, %s)" % (c, h))
                     return True
         return False
@@ -14063,6 +14100,18 @@ class ConductorManager(service.PeriodicService):
                 config = drc
                 break
         return config
+
+    def _has_host_specific_deferred_config(self, host_uuids):
+        if not self._host_deferred_runtime_config or not host_uuids:
+            return False
+
+        host_uuids = [host_uuids] if isinstance(host_uuids, str) else host_uuids
+
+        for deferred_config in self._host_deferred_runtime_config:
+            deferred_hosts = deferred_config['config_dict'].get('host_uuids', [])
+            if set(host_uuids) & set(deferred_hosts):
+                return True
+        return False
 
     def _try_config_update_puppet(
             self, config_uuid, config_dict,
@@ -14326,7 +14375,10 @@ class ConductorManager(service.PeriodicService):
         # make this one a deferred config as well.
         # This will prevent newer configs from being applied
         # before older deferred configs.
-        elif deferred_config is None and self._host_deferred_runtime_config and not skip_deferred_manifests:
+        elif (deferred_config is None and
+              self._has_host_specific_deferred_config(host_uuids) and
+              not skip_deferred_manifests):
+
             self._update_host_deferred_runtime_config(
                 CONFIG_APPLY_RUNTIME_MANIFEST,
                 config_uuid,
