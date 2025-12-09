@@ -76,6 +76,7 @@ LABEL_DISABLE_NOHZ_FULL = 'disable-nohz-full'
 LABEL_OPENVSWITCH = 'openvswitch'
 LABEL_REMOTE_STORAGE = 'remote-storage'
 LABEL_SRIOVDP = 'sriovdp'
+LABEL_SRIOVDP_ISRDMA = 'sriovdp-isrdma'
 LABEL_SRIOVDP_VHOSTNET = 'sriovdp-vhostnet'
 
 # Label values
