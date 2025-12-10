@@ -3970,25 +3970,29 @@ class Connection(api.Connection):
     def ptp_interfaces_get_list(self, host=None, interface=None,
                                 ptp_instance=None, limit=None, marker=None,
                                 sort_key=None, sort_dir=None):
-        query = model_query(models.PtpInterfaces)
-        if ptp_instance is not None:
-            ptp_instance_obj = self.ptp_instance_get(ptp_instance)
-            query = query.filter_by(ptp_instance_id=ptp_instance_obj.id)
-            if interface is not None:
+        # The following query in combination with _paginate_query can lead to
+        # sessions stuck in "idle in transaction", so we explicitly define
+        # the session here
+        with _session_for_read() as session:
+            query = model_query(models.PtpInterfaces, session=session)
+            if ptp_instance is not None:
+                ptp_instance_obj = self.ptp_instance_get(ptp_instance)
+                query = query.filter_by(ptp_instance_id=ptp_instance_obj.id)
+                if interface is not None:
+                    interface_obj = self.iinterface_get(interface)
+                    query = query.join(models.PtpInterfaceMaps).filter(
+                        models.PtpInterfaceMaps.interface_id == interface_obj.id)
+            elif interface is not None:
                 interface_obj = self.iinterface_get(interface)
                 query = query.join(models.PtpInterfaceMaps).filter(
                     models.PtpInterfaceMaps.interface_id == interface_obj.id)
-        elif interface is not None:
-            interface_obj = self.iinterface_get(interface)
-            query = query.join(models.PtpInterfaceMaps).filter(
-                models.PtpInterfaceMaps.interface_id == interface_obj.id)
-        elif host is not None:
-            host_obj = self.ihost_get(host)
-            query = query.join(models.PtpInterfaceMaps).join(
-                models.Interfaces).filter(
-                    models.Interfaces.forihostid == host_obj.id)
-        return _paginate_query(models.PtpInterfaces, limit, marker,
-                               sort_key, sort_dir, query)
+            elif host is not None:
+                host_obj = self.ihost_get(host)
+                query = query.join(models.PtpInterfaceMaps).join(
+                    models.Interfaces).filter(
+                        models.Interfaces.forihostid == host_obj.id)
+            return _paginate_query(models.PtpInterfaces, limit, marker,
+                                   sort_key, sort_dir, query)
 
     def ptp_interface_parameter_add(self, ptp_interface, ptp_parameter):
         return self._ptp_parameter_add(ptp_interface, ptp_parameter)
