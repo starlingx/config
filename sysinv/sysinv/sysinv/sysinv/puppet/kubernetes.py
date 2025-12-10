@@ -863,11 +863,14 @@ class KubernetesPuppet(base.BasePuppet):
 
         labels = self.dbapi.label_get_by_host(host.uuid)
         need_vhostnet = False
-        for l in labels:
-            if (constants.SRIOVDP_VHOSTNET_LABEL ==
-                    str(l.label_key) + '=' + str(l.label_value)):
-                need_vhostnet = True
-                break
+        is_rdma_enabled = True  # Default for backward compatibility
+
+        labels_set = {f"{l.label_key}={l.label_value}" for l in labels}
+
+        need_vhostnet = constants.SRIOVDP_VHOSTNET_LABEL in labels_set
+
+        # RDMA is enabled by default, just disabled if sriovdp-isrdma=disabled is present
+        is_rdma_enabled = constants.SRIOVDP_ISRDMA_DISABLED_LABEL not in labels_set
 
         resources = {}
         interfaces = self._get_network_interfaces_by_class(ifclass)
@@ -959,7 +962,8 @@ class KubernetesPuppet(base.BasePuppet):
                     if port['pciaddr'] not in pci_addr_list:
                         pci_addr_list.append(port['pciaddr'])
 
-                if interface.is_a_mellanox_device(self.context, iface):
+                # Default isRdma=False when parameter is absent from selectors
+                if is_rdma_enabled and interface.is_a_mellanox_device(self.context, iface):
                     resource['selectors']['isRdma'] = True
 
                 if need_vhostnet:

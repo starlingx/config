@@ -356,6 +356,7 @@ def _check_host_locked(host, host_labels):
              common.LABEL_OPENVSWITCH,
              common.LABEL_REMOTE_STORAGE,
              common.LABEL_SRIOVDP,
+             common.LABEL_SRIOVDP_ISRDMA,
              common.LABEL_SRIOVDP_VHOSTNET,
              constants.KUBE_TOPOLOGY_MANAGER_LABEL,
              constants.KUBE_CPU_MANAGER_LABEL,

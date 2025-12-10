@@ -1,4 +1,4 @@
-# Copyright (c) 2020-2024 Wind River Systems, Inc.
+# Copyright (c) 2020-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -130,7 +130,7 @@ class SriovdpTestCase(test_interface.InterfaceTestCaseMixin, dbbase.BaseHostTest
         return config
 
     def _get_sriovdp_iface_config(self, vendor, device, driver, ifclass, pfName, pciAddress,
-                                  datanetwork, vhostnet):
+                                  datanetwork, vhostnet, isrdma):
         config = [{
             "resourceName": '{}_net_{}'.format(ifclass, datanetwork).replace("-", "_"),
             "selectors": {
@@ -141,7 +141,7 @@ class SriovdpTestCase(test_interface.InterfaceTestCaseMixin, dbbase.BaseHostTest
                 "pciAddresses": [] if pciAddress is None else ["{}".format(pciAddress)]
             }
         }]
-        if interface.is_a_mellanox_device(self.context, self.iface):
+        if isrdma and interface.is_a_mellanox_device(self.context, self.iface):
             config[0]['selectors']['isRdma'] = True
         if vhostnet:
             config[0]['selectors']['needVhostNet'] = True
@@ -152,12 +152,12 @@ class SriovdpTestCase(test_interface.InterfaceTestCaseMixin, dbbase.BaseHostTest
 
     def _get_sriovdp_config(self, vendor, device,
                             driver, ifclass='pci-sriov', pfName=None, pciAddress=None,
-                            datanetwork=None, vhostnet=False):
+                            datanetwork=None, vhostnet=False, isrdma=True):
 
         iface_config = []
         if datanetwork:
             iface_config = self._get_sriovdp_iface_config(
-                vendor, device, driver, ifclass, pfName, pciAddress, datanetwork, vhostnet)
+                vendor, device, driver, ifclass, pfName, pciAddress, datanetwork, vhostnet, isrdma)
 
         fpga_config = []
         if device == dconstants.PCI_DEVICE_ID_FPGA_INTEL_5GNR_FEC_VF:
@@ -238,6 +238,112 @@ class SriovdpTestCase(test_interface.InterfaceTestCaseMixin, dbbase.BaseHostTest
             pfName="%s#1,2" % self.port['name'],
             datanetwork=self.datanetwork['name']
         )
+        self.assertEqual(expected, actual)
+
+    @mock.patch.object(utils, 'get_sriov_vf_index')
+    def test_generate_sriovdp_config_mlx_with_isrdma_label_enabled(self, mock_get_sriov_vf_index):
+        mock_get_sriov_vf_index.side_effect = [1, 2]
+
+        isrdma_key = constants.SRIOVDP_ISRDMA_DISABLED_LABEL.split('=')[0]
+        isrdma_val = 'enabled'
+        dbutils.create_test_label(
+                    host_id=self.host.id,
+                    label_key=isrdma_key,
+                    label_value=isrdma_val)
+
+        self._setup_iface_configuration()
+        test_config = {
+            'pf_vendor': 'Mellanox Technologies [15b3]',
+            'pf_device': 'MT2892 Family [ConnectX-6 Dx] [101d]',
+            'pf_driver': 'mlx5_core,mlx5_core.sf,mlx5_core.eth-rep,mlx5_core.eth',
+            'vf_device': '101e',
+            'vf_driver': 'mlx5_core'
+        }
+
+        self._update_sriov_port_config(test_config)
+
+        actual = self._generate_sriovdp_config()
+        expected = self._get_sriovdp_config(
+            self._get_pcidp_vendor_id(self.port),
+            test_config['vf_device'],
+            test_config['vf_driver'],
+            pfName="%s#1,2" % self.port['name'],
+            datanetwork=self.datanetwork['name'],
+            vhostnet=False,
+            isrdma=True
+        )
+        mock_get_sriov_vf_index.assert_called()
+        self.assertEqual(expected, actual)
+
+    @mock.patch.object(utils, 'get_sriov_vf_index')
+    def test_generate_sriovdp_config_mlx_with_isrdma_label_disabled(self, mock_get_sriov_vf_index):
+        mock_get_sriov_vf_index.side_effect = [1, 2]
+
+        isrdma_key = constants.SRIOVDP_ISRDMA_DISABLED_LABEL.split('=')[0]
+        isrdma_val = constants.SRIOVDP_ISRDMA_DISABLED_LABEL.split('=')[1]
+        dbutils.create_test_label(
+                    host_id=self.host.id,
+                    label_key=isrdma_key,
+                    label_value=isrdma_val)
+
+        self._setup_iface_configuration()
+        test_config = {
+            'pf_vendor': 'Mellanox Technologies [15b3]',
+            'pf_device': 'MT2892 Family [ConnectX-6 Dx] [101d]',
+            'pf_driver': 'mlx5_core,mlx5_core.sf,mlx5_core.eth-rep,mlx5_core.eth',
+            'vf_device': '101e',
+            'vf_driver': 'mlx5_core'
+        }
+
+        self._update_sriov_port_config(test_config)
+
+        actual = self._generate_sriovdp_config()
+        expected = self._get_sriovdp_config(
+            self._get_pcidp_vendor_id(self.port),
+            test_config['vf_device'],
+            test_config['vf_driver'],
+            pfName="%s#1,2" % self.port['name'],
+            datanetwork=self.datanetwork['name'],
+            vhostnet=False,
+            isrdma=False
+        )
+        mock_get_sriov_vf_index.assert_called()
+        self.assertEqual(expected, actual)
+
+    @mock.patch.object(utils, 'get_sriov_vf_index')
+    def test_generate_sriovdp_config_with_isrdma_enabled(self, mock_get_sriov_vf_index):
+        mock_get_sriov_vf_index.side_effect = [1, 2]
+
+        isrdma_key = constants.SRIOVDP_ISRDMA_DISABLED_LABEL.split('=')[0]
+        isrdma_val = 'enabled'
+        dbutils.create_test_label(
+                    host_id=self.host.id,
+                    label_key=isrdma_key,
+                    label_value=isrdma_val)
+
+        self._setup_iface_configuration()
+        test_config = {
+            'pf_vendor': 'Intel Corporation [8086]',
+            'pf_device': '10fd',
+            'pf_driver': 'ixgbe',
+            'vf_device': '10ed',
+            'vf_driver': 'ixgbevf'
+        }
+
+        self._update_sriov_port_config(test_config)
+
+        actual = self._generate_sriovdp_config()
+        # since the NIC is not Mellanox, the isRdma should be disabled
+        expected = self._get_sriovdp_config(
+            self._get_pcidp_vendor_id(self.port),
+            test_config['vf_device'],
+            test_config['vf_driver'],
+            pfName="%s#1,2" % self.port['name'],
+            datanetwork=self.datanetwork['name'],
+            vhostnet=False,
+            isrdma=False
+        )
+        mock_get_sriov_vf_index.assert_called()
         self.assertEqual(expected, actual)
 
     @mock.patch.object(utils, 'get_sriov_vf_index')
