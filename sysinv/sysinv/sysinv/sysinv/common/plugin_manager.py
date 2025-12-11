@@ -315,8 +315,8 @@ class PluginManager:  # noqa: H238
                         f"PluginManager: Failed to create the {app_name} plugin directory. \
                         Error: {e}"
                     )
-                site.addsitedir(sync_plugins_dir)
-                self.load_plugins_from_path(plugin_path=sync_plugins_dir, args=args)
+            site.addsitedir(sync_plugins_dir)
+            self.load_plugins_from_path(plugin_path=sync_plugins_dir, args=args)
 
     def deactivate_plugins(self, app_name, app_version, has_plugin_path, sync_plugins_dir):
         """
@@ -465,6 +465,10 @@ class PluginManager:  # noqa: H238
         plugin = self._plugins[namespace].get(plugin_name)
 
         if not plugin and fallback_to_generic:
+            LOG.info(
+                f"PluginManager: {plugin_name} not found in namespace {namespace}. "
+                "Returning generic plugin."
+            )
             plugin = self._plugins[namespace]['generic']
         return plugin
 
