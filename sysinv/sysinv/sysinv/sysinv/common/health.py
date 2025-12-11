@@ -20,10 +20,7 @@ from sysinv.common import usm_service
 from sysinv.common.fm import fmclient
 from sysinv.common.storage_backend_conf import StorageBackendConfig
 from sysinv.cert_alarm.audit import CertAlarmAudit
-from sysinv.api.controllers.v1 import patch_api
 from sysinv.api.controllers.v1 import vim_api
-
-import cgcs_patch.constants as patch_constants
 
 LOG = log.getLogger(__name__)
 
@@ -177,29 +174,25 @@ class Health(object):
             patches = []
         try:
             system = self._dbapi.isystem_get_one()
-            response = patch_api.patch_query(
-                token=None,
-                timeout=constants.PATCH_DEFAULT_TIMEOUT_IN_SECS,
-                region_name=system.region_name
-            )
+            response = usm_service.get_release_list(
+                    region_name=system.region_name,
+                    timeout=constants.PATCH_DEFAULT_TIMEOUT_IN_SECS)
         except Exception as e:
             LOG.error(e)
             raise exception.SysinvException(_(
-                "Error while querying sw-patch-controller for the "
+                "Error while querying patch-controller for the "
                 "state of the patch(es)."))
-        query_patches = response['pd']
         applied_patches = []
-        for patch_key in query_patches:
-            patch = query_patches[patch_key]
-            patchstate = patch.get('patchstate', None)
-            if patchstate == patch_constants.APPLIED or \
-                    patchstate == patch_constants.COMMITTED:
-                applied_patches.append(patch_key)
+        for patch_set in response:
+            patchstate = patch_set['state']
+            if patchstate == constants.DEPLOYED or \
+                    patchstate == constants.COMMITTED:
+                applied_patches.append(patch_set['release_id'])
 
         missing_patches = []
         for required_patch in patches:
-            if required_patch not in applied_patches:
-                missing_patches.append(required_patch)
+            if required_patch['release_id'] not in applied_patches:
+                missing_patches.append(required_patch['release_id'])
 
         success = not missing_patches
         return success, missing_patches

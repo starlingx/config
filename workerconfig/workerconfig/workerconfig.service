@@ -1,7 +1,6 @@
 [Unit]
 Description=workerconfig service
 After=syslog.target network.service remote-fs.target
-After=sw-patch.service
 After=affine-platform.sh.service
 After=opt-platform.service
 After=sysinv-agent.service
