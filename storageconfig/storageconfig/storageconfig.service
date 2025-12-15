@@ -1,6 +1,6 @@
 [Unit]
 Description=storageconfig service
-After=syslog.target network.target remote-fs.target
+After=syslog.target network.target remote-fs.target sw-patch.service
 After=opt-platform.service sysinv-agent.service
 After=network-online.target
 Before=config.service

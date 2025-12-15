@@ -140,6 +140,12 @@ class TestKubeRootCAUpdate(base.FunctionalTest):
         of systems in different states of health.
         """
 
+        # patch_query_hosts
+        p = mock.patch('sysinv.api.controllers.v1.patch_api.patch_query_hosts')
+        self.mock_patch_query_hosts = p.start()
+        self.mock_patch_query_hosts.return_value = self._patch_current()
+        self.addCleanup(p.stop)
+
         # _check_alarms calls fmclient alarms.list
         self.fake_fm_client = FakeFmClient()
         p = mock.patch('sysinv.common.health.fmclient')

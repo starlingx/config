@@ -511,6 +511,29 @@ def _list_storage(cc, host):
     utils.print_list(ipvs, fields, field_labels, sortby=0)
 
 
+@utils.arg('hostnameorid',
+           metavar='<hostname or id>',
+           help="Name or ID of host")
+def do_host_patch_reboot(cc, args):
+    """Command has been deprecated."""
+    try:
+        ihost = cc.ihost.get(args.hostnameorid)
+    except exc.HTTPNotFound:
+        raise exc.CommandError('Host not found: %s' % args.hostnameorid)
+
+    print("The host-patch-reboot command has been deprecated.")
+    print("Please use the following procedure:")
+    print("1. Lock the node:")
+    print("     system host-lock %s" % ihost.hostname)
+    print("2. Issue patch install request:")
+    print("     sudo sw-patch host-install %s" % ihost.hostname)
+    print("   Or to issue non-blocking requests for parallel install:")
+    print("     sudo sw-patch host-install-async %s" % ihost.hostname)
+    print("     sudo sw-patch query-hosts")
+    print("3. Unlock node once install completes:")
+    print("     system host-unlock %s" % ihost.hostname)
+
+
 @utils.arg('--filename',
            help="The full file path to store the host file. Default './hosts.xml'")
 def do_host_bulk_export(cc, args):

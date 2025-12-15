@@ -2125,6 +2125,8 @@ class AppOperator(object):
         self._update_app_status(new_app, constants.APP_INACTIVE_STATE)
 
         try:
+            self._utils._patch_report_app_dependencies(
+                new_app.name + '-' + new_app.version)
             self._dbapi.kube_app_destroy(new_app.name,
                                          version=new_app.version,
                                          inactive=True)
@@ -2372,6 +2374,9 @@ class AppOperator(object):
 
                 self.download_images(app)
 
+            if app.patch_dependencies:
+                self._utils._patch_report_app_dependencies(
+                    app.name + '-' + app.version, app.patch_dependencies)
             self._create_app_releases_version(app.name, app.charts)
 
             # Retrieve the application metadata from the metadata file
@@ -3368,6 +3373,8 @@ class AppOperator(object):
             self._remove_app_charts_from_repo(from_app._kube_app.id,
                                               charts_to_delete)
             self._cleanup(from_app, app_dir=False)
+            self._utils._patch_report_app_dependencies(
+                from_app.name + '-' + from_app.version)
 
             # The initial operation for to_app is successful
             if operation_successful:
@@ -3656,6 +3663,7 @@ class AppOperator(object):
             self._dbapi.kube_app_destroy(app.name)
             app.charts = self._get_list_of_charts(app, include_disabled=True)
             self._cleanup(app)
+            self._utils._patch_report_app_dependencies(app.name + '-' + app.version)
             # One last check of app alarm, should be no-op unless the
             # user deletes the application following an upload failure.
             self._clear_app_alarm(app.name)
