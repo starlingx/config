@@ -709,13 +709,13 @@ class NetworkingPuppet(base.BasePuppet):
         default_monitoring_parameters = {
             'ptp4l': {
                 'holdover_seconds': constants.PTP_MONITORING_HOLDOVER_SECONDS,
-                'offset_threshold_minor_msec': constants.PTP_MONITORING_OFFSET_THRESHOLD_MINOR_MSEC,
-                'offset_threshold_major_msec': constants.PTP_MONITORING_OFFSET_THRESHOLD_MAJOR_MSEC
+                'offset_threshold_minor_nsec': constants.PTP_MONITORING_OFFSET_THRESHOLD_MINOR_NSEC,
+                'offset_threshold_major_nsec': constants.PTP_MONITORING_OFFSET_THRESHOLD_MAJOR_NSEC
             },
             'phc2sys': {
                 'holdover_seconds': constants.PTP_MONITORING_HOLDOVER_SECONDS,
-                'offset_threshold_minor_msec': constants.PTP_MONITORING_OFFSET_THRESHOLD_MINOR_MSEC,
-                'offset_threshold_major_msec': constants.PTP_MONITORING_OFFSET_THRESHOLD_MAJOR_MSEC
+                'offset_threshold_minor_nsec': constants.PTP_MONITORING_OFFSET_THRESHOLD_MINOR_NSEC,
+                'offset_threshold_major_nsec': constants.PTP_MONITORING_OFFSET_THRESHOLD_MAJOR_NSEC
             },
             'ts2phc': {},   # No default monitoring parameters for ts2phc
             'clock': {},    # No default monitoring parameters for clock
