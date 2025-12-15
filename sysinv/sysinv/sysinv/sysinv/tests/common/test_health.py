@@ -125,6 +125,17 @@ class TestHealth(dbbase.BaseHostTestCase):
     def setUp(self):
         super(TestHealth, self).setUp()
 
+        # Mock the patching API
+        self.mock_patch_query_hosts_result = None
+
+        def mock_patch_query_hosts(token, timeout, region_name):
+            return self.mock_patch_query_hosts_result
+        self.mocked_patch_query_hosts = mock.patch(
+            'sysinv.api.controllers.v1.patch_api.patch_query_hosts',
+            mock_patch_query_hosts)
+        self.mocked_patch_query_hosts.start()
+        self.addCleanup(self.mocked_patch_query_hosts.stop)
+
         # Mock the KubeOperator
         self.kube_get_nodes_result = None
 
