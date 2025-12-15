@@ -18,6 +18,7 @@ import stat
 import wsme
 
 from oslo_log import log
+from oslo_utils import uuidutils
 from urllib.parse import urlparse
 from sysinv._i18n import _
 from sysinv.common import constants
@@ -958,6 +959,70 @@ def get_k8s_configmap_name(parameter):
     return parameter['section'].replace('_', '-') + '---' + parameter['name']
 
 
+def get_service_parameter_k8s_application_audit(dbapi):
+    """
+    Retrieves the value of the Kubernetes application audit service parameter from the database.
+
+    If the parameter does not exist, it creates the parameter with the default enabled value
+    and returns the enabled constant.
+
+    Args:
+        dbapi: Database API object.
+
+    Returns:
+        str: The value of the Kubernetes application audit service parameter.
+    """
+
+    try:
+        service_parameter = dbapi.service_parameter_get_one(
+            constants.SERVICE_TYPE_KUBERNETES,
+            constants.SERVICE_PARAM_SECTION_KUBERNETES_CONFIG,
+            constants.SERVICE_PARAM_NAME_K8S_APPLICATION_AUDIT)
+        LOG.debug("K8s application audit service parameter found with value: "
+                  f"{service_parameter.value}")
+        return (
+            service_parameter.value
+            if service_parameter.value == constants.SERVICE_PARAM_ENABLED
+            else constants.SERVICE_PARAM_DISABLED
+        )
+    except exception.NotFound:
+        LOG.info("K8s application audit service parameter not found. Creating with "
+                  "default enabled value.")
+        params = {
+            'service_param': constants.SERVICE_TYPE_KUBERNETES,
+            'param_section': constants.SERVICE_PARAM_SECTION_KUBERNETES_CONFIG,
+            'param_name': constants.SERVICE_PARAM_NAME_K8S_APPLICATION_AUDIT,
+            'value': constants.SERVICE_PARAM_ENABLED,
+        }
+        create_service_parameter(
+            dbapi, params
+        )
+        return constants.SERVICE_PARAM_ENABLED
+
+
+def create_service_parameter(dbapi, params):
+    """
+    Creates service parameter in the database.
+
+    Args:
+        dbapi: Database API object.
+        value: The value of the service parameter.
+    """
+
+    try:
+        dbapi.service_parameter_create({
+            'uuid': uuidutils.generate_uuid(),
+            'service': params['service_param'],
+            'section': params['param_section'],
+            'name': params['param_name'],
+            'value': params['value'],
+        })
+        LOG.info(f"Service parameter '{params}'created successfully.")
+    except Exception as e:
+        LOG.error(f"Failed to create k8s application audit service parameter: {e}")
+        raise
+
+
 PLATFORM_CONFIG_PARAMETER_OPTIONAL = [
     constants.SERVICE_PARAM_NAME_PLAT_CONFIG_VIRTUAL,
     constants.SERVICE_PARAM_NAME_PLATFORM_MAX_CPU_PERCENTAGE,
@@ -1508,7 +1573,8 @@ KUBERNETES_CERTIFICATES_PARAMETER_DATA_FORMAT = {
 
 KUBERNETES_CONFIG_PARAMETER_OPTIONAL = [
     constants.SERVICE_PARAM_NAME_KUBERNETES_POD_MAX_PIDS,
-    constants.SERVICE_PARAM_NAME_KUBERNETES_AUTOMATIC_RECOVERY
+    constants.SERVICE_PARAM_NAME_KUBERNETES_AUTOMATIC_RECOVERY,
+    constants.SERVICE_PARAM_NAME_K8S_APPLICATION_AUDIT
 ]
 
 KUBERNETES_CONFIG_PARAMETER_VALIDATOR = {

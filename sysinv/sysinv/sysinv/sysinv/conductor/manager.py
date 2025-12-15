@@ -117,6 +117,7 @@ from sysinv.common import kubernetes
 from sysinv.common import openstack_config_endpoints
 from sysinv.common import retrying
 from sysinv.common import service
+from sysinv.common import service_parameter
 from sysinv.common import usm_service as usm_service
 from sysinv.common import utils as cutils
 from sysinv.common.image_download import ContainerImageDownloader
@@ -194,10 +195,7 @@ app_framework_opts = [
     cfg.BoolOpt('missing_auto_update',
         default=False,
         help='Auto update an application if not specified in the '
-             'application metadata'),
-    cfg.BoolOpt('skip_k8s_application_audit',
-        default=False,
-        help='Skip application audit operation if specified as True'),
+             'application metadata')
 ]
 
 CONF = cfg.CONF
@@ -8666,10 +8664,15 @@ class ConductorManager(service.PeriodicService):
 
         LOG.debug("Periodic Task: _k8s_application_audit: Starting")
 
-        skip_k8s_application_audit = CONF.app_framework.skip_k8s_application_audit
-        if skip_k8s_application_audit:
-            LOG.info("Skipping k8s_application_audit since "
-                "skip_k8s_application_audit config option is set to true.")
+        # Retrieve the 'k8s_application_audit' service parameter.
+        # If it does not exist, create it and set its status to enabled.
+        service_parameter_value = \
+            service_parameter.get_service_parameter_k8s_application_audit(self.dbapi)
+
+        # Skip audit if the service parameter is set to 'disabled'.
+        if service_parameter_value == 'disabled':
+            LOG.info("Skipping _k8s_application_audit, "
+                     "service parameter k8s_application_audit is disabled.")
             return
 
         # Make sure that the active controller is unlocked/enabled. Only
