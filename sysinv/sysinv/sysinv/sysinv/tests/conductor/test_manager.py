@@ -31,6 +31,7 @@ import uuid
 import threading
 from time import sleep
 
+from docker.errors import ImageNotFound
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
 
@@ -1891,6 +1892,10 @@ class ManagerTestCase(base.DbTestCase):
         p.start()
         self.addCleanup(p.stop)
 
+        p = mock.patch("docker.APIClient.inspect_image", mock.MagicMock())
+        p.start()
+        self.addCleanup(p.stop)
+
         mock_docker_apiclient_tag = mock.MagicMock()
         p = mock.patch('docker.APIClient.tag', mock_docker_apiclient_tag)
         p.start()
@@ -2085,6 +2090,136 @@ class ManagerTestCase(base.DbTestCase):
         mock_docker_apiclient_remove_image.assert_not_called()
         mock_pull_image_to_crictl.assert_not_called()
 
+    def test_download_images_from_upstream_to_local_reg_and_crictl_failure_image_not_downloaded(
+        self,
+    ):
+        """Test download_images_from_upstream_to_local_reg_and_crictl: docker pull with image not downloaded
+
+        The docker pull will finish without exception, but the image won't exist in the local repository.
+        """
+
+        images_to_be_downloaded = ["fake_image1", "fake_image2", "fake_image3"]
+        fake_local_registry_auth = {
+            "username": "fake_username",
+            "password": "fake_password",
+        }
+        fake_registries = {"fake_registries": "fake_registries"}
+        get_img_tag_with_registry_output = (
+            "fake_target_image",
+            fake_local_registry_auth,
+        )
+
+        mock_get_local_docker_registry_auth = mock.MagicMock()
+        p = mock.patch(
+            "sysinv.common.utils.get_local_docker_registry_auth",
+            mock_get_local_docker_registry_auth,
+        )
+        p.start().return_value = {
+            "username": "fake_username",
+            "password": "fake_password",
+        }
+        self.addCleanup(p.stop)
+
+        mock_retrieve_specified_registries = mock.MagicMock()
+        p = mock.patch(
+            "sysinv.conductor.kube_app.DockerHelper.retrieve_specified_registries",
+            mock_retrieve_specified_registries,
+        )
+        p.start().return_value = fake_registries
+        self.addCleanup(p.stop)
+
+        mock_get_crictl_image_list = mock.MagicMock()
+        p = mock.patch(
+            "sysinv.common.containers.get_crictl_image_list", mock_get_crictl_image_list
+        )
+        p.start().side_effect = exception.SysinvException("Fake Error")
+        self.addCleanup(p.stop)
+
+        mock_get_img_tag_with_registry = mock.MagicMock()
+        p = mock.patch(
+            "sysinv.conductor.kube_app.DockerHelper._get_img_tag_with_registry",
+            mock_get_img_tag_with_registry,
+        )
+        p.start().return_value = get_img_tag_with_registry_output
+        self.addCleanup(p.stop)
+
+        p = mock.patch(
+            "sysinv.conductor.manager.ConductorManager.docker_registry_image_list",
+            mock.MagicMock(),
+        )
+        p.start().return_value = []
+        self.addCleanup(p.stop)
+
+        mock_docker_apiclient_pull = mock.MagicMock()
+        p = mock.patch("docker.APIClient.pull", mock_docker_apiclient_pull)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_docker_apiclient_inspect_image = mock.MagicMock()
+        p = mock.patch(
+            "docker.APIClient.inspect_image", mock_docker_apiclient_inspect_image
+        )
+        p.start().side_effect = ImageNotFound("404 Client Error: Not Found")
+        self.addCleanup(p.stop)
+
+        mock_docker_apiclient_tag = mock.MagicMock()
+        p = mock.patch("docker.APIClient.tag", mock_docker_apiclient_tag)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_docker_apiclient_push = mock.MagicMock()
+        p = mock.patch("docker.APIClient.push", mock_docker_apiclient_push)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_docker_apiclient_inspect = mock.MagicMock()
+        p = mock.patch(
+            "docker.APIClient.inspect_distribution", mock_docker_apiclient_inspect
+        )
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_docker_apiclient_remove_image = mock.MagicMock()
+        p = mock.patch(
+            "docker.APIClient.remove_image", mock_docker_apiclient_remove_image
+        )
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_pull_image_to_crictl = mock.MagicMock()
+        p = mock.patch(
+            "sysinv.common.containers.pull_image_to_crictl", mock_pull_image_to_crictl
+        )
+        p.start()
+        self.addCleanup(p.stop)
+
+        result = self.service._image_downloader.download_images_from_upstream_to_local_reg_and_crictl(
+            images_to_be_downloaded
+        )
+
+        # Assertions start here
+        # Assert Main Result
+        self.assertFalse(result)
+
+        # Assert mock method calls
+        mock_get_local_docker_registry_auth.assert_called_once()
+        mock_retrieve_specified_registries.assert_called_once()
+        mock_get_crictl_image_list.assert_called_once()
+
+        # Assert Retries
+        self.assertEqual(
+            mock_get_img_tag_with_registry.call_count, 5 * len(images_to_be_downloaded)
+        )
+        self.assertEqual(
+            mock_docker_apiclient_pull.call_count, 5 * len(images_to_be_downloaded)
+        )
+
+        mock_docker_apiclient_tag.assert_not_called()
+        mock_docker_apiclient_push.assert_not_called()
+        mock_docker_apiclient_inspect.assert_not_called()
+        mock_docker_apiclient_remove_image.assert_not_called()
+        mock_pull_image_to_crictl.assert_not_called()
+
     def test_download_images_from_upstream_to_local_reg_and_crictl_failure_docker_push_fail(self):
         """Test download_images_from_upstream_to_local_reg_and_crictl: docker push failed
 
@@ -2127,6 +2262,10 @@ class ManagerTestCase(base.DbTestCase):
 
         mock_docker_apiclient_pull = mock.MagicMock()
         p = mock.patch('docker.APIClient.pull', mock_docker_apiclient_pull)
+        p.start()
+        self.addCleanup(p.stop)
+
+        p = mock.patch("docker.APIClient.inspect_image", mock.MagicMock())
         p.start()
         self.addCleanup(p.stop)
 
@@ -2238,6 +2377,10 @@ class ManagerTestCase(base.DbTestCase):
 
         mock_docker_apiclient_pull = mock.MagicMock()
         p = mock.patch('docker.APIClient.pull', mock_docker_apiclient_pull)
+        p.start()
+        self.addCleanup(p.stop)
+
+        p = mock.patch("docker.APIClient.inspect_image", mock.MagicMock())
         p.start()
         self.addCleanup(p.stop)
 
@@ -2362,6 +2505,10 @@ class ManagerTestCase(base.DbTestCase):
 
         mock_docker_apiclient_pull = mock.MagicMock()
         p = mock.patch('docker.APIClient.pull', mock_docker_apiclient_pull)
+        p.start()
+        self.addCleanup(p.stop)
+
+        p = mock.patch("docker.APIClient.inspect_image", mock.MagicMock())
         p.start()
         self.addCleanup(p.stop)
 
