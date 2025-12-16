@@ -30,8 +30,6 @@ class DCOrchPuppet(openstack.OpenstackBasePuppet):
     CINDER_SERVICE_PATH_V2 = 'v2/%(tenant_id)s'
     CINDER_SERVICE_PATH_V3 = 'v3/%(tenant_id)s'
     CINDER_SERVICE_PORT = 28776
-    PATCHING_SERVICE_PORT = 25491
-    PATCHING_SERVICE_PATH = ''
     # why are these not using the values defined in the constants file
     USM_SERVICE_PORT = 25497
     USM_SERVICE_PATH = ''
@@ -95,9 +93,6 @@ class DCOrchPuppet(openstack.OpenstackBasePuppet):
             'dcorch::keystone::auth::cinder_proxy_internal_url_v3':
                 self.get_proxy_internal_url(self.CINDER_SERVICE_PORT,
                                             self.CINDER_SERVICE_PATH_V3),
-            'dcorch::keystone::auth::patching_proxy_internal_url':
-                self.get_proxy_internal_url(self.PATCHING_SERVICE_PORT,
-                                            self.PATCHING_SERVICE_PATH),
             'dcorch::keystone::auth::usm_proxy_internal_url':
                 self.get_proxy_internal_url(self.USM_SERVICE_PORT,
                                             self.USM_SERVICE_PATH),
@@ -123,9 +118,6 @@ class DCOrchPuppet(openstack.OpenstackBasePuppet):
             'dcorch::keystone::auth::cinder_proxy_public_url_v3':
                 self.get_proxy_public_url(self.CINDER_SERVICE_PORT,
                                           self.CINDER_SERVICE_PATH_V3),
-            'dcorch::keystone::auth::patching_proxy_public_url':
-                self.get_proxy_public_url(self.PATCHING_SERVICE_PORT,
-                                          self.PATCHING_SERVICE_PATH),
             'dcorch::keystone::auth::usm_proxy_public_url':
                 self.get_proxy_public_url(self.USM_SERVICE_PORT,
                                           self.USM_SERVICE_PATH),
@@ -142,9 +134,6 @@ class DCOrchPuppet(openstack.OpenstackBasePuppet):
             'dcorch::keystone::auth::identity_proxy_admin_url':
                 self.get_proxy_admin_url(self.IDENTITY_SERVICE_PORT,
                                          self.IDENTITY_SERVICE_PATH),
-            'dcorch::keystone::auth::patching_proxy_admin_url':
-                self.get_proxy_admin_url(self.PATCHING_SERVICE_PORT,
-                                         self.PATCHING_SERVICE_PATH),
             'dcorch::keystone::auth::usm_proxy_admin_url':
                 self.get_proxy_admin_url(self.USM_SERVICE_PORT,
                                          self.USM_SERVICE_PATH),

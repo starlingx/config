@@ -143,34 +143,6 @@
       {
         "endpoints": [
           {
-            "url": "https://10.10.10.3:15491",
-            "interface": "public",
-            "region": "RegionOne",
-            "region_id": "RegionOne",
-            "id": "cab08b81169042c3998a014f648fde60"
-          },
-          {
-            "url": "http://192.168.204.1:5491",
-            "interface": "internal",
-            "region": "RegionOne",
-            "region_id": "RegionOne",
-            "id": "1dd82515456642a8945d4099996aa7b3"
-          },
-          {
-            "url": "http://192.168.204.1:5491",
-            "interface": "admin",
-            "region": "RegionOne",
-            "region_id": "RegionOne",
-            "id": "ebdfb998d9d44f6fb781ec70a4a42664"
-          }
-        ],
-        "type": "patching",
-        "id": "eefeb9577cdd421984ed1710502568b9",
-        "name": "patching"
-      },
-      {
-        "endpoints": [
-          {
             "url": "https://10.10.10.3:4545",
             "interface": "public",
             "region": "RegionOne",

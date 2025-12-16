@@ -40,7 +40,6 @@ OAM_COMMON = {
             constants.PLATFORM_FIREWALL_SSH_PORT,  # noqa: E501 docu: SSH, platform,,Bidirectional,Allowed on system controller and subclouds.,For admin login.,,y,y,n,n
             constants.PLATFORM_FIREWALL_KUBE_APISERVER_PORT,  # noqa: E501 docu: Kube API server,platform,,Not used,Allowed on system controller and subclouds.,,Yes,y,y,n,n
             constants.PLATFORM_NFV_PARAMS_API_PORT,  # noqa: E501 docu: NFV, platform,,Not used,Allowed (service public endpoint) on system controller and subclouds.,vim-restapi public endpoint.,,y,y,n,n
-            constants.PLATFORM_PATCHING_PARAMS_PUBLIC_PORT,  # noqa: E501 docu: Patching, platform,,Allowed (service public endpoint) on both,Not used between System Controller and Subclouds,patching-api public endpoint,,y,y,n,n
             constants.PLATFORM_USM_PARAMS_PUBLIC_PORT,  # noqa: E501 docu: USM, platform,oam,Allowed (service public endpoint) on both,Not used between System Controller and Subclouds,Unified Software Management API,Yes,y,y,n,n
             constants.PLATFORM_SYSINV_PARAMS_API_PORT,  # noqa: E501 docu: Sys Inv, platform,,Not used between system controller and Subclouds.,Allowed (service public endpoint) on controllers and subclouds.,,,y,y,n,n
             constants.PLATFORM_SMAPI_PARAMS_PORT,  # noqa: E501 docu: SM API, platform,,Not used between system controller and Subclouds.,Allowed (service public endpoint) on controllers and subclouds.,sm-api public endpoint.,,y,y,n,n
@@ -87,7 +86,6 @@ SYSTEMCONTROLLER = \
             636: "openLDAP",  # noqa: E501 docu: platform,mgmt,User management. Not used between system controller and Subclouds,Blocked (by gnp) on controllers. NA on subclpuds.,,,y,y,n,n
             4546: "stx-nfv",  # noqa: E501 docu: platform,mgmt,Bidirectional,Keystone API.Allowed (service public endpoint) on controllers and subclouds.,vim-restapi admin endpoint.,Yes,y,y,n,n
             5001: "keystone-api",  # noqa: E501 docu: platform,mgmt,Bidirectional,Allowed (service public endpoint) on controllers and subclouds.,,Yes,y,y,n,n
-            5492: "patching-api",  # noqa: E501 docu: platform,mgmt,Bidirectional,Allowed (service public endpoint) on controllers and subclouds.,Patching API admin endpoint.,Yes,y,y,n,n
             5498: "usm-api",  # noqa: E501 docu: platform,mgmt,Bidirectional,Allowed (service public endpoint) on controllers and subclouds.,Unified Sofware Management API endpoint,Yes,y,y,n,n
             6386: "sysinv-api",  # noqa: E501 docu: platform,mgmt,Bidirectional,Allowed (service public endpoint) on controllers and subclouds.,,Yes,y,y,n,n
             constants.PLATFORM_FIREWALL_KUBE_APISERVER_PORT: "K8s API server",  # noqa: E501 docu: platform,mgmt,Not used between system controller and Subclouds.,Allowed (service public endpoint) on controllers and subclouds.,,Yes,y,y,n,n
@@ -123,7 +121,6 @@ SUBCLOUD = \
             constants.PLATFORM_FIREWALL_SSH_PORT: "ssh",  # noqa: E501 docu: platform,mgmt or admin,Bidirectional,Andre?,For admin login.,,y,y,n,n
             4546: "stx-nfv",  # noqa: E501 docu: platform,mgmt or admin,Not used,vim-restapi. public endpoint. Allowed (service public endpoint) on controllers and subclouds.,,,y,y,n,n
             5001: "keystone-api",  # noqa: E501 docu: platform,mgmt or admin,Not used,Allowed (service public endpoint) on controllers and subclouds.,,,y,y,y,n
-            5492: "patching-api",  # noqa: E501 docu: platform,mgmt or admin,Bidirectional,Allowed (service public endpoint) on controllers and subclouds.,Patching API admin endpoint.,Yes,y,y,n,n
             5498: "usm-api",  # noqa: E501 docu: platform,mgmt or admin,Bidirectional,Allowed (service public endpoint) on controllers and subclouds.,Unified Software Management API endpoint,Yes,y,y,n,n
             6386: "sysinv-api",  # noqa: E501 docu: platform,mgmt or admin,Bidirectional,Allowed (service admin endpoint) on system controller and subclouds.,,Yes,y,y,n,n
             8220: "dcdbsync-api",  # noqa: E501 docu: platform,mgmt or admin,Bidirectional,Allowed (service admin endpoint) on system controller and subclouds.,,Yes,y,y,n,n
@@ -148,8 +145,6 @@ SUBCLOUD = \
 SYSTEM_CONFIG = {
     "platform::nfv::params::api_port":
         constants.PLATFORM_NFV_PARAMS_API_PORT,  # noqa: E501 docu: NFV Params API, platform,oam,Not used,Allowed (service public endpoint) on system controller.,vim-restapi public endpoint.,,n,n,n,n
-    "platform::patching::params::public_port":
-        constants.PLATFORM_PATCHING_PARAMS_PUBLIC_PORT,  # noqa: E501 docu: Patching Params API, platform,oam,Not used,Allowed (service public endpoint) on system controller and subclouds.,patching-api public endpoint.,,n,n,n,n
     "platform::usm::params::public_port":
         constants.PLATFORM_USM_PARAMS_PUBLIC_PORT,  # noqa: E501 docu: USM Params API, platform,Andre?,Andre?,Anfre?,<Andre - pls add note>,Andre?,n,n,n,n
     "platform::sysinv::params::api_port":

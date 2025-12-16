@@ -1,6 +1,6 @@
 [Unit]
 Description=controllerconfig service
-After=syslog.target network.target remote-fs.target sw-patch.service sysinv-agent.service
+After=syslog.target network.target remote-fs.target sysinv-agent.service
 After=network-online.target
 After=luks-fs-mgr.service
 Before=config.service

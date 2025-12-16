@@ -67,8 +67,6 @@ class NfvPuppet(openstack.OpenstackBasePuppet):
 
             'nfv::nfvi::sysinv_region_name':
                 self._operator.sysinv.get_region_name(),
-            'nfv::nfvi::patching_region_name':
-                self._operator.patching.get_region_name(),
             'nfv::nfvi::fm_region_name':
                 self._operator.fm.get_region_name(),
             'nfv::nfvi::usm_region_name':

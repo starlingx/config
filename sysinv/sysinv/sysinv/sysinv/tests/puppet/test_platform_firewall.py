@@ -3447,7 +3447,7 @@ class PlatformFirewallTestCaseSystemConfig(PlatformFirewallTestCaseMixin,
         with open(config_filename, 'r') as config_file:
             hiera_data = yaml.safe_load(config_file)
 
-        self.assertEqual(len(hiera_data), 14)
+        self.assertEqual(len(hiera_data), 13)
         self.assertEqual(hiera_data["openstack::barbican::params::api_port"],
                          constants.OPENSTACK_BARBICAN_PARAMS_API_PORT)
         self.assertEqual(hiera_data["openstack::keystone::params::api_port"],
@@ -3470,8 +3470,6 @@ class PlatformFirewallTestCaseSystemConfig(PlatformFirewallTestCaseMixin,
                          constants.PLATFORM_FM_PARAMS_API_PORT)
         self.assertEqual(hiera_data["platform::nfv::params::api_port"],
                          constants.PLATFORM_NFV_PARAMS_API_PORT)
-        self.assertEqual(hiera_data["platform::patching::params::public_port"],
-                         constants.PLATFORM_PATCHING_PARAMS_PUBLIC_PORT)
         self.assertEqual(hiera_data["platform::sysinv::params::api_port"],
                          constants.PLATFORM_SYSINV_PARAMS_API_PORT)
         self.assertEqual(hiera_data["platform::usm::params::public_port"],
