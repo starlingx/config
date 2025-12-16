@@ -1,6 +1,6 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 #
-# Copyright (c) 2018-2025 Wind River Systems, Inc.
+# Copyright (c) 2018-2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -2136,18 +2136,14 @@ class AppOperator(object):
         lifecycle_hook_info_app_recover = copy.deepcopy(lifecycle_hook_info_app)
         lifecycle_hook_info_app_recover.operation = constants.APP_RECOVER_OP
 
-        for lifecycle_type in (
-            LifecycleConstants.APP_LIFECYCLE_TYPE_RBD,
-            LifecycleConstants.APP_LIFECYCLE_TYPE_RESOURCE
-        ):
-            try:
-                lifecycle_hook_info_app_recover.lifecycle_type = lifecycle_type
-                self.app_lifecycle_actions(None, None, rpc_app, lifecycle_hook_info_app_recover)
-            except Exception as e:
-                LOG.error(
-                    f"The lifecycle recover {lifecycle_type} failed with error: {e}"
-                    "The system will still attempt to run the recovery process"
-                )
+        try:
+            lifecycle_hook_info_app_recover.lifecycle_type = LifecycleConstants.APP_LIFECYCLE_TYPE_RESOURCE
+            self.app_lifecycle_actions(None, None, rpc_app, lifecycle_hook_info_app_recover)
+        except Exception as e:
+            LOG.error(
+                f"The lifecycle recover {LifecycleConstants.APP_LIFECYCLE_TYPE_RESOURCE} failed with error: {e}"
+                "The system will still attempt to run the recovery process"
+            )
 
         # Ensure that the the failed app plugins are disabled prior to cleanup
         self._helm.plugins.deactivate_plugins(
@@ -2978,13 +2974,6 @@ class AppOperator(object):
                 LifecycleConstants.APP_LIFECYCLE_TYPE_RESOURCE
             self.app_lifecycle_actions(None, None, rpc_app, lifecycle_hook_info_app_apply)
 
-            # Perform rbd actions
-            lifecycle_hook_info_app_apply.relative_timing = \
-                LifecycleConstants.APP_LIFECYCLE_TIMING_PRE
-            lifecycle_hook_info_app_apply.lifecycle_type = \
-                LifecycleConstants.APP_LIFECYCLE_TYPE_RBD
-            self.app_lifecycle_actions(None, None, rpc_app, lifecycle_hook_info_app_apply)
-
             if AppOperator.is_app_aborted(app.name):
                 raise exception.KubeAppAbort()
 
@@ -3111,12 +3100,6 @@ class AppOperator(object):
                 [LifecycleConstants.MANIFEST_APPLIED]
             ) = False
             self.app_lifecycle_actions(None, None, rpc_app, lifecycle_hook_info_app_apply)
-
-        # Perform rbd actions
-        lifecycle_hook_info_app_apply.relative_timing = \
-            LifecycleConstants.APP_LIFECYCLE_TIMING_POST
-        lifecycle_hook_info_app_apply.lifecycle_type = LifecycleConstants.APP_LIFECYCLE_TYPE_RBD
-        self.app_lifecycle_actions(None, None, rpc_app, lifecycle_hook_info_app_apply)
 
         # Perform app resources actions
         lifecycle_hook_info_app_apply.relative_timing = \
@@ -3587,13 +3570,6 @@ class AppOperator(object):
                 # Restore original desired state if needed
                 demote_desired_state(app)
 
-                # Perform rbd actions
-                lifecycle_hook_info_app_remove.relative_timing = \
-                    LifecycleConstants.APP_LIFECYCLE_TIMING_POST
-                lifecycle_hook_info_app_remove.lifecycle_type = \
-                    LifecycleConstants.APP_LIFECYCLE_TYPE_RBD
-                self.app_lifecycle_actions(None, None, rpc_app, lifecycle_hook_info_app_remove)
-
                 # Perform app resources actions
                 lifecycle_hook_info_app_remove.relative_timing = \
                     LifecycleConstants.APP_LIFECYCLE_TIMING_POST
@@ -3701,13 +3677,6 @@ class AppOperator(object):
 
         app = AppOperator.Application(rpc_app)
         try:
-            # Perform rbd actions
-            lifecycle_hook_info_app_delete.relative_timing = \
-                LifecycleConstants.APP_LIFECYCLE_TIMING_PRE
-            lifecycle_hook_info_app_delete.lifecycle_type = \
-                LifecycleConstants.APP_LIFECYCLE_TYPE_RBD
-            self.app_lifecycle_actions(None, None, rpc_app, lifecycle_hook_info_app_delete)
-
             # Perform app resources actions
             lifecycle_hook_info_app_delete.relative_timing = \
                 LifecycleConstants.APP_LIFECYCLE_TIMING_PRE

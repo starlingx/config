@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2021 Wind River Systems, Inc.
+# Copyright (c) 2021,2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -22,7 +22,7 @@ class LifecycleHookInfo(base.SysinvObject):
     Attributes:
         mode (string): Manual or Auto
         lifecycle_type (string): Type of the hook (semantic check, operation
-                                rbd, resource, manifest, fluxcd-request).
+                                resource, manifest, fluxcd-request).
         relative_timing (string): Relative timing to the operation (pre/post).
         operation (string): Operation being performed.
         extra (dict): Can populate data here and it is passed to the outside.

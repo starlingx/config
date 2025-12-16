@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2025 Wind River Systems, Inc.
+# Copyright (c) 2013-2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -2148,7 +2148,6 @@ APP_LIFECYCLE_TIMING_STATUS = 'status'
 APP_LIFECYCLE_TIMING_POST = 'post'
 APP_LIFECYCLE_TYPE_SEMANTIC_CHECK = 'check'
 APP_LIFECYCLE_TYPE_OPERATION = 'operation'
-APP_LIFECYCLE_TYPE_RBD = 'rbd'
 APP_LIFECYCLE_TYPE_RESOURCE = 'resource'
 APP_LIFECYCLE_TYPE_MANIFEST = 'manifest'
 APP_LIFECYCLE_TYPE_FLUXCD_REQUEST = 'fluxcd-request'
