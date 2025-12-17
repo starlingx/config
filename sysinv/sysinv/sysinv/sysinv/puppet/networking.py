@@ -717,8 +717,14 @@ class NetworkingPuppet(base.BasePuppet):
                 'offset_threshold_minor_nsec': constants.PTP_MONITORING_OFFSET_THRESHOLD_MINOR_NSEC,
                 'offset_threshold_major_nsec': constants.PTP_MONITORING_OFFSET_THRESHOLD_MAJOR_NSEC
             },
-            'ts2phc': {},   # No default monitoring parameters for ts2phc
-            'clock': {},    # No default monitoring parameters for clock
+            'ts2phc': {
+                'holdover_seconds': constants.PTP_MONITORING_HOLDOVER_SECONDS,
+                'locked_to_holdover_threshold_seconds': constants.PTP_MONITORING_LOCKED_TO_HOLDOVER_THRESHOLD_SECONDS
+            },
+            'clock': {
+                'holdover_seconds': constants.PTP_MONITORING_HOLDOVER_SECONDS,
+                'locked_to_holdover_threshold_seconds': constants.PTP_MONITORING_LOCKED_TO_HOLDOVER_THRESHOLD_SECONDS
+            },
             'synce4l': {},  # No default monitoring parameters for synce4l
         }
         for instance_name in ptp_instances:
@@ -737,7 +743,10 @@ class NetworkingPuppet(base.BasePuppet):
             for param in ptp_parameters_monitoring:
                 if param['section'] == 'monitoring' and instance['uuid'] in param['owners']:
                     instance['monitoring_parameters'][param['name']] = param['value']
-            if instance['section_parameters'].get('monitoring'):
+            if (
+                'section_parameters' in instance and
+                instance['section_parameters'].get('monitoring')
+            ):
                 instance['section_parameters'].pop('monitoring')
 
         return ptp_instances
@@ -875,6 +884,8 @@ class NetworkingPuppet(base.BasePuppet):
 
         nic_clocks = {}
         nic_clock_config = {}
+        nic_clock_config_extended = {}
+
         nic_clock_enabled = False
         ptp_instance_configs = []
         monitoring_instance_configs = []
@@ -906,6 +917,18 @@ class NetworkingPuppet(base.BasePuppet):
                                                                            ptp_parameters_interface)
             nic_clock_config = self._generate_clock_port_dict(host, nic_clock_config,
                                                               host_port_list)
+
+            # 'clock' is used instead of clock_name, as single clock instance of 'clock' name
+            # is assumed in collectd ptp extension
+            nic_clock_config_extended = {
+                'clock': {
+                    'uuid': nic_clocks[clock_name]['uuid'],
+                    'service': 'clock',
+                } for clock_name in nic_clocks
+            }
+            nic_clock_config_extended = self._set_ptp_instance_monitoring_parameters(
+                nic_clock_config_extended, ptp_parameters_instance
+            )
 
         # Generate the ptp instance config if ptp is enabled
         if ptpinstance_enabled:
@@ -944,6 +967,7 @@ class NetworkingPuppet(base.BasePuppet):
             'platform::ptpinstance::gnss_monitor::monitoring_config': monitoring_config,
             'platform::ptpinstance::gnss_monitor::monitoring_enabled': monitoring_enabled,
             'platform::ptpinstance::nic_clock::nic_clock_config': nic_clock_config,
+            'platform::ptpinstance::nic_clock::nic_clock_config_extended': nic_clock_config_extended,
             'platform::ptpinstance::nic_clock::nic_clock_enabled': nic_clock_enabled,
         }
 
