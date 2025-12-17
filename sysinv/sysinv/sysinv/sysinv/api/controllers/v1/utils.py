@@ -409,15 +409,6 @@ def update_address_mode(interface_id, family, mode, pool_uuid):
     pecan.request.dbapi.address_mode_update(interface_id, values)
 
 
-def config_is_reboot_required(config_uuid):
-    """Check if the supplied config_uuid has the reboot required flag
-
-    :param config_uuid UUID object or UUID string
-    :return True if reboot is required, False otherwise
-    """
-    return int(uuid.UUID(config_uuid)) & constants.CONFIG_REBOOT_REQUIRED
-
-
 def config_flip_reboot_required(config_uuid):
     """flip the reboot required flag for the supplied UUID
 

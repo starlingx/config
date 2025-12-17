@@ -245,6 +245,8 @@ CONFIG_STATUS_REINSTALL = "Reinstall required"
 # when reinstall starts, mtc update the db with task = 'Reinstalling'
 TASK_REINSTALLING = "Reinstalling"
 TASK_BOOTING = "Booting"
+TASK_REBOOT_REQUEST = "Reboot Request"
+TASK_REBOOTING = "Rebooting"
 TASK_UNLOCKING = "Unlocking"
 TASK_TESTING = "Testing"
 

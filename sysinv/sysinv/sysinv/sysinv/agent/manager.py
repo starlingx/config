@@ -117,6 +117,7 @@ MAXSLEEP = 600  # 10 minutes
 SYSINV_READY_FLAG = os.path.join(tsc.VOLATILE_PATH, ".sysinv_ready")
 
 CONFIG_APPLIED_FILE = os.path.join(tsc.PLATFORM_CONF_PATH, ".config_applied")
+CONFIG_APPLIED_REBOOT_FILE = os.path.join(tsc.PLATFORM_CONF_PATH, ".config_applied_reboot")
 CONFIG_APPLIED_DEFAULT = "install"
 
 FIRST_BOOT_FLAG = constants.FIRST_BOOT_FLAG
@@ -200,6 +201,7 @@ class AgentManager(service.PeriodicService):
         self._ilvg_operator = lvg.LVGOperator()
         self._lldp_operator = lldp_plugin.SysinvLldpPlugin()
         self._iconfig_read_config_reported = None
+        self._last_reported_reboot = None
         self._ihost_min_cpu_mhz_allowed = 0
         self._ihost_max_cpu_mhz_allowed = 0
         self._ihost_cstates_available = None
@@ -484,6 +486,27 @@ class AgentManager(service.PeriodicService):
         else:
             # assume install
             config_uuid = CONFIG_APPLIED_DEFAULT
+
+        return config_uuid
+
+    def iconfig_read_reboot_applied(self):
+        """Read and return contents from the CONFIG_APPLIED_REBOOT_FILE"""
+
+        # Only check reboot completion if system recently rebooted
+        if not os.path.isfile(CONFIG_APPLIED_REBOOT_FILE):
+            return None
+
+        ini_str = '[DEFAULT]\n' + open(CONFIG_APPLIED_REBOOT_FILE, 'r').read()
+        ini_fp = StringIO(ini_str)
+
+        config_reboot = configparser.RawConfigParser()
+        config_reboot.optionxform = str
+        config_reboot.readfp(ini_fp)
+
+        if config_reboot.has_option('DEFAULT', 'CONFIG_UUID'):
+            config_uuid = config_reboot.get('DEFAULT', 'CONFIG_UUID')
+        else:
+            config_uuid = None
 
         return config_uuid
 
@@ -1317,20 +1340,48 @@ class AgentManager(service.PeriodicService):
 
         if config_uuid is None:
             config_uuid = self.iconfig_read_config_applied()
+
         if config_uuid != self._iconfig_read_config_reported:
-            LOG.info("Agent config applied iconfig_uuid=%s" % config_uuid)
+            # Check if this is a reboot-required config
+            if not utils.config_is_reboot_required(config_uuid):
+                LOG.info("Agent config applied iconfig_uuid=%s" % config_uuid)
 
-            imsg_dict = {'config_applied': config_uuid}
-            if config_dict:
-                imsg_dict.update({'config_dict': config_dict,
-                                  'status': status,
-                                  'error': error,
-                                  'puppet_path': config_dict.get('puppet_path')})
-            rpcapi.iconfig_update_by_ihost(context,
-                                           self._ihost_uuid,
-                                           imsg_dict)
+                imsg_dict = {'config_applied': config_uuid}
+                if config_dict:
+                    imsg_dict.update({'config_dict': config_dict,
+                                      'status': status,
+                                      'error': error,
+                                      'puppet_path': config_dict.get('puppet_path')})
+                rpcapi.iconfig_update_by_ihost(context,
+                                               self._ihost_uuid,
+                                               imsg_dict)
 
-            self._iconfig_read_config_reported = config_uuid
+                self._iconfig_read_config_reported = config_uuid
+
+    def _report_reboot_completion(self, context):
+        """Report reboot configuration applied for this host to the
+        conductor.
+        :param context: an admin context
+        """
+        if not context:
+            context = mycontext.get_admin_context()
+
+        reboot_config_uuid = self.iconfig_read_reboot_applied()
+
+        if reboot_config_uuid and reboot_config_uuid != self._last_reported_reboot:
+            LOG.info("Agent reboot config applied iconfig_uuid=%s" % reboot_config_uuid)
+            try:
+                rpcapi = conductor_rpcapi.ConductorAPI(topic=conductor_rpcapi.MANAGER_TOPIC)
+                imsg_dict = {
+                    'config_applied': reboot_config_uuid,
+                    'reboot_completed': True
+                }
+
+                rpcapi.iconfig_update_by_ihost(context, self._ihost_uuid, imsg_dict)
+                self._last_reported_reboot = reboot_config_uuid
+            except Exception as e:
+                LOG.error("Failed to report reboot completion: %s" % e)
+                self._last_reported_reboot = None
 
     @staticmethod
     def _update_config_applied(config_uuid):
@@ -1920,6 +1971,8 @@ class AgentManager(service.PeriodicService):
         self.notify_initial_inventory_completed(icontext)
 
         self._report_config_applied(icontext)
+        if not self._last_reported_reboot:
+            self._report_reboot_completion(icontext)
 
         if os.path.isfile(tsc.PLATFORM_CONF_FILE):
             # read the platform config file and check for UUID
