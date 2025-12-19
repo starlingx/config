@@ -2124,7 +2124,14 @@ class AgentManager(service.PeriodicService):
             if os.path.isdir(cache_dir_temp):
                 shutil.rmtree(cache_dir_temp)
             shutil.copytree(hieradata_path, cache_dir_temp)
-            subprocess.check_call(['sync'])  # pylint: disable=not-callable
+            try:
+                subprocess.check_call(    # pylint: disable=not-callable
+                    ['sync', '-f', cache_dir_temp],
+                    timeout=30
+                )
+            except subprocess.TimeoutExpired:
+                LOG.warning("Sync operation timed out after 30 seconds")
+                raise
 
             if os.path.isdir(cache_dir):
                 shutil.rmtree(cache_dir)
