@@ -1576,6 +1576,8 @@ SERVICE_PARAM_ENABLED = 'enabled'
 
 # app-fmk parameters
 SERVICE_PARAM_NAME_K8S_APPLICATION_AUDIT = 'k8s_application_audit'
+SERVICE_PARAM_NAME_AUTOREAPPLY_APPS_AFTER_APPLY_RUNTIME_MANIFEST = \
+    'autoreapply_apps_after_apply_runtime_manifest'
 
 # systemd related
 SYSTEMCTL_PATH = '/usr/bin/systemctl'

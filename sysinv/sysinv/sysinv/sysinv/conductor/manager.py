@@ -919,6 +919,16 @@ class ConductorManager(service.PeriodicService):
          'name': constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_HOST_UNLOCK_BLOCKING_PERIOD,
          'value': constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_HOST_UNLOCK_BLOCKING_PERIOD_DEFAULT,
          },
+        {'service': constants.SERVICE_TYPE_PLATFORM,
+         'section': constants.SERVICE_PARAM_SECTION_KUBERNETES_CONFIG,
+         'name': constants.SERVICE_PARAM_NAME_K8S_APPLICATION_AUDIT,
+         'value': constants.SERVICE_PARAM_ENABLED,
+         },
+        {'service': constants.SERVICE_TYPE_PLATFORM,
+         'section': constants.SERVICE_PARAM_SECTION_KUBERNETES_CONFIG,
+         'name': constants.SERVICE_PARAM_NAME_AUTOREAPPLY_APPS_AFTER_APPLY_RUNTIME_MANIFEST,
+         'value': constants.SERVICE_PARAM_ENABLED,
+         },
     ]
 
     def _create_default_service_parameter(self):
@@ -8680,7 +8690,6 @@ class ConductorManager(service.PeriodicService):
         LOG.debug("Periodic Task: _k8s_application_audit: Starting")
 
         # Retrieve the 'k8s_application_audit' service parameter.
-        # If it does not exist, create it and set its status to enabled.
         service_parameter_value = \
             service_parameter.get_service_parameter_k8s_application_audit(self.dbapi)
 
@@ -10993,7 +11002,17 @@ class ConductorManager(service.PeriodicService):
                       {'iconfig': iconfig, 'cfg': reported_cfg})
 
         if success:
-            self.check_pending_app_reapply(context)
+            # Retrieve the 'autoreapply_apps_after_apply_runtime_manifest' service parameter.
+            service_parameter_value = \
+                service_parameter.get_service_parameter_autoreapply_after_apply_runtime_manifest(
+                    self.dbapi)
+
+            if service_parameter_value == 'enabled':
+                self.check_pending_app_reapply(context)
+            else:
+                LOG.info("Skipping reapply apps after apply runtime manifest because "
+                         "service parameter 'autoreapply_apps_after_apply_runtime_manifest' "
+                         "is disabled.")
 
     def verify_k8s_upgrade_not_in_progress(self):
         """ Check if there is a kubernetes upgrade in progress.
