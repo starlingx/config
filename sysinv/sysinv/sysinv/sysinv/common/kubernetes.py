@@ -1600,6 +1600,18 @@ class KubeOperator(object):
             LOG.error("Failed to delete clusterwide custom resource object, %s" % (e))
             raise
 
+    def delete_custom_resource_definition(self, name):
+        extentions_api = self._get_kubernetesclient_extensions()
+
+        try:
+            extentions_api.delete_custom_resource_definition(name)
+        except ApiException as e:
+            if e.reason == "Not Found":
+                LOG.error("Failed to delete CRD %s: %s" % (name, e))
+        except Exception as e:
+            LOG.error("Kubernetes exception in delete_custom_resource_definition: %s" % e)
+            raise
+
     def kube_get_service_account(self, name, namespace):
         c = self._get_kubernetesclient_core()
         try:

@@ -1,11 +1,11 @@
 ---
 #
-# Copyright (c) 2022 Wind River Systems, Inc.
+# Copyright (c) 2022,2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
 
-apiVersion: "helm.toolkit.fluxcd.io/v2beta1"
+apiVersion: "helm.toolkit.fluxcd.io/v2"
 kind: HelmRelease
 metadata:
   name: release2

@@ -10,6 +10,7 @@ import yaml
 
 from oslo_log import log as logging
 
+from sysinv.common import kubernetes
 from sysinv.common import utils
 from sysinv.common.image_download import ContainerImageDownloader
 from sysinv.helm import utils as helm_utils
@@ -19,6 +20,7 @@ CONFIG_DIR = "/usr/share/ansible/stx-ansible/playbooks/roles/common/fluxcd-contr
 CONF_FILE = os.path.join(CONFIG_DIR, 'vars', 'main.yml')
 TEMPLATE_PATH = os.path.join(CONFIG_DIR, 'templates')
 TEMPLATE_FILENAME = 'values.yaml.j2'
+OCI_REPO_CRD = "ocirepositories.source.toolkit.fluxcd.io"
 
 # Log and config
 LOG = logging.getLogger(__name__)
@@ -203,8 +205,31 @@ class FluxDeploymentManager(object):
         else:
             LOG.info("helm-controller pod is Ready. Proceeding.")
 
+    def delete_oci_repository_crd(self):
+        """ Delete ocirepositories.source.toolkit.fluxcd.io CRD as manifests from
+        versions 2.15 and 2.17 do not support straightforward rollback.
+        """
+
+        kubernetes_operator = kubernetes.KubeOperator()
+
+        LOG.info("Deleting incompatible CRD %s", OCI_REPO_CRD)
+
+        success = False
+        try:
+            kubernetes_operator.delete_custom_resource_definition(OCI_REPO_CRD)
+            success = True
+        except Exception as e:
+            LOG.error(f"Error deleting CRD {OCI_REPO_CRD}: {e}.")
+
+        LOG.info("Finished CRD deletion")
+
+        return success
+
     def rollback_controllers(self):
         """ Rollback Flux controllers to the previous version """
+
+        if not self.delete_oci_repository_crd():
+            return False
 
         success = False
         try:
