@@ -376,23 +376,6 @@ class Health(object):
                 continue
         return success, message
 
-    def _check_psp_policies(self):
-        """ Checks for any existing PodSecurityPolicies on the system """
-        psp_list = []
-        active_kube_version = self._kube_operator.kube_get_kubernetes_version()
-
-        # check for policies only if version is less than v1.25
-        if LooseVersion(active_kube_version) >= LooseVersion('v1.25.0'):
-            return True, psp_list
-
-        psp_policies = self._kube_operator.get_psp_resource()
-        if psp_policies:
-            for item in psp_policies:
-                psp_list.append(item.metadata.name)
-            return False, psp_list
-        else:
-            return True, psp_list
-
     def _check_local_issuer_clusterIssuer(self):
         err_msg = ''
         local_ca_issuer = self._kube_operator.get_clusterwide_custom_resource(
@@ -666,15 +649,6 @@ class Health(object):
         if not success:
             output += _('Kubernetes control plane pods not ready: %s\n') \
                 % ', '.join(error_nodes)
-
-        health_ok = health_ok and success
-
-        success, psp_list = self._check_psp_policies()
-        output += ('All PodSecurityPolicies are removed: [%s]\n') \
-                % (Health.SUCCESS_MSG if success else Health.FAIL_MSG)
-        if not success:
-            output += _('PSP policies exists, please remove them before upgrade: %s\n') \
-                    % ', '.join(psp_list)
 
         health_ok = health_ok and success
 

@@ -8,6 +8,7 @@
 # coding=utf-8
 #
 
+import datetime
 import os
 import tsconfig.tsconfig as tsc
 
@@ -26,6 +27,10 @@ ADMIN_ENDPOINT_CONFIG_REQUIRED = os.path.join(tsc.CONFIG_PATH, '.admin_endpoint_
 PLATFORM_FIREWALL_CONFIG_REQUIRED = os.path.join(tsc.PLATFORM_CONF_PATH,
                                     '.platform_firewall_config_required')
 RESTORE_IN_PROGRESS_FLAG = tsc.RESTORE_IN_PROGRESS_FLAG
+
+USM_UPGRADE_IN_PROGRESS = os.path.join(tsc.PLATFORM_CONF_PATH,
+                                       '.usm_upgrade_in_progress')
+
 # Minimum password length
 MINIMUM_PASSWORD_LENGTH = 8
 
@@ -67,6 +72,10 @@ IPV6_ADDRESS_MODES = [IPV6_DISABLED,
                       IPV6_AUTO,
                       IPV6_LINK_LOCAL,
                       IPV6_POOL]
+# IP address pool
+IPV6 = "ipv6"
+IPV4 = "ipv4"
+DUAL = "dual"
 
 # sysinv-vim-mtce definitions
 # Host Actions:
@@ -75,6 +84,7 @@ FORCE_UNLOCK_ACTION = 'force-unlock'
 LOCK_ACTION = 'lock'
 FORCE_LOCK_ACTION = 'force-lock'
 FORCE_UNSAFE_LOCK_ACTION = 'force-unsafe-lock'
+HOST_AUDIT_ACTION = 'host-audit'
 REBOOT_ACTION = 'reboot'
 RESET_ACTION = 'reset'
 REINSTALL_ACTION = 'reinstall'
@@ -132,7 +142,10 @@ KERNEL_STANDARD = 'standard'
 
 SUPPORTED_KERNELS = [KERNEL_LOWLATENCY, KERNEL_STANDARD]
 
-KERNEL_CONFIG_STATUS_PENDING = 'config_pending'
+# Kernel config is alloted 2 minutes for config to complete
+# host-unlock can be blocked upto a maximum of 2 minutes
+KERNEL_CONFIG_STATUS_EXPIRY = datetime.timedelta(minutes=2)
+KERNEL_CONFIG_STATUS_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 # CPU functions
 PLATFORM_FUNCTION = "Platform"
@@ -232,6 +245,8 @@ CONFIG_STATUS_REINSTALL = "Reinstall required"
 # when reinstall starts, mtc update the db with task = 'Reinstalling'
 TASK_REINSTALLING = "Reinstalling"
 TASK_BOOTING = "Booting"
+TASK_REBOOT_REQUEST = "Reboot Request"
+TASK_REBOOTING = "Rebooting"
 TASK_UNLOCKING = "Unlocking"
 TASK_TESTING = "Testing"
 
@@ -350,7 +365,7 @@ DEFAULT_DC_VAULT_STOR_SIZE = 15
 
 BACKUP_OVERHEAD = 5
 IMAGE_CONVERSION_SIZE = 1
-KUBERNETES_DOCKER_STOR_SIZE = 30
+KUBERNETES_DOCKER_STOR_SIZE = 40
 DOCKER_DISTRIBUTION_STOR_SIZE = 16
 ETCD_STOR_SIZE = 5
 KUBELET_STOR_SIZE = 10
@@ -371,7 +386,7 @@ DEFAULT_SMALL_DISK_SIZE = 240
 # DEFAULT_PLATFORM_STOR_SIZE                           10
 # DEFAULT_EXTENSION_STOR_SIZE                           1
 # DEFAULT_RABBIT_STOR_SIZE                              2
-# KUBERNETES_DOCKER_STOR_SIZE                          30
+# KUBERNETES_DOCKER_STOR_SIZE                          40
 # DOCKER_DISTRIBUTION_STOR_SIZE                        16
 # ETCD_STOR_SIZE                                        5
 # CEPH_MON_SIZE                                        20
@@ -383,8 +398,8 @@ DEFAULT_SMALL_DISK_SIZE = 240
 # boot/EFI partition (created in kickstarts)            1
 # buffer for partition creation                         1
 # -------------------------------------------------------
-#                                                     196
-MINIMUM_SMALL_DISK_SIZE = 196
+#                                                     206
+MINIMUM_SMALL_DISK_SIZE = 206
 
 # The minimum tiny disk size needed to create all partitions
 # Value based on the following calculation:
@@ -552,6 +567,7 @@ SB_STATE_CONFIG_ERR = 'configuration-failed'
 SB_STATE_CONFIGURING_ON_UNLOCK = 'configuring-on-unlock'
 SB_STATE_CONFIGURING_WITH_APP = 'configuring-with-app'
 SB_STATE_DELETING_WITH_APP = 'deleting-with-app'
+SB_STATE_FORCE_DELETING_WITH_APP = 'force-deleting-with-app'
 
 # Storage backend tasks
 SB_TASK_NONE = None
@@ -563,6 +579,10 @@ SB_TASK_RECONFIG_WORKER = 'reconfig-worker'
 SB_TASK_RESIZE_CEPH_MON_LV = 'resize-ceph-mon-lv'
 SB_TASK_ADD_OBJECT_GATEWAY = 'add-object-gateway'
 SB_TASK_RESTORE = 'restore'
+
+# Rook-ceph Failure Domain
+CEPH_ROOK_CLUSTER_HOST_FAIL_DOMAIN = 'host'
+CEPH_ROOK_CLUSTER_OSD_FAIL_DOMAIN = 'osd'
 
 # Storage backend ceph-mon-lv size
 SB_CEPH_MON_GIB = 20
@@ -593,6 +613,11 @@ CEPH_ROOK_DEPLOYMENTS_SUPPORTED = [CEPH_ROOK_DEPLOYMENT_CONTROLLER,
 # Storage: Minimum number of monitors
 MIN_STOR_MONITORS_MULTINODE = 2
 MIN_STOR_MONITORS_AIO = 1
+
+ISTOR_ACTIVE_STATES = {
+    SB_STATE_CONFIGURING_WITH_APP,
+    SB_STATE_CONFIGURED,
+}
 
 # Suffix used in LVM volume name to indicate that the
 # volume is actually a thin pool.  (And thin volumes will
@@ -633,6 +658,10 @@ DRBD_CEPH = 'ceph-float'
 # File system functions
 FILESYSTEM_CEPH_FUNCTION_MONITOR = 'monitor'
 FILESYSTEM_CEPH_FUNCTION_OSD = 'osd'
+FILESYSTEM_CEPH_MARKED_FOR_REMOVAL = 'marked_for_removal'
+
+# Maximum number of Ceph Monitors
+FILESYSTEM_CEPH_MONITOR_MAX = 5
 
 # File system names
 FILESYSTEM_NAME_BACKUP = 'backup'
@@ -810,6 +839,7 @@ LVG_AUDIT_REQUEST = "audit_lvg"
 PV_AUDIT_REQUEST = "audit_pv"
 PARTITION_AUDIT_REQUEST = "audit_partition"
 FILESYSTEM_AUDIT_REQUEST = "audit_fs"
+MEMORY_AUDIT_REQUEST = "audit_memory"
 CONTROLLER_AUDIT_REQUESTS = [DISK_AUDIT_REQUEST,
                              LVG_AUDIT_REQUEST,
                              PV_AUDIT_REQUEST,
@@ -843,6 +873,11 @@ PLATFORM_NETWORK_TYPES = [NETWORK_TYPE_PXEBOOT,
                           NETWORK_TYPE_IRONIC,
                           NETWORK_TYPE_STORAGE,
                           NETWORK_TYPE_ADMIN]
+
+INTERNAL_NETWORK_TYPES = [NETWORK_TYPE_PXEBOOT,
+                          NETWORK_TYPE_CLUSTER_HOST,
+                          NETWORK_TYPE_CLUSTER_POD,
+                          NETWORK_TYPE_CLUSTER_SERVICE]
 
 PCI_NETWORK_TYPES = [NETWORK_TYPE_PCI_PASSTHROUGH,
                      NETWORK_TYPE_PCI_SRIOV]
@@ -906,6 +941,9 @@ LINK_SPEED_25G = 25000
 
 # VF rate limit
 VF_TOTAL_RATE_RATIO = 0.9
+
+# Platform interface rate limit
+PLATFORM_RATELIMIT_LOWER_CUTOFF = 0
 
 # DRBD engineering limits.
 # Link Util values are in Percentage.
@@ -1070,14 +1108,20 @@ SB_TIER_CEPH_POOLS = [
 # varies greatly in StarlingX and we want to avoid running too low on PGs
 CEPH_TARGET_PGS_PER_OSD = 200
 
-# Dual node and Storage
+# Default replication factor (AIO-SX)
+AIO_SX_CEPH_REPLICATION_FACTOR_DEFAULT = 1
+
+# Default replication factor (non AIO-SX)
 CEPH_REPLICATION_FACTOR_DEFAULT = 2
-CEPH_REPLICATION_FACTOR_SUPPORTED = [2, 3]
+
+# Supported replication factor (AIO-SX)
+AIO_SX_CEPH_REPLICATION_FACTOR_SUPPORTED = [1, 2, 3]
+
+# Supported replication factor (AIO-DX)
 CEPH_CONTROLLER_MODEL_REPLICATION_SUPPORTED = [2]
 
-# Single node
-AIO_SX_CEPH_REPLICATION_FACTOR_DEFAULT = 1
-AIO_SX_CEPH_REPLICATION_FACTOR_SUPPORTED = [1, 2, 3]
+# Supported replication factor (DX+, Standard, Storage)
+CEPH_REPLICATION_FACTOR_SUPPORTED = [2, 3]
 
 CEPH_REPLICATION_MAP_SUPPORTED = {
     1: [1],
@@ -1142,8 +1186,10 @@ PCI_ALIAS_QAT_CLASS = "0x0b4000"
 PCI_ALIAS_QAT_VENDOR = "8086"
 PCI_ALIAS_QAT_4XXX_PF_DEVICE = "4940"
 PCI_ALIAS_QAT_401XX_PF_DEVICE = "4942"
+PCI_ALIAS_QAT_420XX_PF_DEVICE = "4946"
 PCI_ALIAS_SRIOV_ENABLED_QAT_DEVICE_IDS = [PCI_ALIAS_QAT_4XXX_PF_DEVICE,
-                                          PCI_ALIAS_QAT_401XX_PF_DEVICE]
+                                          PCI_ALIAS_QAT_401XX_PF_DEVICE,
+                                          PCI_ALIAS_QAT_420XX_PF_DEVICE]
 NOVA_PCI_ALIAS_USER_NAME = "user"
 
 # Service Parameter
@@ -1164,6 +1210,7 @@ SERVICE_TYPE_KUBERNETES = 'kubernetes'
 SERVICE_TYPE_PTP = 'ptp'
 SERVICE_TYPE_CEPH = 'ceph'
 SERVICE_TYPE_DNS = 'dns'
+SERVICE_TYPE_MODULE = 'module'
 
 # For service parameter sections that include a wildcard, any 'name' field will be
 # allowed by the API. The wildcard card name will only be matched if no other matches
@@ -1171,6 +1218,7 @@ SERVICE_TYPE_DNS = 'dns'
 SERVICE_PARAM_NAME_WILDCARD = '*wildcard*'
 
 SERVICE_PARAM_SECTION_IDENTITY_CONFIG = 'config'
+SERVICE_PARAM_SECTION_IDENTITY_STX = 'stx'
 
 SERVICE_PARAM_IDENTITY_CONFIG_TOKEN_EXPIRATION = 'token_expiration'
 SERVICE_PARAM_IDENTITY_CONFIG_TOKEN_EXPIRATION_DEFAULT = 3600
@@ -1191,6 +1239,8 @@ SERVICE_PARAM_NAME_IDENTITY_LDAP_DEFAULT_AUTH_TOK = 'ldap_default_authtok'
 SERVICE_PARAM_SECTION_IDENTITY_LOCAL_OPENLDAP = 'local-openldap'
 SERVICE_PARAM_NAME_IDENTITY_LOCAL_OPENLDAP_INSECURE_SERVICE = 'insecure_service'
 
+SERVICE_PARAM_NAME_IDENTITY_STX_ROLE_BINDINGS = 'role-bindings'
+
 SERVICE_PARAM_PARAMETER_NAME_EXTERNAL_ADMINURL = 'external-admin-url'
 
 # Platform Service Parameters
@@ -1200,6 +1250,8 @@ SERVICE_PARAM_SECTION_PLATFORM_CONFIG = 'config'
 SERVICE_PARAM_SECTION_PLATFORM_COREDUMP = 'coredump'
 SERVICE_PARAM_SECTION_PLATFORM_POSTGRESQL = 'postgresql'
 SERVICE_PARAM_SECTION_PLATFORM_DRBD = 'drbd'
+SERVICE_PARAM_SECTION_PLATFORM_FM = 'fm'
+SERVICE_PARAM_SECTION_PLATFORM_SYSCTL = 'sysctl'
 
 # Containerd runTimeClass CRI entries
 SERVICE_PARAM_SECTION_PLATFORM_CRI_RUNTIME_CLASS = 'container_runtime'
@@ -1216,7 +1268,7 @@ SERVICE_PARAM_PLAT_MTCE_MNFA_TIMEOUT = 'mnfa_timeout'
 
 SERVICE_PARAM_PLAT_MTCE_WORKER_BOOT_TIMEOUT_DEFAULT = 720
 SERVICE_PARAM_PLAT_MTCE_CONTROLLER_BOOT_TIMEOUT_DEFAULT = 1200
-SERVICE_PARAM_PLAT_MTCE_HBS_PERIOD_DEFAULT = 100
+SERVICE_PARAM_PLAT_MTCE_HBS_PERIOD_DEFAULT = 1000
 SERVICE_PARAM_PLAT_MTCE_HBS_FAILURE_ACTION_DEFAULT = 'fail'
 SERVICE_PARAM_PLAT_MTCE_HBS_FAILURE_THRESHOLD_DEFAULT = 10
 SERVICE_PARAM_PLAT_MTCE_HBS_DEGRADE_THRESHOLD_DEFAULT = 6
@@ -1224,14 +1276,6 @@ SERVICE_PARAM_PLAT_MTCE_MNFA_THRESHOLD_DEFAULT = 2
 SERVICE_PARAM_PLAT_MTCE_MNFA_TIMEOUT_DEFAULT = 0
 
 SERVICE_PARAM_NAME_PLAT_CONFIG_VIRTUAL = 'virtual_system'
-
-# Intel NIC out of tree drivers parameter
-SERVICE_PARAM_NAME_PLATFORM_OOT = 'out_of_tree_drivers'
-SERVICE_PARAM_PLAT_KERNEL_OOT_VALUES = (
-    "none",
-    "ice",
-    "i40e",
-    "iavf")
 
 SERVICE_PARAM_NAME_PLAT_CONFIG_INTEL_PSTATE = 'intel_pstate'
 # Valid 'intel_pstate' values
@@ -1279,6 +1323,11 @@ SERVICE_PARAM_NAME_DOCKER_AUTH_SECRET = 'auth-secret'
 SERVICE_PARAM_NAME_DOCKER_TYPE = 'type'
 SERVICE_PARAM_NAME_DOCKER_SECURE_REGISTRY = 'secure'
 SERVICE_PARAM_NAME_DOCKER_ADDITIONAL_OVERRIDES = 'additional-overrides'
+
+SERVICE_PARAM_SECTION_DOCKER_CONCURRENCY = 'concurrency'
+SERVICE_PARAM_NAME_MAX_CONCURRENT_DOWNLOADS = 'max-concurrent-downloads'
+SERVICE_PARAM_NAME_MAX_CONCURRENT_UPLOADS = 'max-concurrent-uploads'
+SERVICE_PARAM_NAME_MAX_KUBE_APP_DOWNLOAD_THREADS = 'max-kube-app-download-threads'
 
 SERVICE_PARAM_NAME_DRBD_HMAC = 'hmac'
 SERVICE_PARAM_NAME_DRBD_SECRET = 'secret'
@@ -1347,13 +1396,15 @@ SERVICE_PARAM_SECTION_KUBERNETES_CONFIG = 'config'
 SERVICE_PARAM_NAME_KUBERNETES_POD_MAX_PIDS = 'pod_max_pids'
 SERVICE_PARAM_NAME_KUBERNETES_AUTOMATIC_RECOVERY = 'automatic_recovery'
 
+# kube-apiserver service ports
+KUBE_APISERVER_INTERNAL_PORT = 16443
+KUBE_APISERVER_EXTERNAL_PORT = 6443
+
 # Kubernetes component endpoints for cluster audit
-APISERVER_READYZ_ENDPOINT = "https://localhost:6443/readyz"
+APISERVER_READYZ_ENDPOINT = "https://localhost:%s/readyz" % str(KUBE_APISERVER_INTERNAL_PORT)
 SCHEDULER_HEALTHZ_ENDPOINT = "https://127.0.0.1:10259/healthz"
 CONTROLLER_MANAGER_HEALTHZ_ENDPOINT = "https://127.0.0.1:10257/healthz"
 KUBELET_HEALTHZ_ENDPOINT = "http://localhost:10248/healthz"
-healthz_endpoints = [APISERVER_READYZ_ENDPOINT, CONTROLLER_MANAGER_HEALTHZ_ENDPOINT,
-                         SCHEDULER_HEALTHZ_ENDPOINT, KUBELET_HEALTHZ_ENDPOINT]
 
 # Platform pods use under 20 in steady state, but allow extra room.
 SERVICE_PARAM_KUBERNETES_POD_MAX_PIDS_MIN = 100
@@ -1434,6 +1485,13 @@ SERVICE_PARAM_NAME_PLATFORM_AUDITD = 'audit'
 SERVICE_PARAM_PLATFORM_AUDITD_DISABLED = '0'
 SERVICE_PARAM_PLATFORM_AUDITD_ENABLED = '1'
 
+# Kernel Soft IRQ, irq_word and RCU Tree
+SERVICE_PARAM_PLATFORM_IRQ_WORK_PRIO = 'irq_work_priority'
+SERVICE_PARAM_PLATFORM_KTHREAD_PRIO = 'kthread_prio'
+SERVICE_PARAM_PLATFORM_KSOFTIRQD_PRIO = 'ksoftirqd_priority'
+SERVICE_PARAM_PLATFORM_SCHED_RT_MIN_PRIO = 1
+SERVICE_PARAM_PLATFORM_SCHED_RT_MAX_PRIO = 99
+
 # platform keystone security compliance config
 SERVICE_PARAM_SECTION_SECURITY_COMPLIANCE = 'security_compliance'
 SERVICE_PARAM_NAME_SECURITY_COMPLIANCE_UNIQUE_LAST_PASSWORD_COUNT = 'unique_last_password_count'
@@ -1469,6 +1527,11 @@ SERVICE_PARAM_NAME_POSTGRESQL_MAX_PARALLEL_WORKERS = 'max_parallel_workers'
 SERVICE_PARAM_NAME_POSTGRESQL_MAX_PARALLEL_MAINTENANCE_WORKERS = 'max_parallel_maintenance_workers'
 SERVICE_PARAM_NAME_POSTGRESQL_MAX_PARALLEL_WORKERS_PER_GATHER = 'max_parallel_workers_per_gather'
 
+# Platform fm parameters
+SERVICE_PARAM_NAME_FM_DATABASE_MAX_POOL_SIZE = 'database_max_pool_size'
+SERVICE_PARAM_NAME_FM_DATABASE_MAX_POOL_TIMEOUT = 'database_max_pool_timeout'
+SERVICE_PARAM_NAME_FM_DATABASE_MAX_OVERFLOW_SIZE = 'database_max_overflow_size'
+
 # Ceph Service Parameters
 SERVICE_PARAM_SECTION_CEPH_MONITOR = 'monitor'
 SERVICE_PARAM_NAME_CEPH_MONITOR_AUTH_ID_RECLAIM = 'auth_id_reclaim'
@@ -1480,6 +1543,15 @@ SERVICE_PARAM_PLATFORM_MAX_CPU_PERCENTAGE_DEFAULT = 80
 # The number of sysinv-api workers
 SERVICE_PARAM_NAME_PLATFORM_SYSINV_API_WORKERS = 'sysinv_api_workers'
 
+# Platform sysinv parameters for database connection
+SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_POOL_SIZE = 'database_max_pool_size'
+SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_POOL_TIMEOUT = 'database_max_pool_timeout'
+SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_OVERFLOW_SIZE = 'database_max_overflow_size'
+
+# The host-unlock blocking period
+SERVICE_PARAM_NAME_PLATFORM_SYSINV_HOST_UNLOCK_BLOCKING_PERIOD = 'host_unlock_blocking_period'
+SERVICE_PARAM_NAME_PLATFORM_SYSINV_HOST_UNLOCK_BLOCKING_PERIOD_DEFAULT = 120
+
 # SCTP Config parameters
 # enables/disables SCTP module load by default
 SERVICE_PARAM_NAME_PLATFORM_SCTP_AUTOLOAD = 'sctp_autoload'
@@ -1489,11 +1561,43 @@ SERVICE_PARAM_PLATFORM_SCTP_AUTOLOAD_ENABLED = 'enabled'
 # DNS host record Service Parameters
 SERVICE_PARAM_SECTION_DNS_HOST_RECORD = 'host-record'
 SERVICE_PARAM_NAME_DNS_HOST_RECORD_HOSTS = 'hosts'
+SERVICE_PARAM_SECTION_DNS_LOCAL = 'local'
+SERVICE_PARAM_NAME_DNS_LOCAL_DOMAINS = 'domains'
+
+# i801 module parameters
+SERVICE_PARAM_SECTION_MODULE_I801 = 'i801'
+SERVICE_PARAM_NAME_MODULE_I801_I2C_INTERRUPTS = 'i2c_interrupts'
 
 # cli-confirmation parameters
+SERVICE_PARAM_SECTION_PLATFORM_CLIENT = 'client'
 SERVICE_PARAM_NAME_PLATFORM_CLI_CONFIRMATIONS = 'cli_confirmations'
 SERVICE_PARAM_DISABLED = 'disabled'
 SERVICE_PARAM_ENABLED = 'enabled'
+
+# app-fmk parameters
+SERVICE_PARAM_NAME_K8S_APPLICATION_AUDIT = 'k8s_application_audit'
+
+# systemd related
+SYSTEMCTL_PATH = '/usr/bin/systemctl'
+PMON_START_FULL_PATH = '/usr/local/sbin/pmon-start'
+PMON_STOP_FULL_PATH = '/usr/local/sbin/pmon-stop'
+PMON_RESTART_FULL_PATH = '/usr/local/sbin/pmon-restart'
+MASK_COMMAND = 'mask'
+START_COMMAND = 'start'
+RESTART_COMMAND = 'restart'
+UNMASK_COMMAND = 'unmask'
+IS_ACTIVE_COMMAND = 'is-active'
+IS_ENABLED_COMMAND = 'is-enabled'
+SYSTEMCTL_RUNTIME_FLAG = '--runtime'
+SYSTEMCTL_NOW_FLAG = '--now'
+
+# SM related
+SM_RESTART = '/usr/bin/sm-restart'
+SM_RESTART_SAFE = '/usr/bin/sm-restart-safe'
+
+ETCD_PATH = "/opt/etcd"
+ETCD_DIR_NAME = "db"
+PLATFORM_PATH = "/opt/platform"
 
 # TIS part number, CPE = combined load, STD = standard load
 TIS_STD_BUILD = 'Standard'
@@ -1551,6 +1655,10 @@ PLATFORM_UPGRADE_STATES = [
 # Restore states
 RESTORE_STATE_IN_PROGRESS = 'restore-in-progress'
 RESTORE_STATE_COMPLETED = 'restore-completed'
+
+# Rook Ceph recovery status
+ROOK_CEPH_RECOVERY_COMPLETED = 'recovery-completed'
+ROOK_CEPH_RECOVERY_FAILED = 'recovery-failed'
 
 # Restore progress constants
 RESTORE_PROGRESS_ALREADY_COMPLETED = "Restore procedure already completed"
@@ -1955,7 +2063,7 @@ FLUXCD_CRD_HELM_REPO_GROUP = 'source.toolkit.fluxcd.io'
 FLUXCD_CRD_HELM_REPO_VERSION = 'v1'
 FLUXCD_CRD_HELM_REPO_PLURAL = 'helmrepositories'
 FLUXCD_CRD_HELM_CHART_GROUP = 'source.toolkit.fluxcd.io'
-FLUXCD_CRD_HELM_CHART_VERSION = 'v1beta1'
+FLUXCD_CRD_HELM_CHART_VERSION = 'v1'
 FLUXCD_CRD_HELM_CHART_PLURAL = 'helmcharts'
 # Actually beginning of errors, should be used with
 # string.startswith(FLUXCD_RECOVERY_HELM_RELEASE_STATUS_ERRORS[number])
@@ -1990,11 +2098,30 @@ APP_INACTIVE_STATE = 'inactive'
 APP_UPDATE_IN_PROGRESS = 'updating'
 APP_RECOVER_IN_PROGRESS = 'recovering'
 APP_RESTORE_REQUESTED = 'restore-requested'
+APP_UPDATE_STARTING = 'update-starting'
+APP_STATUS_LIST = [
+    APP_NOT_PRESENT,
+    APP_UPLOAD_IN_PROGRESS,
+    APP_UPLOAD_SUCCESS,
+    APP_UPLOAD_FAILURE,
+    APP_APPLY_IN_PROGRESS,
+    APP_APPLY_SUCCESS,
+    APP_APPLY_FAILURE,
+    APP_REMOVE_IN_PROGRESS,
+    APP_REMOVE_FAILURE,
+    APP_INACTIVE_STATE,
+    APP_UPDATE_IN_PROGRESS,
+    APP_RECOVER_IN_PROGRESS,
+    APP_RESTORE_REQUESTED,
+    APP_UPDATE_STARTING,
+]
 
 # Kubectl kustomize operations
 KUBECTL_KUSTOMIZE_APPLY = 'apply'
 KUBECTL_KUSTOMIZE_DELETE = 'delete'
 KUBECTL_KUSTOMIZE_VALIDATE = 'validate'
+KUBECTL_KUSTOMIZE_REQUEST_TIMEOUT = '30s'
+KUBECTL_KUSTOMIZE_TIMEOUT = '180s'
 
 # Operation constants
 APP_VALIDATE_OP = 'validate'
@@ -2003,9 +2130,12 @@ APP_APPLY_OP = 'apply'
 APP_REMOVE_OP = 'remove'
 APP_DELETE_OP = 'delete'
 APP_UPDATE_OP = 'update'
+APP_DOWNGRADE_OP = 'downgrade'
 APP_RECOVER_OP = 'recover'
 APP_ABORT_OP = 'abort'
+APP_REAPPLY_OP = 'reapply'
 APP_EVALUATE_REAPPLY_OP = 'evaluate-reapply'
+APP_RECOVER_UPDATE_OP = 'recover-update'
 # Backup/Restore lifecycle actions:
 APP_BACKUP = 'backup'
 APP_ETCD_BACKUP = 'etcd-backup'
@@ -2082,17 +2212,19 @@ APP_METADATA_APPLY_PROGRESS_ADJUST_DEFAULT_VALUE = 0
 APP_METADATA_APPS = 'apps'
 APP_METADATA_BEHAVIOR = 'behavior'
 APP_METADATA_EVALUATE_REAPPLY = 'evaluate_reapply'
-APP_METADATA_AFTER = 'after'
 APP_METADATA_TRIGGERS = 'triggers'
 APP_METADATA_TYPE = 'type'
 APP_METADATA_FILTERS = 'filters'
 APP_METADATA_FILTER_FIELD = 'filter_field'
 APP_METADATA_PLATFORM_MANAGED_APP = 'platform_managed_app'
 APP_METADATA_PLATFORM_MANAGED_APPS = 'platform_managed_apps_list'
+APP_METADATA_PLATFORM_UNMANAGED_APPS = 'platform_unmanaged_apps'
+APP_METADATA_CYCLIC_DEPENDENCIES = 'apps_with_cyclic_dependencies'
 APP_METADATA_DESIRED_STATE = 'desired_state'
 APP_METADATA_DESIRED_STATES = 'desired_states'
 APP_METADATA_FORBIDDEN_MANUAL_OPERATIONS = 'forbidden_manual_operations'
 APP_METADATA_ORDERED_APPS = 'ordered_apps'
+APP_METADATA_ORDERED_APPS_BY_AFTER_KEY = 'ordered_apps_by_after_key'
 APP_METADATA_UPGRADES = 'upgrades'
 APP_METADATA_UPDATE_FAILURE_SKIP_RECOVERY = 'update_failure_no_rollback'
 APP_METADATA_AUTO_UPDATE = 'auto_update'
@@ -2114,7 +2246,9 @@ APP_METADATA_TIMING_POST = 'post'
 APP_METADATA_TIMING_DEFAULT_VALUE = APP_METADATA_TIMING_POST
 APP_METADATA_NAME = 'app_name'
 APP_METADATA_VERSION = 'app_version'
+APP_METADATA_INDEPENDENT_APPS = 'independent_apps'
 APP_METADATA_DEPENDENT_APPS = 'dependent_apps'
+APP_METADATA_DEPENDENT_PARENT_EXCEPTIONS = 'dependent_parent_exceptions'
 APP_METADATA_DEPENDENT_APPS_NAME = 'name'
 APP_METADATA_DEPENDENT_APPS_VERSION = 'version'
 APP_METADATA_DEPENDENT_APPS_ACTION = 'action'
@@ -2154,6 +2288,7 @@ APP_EVALUATE_REAPPLY_TYPE_HOST_SWACT = SWACT_ACTION
 APP_EVALUATE_REAPPLY_TYPE_HOST_FORCE_SWACT = FORCE_SWACT_ACTION
 APP_EVALUATE_REAPPLY_TYPE_RUNTIME_APPLY_PUPPET = 'runtime-apply-puppet'
 APP_EVALUATE_REAPPLY_HOST_AVAILABILITY = 'host-availability-updated'
+APP_EVALUATE_REAPPLY_HOST_AVAILABILITY_SAVED = 'host-availability-saved'
 APP_EVALUATE_REAPPLY_TYPE_SYSTEM_MODIFY = 'system-modify'
 APP_EVALUATE_REAPPLY_TYPE_DETECTED_SWACT = 'detected-swact'
 APP_EVALUATE_REAPPLY_TYPE_KUBE_UPGRADE_COMPLETE = 'kube-upgrade-complete'
@@ -2183,6 +2318,8 @@ APP_EVALUATE_REAPPLY_TRIGGER_TO_METADATA_MAP = {
         APP_EVALUATE_REAPPLY_TYPE_RUNTIME_APPLY_PUPPET,
     APP_EVALUATE_REAPPLY_HOST_AVAILABILITY:
         APP_EVALUATE_REAPPLY_HOST_AVAILABILITY,
+    APP_EVALUATE_REAPPLY_HOST_AVAILABILITY_SAVED:
+        APP_EVALUATE_REAPPLY_HOST_AVAILABILITY_SAVED,
     APP_EVALUATE_REAPPLY_TYPE_HOST_ADD:
         APP_EVALUATE_REAPPLY_TYPE_HOST_ADD,
     APP_EVALUATE_REAPPLY_TYPE_HOST_REINSTALL:
@@ -2224,8 +2361,7 @@ APP_PROGRESS_CLEANUP_FAILED = 'Application files/helm release cleanup for versio
 APP_PROGRESS_RECOVER_IN_PROGRESS = 'recovering version {} '
 APP_PROGRESS_RECOVER_CHARTS = 'recovering helm charts'
 APP_PROGRESS_UPDATE_FAILED_SKIP_RECOVERY = "Application {} update from " \
-    "version {} to version {} failed and recovery skipped " \
-    "because skip_recovery was requested."
+    "version {} to version {} failed and recovery skipped."
 APP_PROGRESS_REMOVE_FAILED_WARNING = "Application remove failed. Status forced to '{}'. " \
     "Use native helm commands to clean up application helm releases."
 
@@ -2243,7 +2379,9 @@ APP_MANIFEST_NAME_PLACEHOLDER = 'manifest-placeholder'
 APP_TARFILE_NAME_PLACEHOLDER = 'tarfile-placeholder'
 
 # Application constants
-APP_INSTALLATION_TIMEOUT = 3600
+APP_INSTALLATION_TIMEOUT = 10800
+APP_UPLOAD_DEPENDENT_APP_TIMEOUT = 60
+APP_INSTALLATION_DEPENDENT_APP_TIMEOUT = 1800
 
 # Default node labels
 CONTROL_PLANE_LABEL = 'openstack-control-plane=enabled'
@@ -2252,6 +2390,7 @@ OPENVSWITCH_LABEL = 'openvswitch=enabled'
 SRIOV_LABEL = 'sriov=enabled'
 SRIOVDP_LABEL = 'sriovdp=enabled'
 SRIOVDP_VHOSTNET_LABEL = 'sriovdp-vhostnet=enabled'
+SRIOVDP_ISRDMA_DISABLED_LABEL = 'sriovdp-isrdma=disabled'
 KUBE_TOPOLOGY_MANAGER_LABEL = 'kube-topology-mgr-policy'
 KUBE_CPU_MANAGER_LABEL = 'kube-cpu-mgr-policy'
 KUBE_MEMORY_MANAGER_LABEL = 'kube-memory-mgr-policy'
@@ -2281,6 +2420,20 @@ VOLATILE_FIRST_BOOT_FLAG = os.path.join(tsc.VOLATILE_PATH, ".first_boot")
 ANSIBLE_BOOTSTRAP_FLAG = os.path.join(tsc.VOLATILE_PATH, ".ansible_bootstrap")
 ANSIBLE_BOOTSTRAP_COMPLETED_FLAG = os.path.join(tsc.PLATFORM_CONF_PATH,
                                                 ".bootstrap_completed")
+
+# Ansible enrollment
+ANSIBLE_ENROLLMENT_FLAG = os.path.join(tsc.VOLATILE_PATH, ".enrollment_in_progress")
+ANSIBLE_ENROLLMENT_COMPLETED_FLAG = \
+    os.path.join(tsc.VOLATILE_PATH, ".subcloud_enrollment_completed")
+ANSIBLE_ENROLLMENT_SKIP_LIST = \
+    {
+        # 'set' of runtime manifests that shouldn't be deferred during enrolment
+        'platform::compute::grub::runtime',
+    }
+
+SKIP_KEYSTONE_PASSWORD_UPDATE = \
+    os.path.join(tsc.VOLATILE_PATH, ".skip_keystone_password_update")
+
 # just used for upgrade purposes
 OLD_ANSIBLE_BOOTSTRAP_COMPLETED_FLAG = os.path.join(tsc.CONFIG_PATH,
                                                     ".bootstrap_completed")
@@ -2293,16 +2446,9 @@ EXTENDED_RPCAPI_TIMEOUT_IN_SECS = 90
 ANSIBLE_RESTORE_ROOK_FLAG = os.path.join(tsc.VOLATILE_PATH, ".ansible_restore_rook")
 
 # Ansible playbooks
-ANSIBLE_KUBE_NETWORKING_PLAYBOOK = \
-    '/usr/share/ansible/stx-ansible/playbooks/upgrade-k8s-networking.yml'
-ANSIBLE_KUBE_STORAGE_PLAYBOOK = \
-    '/usr/share/ansible/stx-ansible/playbooks/upgrade-k8s-storage.yml'
-ANSIBLE_KUBE_PUSH_IMAGES_PLAYBOOK = \
-    '/usr/share/ansible/stx-ansible/playbooks/push_k8s_images.yml'
+ANSIBLE_PLAYBOOKS_ROOT = "/usr/share/ansible/stx-ansible/playbooks"
 ANSIBLE_PLATFORM_BACKUP_PLAYBOOK = \
     '/usr/share/ansible/stx-ansible/playbooks/backup.yml'
-ANSIBLE_KUBE_STATIC_IMAGES_PLAYBOOK = \
-    '/usr/share/ansible/stx-ansible/playbooks/upgrade-static-images.yml'
 
 # Playbooks path to versioned system-images.yml
 ANSIBLE_KUBE_SYSTEM_IMAGES_PLAYBOOK_ROOT = \
@@ -2310,6 +2456,14 @@ ANSIBLE_KUBE_SYSTEM_IMAGES_PLAYBOOK_ROOT = \
 
 # Kubeadm path
 KUBEADM_PATH_FORMAT_STR = "/usr/local/kubernetes/{kubeadm_ver}/stage1/usr/bin/kubeadm"
+
+# Container networking related
+KUBELET_CNI_BIN_DIR = "/var/opt/cni/bin"
+CALICO_CHAIN_INSERT_MODE = "Append"
+
+# K8s n/w upgrade related
+SYSINV_UTILS_PATH = '/usr/bin/sysinv-utils'
+CREATE_HOST_OVERRIDES_COMMAND = 'create-host-overrides'
 
 # Clock synchronization types
 NTP = 'ntp'
@@ -2351,6 +2505,16 @@ PTP_SYNCE_EEC_INVALID_VALUE = '0'
 PTP_SYNCE_TX_HEARTBEAT_MSEC = '1000'
 PTP_SYNCE_RX_HEARTBEAT_MSEC = '500'
 
+# PTP instance gnss-monitor default parameters
+PTP_GNSS_MONITOR_SATELLITE_COUNT = "5"
+PTP_GNSS_MONITOR_SIGNAL_QUALITY_DB_VALUE = "30"
+
+# PTP instance collectd monitoring default parameters
+PTP_MONITORING_HOLDOVER_SECONDS = '14400'  # 4 hours
+PTP_MONITORING_OFFSET_THRESHOLD_MINOR_NSEC = '1000'  # 1000 nanoseconds
+PTP_MONITORING_OFFSET_THRESHOLD_MAJOR_NSEC = '1000000'  # 1000000 nanoseconds
+PTP_MONITORING_LOCKED_TO_HOLDOVER_THRESHOLD_SECONDS = '300'  # 5 minutes
+
 # PTP pmc values
 PTP_PMC_CLOCK_CLASS = '248'
 PTP_PMC_CLOCK_ACCURACY = '0xfe'
@@ -2370,6 +2534,7 @@ PTP_INSTANCE_TYPE_PHC2SYS = 'phc2sys'
 PTP_INSTANCE_TYPE_TS2PHC = 'ts2phc'
 PTP_INSTANCE_TYPE_CLOCK = 'clock'
 PTP_INSTANCE_TYPE_SYNCE4L = 'synce4l'
+PTP_INSTANCE_TYPE_GNSS_MONITOR = "gnss-monitor"
 
 # PTP instances created during migration
 PTP_INSTANCE_LEGACY_PTP4L = 'ptp4l-legacy'
@@ -2592,6 +2757,9 @@ CERT_ALARM_DEFAULT_ANNOTATION_ALARM_BEFORE_CA = '180d'
 CERT_ALARM_DEFAULT_ANNOTATION_ALARM_SEVERITY = 'unknown'
 CERT_ALARM_DEFAULT_ANNOTATION_ALARM_TEXT = ''
 
+IPSEC_CERT_RENEW_BEFORE = '15d'
+IPSEC_CERT_ALARM_BEFORE = '14d'
+
 # OS type
 OS_RELEASE_FILE = '/etc/os-release'
 OS_CENTOS = 'centos'
@@ -2602,6 +2770,7 @@ OS_UPGRADE_FEED_FOLDER = '/var/www/pages/feed/'
 # OSTree
 OSTREE_ROOT_FOLDER = '/sysroot/ostree/'
 OSTREE_LOCK_FILE = 'lock'
+ROLLBACK_OSTREE_PATH = '/ostree/2'
 
 # INotify
 INOTIFY_DELETE_EVENT = 'DELETE'
@@ -2634,11 +2803,10 @@ PLATFORM_FM_PARAMS_API_PORT = 18002
 PLATFORM_CEPH_PARAMS_RGW_PORT = 7480  # depending on service availability
 PLATFORM_DCMANAGER_PARAMS_API_PORT = 8119               # for DC setups (system controller)
 PLATFORM_DCORCH_PARAMS_SYSINV_API_PROXY_PORT = 26385    # for DC setups (system controller)
-PLATFORM_DCORCH_PARAMS_PATCH_API_PROXY_PORT = 25491     # for DC setups (system controller)
 PLATFORM_DCORCH_PARAMS_USM_API_PROXY_PORT = 25497       # for DC setups (system controller)
 PLATFORM_DCORCH_PARAMS_IDENTITY_API_PROXY_PORT = 25000  # for DC setups (system controller)
 PLATFORM_FIREWALL_SSH_PORT = 22
-PLATFORM_FIREWALL_KUBE_APISERVER_PORT = 6443
+PLATFORM_FIREWALL_KUBE_APISERVER_PORT = KUBE_APISERVER_EXTERNAL_PORT
 PLATFORM_FIREWALL_SM_PORT_1 = 2222
 PLATFORM_FIREWALL_SM_PORT_2 = 2223
 PLATFORM_FIREWALL_NTP_PORT = 123
@@ -2657,11 +2825,18 @@ AUTO_RECOVERY_COUNT = 3
 CONTROL_PLANE_RETRY_COUNT = 2
 
 # Puppet Runtime Manifest constants
-RUNTIME_CONFIG_APPLY_TIMEOUT_IN_SECS = 600
+RUNTIME_CONFIG_APPLY_TIMEOUT_IN_SECS = 1200
 RUNTIME_CONFIG_STATE_PENDING = "pending"
 RUNTIME_CONFIG_STATE_APPLIED = "applied"
 RUNTIME_CONFIG_STATE_FAILED = "failed"
 RUNTIME_CONFIG_STATE_RETRIED = "retried"
+
+# Hieradata
+TMP_HIERADATA_PATH = '/tmp/puppet/hieradata/'
+TMP_HIERADATA_SECURE_SYSTEM_YAML = os.path.join(TMP_HIERADATA_PATH, 'secure_system.yaml')
+
+# systemd related
+PMON_RESTART_FULL_PATH = '/usr/local/sbin/pmon-restart'
 
 # LUKS vault type
 LUKS_VAULT_TYPE_NAME = "luks_encrypted_vault"
@@ -2766,3 +2941,43 @@ DEPLOYED = "deployed"
 DEPLOYING = "deploying"
 REMOVING = "removing"
 UNAVAILABLE = "unavailable"
+
+# stalld labels
+LABEL_STALLD = 'starlingx.io/stalld'
+LABEL_VALUE_STALLD_ENABLED = 'enabled'
+LABEL_VALUE_STALLD_DISABLED = 'disabled'
+# Default is 'disabled'
+VALID_STALLD_VALUES = [
+        LABEL_VALUE_STALLD_DISABLED,
+        LABEL_VALUE_STALLD_ENABLED
+]
+
+# stalld cpu functions values
+LABEL_STALLD_CPU_FUNCTIONS = 'starlingx.io/stalld_cpu_functions'
+LABEL_VALUE_CPU_ALL = 'all'
+LABEL_VALUE_CPU_APPLICATION = 'application'
+LABEL_VALUE_CPU_APPLICATION_ISOLATED = 'application-isolated'
+# Default is 'application'
+LABEL_VALUE_CPU_DEFAULT = LABEL_VALUE_CPU_APPLICATION
+VALID_STALLD_CPU_FUNCTION_VALUES = [
+        LABEL_VALUE_CPU_APPLICATION,
+        LABEL_VALUE_CPU_APPLICATION_ISOLATED,
+        LABEL_VALUE_CPU_ALL
+]
+
+SUPPORTED_STALLD_LABELS = [
+    LABEL_STALLD,
+    LABEL_STALLD_CPU_FUNCTIONS
+]
+
+# Custom arguments follow starlingx.io/stalld.xxxx pattern
+# Examples
+# 'starlingx.io/stalld.boost_period'
+# 'starlingx.io/stalld.boost_runtime'
+# 'starlingx.io/stalld.boost_duration'
+# 'starlingx.io/stalld.starving_threshold'
+REGEX_STALLD_CUSTOM_LABEL = r"starlingx\.io\/stalld\.(\w+)"
+CUSTOM_STALLD_LABEL_STRING = "starlingx.io/stalld."
+
+# Image download
+IMAGE_DOWNLOAD_TIMEOUT_IN_SECS = 600

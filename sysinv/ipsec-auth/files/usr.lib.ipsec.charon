@@ -1,0 +1,6 @@
+#include <abstractions/consoles>
+
+/usr/bin/bash mrix,
+/usr/sbin/swanctl px,
+owner /usr/sbin/swanctl r,
+owner /var/log/charon.log w,

@@ -6,6 +6,7 @@
 # -*- encoding: utf-8 -*-
 #
 
+import argparse
 from cgtsclient.common import utils
 from cgtsclient import exc
 from cgtsclient.v1 import host_fs as fs_utils
@@ -133,6 +134,10 @@ def do_host_fs_modify(cc, args):
 @utils.arg('name',
            metavar='<fs name>',
            help="Name of the Filesystem [REQUIRED]")
+@utils.arg('-f', '--force',
+           action='store_true',
+           default=False,
+           help=argparse.SUPPRESS)
 def do_host_fs_delete(cc, args):
     """Delete a host filesystem."""
 
@@ -141,7 +146,7 @@ def do_host_fs_delete(cc, args):
     host_fs = fs_utils._find_fs(cc, ihost, args.name)
 
     try:
-        cc.host_fs.delete(host_fs.uuid)
+        cc.host_fs.delete(host_fs.uuid, args.force)
     except exc.HTTPNotFound:
         raise exc.CommandError('Filesystem delete failed: host %s: '
                                'name %s' % (args.hostnameorid,

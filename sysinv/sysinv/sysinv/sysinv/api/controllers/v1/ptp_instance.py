@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2021-2023 Wind River Systems, Inc.
+# Copyright (c) 2021-2023, 2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -27,7 +27,7 @@ from sysinv import objects
 LOG = log.getLogger(__name__)
 
 
-class PtpInstancePatchType(types.JsonPatchType):
+class PtpInstancePatchType(types.JsonSectionalPatchType):
     @staticmethod
     def mandatory_attrs():
         return []
@@ -74,14 +74,15 @@ class PtpInstance(base.APIBase):
                           constants.PTP_INSTANCE_TYPE_PHC2SYS,
                           constants.PTP_INSTANCE_TYPE_TS2PHC,
                           constants.PTP_INSTANCE_TYPE_CLOCK,
-                          constants.PTP_INSTANCE_TYPE_SYNCE4L)
+                          constants.PTP_INSTANCE_TYPE_SYNCE4L,
+                          constants.PTP_INSTANCE_TYPE_GNSS_MONITOR)
     "Type of service of the PTP instance"
 
     hostnames = types.MultiType([list])
     "Name(s) of host(s) associated to this PTP instance"
 
-    parameters = types.MultiType([list])
-    "List of parameters referred by this PTP instance"
+    parameters = types.MultiType([dict])
+    "Dict of sectional parameters referred by this PTP instance"
 
     def __init__(self, **kwargs):
         self.fields = list(objects.ptp_instance.fields.keys())
@@ -155,7 +156,7 @@ class PtpInstanceController(rest.RestController):
                   % (self._from_ihosts, host_uuid))
         if self._from_ihosts and not host_uuid:
             raise exception.InvalidParameterValue(_(
-                  "Host id not specified."))
+                "Host id not specified."))
 
         limit = utils.validate_limit(limit)
         sort_dir = utils.validate_sort_dir(sort_dir)
@@ -202,6 +203,56 @@ class PtpInstanceController(rest.RestController):
         return PtpInstance.convert_with_links(
             pecan.request.dbapi.ptp_instance_create(ptp_instance_dict))
 
+    def _check_umt_compliance(self, param_section, param_name, param_value):
+        # 1. no repetition of parameters: table_id, peer_address and logQueryInterval,
+        #    if already present in a unicast_master_table in DB
+        # 2. L2, UDPv4 and UDPv6 can not be mixed, check if already present in a
+        #    unicast_master_table in DB.
+        # 3. no duplication of table_id value among unicast_master_table sections in DB
+        err_msg = None
+        if param_name in ["table_id", "peer_address", "logQueryInterval"]:
+            # Check PTP parameter name exists
+            ptp_parameters = \
+                pecan.request.dbapi.ptp_parameter_get_by_name(
+                    param_name, section=param_section)
+            if len(ptp_parameters) > 0:
+                err_msg = (
+                    f"Parameter already exists: section:{param_section} parameter:{param_name} "
+                    f"new value:{param_value} vs existing value:{ptp_parameters[0].value}"
+                )
+                return err_msg
+
+        transport_param_names = ["L2", "UDPv4", "UDPv6"]
+        if param_name in transport_param_names:
+            # Check transport_param_names other than param_name not already exists
+            for transport_param_name in set(transport_param_names) - set([param_name]):
+                # Check PTP parameter name exists
+                ptp_parameters = \
+                    pecan.request.dbapi.ptp_parameter_get_by_name(
+                        transport_param_name, section=param_section)
+                if len(ptp_parameters) > 0:
+                    err_msg = (
+                        f"L2 or UPPv4 or UDPv6, these parameters can not be mixed, "
+                        f"section: {param_section}, new parameter:{param_name} vs "
+                        f"existing parameter:{transport_param_name}"
+                    )
+                    return err_msg
+
+        if param_name == "table_id":
+            ptp_parameters = \
+                pecan.request.dbapi.ptp_parameter_get_by_namevalue_anysection(
+                    param_name, param_value
+                )
+            for ptp_parameter_ in ptp_parameters:
+                if ptp_parameter_.section.startswith("unicast_master_table"):
+                    err_msg = (
+                        f"{param_name}={param_value} is not unique, "
+                        f"already exist in {ptp_parameter_.section}"
+                    )
+                    return err_msg
+
+        return err_msg
+
     @cutils.synchronized(LOCK_NAME)
     @wsme.validate(types.uuid, [PtpInstancePatchType])
     @wsme_pecan.wsexpose(PtpInstance, types.uuid,
@@ -213,7 +264,6 @@ class PtpInstanceController(rest.RestController):
 
         LOG.debug("PtpInstanceController.patch: params %s" % patch)
         utils.validate_patch(patch)
-
         try:
             # Check PTP instance exists
             objects.ptp_instance.get_by_uuid(pecan.request.context, uuid)
@@ -226,6 +276,8 @@ class PtpInstanceController(rest.RestController):
         patch_list = list(jsonpatch.JsonPatch(patch))
         for p in patch_list:
             param_adding = p.get('op') == constants.PTP_PATCH_OPERATION_ADD
+            # default section already set to global by PtpInstancePatchType
+            param_section = p.get("section")
             param_keypair = p['value']
             if param_keypair.find('=') < 0:
                 raise wsme.exc.ClientSideError(
@@ -235,18 +287,29 @@ class PtpInstanceController(rest.RestController):
                 # Check PTP parameter exists
                 ptp_parameter = \
                     pecan.request.dbapi.ptp_parameter_get_by_namevalue(
-                        param_name, param_value)
+                        param_name, param_value, section=param_section)
 
             except exception.NotFound:
                 if not param_adding:
                     raise wsme.exc.ClientSideError(
-                        _("No PTP parameter object found for %s"
-                          % param_keypair))
+                        _("No PTP parameter object found for %s's %s"
+                        % (param_section, param_keypair))
+                    )
+
+                # Creating parameter: check compliance of unicast_master_table section against DB
+                if (param_section.startswith("unicast_master_table")):
+                    err_msg = self._check_umt_compliance(param_section, param_name, param_value)
+                    if err_msg is not None:
+                        raise wsme.exc.ClientSideError(_(err_msg))
 
                 # If PTP parameter doesn't exist yet, create it
-                param_dict = dict(name=param_name, value=param_value)
-                LOG.debug("PtpInstanceController.patch: creating parameter %s"
-                          % param_keypair)
+                param_dict = dict(
+                    section=param_section, name=param_name, value=param_value
+                )
+                LOG.debug(
+                    "PtpInstanceController.patch: creating"
+                    f" {param_section}'s parameter {param_keypair}"
+                )
                 ptp_parameter = pecan.request.dbapi.ptp_parameter_create(
                     param_dict)
 
@@ -254,8 +317,8 @@ class PtpInstanceController(rest.RestController):
             if param_adding:
                 pecan.request.dbapi.ptp_instance_parameter_add(uuid,
                                                                param_uuid)
-                LOG.debug("PtpInstanceController.patch: added %s to %s" %
-                          (param_keypair, uuid))
+                LOG.debug("PtpInstanceController.patch: added %s's %s to %s" %
+                          (param_section, param_keypair, uuid))
             else:
                 try:
                     pecan.request.dbapi.ptp_instance_parameter_remove(
@@ -263,11 +326,12 @@ class PtpInstanceController(rest.RestController):
 
                 except exception.NotFound:
                     raise wsme.exc.ClientSideError(
-                        _("No PTP parameter object %s is owned by the given "
-                          "instance" % param_keypair))
+                        _("No PTP parameter object %s's %s is owned by the "
+                        "given instance" % (param_section, param_keypair))
+                    )
 
-                LOG.debug("PtpInstanceController.patch: removed %s from %s" %
-                          (param_keypair, uuid))
+                LOG.debug("PtpInstanceController.patch: removed %s's %s from %s" %
+                          (param_section, param_keypair, uuid))
 
                 # If PTP parameter isn't owned by anyone else, remove it
                 param_owners = pecan.request.dbapi.ptp_parameter_get_owners(
@@ -275,7 +339,7 @@ class PtpInstanceController(rest.RestController):
                 if len(param_owners) == 0:
                     LOG.debug(
                         "PtpInstanceController.patch: destroying unreferenced "
-                        "parameter %s" % param_keypair)
+                        f"parameter {param_section}'s {param_keypair}")
                     pecan.request.dbapi.ptp_parameter_destroy(param_uuid)
 
         return PtpInstance.convert_with_links(
@@ -285,41 +349,53 @@ class PtpInstanceController(rest.RestController):
     @wsme_pecan.wsexpose(None, types.uuid, status_code=204)
     def delete(self, ptp_instance_uuid):
         """Delete a PTP instance."""
-        LOG.debug("PtpInstanceController.delete: %s" % ptp_instance_uuid)
+        LOG.info(f"PtpInstanceController.delete: {ptp_instance_uuid}")
         if self._from_ihosts:
             raise exception.OperationNotPermitted
-
         try:
             ptp_instance_obj = objects.ptp_instance.get_by_uuid(
                 pecan.request.context, ptp_instance_uuid)
         except exception.PtpInstanceNotFound:
-            raise
-
-        # Only allow delete if there are no associated hosts, interfaces and
-        # parameters
-        parameters = pecan.request.dbapi.ptp_parameters_get_list(
-            ptp_instance=ptp_instance_uuid)
-        if parameters:
             raise wsme.exc.ClientSideError(
-                "PTP instance %s is still associated with PTP parameter(s)"
-                % ptp_instance_uuid)
-
-        ptp_interfaces = pecan.request.dbapi.ptp_interfaces_get_list(
-            ptp_instance=ptp_instance_obj.id)
-        if ptp_interfaces:
+                _("No PTP instance found for %s" % ptp_instance_uuid))
+        except Exception as e:
+            LOG.error(f"Failed to retrieve PTP instance {ptp_instance_uuid}: {str(e)}")
             raise wsme.exc.ClientSideError(
-                "PTP instance %s is still associated with PTP interface(s)"
-                % ptp_instance_uuid)
+                _("Error retrieving PTP instance %s" % ptp_instance_uuid))
 
-        hosts = pecan.request.dbapi.ptp_instance_get_assignees(
-            ptp_instance_obj.id)
+        # Check host associations
+        try:
+            hosts = pecan.request.dbapi.ptp_instance_get_assignees(
+                ptp_instance_obj.id)
+        except (exception.NotFound, exception.InvalidParameterValue) as e:
+            LOG.error(
+                f"Failed to get host assignments for PTP instance {ptp_instance_uuid}: {e}")
+            raise wsme.exc.ClientSideError(
+                f"Error checking host associations for PTP instance {ptp_instance_uuid}")
+        except Exception as e:
+            LOG.error(
+                f"Unexpected error getting host assignments for {ptp_instance_uuid}: {e}")
+            raise wsme.exc.ClientSideError(
+                f"Error checking host associations for PTP instance {ptp_instance_uuid}")
+
         if hosts:
             raise wsme.exc.ClientSideError(
-                "PTP instance %s is still associated with host(s)"
-                % ptp_instance_uuid)
+                f"PTP instance {ptp_instance_uuid} is still associated with host(s)")
 
-        LOG.debug("PtpInstanceController.delete: all clear for %s" %
-                  ptp_instance_uuid)
+        # Handle global parameters
+        global_parameters_deleted = utils.cleanup_ptp_parameters(
+            ptp_instance_uuid, "instance")
+        if not global_parameters_deleted:
+            raise wsme.exc.ClientSideError(
+                f"PTP instance {ptp_instance_uuid} is still associated with PTP parameter(s)")
+
+        # Handle instance interfaces
+        ptp_interfaces_deleted = utils.cleanup_ptp_interfaces(ptp_instance_obj)
+        if not ptp_interfaces_deleted:
+            raise wsme.exc.ClientSideError(
+                f"PTP instance {ptp_instance_uuid} is still associated with PTP interface(s)")
+
+        LOG.info(f"PtpInstanceController.delete: all clear for {ptp_instance_uuid}")
         pecan.request.dbapi.ptp_instance_destroy(ptp_instance_uuid)
 
     @cutils.synchronized(LOCK_NAME)
@@ -327,7 +403,8 @@ class PtpInstanceController(rest.RestController):
     def apply(self):
         """Apply the ptp instance configuration."""
         try:
-            pecan.request.rpcapi.update_ptp_instances_config(pecan.request.context)
+            pecan.request.rpcapi.update_ptp_instances_config(
+                pecan.request.context)
         except exception.HTTPNotFound:
             msg = ("PTP Instance apply failed")
             raise wsme.exc.ClientSideError(msg)

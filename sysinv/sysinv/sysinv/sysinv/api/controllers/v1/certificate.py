@@ -39,9 +39,11 @@ from sysinv.api.controllers.v1 import collection
 from sysinv.api.controllers.v1 import link
 from sysinv.api.controllers.v1 import types
 from sysinv.api.controllers.v1 import utils
+from sysinv.api.policies import certificate as cert_policy
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import kubernetes as sys_kube
+from sysinv.common import policy
 from sysinv.common import utils as cutils
 from sysinv.openstack.common.rpc.common import RemoteError
 from wsme import types as wtypes
@@ -646,6 +648,18 @@ class CertificateController(rest.RestController):
                     soon_to_expiry_certs[key] = val
             return soon_to_expiry_certs
         return cert_data
+
+    def enforce_policy(self, method_name, request):
+        """Check policy rules for each action of this controller."""
+        context_dict = request.context.to_dict()
+        if method_name in ["get_all", "get_one", "get_all_certs", "get_all_k8s_certs"]:
+            policy.authorize(cert_policy.POLICY_ROOT % "get", {}, context_dict)
+        elif method_name in ["certificate_install", "certificate_renew"]:
+            policy.authorize(cert_policy.POLICY_ROOT % "post", {}, context_dict)
+        elif method_name in ["delete"]:
+            policy.authorize(cert_policy.POLICY_ROOT % method_name, {}, context_dict)
+        else:
+            raise exception.PolicyNotFound()
 
 
 def _check_endpoint_domain_exists():

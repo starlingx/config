@@ -52,7 +52,7 @@ class ApiHostFSTestCaseMixin(base.FunctionalTest,
                                                      'backup-lv',
                                                      constants.HOST_FS_STATUS_IN_USE)
         self.host_fs_third = self._create_db_object('docker',
-                                                    30,
+                                                    40,
                                                     'docker-lv',
                                                     constants.HOST_FS_STATUS_IN_USE)
         self.fake_conductor_api = FakeConductorAPI()
@@ -367,7 +367,7 @@ class ApiHostFSPutTestSuiteMixin(ApiHostFSTestCaseMixin):
                                                      'backup-lv',
                                                      constants.HOST_FS_STATUS_IN_USE)
         self.host_fs_third = self._create_db_object('docker',
-                                                    30,
+                                                    40,
                                                     'docker-lv',
                                                     constants.HOST_FS_STATUS_IN_USE)
 
@@ -414,7 +414,7 @@ class ApiHostFSPutTestSuiteMixin(ApiHostFSTestCaseMixin):
                                                      'backup-lv',
                                                      constants.HOST_FS_STATUS_IN_USE)
         self.host_fs_third = self._create_db_object('docker',
-                                                    30,
+                                                    40,
                                                     'docker-lv',
                                                     constants.HOST_FS_STATUS_IN_USE)
 

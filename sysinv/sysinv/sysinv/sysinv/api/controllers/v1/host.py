@@ -22,6 +22,8 @@
 import ast
 import cgi
 import copy
+import datetime
+from distutils.version import LooseVersion
 import json
 import math
 import os
@@ -44,6 +46,7 @@ from fm_api import constants as fm_constants
 from pecan import expose
 from pecan import rest
 
+from oslo_config import cfg
 from oslo_log import log
 from oslo_utils import uuidutils
 from sysinv import objects
@@ -87,6 +90,7 @@ from sysinv.api.controllers.v1 import patch_api
 from sysinv.api.controllers.v1 import ptp_instance
 from sysinv.api.controllers.v1 import ptp_interface
 from sysinv.api.controllers.v1 import kernel
+from sysinv.api.controllers.v1 import vim
 from sysinv.api.policies import ihosts as ihosts_policy
 from sysinv.common import ceph
 from sysinv.common import constants
@@ -104,6 +108,16 @@ from sysinv.openstack.common.rpc import common as rpc_common
 
 
 LOG = log.getLogger(__name__)
+
+host_unlock_opts = [
+    cfg.IntOpt('host_unlock_blocking_period',
+               default=120,
+               help='Set the host unlock blocking period in seconds'
+               )
+]
+CONF = cfg.CONF
+CONF.register_opts(host_unlock_opts)
+
 KEYRING_BM_SERVICE = "BM"
 ERR_CODE_LOCK_SOLE_SERVICE_PROVIDER = "-1003"
 HOST_XML_ATTRIBUTES = ['hostname', 'personality', 'subfunctions', 'mgmt_mac',
@@ -1174,6 +1188,9 @@ class HostController(rest.RestController):
     kernel = kernel.KernelController()
     "Expose kernel as a sub-element of ihosts"
 
+    vim = vim.VIMController()
+    "Expose vim as a sub-element of ihosts"
+
     _custom_actions = {
         'detail': ['GET'],
         'bulk_add': ['POST'],
@@ -2035,6 +2052,15 @@ class HostController(rest.RestController):
                                                         constants.NETWORK_TYPE_MGMT, True)
             return address.address
 
+    def _exists_gnss_monitor_instance_on_host(self, host_uuid):
+        ptp_instances = pecan.request.dbapi.ptp_instances_get_list(host_uuid)
+
+        for instance in ptp_instances:
+            if instance["service"] == constants.PTP_INSTANCE_TYPE_GNSS_MONITOR:
+                return True
+
+        return False
+
     def _patch(self, uuid, patch):
         log_start = cutils.timestamped("ihost_patch_start")
 
@@ -2047,12 +2073,22 @@ class HostController(rest.RestController):
                 ptp_instance_id = p.get('value')
                 try:
                     # Check PTP instance exists
-                    pecan.request.dbapi.ptp_instance_get(ptp_instance_id)
+                    ptp_instance = pecan.request.dbapi.ptp_instance_get(ptp_instance_id)
                 except exception.PtpInstanceNotFound:
                     raise wsme.exc.ClientSideError(_("No PTP instance object"))
                 values = {'host_id': ihost_obj.id,
                           'ptp_instance_id': ptp_instance_id}
                 if p.get('op') == constants.PTP_PATCH_OPERATION_ADD:
+                    # Check constraint: single gnss-monitor ptp instance on host
+                    if ptp_instance[
+                        "service"
+                    ] == constants.PTP_INSTANCE_TYPE_GNSS_MONITOR and self._exists_gnss_monitor_instance_on_host(
+                        uuid
+                    ):
+                        raise wsme.exc.ClientSideError(
+                            _("gnss-monitor ptp instance already exists on host")
+                        )
+
                     pecan.request.dbapi.ptp_instance_assign(values)
                 else:
                     pecan.request.dbapi.ptp_instance_remove(values)
@@ -2343,7 +2379,15 @@ class HostController(rest.RestController):
                     new_ihost_mtc['action'] = constants.UNLOCK_ACTION
 
                 # Notify maintenance about updated mgmt_ip
-                new_ihost_mtc['mgmt_ip'] = utils.get_mgmt_ip(ihost_obj.hostname)
+                system = pecan.request.dbapi.isystem_get_one()
+                if (system.capabilities.get('simplex_to_duplex_migration') or
+                        system.capabilities.get('simplex_to_duplex-direct_migration')) and \
+                        ihost_obj.hostname == constants.CONTROLLER_0_HOSTNAME:
+                    # during migration, controller-0 is still using the mgmt floating address,
+                    # the unit address will be available only after unlock to finish migration to DX
+                    new_ihost_mtc['mgmt_ip'] = utils.get_mgmt_ip(constants.CONTROLLER_HOSTNAME)
+                else:
+                    new_ihost_mtc['mgmt_ip'] = utils.get_mgmt_ip(ihost_obj.hostname)
 
                 if new_ihost_mtc['operation'] == 'add':
                     # Evaluate apps reapply on new host
@@ -2377,6 +2421,14 @@ class HostController(rest.RestController):
            (nonmtc_change_count == 0) or hostupdate.skip_notify_mtce):
 
             ihost_obj.save()
+
+            # Check if apps need to be re-applied when host availability is saved to the database
+            if not os.path.isfile(tsc.RESTORE_IN_PROGRESS_FLAG) and \
+                    ihost_dict_orig['availability'] != ihost_obj.availability:
+                pecan.request.rpcapi.evaluate_apps_reapply(
+                    pecan.request.context,
+                    trigger={'type': constants.APP_EVALUATE_REAPPLY_HOST_AVAILABILITY_SAVED,
+                             'availability': ihost_obj.availability})
 
             if hostupdate.ihost_patch['operational'] == \
                     constants.OPERATIONAL_ENABLED:
@@ -2493,20 +2545,6 @@ class HostController(rest.RestController):
             pecan.request.rpcapi.delete_flag_file(
                 pecan.request.context, tsc.RESTORE_IN_PROGRESS_FLAG)
 
-        # Once controller-1 is installed and unlocked we no longer need to
-        # skip wiping OSDs. Skipping OSD wipe is needed on B&R restore
-        # operation when installing controller-1 on both DX and Standard
-        # with controller storage.
-        # Flag file is created by ansible restore platfom procedure.
-        if (ihost_obj['hostname'] == constants.CONTROLLER_1_HOSTNAME and
-                os.path.isfile(tsc.SKIP_CEPH_OSD_WIPING) and
-                patched_ihost.get('action') in
-                [constants.UNLOCK_ACTION, constants.FORCE_UNLOCK_ACTION]):
-            # flag file can only be deleted by root. So
-            # have to send a rpc request to sysinv-conductor to do it.
-            pecan.request.rpcapi.delete_flag_file(
-                pecan.request.context, tsc.SKIP_CEPH_OSD_WIPING)
-
         return Host.convert_with_links(ihost_obj)
 
     def _vim_host_add(self, ihost):
@@ -2586,22 +2624,25 @@ class HostController(rest.RestController):
 
             raise exception.HostLocked(action=constants.DELETE_ACTION, host=host)
 
-        if StorageBackendConfig.has_backend_configured(pecan.request.dbapi,
-                                                       constants.SB_TYPE_CEPH_ROOK):
-            hostfs_list = pecan.request.dbapi.host_fs_get_by_ihost(ihost.id)
-            istors = pecan.request.dbapi.istor_get_by_ihost(ihost.uuid)
+        if StorageBackendConfig.has_backend(pecan.request.dbapi,
+                                            constants.SB_TYPE_CEPH_ROOK):
+            host_fs, functions = None, []
+            try:
+                host_fs = pecan.request.dbapi.host_fs_get_by_name_ihost(ihost.uuid,
+                                                                        constants.FILESYSTEM_NAME_CEPH)
+                functions = host_fs['capabilities']['functions']
+            except exception.HostFSNameNotFound:
+                pass
 
-            for host_fs in hostfs_list:
-                if (host_fs.name == constants.FILESYSTEM_NAME_CEPH and
-                        host_fs.state == constants.HOST_FS_STATUS_IN_USE):
-                    raise wsme.exc.ClientSideError(_("host-delete rejected: not allowed when "
-                                                     "the host has host-fs ceph with in-use state"))
-
-            for stor in istors:
-                if (stor.function == constants.STOR_FUNCTION_OSD and
-                        (stor.state == constants.SB_STATE_CONFIGURED)):
-                    raise wsme.exc.ClientSideError(_("host-delete rejected: not allowed when "
-                                                     "the host has OSD with configured state"))
+            # If the host-fs is in the "Reconfigure with App" state, it means the monitor can still be
+            # assigned on the host. And if the host-fs has functions, it means the host has either a
+            # Monitor or OSD assigned.
+            if host_fs:
+                if host_fs.state == constants.HOST_FS_STATUS_RECONFIGURE_WITH_APP or functions:
+                    msg = _("host-delete rejected: not allowed when "
+                            "the host has host-fs ceph in %s state "
+                            "with functions %s" % (host_fs.state, functions))
+                    raise wsme.exc.ClientSideError(msg)
 
         if not self._check_host_delete_during_upgrade():
             raise wsme.exc.ClientSideError(_(
@@ -3300,7 +3341,7 @@ class HostController(rest.RestController):
                     and host['config_status'] == constants.CONFIG_STATUS_OUT_OF_DATE
                     and host['administrative'] == constants.ADMIN_LOCKED):
                 flip = utils.config_flip_reboot_required(host['config_target'])
-                if (utils.config_is_reboot_required(host['config_target'])
+                if (cutils.config_is_reboot_required(host['config_target'])
                         and flip == host['config_applied']):
                     check_sriov_port_data = False
 
@@ -4057,9 +4098,9 @@ class HostController(rest.RestController):
                       (hostname)))
 
             if len(patch_bm_password) > 20:
-                raise wsme.exc.ClientSideError(
-                    _("%s: Rejected: Board management controller password "
-                    "is not valid. Cannot be longer than 20 characters." %
+                LOG.warn(
+                    _("%s: Board management controller password is not valid. "
+                    "Cannot be longer than 20 characters." %
                     (hostname)))
 
             if re.search(r"\s", patch_bm_password):
@@ -4342,7 +4383,7 @@ class HostController(rest.RestController):
     def _semantic_check_storage_backend(ihost):
         """
         Perform semantic checking for storage backends
-        :param ihost_uuid: uuid of host with controller functionality
+        :param ihost: host information of host with controller functionality
         """
         # deny operation if any storage backend is either configuring or in error
         backends = pecan.request.dbapi.storage_backend_get_list()
@@ -4362,6 +4403,33 @@ class HostController(rest.RestController):
                                               'notok': bk['state'],
                                               'ok': constants.SB_STATE_CONFIGURED}
                     raise wsme.exc.ClientSideError(msg)
+
+    @staticmethod
+    def _semantic_check_controllerfs(ihost, force_action):
+        """
+        Perform semantic checking for controller filesystems
+        :param ihost: host information of host with controller functionality
+        :param force_action: if the action is forced
+        """
+
+        if not force_action:
+            if StorageBackendConfig.has_backend(pecan.request.dbapi,
+                                                constants.SB_TYPE_CEPH_ROOK):
+                controller_fs_list = pecan.request.dbapi.controller_fs_get_list()
+                if any(
+                    eval(controller_fs['state'])['status'] in [
+                            constants.CONTROLLER_FS_CREATING_IN_PROGRESS,
+                            constants.CONTROLLER_FS_DELETING_IN_PROGRESS
+                    ]
+                    for controller_fs in controller_fs_list
+                ):
+                    # The host that is locking is the standby controller
+                    if not utils.is_host_active_controller(ihost):
+                        msg = _("The standby controller (%s) cannot be unlocked "
+                                "while controller filesystem operations are in progress. "
+                                "Please wait until all operations are complete, then retry "
+                                "the host-unlock." % ihost['hostname'])
+                        raise wsme.exc.ClientSideError(msg)
 
     @staticmethod
     def _semantic_check_nova_local_storage(ihost_uuid, personality, required=False):
@@ -4419,6 +4487,23 @@ class HostController(rest.RestController):
                         'settings for the host.') % host_description
 
                 raise wsme.exc.ClientSideError('%s' % msg)
+
+    @staticmethod
+    def _semantic_check_cgts_vg(hostname, ihost_uuid):
+        """
+        Perform semantic checking for cgts-vg volume group
+        :param ihost_uuid: ihost uuid unique id
+        """
+        # Prevent unlock if cgts-vg volume group has no physical volumes allocated
+        ihost_ipvs = pecan.request.dbapi.ipv_get_by_ihost(ihost_uuid)
+        for pv in ihost_ipvs:
+            # Make sure that we have physical volumes allocated to the volume group
+            if pv.lvm_vg_name == constants.LVG_CGTS_VG:
+                break
+        else:
+            raise wsme.exc.ClientSideError(
+                _("The cgts-vg volume group on %s does not "
+                  "contain any physical volumes.") % hostname)
 
     @staticmethod
     def _semantic_check_restore_complete(ihost):
@@ -5303,16 +5388,14 @@ class HostController(rest.RestController):
                 LOG.warn("Allowing force-unlock of host %s "
                          "undergoing reinstall." % hostupdate.displayid)
 
-        if not force_unlock:
-            # Ensure inventory has completed prior to allowing unlock
-            host = pecan.request.dbapi.ihost_get(
-                hostupdate.ihost_orig['uuid'])
-            if host.inv_state != constants.INV_STATE_INITIAL_INVENTORIED:
-                raise wsme.exc.ClientSideError(
-                    _("Can not unlock host %s that has not yet been "
-                      "inventoried. Please wait for host to complete "
-                      "initial inventory prior to unlock."
-                      % hostupdate.displayid))
+        # Ensure inventory has completed prior to allowing unlock
+        host = pecan.request.dbapi.ihost_get(hostupdate.ihost_orig['uuid'])
+        if host.inv_state != constants.INV_STATE_INITIAL_INVENTORIED:
+            raise wsme.exc.ClientSideError(
+                _("Can not unlock host %s that has not yet been "
+                    "inventoried. Please wait for host to complete "
+                    "initial inventory prior to unlock."
+                    % hostupdate.displayid))
 
         # To unlock, ensure no app is being applied/reapplied, updated or recovered
         # as this could at best delay the in-progress app operation or at worst result
@@ -5323,6 +5406,9 @@ class HostController(rest.RestController):
         # Ensure there is no k8s rootca update phase in progress
         self._semantic_check_unlock_kube_rootca_update(hostupdate.ihost_orig,
                                                        force_unlock)
+
+        # Ensure that we have physical volumes allocated to the cgts-vg volume group
+        self._semantic_check_cgts_vg(hostupdate.ihost_orig['hostname'], hostupdate.ihost_orig['uuid'])
 
         personality = hostupdate.ihost_patch.get('personality')
         if personality == constants.CONTROLLER:
@@ -5339,6 +5425,15 @@ class HostController(rest.RestController):
         self.check_unlock_patching(hostupdate, force_unlock)
         self.check_unlock_kernel_config_status(hostupdate, force_unlock)
         self.check_unlock_apparmor_config_status(hostupdate, force_unlock)
+
+        # Check if grub related runtime manifests are still pending
+        runtime_manifests = \
+            [
+                'platform::compute::grub::runtime'
+            ]
+        self.check_unlock_runtime_manifests(hostupdate,
+                                            force_unlock,
+                                            runtime_manifests)
 
         hostupdate.configure_required = True
         if ((os.path.isfile(constants.ANSIBLE_BOOTSTRAP_FLAG) or
@@ -5369,8 +5464,41 @@ class HostController(rest.RestController):
                     'apparmor configuration in progress.')
             raise wsme.exc.ClientSideError(_(msg))
 
+    def check_unlock_runtime_manifests(self, hostupdate,
+                                       force_unlock, runtime_manifests):
+        """ Check whether a runtime manifest update is pending.
+            Scan the runtime config table and make sure there aren't any
+            pending runtime manifests
+        """
+
+        if force_unlock:
+            return
+
+        hostname = hostupdate.ihost_patch.get('hostname')
+        hostid = hostupdate.ihost_orig.get('id')
+        cutoff = datetime.datetime.now() - \
+                    datetime.timedelta(seconds=CONF.host_unlock_blocking_period)
+
+        pending_runtime_config = pecan.request.dbapi.runtime_config_get_all(
+            state=constants.RUNTIME_CONFIG_STATE_PENDING,
+            younger_than=cutoff,
+            forihostid=hostid)
+
+        for rc in pending_runtime_config:
+            config_uuid = rc.config_uuid
+            config_dict = json.loads(rc.config_dict)
+            for runtime_manifest in config_dict.get('classes', []):
+                if runtime_manifest in runtime_manifests:
+                    msg = (f'Can not unlock {hostname}; '
+                           f'runtime config {config_uuid} '
+                           f'{runtime_manifest} is pending. '
+                           f'Please wait a few seconds and retry.')
+                    raise wsme.exc.ClientSideError(_(msg))
+
     def check_unlock_kernel_config_status(self, hostupdate, force_unlock):
         """ Check whether kernel configuration is in progress.
+            The time kernel config was initiated is stored in host db
+            If the time period hasn't expired we block unlock
             Force unlock will bypass check
         """
 
@@ -5379,12 +5507,28 @@ class HostController(rest.RestController):
 
         hostname = hostupdate.ihost_patch.get('hostname')
         subfunctions = hostupdate.ihost_patch.get('subfunctions')
-        kernel_config_status = hostupdate.ihost_patch.get('kernel_config_status')
+        kernel_config_time = hostupdate.ihost_patch.get('kernel_config_status')
 
         if constants.WORKER not in subfunctions:
             return
 
-        if kernel_config_status == constants.KERNEL_CONFIG_STATUS_PENDING:
+        try:
+            config_time = datetime.datetime.strptime(
+                kernel_config_time,
+                constants.KERNEL_CONFIG_STATUS_FORMAT
+            )
+        except (ValueError, TypeError):
+            # string is not a valid datetime - no kernel config in progress
+            return
+
+        current_time = datetime.datetime.now()
+        interval = current_time - config_time
+
+        if interval < datetime.timedelta():
+            # negative time should not happen unlock clock was tampered with
+            return
+
+        if interval < constants.KERNEL_CONFIG_STATUS_EXPIRY:
             msg = (f'Can not unlock {hostname} '
                     'kernel configuration in progress.')
             raise wsme.exc.ClientSideError(_(msg))
@@ -5504,6 +5648,10 @@ class HostController(rest.RestController):
                     _("%s : Rejected: Can not lock an active "
                       "controller.") % hostupdate.ihost_orig['hostname'])
 
+        # Prevent locking controller hosts during certain states of the upgrade, except forcefully
+        if not force:
+            self._check_lock_controller_during_upgrade(hostupdate.ihost_orig['hostname'])
+
         ceph_rook_backend = StorageBackendConfig.get_backend_conf(
             pecan.request.dbapi,
             target=constants.SB_TYPE_CEPH_ROOK
@@ -5611,8 +5759,6 @@ class HostController(rest.RestController):
                     raise wsme.exc.ClientSideError(
                         _("%s" % response['error_details']))
 
-            self._check_lock_controller_during_upgrade(hostupdate.ihost_orig['hostname'])
-
     @staticmethod
     def _check_lock_controller_during_upgrade(hostname):
         # Check to ensure in valid upgrade state for host-lock
@@ -5633,15 +5779,25 @@ class HostController(rest.RestController):
         LOG.info("%s ihost check_unlock_application" % hostupdate.displayid)
         apps = pecan.request.dbapi.kube_app_get_all()
 
+        blocked_app_statuses = [constants.APP_APPLY_IN_PROGRESS,
+                                constants.APP_UPDATE_IN_PROGRESS,
+                                constants.APP_RECOVER_IN_PROGRESS,
+                                constants.APP_REMOVE_IN_PROGRESS]
+
+        # Also prevent unlocking if any apps are uploading in simplex systems
+        additional_error_status = ""
+        if utils.get_system_mode() == constants.SYSTEM_MODE_SIMPLEX:
+            blocked_app_statuses.append(constants.APP_UPLOAD_IN_PROGRESS)
+            additional_error_status = "uploaded, "
+
         for app in apps:
-            if app.status in [constants.APP_APPLY_IN_PROGRESS,
-                              constants.APP_UPDATE_IN_PROGRESS,
-                              constants.APP_RECOVER_IN_PROGRESS]:
+            if app.status in blocked_app_statuses:
                 if not force_unlock:
                     raise wsme.exc.ClientSideError(
                         _("Rejected: Can not unlock host %s while an application is being "
-                          "applied, updated or recovered. Please try again later."
-                          % hostupdate.displayid))
+                          "%sapplied, updated, recovered or removed. "
+                          "Please try again later."
+                          % (hostupdate.displayid, additional_error_status)))
                 else:
                     LOG.warn("Allowing force-unlock of host %s while application "
                              "%s status = '%s'"
@@ -5658,6 +5814,7 @@ class HostController(rest.RestController):
         self._semantic_check_cinder_volumes(hostupdate.ihost_orig)
         self._semantic_check_filesystem_sizes(hostupdate.ihost_orig)
         self._semantic_check_storage_backend(hostupdate.ihost_orig)
+        self._semantic_check_controllerfs(hostupdate.ihost_orig, force_unlock)
         system_mode_options = [
                     constants.SYSTEM_MODE_DUPLEX,
                     constants.SYSTEM_MODE_DUPLEX_DIRECT,
@@ -6411,6 +6568,23 @@ class HostController(rest.RestController):
                         % hostupdate.displayid)
                 raise wsme.exc.ClientSideError(msg)
 
+            if ihost['personality'] == constants.CONTROLLER:
+                # Only controller nodes require an admin interface assigned.
+                # Check if there is an admin network configured and ensure
+                # there is an associated interface with it on the node
+                networktype = constants.NETWORK_TYPE_ADMIN
+                pools = cutils.get_network_address_pools(pecan.request.dbapi, networktype, True)
+                admin_interface_configured = False
+                for iif in ihost_iinterfaces:
+                    if (iif.networktypelist and networktype in iif.networktypelist):
+                        admin_interface_configured = True
+                        break
+                if pools and not admin_interface_configured:
+                    msg = _("Cannot unlock host %s "
+                            "without assigning the admin network to an interface"
+                            % hostupdate.displayid)
+                    raise wsme.exc.ClientSideError(msg)
+
             hostupdate.configure_required = True
 
         host_uuid = ihost['uuid']
@@ -6891,7 +7065,6 @@ class HostController(rest.RestController):
         host_obj = objects.host.get_by_uuid(pecan.request.context, uuid)
         kube_host_upgrade_obj = objects.kube_host_upgrade.get_by_host_id(
             pecan.request.context, host_obj.id)
-        system = pecan.request.dbapi.isystem_get_one()
 
         # The kubernetes upgrade must have been started
         try:
@@ -6910,76 +7083,116 @@ class HostController(rest.RestController):
                 "This host does not have a kubernetes control plane."))
 
         cp_versions = self._kube_operator.kube_get_control_plane_versions()
-        current_cp_version = cp_versions.get(host_obj.hostname)
-        kubelet_version = self._kube_operator.kube_get_kubelet_versions()
-        current_kubelet_version = kubelet_version.get(host_obj.hostname)
+        cp_version = cp_versions.get(host_obj.hostname)
+        kubelet_versions = self._kube_operator.kube_get_kubelet_versions()
+        kubelet_version = kubelet_versions.get(host_obj.hostname)
+
+        if cp_version is None:
+            raise wsme.exc.ClientSideError(_(
+                "Unable to determine the version of the control plane."))
+        if kubelet_version is None:
+            raise wsme.exc.ClientSideError(_(
+                "Unable to determine the version of kubelet."))
+
+        # Determine whether this is first control-plane being upgraded
+        is_first = False
+        if all(LooseVersion(cp_version) >= LooseVersion(ver)
+                for ver in cp_versions.values()):
+            is_first = True
+
+        # Determine whether control-plane(s) are the same version
+        all_equal = len(set(cp_versions.values())) == 1
+
+        # Determine target control-plane version for this host
+        if cp_version == kube_upgrade_obj.to_version:
+            cp_versions_next = [cp_version]
+        else:
+            cp_versions_next = self._kube_operator.kube_get_higher_patch_version(
+                cp_version, kube_upgrade_obj.to_version)
+        if cp_versions_next:
+            target_version = cp_versions_next[0]
+            kubeadm_version = target_version
+        else:
+            target_version = None
+            kubeadm_version = None
 
         if utils.get_system_mode() == constants.SYSTEM_MODE_SIMPLEX:
             check_upgraded_state = [
                 kubernetes.KUBE_UPGRADED_STORAGE,
                 kubernetes.KUBE_UPGRADED_FIRST_MASTER,
+                kubernetes.KUBE_UPGRADING_FIRST_MASTER_FAILED,
                 kubernetes.KUBE_UPGRADE_CORDON_COMPLETE]
         else:
             check_upgraded_state = [
                 kubernetes.KUBE_UPGRADED_STORAGE,
-                kubernetes.KUBE_UPGRADED_FIRST_MASTER]
+                kubernetes.KUBE_UPGRADED_FIRST_MASTER,
+                kubernetes.KUBE_UPGRADING_FIRST_MASTER_FAILED,
+                kubernetes.KUBE_UPGRADED_SECOND_MASTER,
+                kubernetes.KUBE_UPGRADING_SECOND_MASTER_FAILED]
 
         # Verify the upgrade is in the correct state
         if kube_upgrade_obj.state in check_upgraded_state:
             # We are upgrading a control plane
             pass
         elif kube_upgrade_obj.state == kubernetes.KUBE_UPGRADING_KUBELETS and \
-            current_cp_version != kube_upgrade_obj.to_version and \
-                system.system_mode == constants.SYSTEM_MODE_SIMPLEX:
+                cp_version != kube_upgrade_obj.to_version:
             pass
         elif kube_upgrade_obj.state == kubernetes.KUBE_UPGRADING_KUBELETS and \
-            current_cp_version == kube_upgrade_obj.to_version and \
-                system.system_mode == constants.SYSTEM_MODE_SIMPLEX:
+                cp_version == kube_upgrade_obj.to_version:
             raise wsme.exc.ClientSideError(_(
                     "The control plane is already running the target version."))
-        elif kube_upgrade_obj.state in [
-                kubernetes.KUBE_UPGRADING_FIRST_MASTER_FAILED,
-                kubernetes.KUBE_UPGRADING_SECOND_MASTER_FAILED]:
-            # We are re-attempting the upgrade of a control plane. Make sure
-            # this really is a re-attempt.
-            if kube_host_upgrade_obj.target_version != \
-                        kube_upgrade_obj.to_version and \
-                        system.system_mode != constants.SYSTEM_MODE_SIMPLEX:
-                raise wsme.exc.ClientSideError(_(
-                    "The first control plane upgrade must be completed before "
-                    "upgrading the second control plane."))
         else:
             raise wsme.exc.ClientSideError(_(
                 "The kubernetes upgrade is not in a valid state to "
                 "upgrade the control plane."))
 
-        if current_cp_version != kube_upgrade_obj.to_version and \
-                system.system_mode == constants.SYSTEM_MODE_SIMPLEX:
-            # Make sure kubelet is updated before updating
-            # control plane again
-            next_versions = self._kube_operator.kube_get_higher_patch_version(current_cp_version,
-                                                                    kube_upgrade_obj.to_version)
-            if kube_host_upgrade_obj.status != kubernetes.KUBE_HOST_UPGRADED_KUBELET and \
-                    current_cp_version != current_kubelet_version:
-                LOG.info("Upgrade kubelet version to %s before upgrading control plane "
-                         "version to %s " % (current_cp_version, next_versions[0]))
+        # Enforce Kubernetes Skew Policy. This prevents unsupported advancement
+        # of control-plane if any nodes are not current enough.
+
+        # Evaluate kubelet version skew for each K8S node.
+        # Example:  If current kubelet is at 1.29, current kubeadm is at 1.32,
+        # then the minor version skew is 3 (i.e., 32 - 29). We prevent the kubeadm
+        # upgrade to 1.33 since the resulting upgrade would have skew of 4.
+        if cp_version != kube_upgrade_obj.to_version:
+            if kube_host_upgrade_obj.status != kubernetes.KUBE_HOST_UPGRADED_KUBELET:
+                old_hosts = []
+                for host, kubelet_version in kubelet_versions.items():
+                    kubelet_skew = self._kube_operator.kubelet_version_skew(
+                        kubeadm_version, kubelet_version)
+                    if kubelet_skew > kubernetes.KUBELET_MINOR_SKEW_TOLERANCE:
+                        LOG.error("Kubernetes minor version skew %d exceeds %d tolerance. "
+                                  "kubelet upgrade on %s is mandatory."
+                                  % (kubelet_skew, kubernetes.KUBELET_MINOR_SKEW_TOLERANCE, host))
+                        old_hosts.append(host)
+                if old_hosts:
+                    raise wsme.exc.ClientSideError(_(
+                        "Update kubelet on %s before updating control plane "
+                        "again." % old_hosts))
+
+            # Evaluate control-plane version skew. Prevent kubeadm upgrade of
+            # first master unless all control-planes are the same version.
+            # The client and server will exceed minor version skew of +/- 1.
+            if is_first and not all_equal:
+                LOG.error("Kubernetes minor version skew exceeds +/-1 tolerance. "
+                          "second control-plane upgrade %s is mandatory.")
                 raise wsme.exc.ClientSideError(_(
-                    "Update kubelet before updating control plane "
-                    "again."))
+                    "Update second control-plane before updating first "
+                    "control plane again."))
 
         # Check the existing control plane version
-        if current_cp_version == kube_upgrade_obj.to_version:
-            # Make sure we are not attempting to upgrade the first upgraded
-            # control plane again
-            if kube_upgrade_obj.state == kubernetes.KUBE_UPGRADED_FIRST_MASTER:
+        if cp_version == kube_upgrade_obj.to_version:
+            # Make sure we are not attempting to upgrade a successfully
+            # upgraded control plane
+            if kube_upgrade_obj.state in [kubernetes.KUBE_UPGRADED_FIRST_MASTER,
+                                          kubernetes.KUBE_UPGRADED_SECOND_MASTER]:
                 raise wsme.exc.ClientSideError(_(
-                    "The first control plane was already upgraded."))
+                    "The control plane was already upgraded."))
 
             # The control plane was already upgraded, but we didn't progress
             # to the next state, so something failed along the way.
             LOG.info("Redoing kubernetes control plane upgrade for %s" %
                      host_obj.hostname)
-        elif current_cp_version is None:
+        elif cp_version is None:
             raise wsme.exc.ClientSideError(_(
                 "Unable to determine the version of the kubernetes control "
                 "plane on this host."))
@@ -7007,8 +7220,11 @@ class HostController(rest.RestController):
 
         if kube_upgrade_obj.state in [
                 kubernetes.KUBE_UPGRADED_STORAGE,
+                kubernetes.KUBE_UPGRADED_FIRST_MASTER,
                 kubernetes.KUBE_UPGRADING_FIRST_MASTER_FAILED,
-                kubernetes.KUBE_UPGRADE_CORDON_COMPLETE]:
+                kubernetes.KUBE_UPGRADED_SECOND_MASTER,
+                kubernetes.KUBE_UPGRADING_SECOND_MASTER_FAILED,
+                kubernetes.KUBE_UPGRADE_CORDON_COMPLETE] and is_first:
             # Update the upgrade state
             kube_upgrade_obj.state = kubernetes.KUBE_UPGRADING_FIRST_MASTER
             kube_upgrade_obj.save()
@@ -7017,12 +7233,11 @@ class HostController(rest.RestController):
             pecan.request.rpcapi.kube_upgrade_control_plane(
                 pecan.request.context, host_obj.uuid)
         elif kube_upgrade_obj.state == kubernetes.KUBE_UPGRADING_KUBELETS and \
-            current_cp_version != kube_upgrade_obj.to_version and \
-                system.system_mode == constants.SYSTEM_MODE_SIMPLEX:
+                cp_version != kube_upgrade_obj.to_version:
             LOG.info("In state upgrading kubelets, kubelet version %s, transitioning to "
                      "upgrading control plane, current control plane version %s, "
-                     "target version %s." % (current_kubelet_version, current_cp_version,
-                                            next_versions[0]))
+                     "target version %s." % (kubelet_version, cp_version,
+                                            target_version))
             kube_upgrade_obj.state = kubernetes.KUBE_UPGRADING_FIRST_MASTER
             kube_upgrade_obj.save()
             kube_host_upgrade_obj.status = kubernetes.KUBE_HOST_UPGRADING_CONTROL_PLANE
@@ -7088,24 +7303,23 @@ class HostController(rest.RestController):
                     kubernetes.KUBE_UPGRADED_SECOND_MASTER,
                     kubernetes.KUBE_UPGRADING_KUBELETS)))
 
-        # Enforce the ordering of controllers first
+        # Enforce that kubelets on control-plane nodes are upgraded first
+        cp_versions = self._kube_operator.kube_get_control_plane_versions()
         kubelet_versions = self._kube_operator.kube_get_kubelet_versions()
         if host_obj.personality == constants.WORKER:
-            if kubelet_versions.get(constants.CONTROLLER_0_HOSTNAME) != \
-                    kube_upgrade_obj.to_version or \
-                    kubelet_versions.get(constants.CONTROLLER_1_HOSTNAME) != \
-                    kube_upgrade_obj.to_version:
-                raise wsme.exc.ClientSideError(_(
-                    "The kubelets on all controller hosts must be upgraded "
-                    "before upgrading kubelets on worker hosts."))
+            for host, version in cp_versions.items():
+                if version != kubelet_versions.get(host):
+                    raise wsme.exc.ClientSideError(_(
+                        "The kubelets on all controller hosts must be upgraded "
+                        "before upgrading kubelets on worker hosts."))
 
         # Check whether this host was already upgraded
         kube_host_upgrade_obj = objects.kube_host_upgrade.get_by_host_id(
             pecan.request.context, host_obj.id)
         if kube_host_upgrade_obj.target_version == kube_upgrade_obj.to_version:
             # Check the existing kubelet version
-            current_kubelet_version = kubelet_versions.get(host_obj.hostname)
-            if current_kubelet_version == kube_upgrade_obj.to_version:
+            kubelet_version = kubelet_versions.get(host_obj.hostname)
+            if kubelet_version == kube_upgrade_obj.to_version:
                 # If the force option was used, we will redo the upgrade
                 if force:
                     LOG.info("Redoing kubelet upgrade for %s" %
@@ -7117,7 +7331,7 @@ class HostController(rest.RestController):
                     LOG.info("Upgraded kubernetes kubelet on host %s" %
                             host_obj.hostname)
                     return Host.convert_with_links(host_obj)
-            elif current_kubelet_version is None:
+            elif kubelet_version is None:
                 raise wsme.exc.ClientSideError(_(
                     "Unable to determine the version of the kubelet on this "
                     "host."))
@@ -7140,9 +7354,10 @@ class HostController(rest.RestController):
             raise wsme.exc.ClientSideError(_(
                 "The kubelet on this host is already being upgraded."))
 
-        # Set the target version if this is a worker host
+        # Set the target version of worker host to match the controller
+        # control-plane version
         if host_obj.personality == constants.WORKER:
-            kube_host_upgrade_obj.target_version = kube_upgrade_obj.to_version
+            kube_host_upgrade_obj.target_version = list(cp_versions.values())[0]
 
         # Set the status
         kube_host_upgrade_obj.status = kubernetes.KUBE_HOST_UPGRADING_KUBELET

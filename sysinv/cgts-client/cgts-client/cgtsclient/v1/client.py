@@ -32,6 +32,7 @@ from cgtsclient.v1 import device_label
 from cgtsclient.v1 import drbdconfig
 from cgtsclient.v1 import ethernetport
 from cgtsclient.v1 import fernet
+from cgtsclient.v1 import flux
 from cgtsclient.v1 import health
 from cgtsclient.v1 import helm
 from cgtsclient.v1 import host_fs
@@ -186,3 +187,4 @@ class Client(object):
         self.kube_config_kubelet = \
             kube_config_kubelet.KubeConfigKubeletManager(self.http_client)
         self.kube_app = kube_app.KubeAppManager(self.http_client)
+        self.flux = flux.FluxManager(self.http_client)

@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2024 Wind River Systems, Inc.
+# Copyright (c) 2013-2025 Wind River Systems, Inc.
 #
 
 from eventlet.green import subprocess
@@ -161,13 +161,17 @@ def is_valid_subnet(subnet, ip_version=None):
        Raise Client-Side Error on failure.
     """
 
+    MIN_HOSTS = 4
+    IPV4_MIN_PREFIX = 32 - MIN_HOSTS.bit_length() + 1
+    IPV6_MIN_PREFIX = 128 - MIN_HOSTS.bit_length() + 1
+
     if ip_version is not None and subnet.version != ip_version:
         raise wsme.exc.ClientSideError(_(
             "Invalid IP version %s %s. "
             "Please configure valid %s subnet") %
             (subnet.version, subnet, ip_version_to_string(ip_version)))
-    elif subnet.size < 8:
-        max_prefix = 29 if subnet.version == constants.IPV4_FAMILY else 125
+    elif subnet.size < MIN_HOSTS:
+        max_prefix = IPV4_MIN_PREFIX if subnet.version == constants.IPV4_FAMILY else IPV6_MIN_PREFIX
         raise wsme.exc.ClientSideError(_(
             "Invalid subnet size %s with %s. "
             "Please configure at least size /%d subnet") %
@@ -403,15 +407,6 @@ def update_address_mode(interface_id, family, mode, pool_uuid):
         pool_id = pecan.request.dbapi.address_pool_get(pool_uuid)['id']
         values.update({'address_pool_id': pool_id})
     pecan.request.dbapi.address_mode_update(interface_id, values)
-
-
-def config_is_reboot_required(config_uuid):
-    """Check if the supplied config_uuid has the reboot required flag
-
-    :param config_uuid UUID object or UUID string
-    :return True if reboot is required, False otherwise
-    """
-    return int(uuid.UUID(config_uuid)) & constants.CONFIG_REBOOT_REQUIRED
 
 
 def config_flip_reboot_required(config_uuid):
@@ -957,7 +952,7 @@ def is_host_lvg_updated(host_fs_list, host_lvg_list):
 
 def get_primary_address_by_name(db_address_name, networktype, raise_exc=False):
     """Search address by database name to retrieve the relevant address from
-       the primary pool, if multipĺe entries for the same name are found, the
+       the primary pool, if multiple entries for the same name are found, the
        query will use the network's pool_uuid to get the address family (IPv4 or
        IPv6) related to the primary.
 
@@ -967,6 +962,19 @@ def get_primary_address_by_name(db_address_name, networktype, raise_exc=False):
 
     :return: the address object if found, None otherwise
     """
+    if (
+        get_system_mode() == constants.SYSTEM_MODE_SIMPLEX
+        and networktype in (
+            constants.NETWORK_TYPE_ADMIN,
+            constants.NETWORK_TYPE_MGMT,
+            constants.NETWORK_TYPE_CLUSTER_HOST,
+            constants.NETWORK_TYPE_STORAGE,
+            constants.NETWORK_TYPE_PXEBOOT,
+        )
+        and db_address_name == f"{constants.CONTROLLER_0_HOSTNAME}-{networktype}"
+    ):
+        db_address_name = f"{constants.CONTROLLER_HOSTNAME}-{networktype}"
+
     # first search directly by name
     address = pecan.request.dbapi.address_get_by_name(db_address_name)
     if len(address) == 0:
@@ -1050,3 +1058,109 @@ def is_network_associated_to_interface(networktype, dbapi=None):
     if if_networks:
         return True
     return False
+
+
+def cleanup_ptp_parameters(ptp_uuid, ptp_type):
+    """Remove parameter associations and delete unused parameters"""
+    try:
+        # Iterate through params and delete parameter or remove association
+        # to instance/interface if used in other instances/interfaces
+        if ptp_type == "instance":
+            parameters = pecan.request.dbapi.ptp_parameters_get_list(
+                ptp_instance=ptp_uuid)
+        elif ptp_type == "interface":
+            parameters = pecan.request.dbapi.ptp_parameters_get_list(
+                ptp_interface=ptp_uuid)
+        else:
+            parameters = None
+
+        for p in parameters:
+            LOG.debug(f"PTP {ptp_type} parameter: {p.uuid}")
+            try:
+                param_owners = pecan.request.dbapi.ptp_parameter_get_owners(
+                    p.uuid)
+                if len(param_owners) == 1:
+                    # Param is owned by delete-pending instance/interface only, safe to delete
+                    LOG.info(f"Deleting ptp parameter {p.uuid}")
+                    pecan.request.dbapi.ptp_parameter_destroy(p.uuid)
+                else:
+                    # Param is owned by other instances/interfaces
+                    # Remove this association and move on
+                    LOG.info(
+                        f"Removing param association for {p.uuid} to {ptp_type} {ptp_uuid}")
+                    if ptp_type == "instance":
+                        pecan.request.dbapi.ptp_instance_parameter_remove(
+                            ptp_uuid, p.uuid)
+                    else:  # interface
+                        pecan.request.dbapi.ptp_interface_parameter_remove(
+                            ptp_uuid, p.uuid)
+            except exception.NotFound:
+                LOG.warning(f"Parameter {p.uuid} not found during cleanup")
+            except Exception as e:
+                LOG.error(f"Failed to cleanup parameter {p.uuid}: {str(e)}")
+                return False
+        # Recheck parameters to ensure that all associations are clear
+        # Expect this to be an empty list at this point
+        if ptp_type == "instance":
+            parameters = pecan.request.dbapi.ptp_parameters_get_list(
+                ptp_instance=ptp_uuid)
+        elif ptp_type == "interface":
+            parameters = pecan.request.dbapi.ptp_parameters_get_list(
+                ptp_interface=ptp_uuid)
+        return False if parameters else True
+    except Exception as e:
+        LOG.error(
+            f"Failed to cleanup {ptp_type} parameters for {ptp_uuid}: {e}")
+        return False
+
+
+def cleanup_host_if_associations(ptp_if_uuid):
+    """Remove associations between ptp-interface and host interfaces"""
+    try:
+        host_interfaces = pecan.request.dbapi.ptp_interface_get_assignees(
+            ptp_if_uuid)
+        for hostif in host_interfaces:
+            values = {'interface_id': hostif.id,
+                      'ptp_interface_id': ptp_if_uuid}
+            pecan.request.dbapi.ptp_interface_remove(values)
+        # Recheck host interface assignments; expecting an empty list
+        host_interfaces = pecan.request.dbapi.ptp_interface_get_assignees(
+            ptp_if_uuid)
+        return False if host_interfaces else True
+    except exception.NotFound:
+        LOG.warning(f"Host interface associations for {ptp_if_uuid} already removed")
+        return True
+    except Exception as e:
+        LOG.error(f"Failed to cleanup host interface associations for {ptp_if_uuid}: {e}")
+        return False
+
+
+def cleanup_ptp_interfaces(ptp_instance_obj):
+    """Iterate through ptp interfaces for a given instance and
+    remove any parameter or host interface associations"""
+    try:
+        ptp_interfaces = pecan.request.dbapi.ptp_interfaces_get_list(
+            ptp_instance=ptp_instance_obj.id)
+        for p in ptp_interfaces:
+            LOG.debug("PTP interface cleanup: %s" % p.uuid)
+            interface_parameters_cleared = cleanup_ptp_parameters(p.uuid, "interface")
+            host_interface_associations_cleared = cleanup_host_if_associations(p.id)
+            if interface_parameters_cleared and host_interface_associations_cleared:
+                LOG.info("PTP interface %s clear for deletion" % p.uuid)
+                try:
+                    pecan.request.dbapi.ptp_interface_destroy(p.uuid)
+                except Exception as e:
+                    LOG.error("Failed to destroy PTP interface %s: %s" % (p.uuid, str(e)))
+                    return False
+            else:
+                LOG.error("Cannot delete PTP interface %s; "
+                          "still associated with host interfaces or parameters" % p.uuid)
+                return False
+        # Recheck interfaces to ensure that all associations are clear
+        # Expect this to be an empty list
+        ptp_interfaces = pecan.request.dbapi.ptp_interfaces_get_list(
+            ptp_instance=ptp_instance_obj.id)
+        return False if ptp_interfaces else True
+    except Exception as e:
+        LOG.error(f"Failed to cleanup PTP interfaces for instance {ptp_instance_obj.id}: {e}")
+        return False

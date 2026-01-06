@@ -466,3 +466,54 @@ def get_entity_instance_id(cert_name):
 
     entity_id = ''.join(tmp_id)
     return entity_id
+
+
+def get_ipsec_cert_requests():
+    """
+    Collect all ipsec certificate requests
+    Returns: list of ipsec certificate requests
+    """
+    ipsec_cert_csr = "system-ipsec-certificate-"
+    kube_op = sys_kube.KubeOperator()
+    cert_requests = \
+        kube_op.list_namespaced_custom_resources("cert-manager.io", "v1",
+                                                 constants.CERT_NAMESPACE_PLATFORM_CERTS,
+                                                 "certificaterequests")
+    if not cert_requests:
+        LOG.debug("No IPSEC cert requests found")
+        return None
+
+    ipsec_csr_list = []
+    for csr in cert_requests:
+        if ipsec_cert_csr in csr["metadata"]["name"]:
+            ipsec_csr_list.append(csr)
+    return ipsec_csr_list
+
+
+def retrieve_ipsec_certificate_data_from_csr(csr):
+    """
+    Collect certificate data
+    Input: csr object
+    Returns: certname, expiration_date, annotation_data,
+            mode_metadata
+    """
+    certname = csr["metadata"]["name"]
+    expiration_date = None
+    annotation_data = dict()
+    LOG.debug('Collecting certificate data from IPsec certificate CSRs %s' % certname)
+
+    if 'certificate' not in csr["status"]:
+        raise Exception('%s certificate data missing' % certname)
+
+    txt_crt = base64.b64decode(csr["status"]['certificate'])
+    cert = crypto.load_certificate(crypto.FILETYPE_PEM, txt_crt)
+    expiration_date = get_cert_expiration_date(cert)
+    annotation_data = get_default_annotation_values()
+    mode_metadata = get_default_mode_metadata()
+    mode_metadata[SNAPSHOT_KEY_MODE] = MODE_OTHER
+    mode_metadata[SNAPSHOT_KEY_RENEW_BEFORE] = constants.IPSEC_CERT_RENEW_BEFORE
+    annotation_data[constants.CERT_ALARM_ANNOTATION_ALARM_BEFORE] = \
+        constants.IPSEC_CERT_ALARM_BEFORE
+    LOG.debug('Collected certificate data (%s, %s, %s, %s)' % (certname, expiration_date,
+                                                               annotation_data, mode_metadata))
+    return (certname, expiration_date, annotation_data, mode_metadata)

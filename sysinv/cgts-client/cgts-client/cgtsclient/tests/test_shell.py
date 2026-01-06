@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2019,2024 Wind River Systems, Inc.
+# Copyright (c) 2013-2019,2024,2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -18,7 +18,8 @@ from cgtsclient import exc
 from cgtsclient import shell as cgts_shell
 from cgtsclient.tests import utils
 
-FAKE_ENV = {'OS_USERNAME': 'username',
+FAKE_ENV = {'CGTSCLIENT_NO_CACHE': True,
+            'OS_USERNAME': 'username',
             'OS_PASSWORD': 'password',
             'OS_PROJECT_NAME': 'project',
             'OS_REGION_NAME': 'region',

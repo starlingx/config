@@ -21,6 +21,17 @@ def get_parameters(field, db_object):
     return parameters
 
 
+def get_sectional_parameters(field, db_object):
+    ptp_parameters = db_object['ptp_parameters']
+    # group as sectional parameters: parameters = {'global':[..], 'sectionA':[..], ..}
+    parameters = {}
+    if ptp_parameters is not None:
+        for p in ptp_parameters:
+            parameter = '%s=%s' % (p.name, p.value)
+            parameters.setdefault(p.section, []).append(parameter)
+    return parameters
+
+
 class PtpParameterOwner(base.SysinvObject):
 
     dbapi = db_api.get_instance()

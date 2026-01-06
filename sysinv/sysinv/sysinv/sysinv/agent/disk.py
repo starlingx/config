@@ -11,7 +11,6 @@
 
 """ inventory idisk Utilities and helper functions."""
 
-from eventlet.green import subprocess
 import os
 import pyudev
 import re
@@ -108,11 +107,12 @@ class DiskOperator(object):
             return 0
 
         pvs_command = '{} "{} "'.format('pvs | grep', device_node)
-        pvs_process = subprocess.Popen(pvs_command, stdout=subprocess.PIPE,
-                                       shell=True, universal_newlines=True)
-        pvs_output = pvs_process.stdout.read()
 
-        if pvs_output:
+        pvs_stdout, pvs_stderr = utils.subprocess_open(command=pvs_command,
+                                                       timeout=10)
+        pvs_stdout = pvs_stdout.rstrip()
+
+        if pvs_stdout:
             LOG.debug("Disk %s is completely used by a PV => 0 available mib."
                       % device_node)
             return 0
@@ -121,11 +121,13 @@ class DiskOperator(object):
         avail_space_cmd = '{} {} {}'.format(
             'sfdisk -F', device_node, '| head -1')
 
-        # Get the free space.
-        avail_space_process = subprocess.Popen(
-            avail_space_cmd, stdout=subprocess.PIPE, shell=True,
-            universal_newlines=True)
-        avail_space_output = avail_space_process.stdout.read().rstrip()
+        sfdisk_stdout, sfdisk_stderr = utils.subprocess_open(command=avail_space_cmd,
+                                                             timeout=10)
+
+        if not sfdisk_stdout:
+            return 0
+
+        avail_space_output = sfdisk_stdout.rstrip()
         avail_space_bytes = re.findall('\d+', avail_space_output)[-2]
 
         # Free space in MiB.
@@ -295,37 +297,38 @@ class DiskOperator(object):
                     # to retrieve the information. Else we use udev.
 
                     # try hdparm command first
-                    hdparm_command = 'hdparm -I %s |grep Model' % (
-                        device.get('DEVNAME'))
-                    hdparm_process = subprocess.Popen(
-                        hdparm_command,
-                        stdout=subprocess.PIPE,
-                        shell=True, universal_newlines=True)
-                    hdparm_output = hdparm_process.communicate()[0]
-                    if hdparm_process.returncode == 0:
-                        second_half = hdparm_output.split(':')[1]
+                    hdparm_command = 'hdparm -I %s | grep Model' % device.get('DEVNAME')
+                    hdparm_stdout, hdparm_sterr = utils.subprocess_open(command=hdparm_command,
+                                                                        timeout=10)
+
+                    # Expected output format: "Model Number: <model_number>"
+                    is_hdparm_stdout_valid = (
+                        not hdparm_sterr and
+                        ':' in hdparm_stdout
+                        and len(hdparm_stdout.split(':')) > 1
+                    )
+
+                    if is_hdparm_stdout_valid:
+                        second_half = hdparm_stdout.split(':')[1]
                         model_num = second_half.strip()
                     else:
-                        # try lsblk command
-                        lsblk_command = 'lsblk -dn --output MODEL %s' % (
-                                             device.get('DEVNAME'))
-                        lsblk_process = subprocess.Popen(
-                                            lsblk_command,
-                                            stdout=subprocess.PIPE,
-                                            shell=True,
-                                            universal_newlines=True)
-                        lsblk_output = lsblk_process.communicate()[0]
-                        if lsblk_process.returncode == 0:
-                            model_num = lsblk_output.strip()
+                        lsblk_command = 'lsblk -dn --output MODEL %s' % device.get('DEVNAME')
+                        lsblk_stdout, lsblk_stderr = utils.subprocess_open(command=lsblk_command,
+                                                                           timeout=10)
+
+                        if lsblk_stdout and not lsblk_stderr:
+                            model_num = lsblk_stdout.strip()
                         else:
-                            # both hdparm and lsblk commands failed, try udev
                             model_num = device.get('ID_MODEL')
+
                     if not model_num:
                         model_num = constants.DEVICE_MODEL_UNKNOWN
+
                 except Exception as e:
                     self.handle_exception("Could not retrieve disk model "
                                           "for disk %s. Exception: %s" %
                                           (device.get('DEVNAME'), e))
+
                 try:
                     if 'ID_SCSI_SERIAL' in device:
                         serial_id = device['ID_SCSI_SERIAL']

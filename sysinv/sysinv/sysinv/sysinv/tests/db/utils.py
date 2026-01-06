@@ -15,7 +15,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2024 Wind River Systems, Inc.
+# Copyright (c) 2013-2025 Wind River Systems, Inc.
 #
 
 """Sysinv test utilities."""
@@ -1372,7 +1372,8 @@ def get_test_interface(**kw):
         'sriov_vf_driver': kw.get('sriov_vf_driver', None),
         'sriov_vf_pdevice_id': kw.get('sriov_vf_pdevice_id', None),
         'ptp_role': kw.get('ptp_role', None),
-        'max_tx_rate': kw.get('max_tx_rate', None)
+        'max_tx_rate': kw.get('max_tx_rate', None),
+        'max_rx_rate': kw.get('max_rx_rate', None)
     }
     return interface
 
@@ -1608,7 +1609,7 @@ def create_test_storage_tier(**kw):
     # Let DB generate ID if it isn't specified explicitly
     if 'id' not in kw:
         del storage_tier['id']
-        dbapi = db_api.get_instance()
+    dbapi = db_api.get_instance()
     return dbapi.storage_tier_create(storage_tier)
 
 
@@ -1885,3 +1886,25 @@ def get_primary_address_by_name(address_name, networktype):
         pass
 
     return address
+
+
+def create_test_runtime_config(**kw):
+    config_dict = {
+        "personalities": kw.get('personalities', []),
+        "host_uuids": kw.get('host_uuids', []),
+        "classes": kw.get('classes', []),
+    }
+    runtime_config = {
+        "config_uuid": uuidutils.generate_uuid(),
+        "config_dict": json.dumps(config_dict),
+        "forihostid": kw.get('host_id')
+    }
+    dbapi = db_api.get_instance()
+    dbapi.runtime_config_create(runtime_config)
+    return runtime_config
+
+
+def update_test_runtime_config(config_uuid, state, host_id):
+    dbapi = db_api.get_instance()
+    runtime_config = dbapi.runtime_config_get(config_uuid, host_id=host_id)
+    dbapi.runtime_config_update(runtime_config.id, {"state": state})

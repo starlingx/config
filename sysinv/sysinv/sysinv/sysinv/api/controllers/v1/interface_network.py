@@ -161,6 +161,12 @@ class InterfaceNetworkController(rest.RestController):
         self._check_network_type_and_host_type(host, network.type)
         self._check_network_type_and_interface_type(interface_obj, network.type)
         self._check_cluster_host_on_controller(host, interface_obj, network.type)
+        self._check_new_pxeboot_interface_mac(host, interface_obj, network.type)
+
+        if network.type == constants.NETWORK_TYPE_MGMT:
+            if (utils.get_system_mode() == constants.SYSTEM_MODE_SIMPLEX and
+                    cutils.is_initial_config_complete()):
+                pecan.request.rpcapi.set_mgmt_network_reconfig_flag(pecan.request.context)
 
         result = pecan.request.dbapi.interface_network_create(interface_network_dict)
 
@@ -251,7 +257,6 @@ class InterfaceNetworkController(rest.RestController):
         elif interface_network.network_type == constants.NETWORK_TYPE_MGMT:
             if (utils.get_system_mode() == constants.SYSTEM_MODE_SIMPLEX and
                     cutils.is_initial_config_complete()):
-                pecan.request.rpcapi.set_mgmt_network_reconfig_flag(pecan.request.context)
                 if operation == constants.API_POST:
                     caddress_pool.add_management_addresses_to_no_proxy_list(addrpools)
                 elif operation == constants.API_DELETE:
@@ -414,6 +419,16 @@ class InterfaceNetworkController(rest.RestController):
                         interface['ifname'])
                 raise wsme.exc.ClientSideError(msg)
 
+    def _check_new_pxeboot_interface_mac(self, host, interface, network_type):
+        # Ensure the new pxeboot-network assigned interface can execute PXE boot before unlocking
+        mgmt_mac = "00:00:00:00:00:00"
+        if (network_type == constants.NETWORK_TYPE_PXEBOOT and
+                (host['mgmt_mac'] != mgmt_mac and host['mgmt_mac'] != interface['imac'])):
+            msg = _("Warning: Ensure that the interface %s assigned to"
+                    " network type %s can execute PXE boot before unlocking." %
+                    (interface['ifname'], network_type))
+            LOG.warn(msg)
+
     def _get_interface_id(self, interface_uuid):
         interface = pecan.request.dbapi.iinterface_get(interface_uuid)
         return interface['id']
@@ -440,8 +455,14 @@ class InterfaceNetworkController(rest.RestController):
     @cutils.synchronized(LOCK_NAME)
     @wsme_pecan.wsexpose(None, types.uuid, status_code=204)
     def delete(self, interface_network_uuid):
-        # Delete address allocated to the interface
         if_network_obj = pecan.request.dbapi.interface_network_get(interface_network_uuid)
+
+        if if_network_obj.network_type == constants.NETWORK_TYPE_MGMT:
+            if (utils.get_system_mode() == constants.SYSTEM_MODE_SIMPLEX and
+                    cutils.is_initial_config_complete()):
+                pecan.request.rpcapi.set_mgmt_network_reconfig_flag(pecan.request.context)
+
+        # Delete address allocated to the interface
         addrpools = pecan.request.dbapi.address_pools_get_by_network(if_network_obj.network_id)
         for addrpool in addrpools:
             try:

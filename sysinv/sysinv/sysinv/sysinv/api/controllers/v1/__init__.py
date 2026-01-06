@@ -38,6 +38,7 @@ from sysinv.api.controllers.v1 import dns
 from sysinv.api.controllers.v1 import drbdconfig
 from sysinv.api.controllers.v1 import ethernet_port
 from sysinv.api.controllers.v1 import fernet_repo
+from sysinv.api.controllers.v1 import flux
 from sysinv.api.controllers.v1 import health
 from sysinv.api.controllers.v1 import helm_charts
 from sysinv.api.controllers.v1 import host
@@ -311,6 +312,12 @@ class V1(base.APIBase):
 
     evaluate_apps_reapply = [link.Link]
     "Links to the evaluate_apps_reapply resource"
+
+    vim = [link.Link]
+    "Links to the VIM resource"
+
+    flux = [link.Link]
+    "Links to the Flux resource"
 
     @classmethod
     def convert(self):
@@ -949,6 +956,20 @@ class V1(base.APIBase):
                                                         'evaluate_apps_reapply', '',
                                                         bookmark=True)]
 
+        v1.vim = [link.Link.make_link('self', pecan.request.host_url,
+                                      'vim', ''),
+                  link.Link.make_link('bookmark',
+                                      pecan.request.host_url,
+                                      'vim', '',
+                                      bookmark=True)]
+
+        v1.flux = [link.Link.make_link('self', pecan.request.host_url,
+                                       'flux', ''),
+                   link.Link.make_link('bookmark',
+                                       pecan.request.host_url,
+                                       'flux', '',
+                                       bookmark=True)]
+
         return v1
 
 
@@ -1034,6 +1055,7 @@ class Controller(rest.RestController):
     restore = restore.RestoreController()
     network_addresspools = network_addrpool.NetworkAddresspoolController()
     evaluate_apps_reapply = evaluate_apps_reapply.EvaluateAppsReapplyController()
+    flux = flux.FluxController()
 
     @wsme_pecan.wsexpose(V1)
     def get(self):

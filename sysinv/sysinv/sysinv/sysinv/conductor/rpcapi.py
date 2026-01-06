@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2024 Wind River Systems, Inc.
+# Copyright (c) 2013-2025 Wind River Systems, Inc.
 #
 
 """
@@ -659,6 +659,22 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.call(context, self.make_msg('update_pcidp_config',
                                                 host_uuid=host_uuid))
 
+    def update_platform_ratelimit_config(self, context, host_uuid):
+        """Synchronously, have a conductor configure platform ratelimit.
+
+        Does the following tasks:
+        - sends a message to conductor
+        - who sends a message to all inventory agents
+        - who each apply the network manifest
+
+        :param context: request context.
+        :param host_uuid: the host unique uuid
+        """
+        LOG.debug("ConductorApi.update_platform_ratelimit_config: sending "
+                  "update_platform_ratelimit_config to conductor")
+        return self.call(context, self.make_msg('update_platform_ratelimit_config',
+                                                host_uuid=host_uuid))
+
     def update_distributed_cloud_role(self, context):
         """Synchronously, have a conductor configure the distributed cloud
            role of the system.
@@ -800,6 +816,13 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.call(context, self.make_msg('update_kubernetes_dual_stack_config',
                                                 family=family, disable=disable),
                          timeout=RPC_TIMEOUT)
+
+    def update_mgmt_config(self, context):
+        """Synchronously, have the conductor update the Management network configuration.
+
+        :param context: request context.
+        """
+        return self.call(context, self.make_msg('update_mgmt_config'))
 
     def update_mgmt_secondary_pool_config(self, context, family, disable=False):
         """Synchronously, have the conductor update the management secondary pool config.
@@ -1064,7 +1087,7 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
     def get_k8s_namespaces(self, context):
         """Synchronously, get Kubernetes namespaces
 
-        :returns: list of namespacea
+        :returns: list of namespaces
         """
         return self.call(context,
                          self.make_msg('get_k8s_namespaces'))
@@ -1853,6 +1876,30 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                        rpc_app=rpc_app,
                                        lifecycle_hook_info_app_delete=lifecycle_hook_info))
 
+    def perform_update_in_all_apps(self, context):
+        """
+            Asynchronously triggers the update procedure for all applications.
+            :param context: request context.
+        """
+        return self.cast(context, self.make_msg('perform_update_in_all_apps'))
+
+    def get_apps_update_status(self, context):
+        """
+            Synchronously returns the update applications status.
+            :param context: request context.
+        """
+        return self.call(context, self.make_msg('get_apps_update_status'))
+
+    def run_local_registry_secrets_audit(self, context):
+        """Execute audit to update the registry secrets in each namespace
+        :param context: request context.
+        """
+        return self.call(context,
+                         self.make_msg('run_local_registry_secrets_audit'))
+
+    def rollback_all_apps(self, context):
+        return self.cast(context, self.make_msg('rollback_all_apps'))
+
     def reconfigure_service_endpoints(self, context, host):
         """Synchronously, reconfigure service endpoints upon the creation of
         initial controller host and management/oam network change during
@@ -1900,6 +1947,15 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         """
         return self.call(context, self.make_msg('store_default_config'))
 
+    def report_download_images_result(self, context, result):
+        """
+        :param context: request context.
+        :param result: True if operation was success False otherwise
+        :return:
+        """
+        return self.cast(context, self.make_msg('report_download_images_result',
+                                                result=result))
+
     def kube_download_images(self, context, kube_version):
         """Asynchronously, have the conductor download the kubernetes images
         for this new version.
@@ -1930,6 +1986,22 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.cast(context, self.make_msg('kube_host_uncordon',
                                                 host_name=host_name))
 
+    def report_kube_upgrade_control_plane_result(self, context, host_uuid,
+                                                 to_version, is_first_master, success):
+        """Asynchronously receive the result of control plane upgrade on a host.
+
+        :param: context: request context
+        :param: host_uuid: UUID of the host reporting status
+        :param: to_version: Kube version to which control plane was being upgraded to
+        :param: is_first_master: True if this was the first master being upgraded, False otherwise
+        :param: success: True if kubelet upgraded successfully else False
+        """
+        return self.cast(context, self.make_msg('report_kube_upgrade_control_plane_result',
+                                                host_uuid=host_uuid,
+                                                to_version=to_version,
+                                                is_first_master=is_first_master,
+                                                success=success))
+
     def kube_upgrade_control_plane(self, context, host_uuid):
         """Asynchronously, have the conductor upgrade the kubernetes control
         plane on this host.
@@ -1939,6 +2011,19 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         """
         return self.cast(context, self.make_msg(
             'kube_upgrade_control_plane', host_uuid=host_uuid))
+
+    def report_kube_upgrade_kubelet_result(self, context, host_uuid, to_version, success):
+        """Asynchronously receive the result of kubelet upgrade on a host.
+
+        :param: context: request context
+        :param: host_uuid: UUID of the host reporting status
+        :param: to_version: Kube version to which kubelet was being upgraded to
+        :param: success: True if kubelet upgraded successfully else False
+        """
+        return self.cast(context, self.make_msg('report_kube_upgrade_kubelet_result',
+                                                host_uuid=host_uuid,
+                                                to_version=to_version,
+                                                success=success))
 
     def kube_upgrade_kubelet(self, context, host_uuid):
         """Asynchronously, have the conductor upgrade the kubernetes kubelet
@@ -1969,6 +2054,24 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         """
         return self.cast(context, self.make_msg('kube_upgrade_storage',
                                                 kube_version=kube_version))
+
+    def report_kube_upgrade_abort_result(self, context, current_kube_version, back_to_kube_version,
+                                         abort, recovery):
+        """Asynchronously, report kube upgrade abort operation result
+
+        :param: context: context object
+        :param: host_uuid: uuid of this host
+        :param: current_kube_version: current kubernetes version
+        :param: back_to_kube_version: kubernetes version being aborted back to
+        :param: abort: True if abort was successful False otherwise. If this is True,
+                       recovery is False.
+        :param: recovery: True if abort recovery succeeds. If this is True, abort must be False.
+                          False if abort recovery Fails or not required to run.
+        """
+        return self.cast(context, self.make_msg('report_kube_upgrade_abort_result',
+                                                current_kube_version=current_kube_version,
+                                                back_to_kube_version=back_to_kube_version,
+                                                abort=abort, recovery=recovery))
 
     def kube_upgrade_abort(self, context, kube_state):
         """Asynchronously, have the conductor abort the kubernetes
@@ -2004,6 +2107,31 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         """
         return self.cast(context, self.make_msg('kube_delete_container_images',
                                                 target_version=kube_version))
+
+    def report_unfinished_kube_upgrade_from_agent(self, context, host_uuid):
+        """Asynchronously, report unfinished k8s upgrade by sysinv-agent
+
+        This method is only used by sysinv-agent to report about unfinished kubernetes
+        upgrade in sysinv-agent in case of unexpected sysinv-agent restart/failure etc.
+        Sysinv-agent does an attempt to finish it but if that does not work, this method is
+        called as a last resort.
+        """
+        return self.cast(context, self.make_msg('report_unfinished_kube_upgrade_from_agent',
+                                                host_uuid=host_uuid))
+
+    def pin_kubernetes_control_plane_images(self, context, version):
+        """Asynchronously, pin kubernetes static pod images of specified kubernetes version
+
+        Following images are pinned
+        - kube-apiserver
+        - kube-controller-manager
+        - kube-scheduler
+
+        :param context: request context
+        :param: version: Version of images to be pinned
+        """
+        return self.cast(context, self.make_msg('pin_kubernetes_control_plane_images',
+                                                version=version))
 
     def store_bitstream_file(self, context, filename):
         """Asynchronously, have the conductor store the device image
@@ -2142,17 +2270,6 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         """
         return self.call(context,
                          self.make_msg('update_ldap_nat_config'))
-
-    def update_dnsmasq_config(self, context):
-        """Synchronously, have a conductor configure the DNS configuration
-
-        Does the following tasks:
-        - Update puppet hiera configuration file and apply run time manifest.
-
-        :param context: request context.
-        """
-        return self.call(context,
-                         self.make_msg('update_dnsmasq_config'))
 
     def save_kubernetes_rootca_cert(self, context, certificate_file):
         """Save the new uploaded k8s root CA certificate
@@ -2309,3 +2426,27 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         :param context: request context.
         """
         return self.call(context, self.make_msg('get_all_k8s_certs'))
+
+    def configure_stalld(self, context, host_uuid):
+        """Synchronously, have the conductor reconfigure stalld
+           for the specified host.
+
+        :param context: request context
+        :param host_uuid: the uuid of the host
+        """
+        return self.call(context, self.make_msg('configure_stalld',
+                                                host_uuid=host_uuid))
+
+    def upgrade_flux_controllers(self, context):
+        """Synchronously, upgrade Flux controllers.
+
+        :param context: request context.
+        """
+        return self.call(context, self.make_msg('upgrade_flux_controllers'), timeout=RPC_TIMEOUT)
+
+    def rollback_flux_controllers(self, context):
+        """Synchronously, rollback Flux controllers.
+
+        :param context: request context.
+        """
+        return self.call(context, self.make_msg('rollback_flux_controllers'), timeout=RPC_TIMEOUT)

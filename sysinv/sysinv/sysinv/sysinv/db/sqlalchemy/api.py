@@ -1329,12 +1329,12 @@ class Connection(api.Connection):
             query = add_identity_filter(query, server)
 
             try:
-                query.one()
+                isystem = query.one()
             except NoResultFound:
                 raise exception.ServerNotFound(server=server)
 
             # skip cascade delete to leafs otherwise major issue!
-            query.delete()
+            session.delete(isystem)
 
     def _host_get(self, server):
         query = model_query(models.ihost)
@@ -1522,27 +1522,22 @@ class Connection(api.Connection):
             # else:
             #     server_id = server
 
-            # cascade delete to leafs
-            model_query(models.icpu, session=session, read_deleted="no").\
-                filter_by(forihostid=server_id).\
-                delete()
-            model_query(models.imemory, session=session, read_deleted="no").\
-                filter_by(forihostid=server_id).\
-                delete()
-            model_query(models.idisk, session=session, read_deleted="no").\
-                filter_by(forihostid=server_id).\
-                delete()
-            model_query(models.inode, session=session, read_deleted="no").\
-                filter_by(forihostid=server_id).\
-                delete()
-            model_query(models.SensorGroups, session=session, read_deleted="no").\
-                filter_by(host_id=server_id).\
-                delete()
-            model_query(models.Sensors, session=session, read_deleted="no").\
-                filter_by(host_id=server_id).\
-                delete()
+            # For each relationship, fetch all objects and delete them individually
+            related_models = [
+                (models.icpu, "forihostid"),
+                (models.imemory, "forihostid"),
+                (models.idisk, "forihostid"),
+                (models.inode, "forihostid"),
+                (models.SensorGroups, "host_id"),
+                (models.Sensors, "host_id"),
+            ]
+            for model, filter_attr in related_models:
+                related_items = model_query(model, session=session, read_deleted="no").\
+                    filter_by(**{filter_attr: server_id}).all()
+                for item in related_items:
+                    session.delete(item)
 
-            query.delete()
+            session.delete(node_ref)
 
     def _node_get(self, inode_id):
         query = model_query(models.inode)
@@ -2382,7 +2377,7 @@ class Connection(api.Connection):
 
     @db_objects.objectify(objects.interface)
     def iinterface_update(self, iinterface_id, values):
-        self._interface_ratelimit_encode(values)
+
         with _session_for_write() as session:
             query = model_query(models.Interfaces, read_deleted="no",
                                 session=session)
@@ -2408,21 +2403,10 @@ class Connection(api.Connection):
     def iinterface_destroy(self, iinterface_id):
         return self._interface_destroy(models.Interfaces, iinterface_id)
 
-    def _interface_ratelimit_encode(self, values):
-        # we need to use 'ifcapabilities' dict to save ratelimit info
-        if values.get('max_tx_rate') is not None:
-            capabilities = {'max_tx_rate': values['max_tx_rate']}
-            if values.get('ifcapabilities') is not None:
-                values['ifcapabilities'].update(capabilities)
-            else:
-                values['ifcapabilities'] = capabilities
-
     def _interface_create(self, obj, forihostid, values):
         if not values.get('uuid'):
             values['uuid'] = uuidutils.generate_uuid()
         values['forihostid'] = int(forihostid)
-
-        self._interface_ratelimit_encode(values)
 
         with _session_for_write() as session:
 
@@ -3553,7 +3537,7 @@ class Connection(api.Connection):
             query = add_identity_filter(query, server)
 
             try:
-                query.one()
+                iuser = query.one()
             except NoResultFound:
                 raise exception.ServerNotFound(server=server)
             # if node_ref['reservation'] is not None:
@@ -3566,7 +3550,7 @@ class Connection(api.Connection):
             # else:
             #     server_id = server
 
-            query.delete()
+            session.delete(iuser)
 
     def _dns_get(self, server):
         query = model_query(models.idns)
@@ -3640,7 +3624,7 @@ class Connection(api.Connection):
             query = add_identity_filter(query, server)
 
             try:
-                query.one()
+                idns = query.one()
             except NoResultFound:
                 raise exception.ServerNotFound(server=server)
             # if node_ref['reservation'] is not None:
@@ -3653,7 +3637,7 @@ class Connection(api.Connection):
             # else:
             #     server_id = server
 
-            query.delete()
+            session.delete(idns)
 
     def _ntp_get(self, intp_id):
         query = model_query(models.intp)
@@ -3727,7 +3711,7 @@ class Connection(api.Connection):
             query = add_identity_filter(query, intp_id)
 
             try:
-                query.one()
+                intp = query.one()
             except NoResultFound:
                 raise exception.NTPNotFound(intp_id=intp_id)
             # if node_ref['reservation'] is not None:
@@ -3740,7 +3724,7 @@ class Connection(api.Connection):
             # else:
             #     server_id = server
 
-            query.delete()
+            session.delete(intp)
 
     def _ptp_get(self, ptp_id):
         query = model_query(models.PTP)
@@ -3814,11 +3798,11 @@ class Connection(api.Connection):
             query = add_identity_filter(query, ptp_id)
 
             try:
-                query.one()
+                ptp = query.one()
             except NoResultFound:
                 raise exception.PTPNotFound(ptp_id=ptp_id)
 
-            query.delete()
+            session.delete(ptp)
 
     def ptp_fill_empty_system_id(self, system_id):
         values = {'system_id': system_id}
@@ -3909,15 +3893,16 @@ class Connection(api.Connection):
             query = query.filter_by(ptp_instance_id=values['ptp_instance_id'],
                                     host_id=values['host_id'])
             try:
-                query.one()
+                ptp_instance_map = query.one()
             except NoResultFound:
                 return
-            query.delete()
+            session.delete(ptp_instance_map)
 
     @db_objects.objectify(objects.host)
     def ptp_instance_get_assignees(self, ptp_instance_id, limit=None,
                                    marker=None, sort_key=None, sort_dir=None):
         query = model_query(models.ihost)
+        query = add_host_options(query)
         query = query.join(models.PtpInstanceMaps).filter(
             models.PtpInstanceMaps.ptp_instance_id == ptp_instance_id)
         return _paginate_query(models.ihost, limit, marker, sort_key, sort_dir,
@@ -3929,20 +3914,20 @@ class Connection(api.Connection):
             query = model_query(models.PtpParameterOwners, session=session)
             query = add_identity_filter(query, ptp_instance_id)
             try:
-                query.one()
+                ptp_parameter_owners = query.one()
             except NoResultFound:
                 raise exception.PtpInstanceNotFound(uuid=ptp_instance_id)
-            query.delete()
+            session.delete(ptp_parameter_owners)
 
     def ptp_instance_destroy_by_name(self, name):
         with _session_for_write() as session:
             query = model_query(models.PtpInstances, session=session)
             query = query.filter_by(name=name)
             try:
-                query.one()
+                ptp_instances = query.one()
             except NoResultFound:
                 raise exception.NotFound()
-            query.delete()
+            session.delete(ptp_instances)
 
     @db_objects.objectify(objects.ptp_instance_map)
     def ptp_instance_map_get(self, ptp_instance_map_id):
@@ -3985,25 +3970,29 @@ class Connection(api.Connection):
     def ptp_interfaces_get_list(self, host=None, interface=None,
                                 ptp_instance=None, limit=None, marker=None,
                                 sort_key=None, sort_dir=None):
-        query = model_query(models.PtpInterfaces)
-        if ptp_instance is not None:
-            ptp_instance_obj = self.ptp_instance_get(ptp_instance)
-            query = query.filter_by(ptp_instance_id=ptp_instance_obj.id)
-            if interface is not None:
+        # The following query in combination with _paginate_query can lead to
+        # sessions stuck in "idle in transaction", so we explicitly define
+        # the session here
+        with _session_for_read() as session:
+            query = model_query(models.PtpInterfaces, session=session)
+            if ptp_instance is not None:
+                ptp_instance_obj = self.ptp_instance_get(ptp_instance)
+                query = query.filter_by(ptp_instance_id=ptp_instance_obj.id)
+                if interface is not None:
+                    interface_obj = self.iinterface_get(interface)
+                    query = query.join(models.PtpInterfaceMaps).filter(
+                        models.PtpInterfaceMaps.interface_id == interface_obj.id)
+            elif interface is not None:
                 interface_obj = self.iinterface_get(interface)
                 query = query.join(models.PtpInterfaceMaps).filter(
                     models.PtpInterfaceMaps.interface_id == interface_obj.id)
-        elif interface is not None:
-            interface_obj = self.iinterface_get(interface)
-            query = query.join(models.PtpInterfaceMaps).filter(
-                models.PtpInterfaceMaps.interface_id == interface_obj.id)
-        elif host is not None:
-            host_obj = self.ihost_get(host)
-            query = query.join(models.PtpInterfaceMaps).join(
-                models.Interfaces).filter(
-                    models.Interfaces.forihostid == host_obj.id)
-        return _paginate_query(models.PtpInterfaces, limit, marker,
-                               sort_key, sort_dir, query)
+            elif host is not None:
+                host_obj = self.ihost_get(host)
+                query = query.join(models.PtpInterfaceMaps).join(
+                    models.Interfaces).filter(
+                        models.Interfaces.forihostid == host_obj.id)
+            return _paginate_query(models.PtpInterfaces, limit, marker,
+                                   sort_key, sort_dir, query)
 
     def ptp_interface_parameter_add(self, ptp_interface, ptp_parameter):
         return self._ptp_parameter_add(ptp_interface, ptp_parameter)
@@ -4039,15 +4028,16 @@ class Connection(api.Connection):
                 ptp_interface_id=values['ptp_interface_id'],
                 interface_id=values['interface_id'])
             try:
-                query.one()
+                ptp_interface_maps = query.one()
             except NoResultFound:
                 return
-            query.delete()
+            session.delete(ptp_interface_maps)
 
     @db_objects.objectify(objects.interface)
     def ptp_interface_get_assignees(self, ptp_interface_id, limit=None,
                                     marker=None, sort_key=None, sort_dir=None):
-        query = model_query(models.Interfaces)
+        entity = with_polymorphic(models.Interfaces, '*')
+        query = model_query(entity)
         query = query.join(models.PtpInterfaceMaps).filter(
             models.PtpInterfaceMaps.ptp_interface_id == ptp_interface_id)
         return _paginate_query(models.Interfaces, limit, marker, sort_key,
@@ -4059,20 +4049,20 @@ class Connection(api.Connection):
             query = model_query(models.PtpParameterOwners, session=session)
             query = add_identity_filter(query, ptp_interface_id)
             try:
-                query.one()
+                ptp_parameter_owners = query.one()
             except NoResultFound:
                 raise exception.PtpInterfaceNotFound(uuid=ptp_interface_id)
-            query.delete()
+            session.delete(ptp_parameter_owners)
 
     def ptp_interface_destroy_by_name(self, name):
         with _session_for_write() as session:
             query = model_query(models.PtpInterfaces, session=session)
             query = query.filter_by(name=name)
             try:
-                query.one()
+                ptp_interfaces = query.one()
             except NoResultFound:
                 raise exception.NotFound()
-            query.delete()
+            session.delete(ptp_interfaces)
 
     @db_objects.objectify(objects.ptp_interface_map)
     def ptp_interface_map_get(self, ptp_interface_map_id):
@@ -4096,6 +4086,9 @@ class Connection(api.Connection):
     def ptp_parameter_create(self, values):
         if not values.get('uuid'):
             values['uuid'] = uuidutils.generate_uuid()
+        # Set default section to global, if not specified.
+        if not values.get("section"):
+            values["section"] = "global"
         ptp_parameter = models.PtpParameters(**values)
         with _session_for_write() as session:
             try:
@@ -4110,13 +4103,33 @@ class Connection(api.Connection):
         return self._ptp_parameter_get(ptp_parameter_id)
 
     @db_objects.objectify(objects.ptp_parameter)
-    def ptp_parameter_get_by_namevalue(self, name, value):
+    def ptp_parameter_get_by_namevalue(self, name, value, section="global"):
         query = model_query(models.PtpParameters)
-        query = query.filter_by(name=name, value=value)
+        query = query.filter_by(name=name, value=value, section=section)
         try:
             return query.one()
         except NoResultFound:
             raise exception.NotFound
+
+    @db_objects.objectify(objects.ptp_parameter)
+    def ptp_parameter_get_by_name(
+        self, name, section="global",
+        limit=None, marker=None, sort_key=None, sort_dir=None
+    ):
+        query = model_query(models.PtpParameters)
+        query = query.filter_by(name=name, section=section)
+        return _paginate_query(models.PtpParameters, limit, marker,
+                               sort_key, sort_dir, query)
+
+    @db_objects.objectify(objects.ptp_parameter)
+    def ptp_parameter_get_by_namevalue_anysection(
+        self, name, value,
+        limit=None, marker=None, sort_key=None, sort_dir=None
+    ):
+        query = model_query(models.PtpParameters)
+        query = query.filter_by(name=name, value=value)
+        return _paginate_query(models.PtpParameters, limit, marker,
+                               sort_key, sort_dir, query)
 
     @db_objects.objectify(objects.ptp_parameter)
     def ptp_parameters_get_list(self, ptp_instance=None, ptp_interface=None,
@@ -4172,10 +4185,10 @@ class Connection(api.Connection):
             query = model_query(models.PtpParameters, session=session)
             query = add_identity_filter(query, ptp_parameter_id)
             try:
-                query.one()
+                ptp_parameter = query.one()
             except NoResultFound:
                 raise exception.PtpParameterNotFound(uuid=ptp_parameter_id)
-            query.delete()
+            session.delete(ptp_parameter)
 
     @db_objects.objectify(objects.ptp_paramowner)
     def ptp_paramowner_get(self, ptp_paramowner_id):
@@ -4222,10 +4235,10 @@ class Connection(api.Connection):
             query = query.filter_by(parameter_uuid=ptp_parameter,
                                     owner_uuid=ptp_parameter_owner)
             try:
-                query.one()
+                ptp_parameter_ownership = query.one()
             except NoResultFound:
                 raise exception.NotFound
-            query.delete()
+            session.delete(ptp_parameter_ownership)
 
     # NOTE: method is deprecated and provided for API compatibility.
     # object class will convert Network entity to an iextoam object
@@ -4347,10 +4360,10 @@ class Connection(api.Connection):
             query = add_identity_filter(query, controller_fs_id)
 
             try:
-                query.one()
+                controller_fs = query.one()
             except NoResultFound:
                 raise exception.ServerNotFound(server=controller_fs_id)
-            query.delete()
+            session.delete(controller_fs)
 
     def _ceph_mon_get(self, ceph_mon_id):
         query = model_query(models.CephMon)
@@ -4415,10 +4428,10 @@ class Connection(api.Connection):
             query = add_identity_filter(query, ceph_mon_id)
 
             try:
-                query.one()
+                ceph_mon = query.one()
             except NoResultFound:
                 raise exception.ServerNotFound(server=ceph_mon_id)
-            query.delete()
+            session.delete(ceph_mon)
 
     # Storage Tiers
     def _storage_tier_get(self, uuid, session=None):
@@ -4511,11 +4524,11 @@ class Connection(api.Connection):
             query = model_query(models.StorageTier, session=session)
             query = add_identity_filter(query, storage_tier_uuid)
             try:
-                query.one()
+                storage_tier = query.one()
             except NoResultFound:
                 raise exception.StorageTierNotFound(
                     storage_tier_uuid=storage_tier_uuid)
-            query.delete()
+            session.delete(storage_tier)
 
     @db_objects.objectify(objects.storage_backend)
     def storage_backend_create(self, values):
@@ -5001,7 +5014,7 @@ class Connection(api.Connection):
             query = add_identity_filter(query, server)
 
             try:
-                query.one()
+                drbd_config = query.one()
             except NoResultFound:
                 raise exception.ServerNotFound(server=server)
             # if node_ref['reservation'] is not None:
@@ -5014,7 +5027,7 @@ class Connection(api.Connection):
             # else:
             #     server_id = server
 
-            query.delete()
+            session.delete(drbd_config)
 
     def _remotelogging_get(self, server):
         query = model_query(models.remotelogging)
@@ -5088,11 +5101,11 @@ class Connection(api.Connection):
             query = add_identity_filter(query, server)
 
             try:
-                query.one()
+                remote_logging = query.one()
             except NoResultFound:
                 raise exception.ServerNotFound(server=server)
 
-            query.delete()
+            session.delete(remote_logging)
 
     def remotelogging_fill_empty_system_id(self, system_id):
         values = {'system_id': system_id}
@@ -5166,10 +5179,10 @@ class Connection(api.Connection):
             query = model_query(models.Services, session=session)
             query = query.filter_by(name=service)
             try:
-                query.one()
+                services = query.one()
             except NoResultFound:
                 raise exception.ServiceNotFound(service=service)
-            query.delete()
+            session.delete(services)
 
     def _network_get(self, network_uuid):
         query = model_query(models.Networks)
@@ -5371,10 +5384,10 @@ class Connection(api.Connection):
             query = model_query(models.NetworkAddressPools, session=session)
             query = add_identity_filter(query, network_addrpool_uuid)
             try:
-                query.one()
+                network_address_pools = query.one()
             except NoResultFound:
                 raise exception.NetworkAddrpoolNotFound(network_addrpool_uuid=network_addrpool_uuid)
-            query.delete()
+            session.delete(network_address_pools)
 
     def _interface_network_get(self, uuid):
         query = model_query(models.InterfaceNetworks)
@@ -5501,10 +5514,10 @@ class Connection(api.Connection):
             query = model_query(models.InterfaceNetworks, session=session)
             query = add_identity_filter(query, uuid)
             try:
-                query.one()
+                interface_networks = query.one()
             except NoResultFound:
                 raise exception.InterfaceNetworkNotFound(uuid=uuid)
-            query.delete()
+            session.delete(interface_networks)
 
     @db_objects.objectify(objects.interface_network)
     def interface_network_query(self, values):
@@ -5705,20 +5718,20 @@ class Connection(api.Connection):
             query = model_query(models.Addresses, session=session)
             query = add_identity_filter(query, address_uuid)
             try:
-                query.one()
+                adresses = query.one()
             except NoResultFound:
                 raise exception.AddressNotFound(address_uuid=address_uuid)
-            query.delete()
+            session.delete(adresses)
 
     def address_destroy_by_id(self, address_id):
         with _session_for_write() as session:
             query = model_query(models.Addresses, session=session)
             query = add_identity_filter(query, address_id)
             try:
-                query.one()
+                adresses = query.one()
             except NoResultFound:
                 raise exception.AddressNotFoundById(address_id=address_id)
-            query.delete()
+            session.delete(adresses)
 
     def address_remove_interface(self, address_uuid):
         with _session_for_write() as session:
@@ -5737,7 +5750,9 @@ class Connection(api.Connection):
             query = query.filter(models.Addresses.interface_id == interface_id)
             if family:
                 query = query.filter(models.Addresses.family == family)
-            query.delete()
+            addresses = query.all()
+            for address in addresses:
+                session.delete(address)
 
     def addresses_remove_interface_by_interface(self, interface_id,
                                                 family=None):
@@ -5897,10 +5912,10 @@ class Connection(api.Connection):
             query = model_query(models.Routes, session=session)
             query = add_identity_filter(query, route_uuid)
             try:
-                query.one()
+                routes = query.one()
             except NoResultFound:
                 raise exception.RouteNotFound(route_uuid=route_uuid)
-            query.delete()
+            session.delete(routes)
 
     def routes_destroy_by_interface(self, interface_id, family=None):
         with _session_for_write() as session:
@@ -5908,7 +5923,9 @@ class Connection(api.Connection):
             query = query.filter(models.Routes.interface_id == interface_id)
             if family:
                 query = query.filter(models.Routes.family == family)
-            query.delete()
+            routes = query.all()
+            for route in routes:
+                session.delete(route)
 
     def _address_mode_query(self, interface_id, family, session=None):
         query = model_query(models.AddressModes, session=session)
@@ -5997,10 +6014,10 @@ class Connection(api.Connection):
             query = model_query(models.AddressModes, session=session)
             query = add_identity_filter(query, mode_uuid)
             try:
-                query.one()
+                address_modes = query.one()
             except NoResultFound:
                 raise exception.AddressModeNotFound(mode_uuid=mode_uuid)
-            query.delete()
+            session.delete(address_modes)
 
     def address_modes_destroy_by_interface(self, interface_id, family=None):
         with _session_for_write() as session:
@@ -6008,7 +6025,9 @@ class Connection(api.Connection):
             query = query.filter(models.AddressModes.interface_id == interface_id)
             if family:
                 query = query.filter(models.AddressModes.family == family)
-            query.delete()
+            address_modes = query.all()
+            for address_mode in address_modes:
+                session.delete(address_mode)
 
     def _address_pool_get(self, address_pool_uuid, session=None):
         if utils.is_int_like(address_pool_uuid):
@@ -7082,11 +7101,11 @@ class Connection(api.Connection):
             query = query.filter_by(uuid=id)
 
             try:
-                query.one()
+                service_parameter = query.one()
             except NoResultFound:
                 raise exception.NotFound(id)
 
-            query.delete()
+            session.delete(service_parameter)
 
     def service_parameter_destroy(self, name, service, section):
         if not name or not service or not section:
@@ -7098,11 +7117,11 @@ class Connection(api.Connection):
                                     service=service,
                                     section=section)
             try:
-                query.one()
+                service_parameter = query.one()
             except NoResultFound:
                 raise exception.NotFound()
 
-            query.delete()
+            session.delete(service_parameter)
 
     # Cluster and Peer DB API
     def _cluster_get(self, uuid, session=None):
@@ -7186,11 +7205,11 @@ class Connection(api.Connection):
             query = model_query(models.Clusters, session=session)
             query = add_identity_filter(query, cluster_uuid)
             try:
-                query.one()
+                clusters = query.one()
             except NoResultFound:
                 raise exception.ClusterNotFound(
                     cluster_uuid=cluster_uuid)
-            query.delete()
+            session.delete(clusters)
 
     def _peer_get(self, peer_uuid, session=None):
         query = model_query(models.Peers, session=session)
@@ -7350,7 +7369,8 @@ class Connection(api.Connection):
             query = add_lldp_filter_by_agent(query, agentid)
 
             try:
-                query.delete()
+                lldp_agents = query.one()
+                session.delete(lldp_agents)
             except NoResultFound:
                 raise exception.InvalidParameterValue(
                     err="No entry found for agent %s" % agentid)
@@ -7488,7 +7508,8 @@ class Connection(api.Connection):
             query = model_query(models.LldpNeighbours, session=session, read_deleted="no")
             query = add_lldp_filter_by_neighbour(query, neighbourid)
             try:
-                query.delete()
+                lldp_neighbours = query.one()
+                session.delete(lldp_neighbours)
             except NoResultFound:
                 raise exception.InvalidParameterValue(
                     err="No entry found for neighbour %s" % neighbourid)
@@ -7793,10 +7814,10 @@ class Connection(api.Connection):
             query = query.filter_by(uuid=uuid)
 
             try:
-                query.one()
+                sdn_controller = query.one()
             except NoResultFound:
                 raise exception.SDNControllerNotFound(uuid)
-            query.delete()
+            session.delete(sdn_controller)
 
     @db_objects.objectify(objects.tpmconfig)
     def tpmconfig_get(self, uuid):
@@ -7842,10 +7863,10 @@ class Connection(api.Connection):
             query = query.filter_by(uuid=uuid)
 
             try:
-                query.one()
+                tpmconfig = query.one()
             except NoResultFound:
                 raise exception.TPMConfigNotFound(uuid)
-            query.delete()
+            session.delete(tpmconfig)
 
     def _tpmdevice_get(self, tpmdevice_id):
         query = model_query(models.tpmdevice)
@@ -7929,10 +7950,10 @@ class Connection(api.Connection):
             query = query.filter_by(uuid=uuid)
 
             try:
-                query.one()
+                tpmconfig = query.one()
             except NoResultFound:
                 raise exception.TPMDeviceNotFound(uuid)
-            query.delete()
+            session.delete(tpmconfig)
 
     @db_objects.objectify(objects.certificate)
     def certificate_create(self, values):
@@ -8007,10 +8028,10 @@ class Connection(api.Connection):
             query = query.filter_by(uuid=uuid)
 
             try:
-                query.one()
+                certificate = query.one()
             except NoResultFound:
                 raise exception.CertificateNotFound(uuid)
-            query.delete()
+            session.delete(certificate)
 
     def _helm_override_get(self, app_id, name, namespace):
         query = model_query(models.HelmOverrides)
@@ -8071,11 +8092,11 @@ class Connection(api.Connection):
                 app_id=app_id, name=name, namespace=namespace)
 
             try:
-                query.one()
+                helm_overrides = query.one()
             except NoResultFound:
                 raise exception.HelmOverrideNotFound(name=name,
                                                      namespace=namespace)
-            query.delete()
+            session.delete(helm_overrides)
 
     def _label_get(self, label_id):
         query = model_query(models.Label)
@@ -8127,6 +8148,14 @@ class Connection(api.Connection):
         return query.all()
 
     @db_objects.objectify(objects.label)
+    def label_get_all_like(self, pattern, hostid=None):
+        query = model_query(models.Label, read_deleted="no")
+        if hostid:
+            query = query.filter_by(host_id=hostid)
+        query = query.filter(models.Label.label_key.like(pattern))
+        return query.all()
+
+    @db_objects.objectify(objects.label)
     def label_update(self, uuid, values):
         with _session_for_write() as session:
             query = model_query(models.Label, session=session)
@@ -8142,10 +8171,10 @@ class Connection(api.Connection):
             query = model_query(models.Label, session=session)
             query = query.filter_by(uuid=uuid)
             try:
-                query.one()
+                label = query.one()
             except NoResultFound:
                 raise exception.HostLabelNotFound(uuid)
-            query.delete()
+            session.delete(label)
 
     @db_objects.objectify(objects.label)
     def label_get_by_host(self, host,
@@ -8297,8 +8326,9 @@ class Connection(api.Connection):
                 query = query.filter_by(
                     status=constants.APP_INACTIVE_STATE)
 
-            if query.all():
-                query.delete()
+            kube_apps = query.all()
+            for app in kube_apps:
+                session.delete(app)
 
     @db_objects.objectify(objects.kube_app_releases)
     def kube_app_chart_release_get(self, app_id, release, namespace):
@@ -8502,11 +8532,11 @@ class Connection(api.Connection):
             query = model_query(models.DataNetworks, session=session)
             query = add_identity_filter(query, datanetwork_uuid)
             try:
-                query.one()
+                data_networks = query.one()
             except NoResultFound:
                 raise exception.DataNetworkNotFound(
                     datanetwork_uuid=datanetwork_uuid)
-            query.delete()
+            session.delete(data_networks)
 
     def _interface_datanetwork_get(self, uuid, session=None):
         query = model_query(models.InterfaceDataNetworks, session=session)
@@ -8628,10 +8658,10 @@ class Connection(api.Connection):
             query = model_query(models.InterfaceDataNetworks, session=session)
             query = add_identity_filter(query, uuid)
             try:
-                query.one()
+                interface_data_networks = query.one()
             except NoResultFound:
                 raise exception.InterfaceDataNetworkNotFound(uuid=uuid)
-            query.delete()
+            session.delete(interface_data_networks)
 
     @db_objects.objectify(objects.interface_datanetwork)
     def interface_datanetwork_query(self, values):
@@ -8893,10 +8923,10 @@ class Connection(api.Connection):
             query = add_identity_filter(query, upgrade_id)
 
             try:
-                query.one()
+                kube_upgrade = query.one()
             except NoResultFound:
                 raise exception.KubeUpgradeNotFound(upgrade_id=upgrade_id)
-            query.delete()
+            session.delete(kube_upgrade)
 
     def _deviceimage_get(self, model_class, deviceimage_id, obj=None):
         session = None
@@ -9025,11 +9055,11 @@ class Connection(api.Connection):
             query = model_query(models.DeviceImage, session=session)
             query = add_identity_filter(query, deviceimage_uuid)
             try:
-                query.one()
+                device_image = query.one()
             except NoResultFound:
                 raise exception.DeviceImageNotFound(
                     deviceimage_uuid=deviceimage_uuid)
-            query.delete()
+            session.delete(device_image)
 
     def _device_label_get(self, device_label_id):
         query = model_query(models.DeviceLabel)
@@ -9112,10 +9142,10 @@ class Connection(api.Connection):
             query = model_query(models.DeviceLabel, session=session)
             query = add_identity_filter(query, uuid)
             try:
-                query.one()
+                device_label = query.one()
             except NoResultFound:
                 raise exception.DeviceLabelNotFound(uuid)
-            query.delete()
+            session.delete(device_label)
 
     @db_objects.objectify(objects.device_label)
     def device_label_get_by_device(self, device_uuid,
@@ -9223,10 +9253,10 @@ class Connection(api.Connection):
             query = add_identity_filter(query, id)
 
             try:
-                query.one()
+                device_image_label = query.one()
             except NoResultFound:
                 raise exception.DeviceImageLabelNotFound(uuid=id)
-            query.delete()
+            session.delete(device_image_label)
 
     def _device_image_state_get(self, id):
         query = model_query(models.DeviceImageState)
@@ -9290,10 +9320,10 @@ class Connection(api.Connection):
             query = add_identity_filter(query, id)
 
             try:
-                query.one()
+                device_image_state = query.one()
             except NoResultFound:
                 raise exception.DeviceImageStateNotFound(id=id)
-            query.delete()
+            session.delete(device_image_state)
 
     @db_objects.objectify(objects.device_image_state)
     def device_image_state_get_by_image_device(self, image_id, pcidevice_id,
@@ -9397,11 +9427,11 @@ class Connection(api.Connection):
             query = query.filter_by(uuid=id)
 
             try:
-                query.one()
+                restore = query.one()
             except NoResultFound:
                 raise exception.RestoreNotFound(uuid=id)
 
-            query.delete()
+            session.delete(restore)
 
     def _kube_rootca_host_update_get(self, rootca_host_update_id):
         query = model_query(models.KubeRootCAHostUpdate)
@@ -9478,7 +9508,9 @@ class Connection(api.Connection):
     def kube_rootca_host_update_destroy_all(self):
         with _session_for_write() as session:
             query = model_query(models.KubeRootCAHostUpdate, session=session)
-            query.delete()
+            rootca = query.all()
+            for cert in rootca:
+                session.delete(cert)
 
     def _kube_rootca_update_get(self, rootca_update_id):
         query = model_query(models.KubeRootCAUpdate)
@@ -9549,10 +9581,10 @@ class Connection(api.Connection):
             query = add_identity_filter(query, rootca_update_id)
 
             try:
-                query.one()
+                rootca = query.one()
             except NoResultFound:
                 raise exception.KubeRootCAUpdateNotFound(rootca_update_id=rootca_update_id)
-            query.delete()
+            session.delete(rootca)
 
     @db_objects.objectify(objects.kube_cmd_version)
     def kube_cmd_version_get(self):
@@ -9592,16 +9624,19 @@ class Connection(api.Connection):
                 query = query.filter_by(config_uuid=id)
             else:
                 query = query.filter_by(id=id)
-            query.delete()
+            runtime_config = query.all()
+            for config in runtime_config:
+                session.delete(config)
 
     @db_objects.objectify(objects.runtime_config)
     def runtime_config_prune(self, older_than):
         with _session_for_write() as session:
             query = model_query(models.RuntimeConfig, session=session)
             query = query.filter(models.RuntimeConfig.created_at < older_than)
-            result = query.all()
-            query.delete()
-            return result
+            results = query.all()
+            for result in results:
+                session.delete(result)
+            return results
 
     @db_objects.objectify(objects.runtime_config)
     def runtime_config_update(self, id, values):
@@ -9634,7 +9669,8 @@ class Connection(api.Connection):
 
     @db_objects.objectify(objects.runtime_config)
     def runtime_config_get_all(
-        self, config_uuid=None, state=None, older_than=None, forihostid=None
+        self, config_uuid=None, state=None,
+        older_than=None, younger_than=None, forihostid=None
     ):
         query = model_query(models.RuntimeConfig)
         if config_uuid:
@@ -9643,6 +9679,8 @@ class Connection(api.Connection):
             query = query.filter_by(state=state)
         if older_than:
             query = query.filter(models.RuntimeConfig.created_at < older_than)
+        if younger_than:
+            query = query.filter(models.RuntimeConfig.created_at > younger_than)
         if forihostid:
             query = query.filter(models.RuntimeConfig.forihostid == forihostid)
         return query.all()
@@ -9694,6 +9732,31 @@ class Connection(api.Connection):
         return _paginate_query(models.KubeAppBundle, limit, marker,
                                sort_key, sort_dir, query)
 
+    @db_objects.objectify(objects.kube_app_bundle)
+    def kube_app_bundle_get_by_version_regex(self,
+                                             name,
+                                             version_regex,
+                                             k8s_version):
+        k8s_version = k8s_version.strip().lstrip('v')
+        sql_full_match_regex = "^" + version_regex + "$"
+        query = model_query(models.KubeAppBundle)
+        query = query.filter(
+            models.KubeAppBundle.name == name,
+            models.KubeAppBundle.version.regexp_match(sql_full_match_regex),
+            models.KubeAppBundle.k8s_minimum_version <= k8s_version,
+            or_(models.KubeAppBundle.k8s_maximum_version.is_(None),
+                models.KubeAppBundle.k8s_maximum_version >= k8s_version
+                )
+        )
+        query = query.order_by(models.KubeAppBundle.version.desc())
+
+        result = query.first()
+
+        if result is None:
+            raise exception.KubeAppBundleNotFound(name=name, version=version_regex)
+
+        return result
+
     def kube_app_bundle_destroy_all(self, file_path=None):
         with _session_for_write() as session:
             query = model_query(models.KubeAppBundle, session=session)
@@ -9701,7 +9764,9 @@ class Connection(api.Connection):
             if file_path:
                 query = query.filter_by(file_path=file_path)
 
-            query.delete()
+            kube_app_bundle = query.all()
+            for app in kube_app_bundle:
+                session.delete(app)
 
     def kube_app_bundle_destroy_by_file_path(self, file_path):
         self.kube_app_bundle_destroy_all(file_path)

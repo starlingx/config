@@ -202,13 +202,13 @@ class NetworkAddresspoolController(rest.RestController):
         return False
 
     def _network_addresspool_operation_complete(self, operation, network, addrpool, hosts):
-        if network.type == constants.NETWORK_TYPE_OAM:
+        if_net_list = pecan.request.dbapi.interface_network_get_by_network_id(network.id)
+        if network.type == constants.NETWORK_TYPE_OAM and len(if_net_list) > 0:
             pecan.request.rpcapi.update_oam_config(pecan.request.context)
 
         elif network.type == constants.NETWORK_TYPE_MGMT:
             if cutils.is_initial_config_complete():
                 if utils.get_system_mode() == constants.SYSTEM_MODE_SIMPLEX:
-                    pecan.request.rpcapi.set_mgmt_network_reconfig_flag(pecan.request.context)
                     if utils.is_network_associated_to_interface(constants.NETWORK_TYPE_MGMT):
                         if operation == constants.API_POST:
                             caddress_pool.add_management_addresses_to_no_proxy_list([addrpool])
@@ -332,6 +332,11 @@ class NetworkAddresspoolController(rest.RestController):
                    "address-pool of same IP family")
             raise wsme.exc.ClientSideError(msg)
 
+        if network.type == constants.NETWORK_TYPE_MGMT:
+            if cutils.is_initial_config_complete():
+                if utils.get_system_mode() == constants.SYSTEM_MODE_SIMPLEX:
+                    pecan.request.rpcapi.set_mgmt_network_reconfig_flag(pecan.request.context)
+
         result = pecan.request.dbapi.network_addrpool_create({'address_pool_id': pool.id,
                                                               'network_id': network.id})
 
@@ -408,6 +413,11 @@ class NetworkAddresspoolController(rest.RestController):
         hosts = None
         if network.type == constants.NETWORK_TYPE_ADMIN:
             hosts = pecan.request.dbapi.ihosts_get_by_addrpool(pool.id)
+
+        if network.type == constants.NETWORK_TYPE_MGMT:
+            if cutils.is_initial_config_complete():
+                if utils.get_system_mode() == constants.SYSTEM_MODE_SIMPLEX:
+                    pecan.request.rpcapi.set_mgmt_network_reconfig_flag(pecan.request.context)
 
         # since the association with the pool is removed, remove the interface id from the address
         pool_addresses = pecan.request.dbapi.addresses_get_by_pool(pool.id)

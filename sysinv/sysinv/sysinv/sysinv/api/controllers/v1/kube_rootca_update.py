@@ -7,6 +7,7 @@
 
 import datetime
 import os
+import time
 import pecan
 import re
 import six
@@ -903,6 +904,34 @@ class KubeRootCAHostUpdateController(rest.RestController):
             raise wsme.exc.ClientSideError(_(
                 "kube-rootca-host-update phase %s rejected: no new "
                 "root CA cert found." % phase))
+
+        # Wait for up to 40 seconds until the root CA cert/key
+        # are available in the kubernetes secret
+        timeout = 40
+        start_time = time.monotonic()
+        while True:
+            if cert_secret is not None and hasattr(cert_secret, 'data') and cert_secret.data:
+                cert = cert_secret.data.get('tls.crt', None)
+                key = cert_secret.data.get('tls.key', None)
+                if cert is not None and key is not None:
+                    break
+
+            if time.monotonic() - start_time >= timeout:
+                raise wsme.exc.ClientSideError(_(
+                    "kube-rootca-host-update phase %s rejected: kube root CA data "
+                    "is not yet available in secret %s. Try again later."
+                    % (phase, constants.KUBE_ROOTCA_SECRET)))
+
+            time.sleep(2)
+
+            # Fetch secret again for the next iteration
+            try:
+                cert_secret = kube_operator.kube_get_secret(
+                    constants.KUBE_ROOTCA_SECRET,
+                    kubernetes.NAMESPACE_DEPLOYMENT,
+                )
+            except Exception:
+                cert_secret = None
 
         try:
             ihost = pecan.request.dbapi.ihost_get(host_uuid)

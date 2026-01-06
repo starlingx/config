@@ -23,7 +23,7 @@ POLICY_ROOT = 'config_api:ihosts:%s'
 ihosts_rules = [
     policy.DocumentedRuleDefault(
         name=POLICY_ROOT % 'post',
-        check_str='rule:' + base.ADMIN_IN_SYSTEM_PROJECTS,
+        check_str='rule:' + base.ADMIN_OR_CONFIGURATOR,
         description="Add a host Parameter.",
         operations=[
             {
@@ -34,7 +34,7 @@ ihosts_rules = [
     ),
     policy.DocumentedRuleDefault(
         name=POLICY_ROOT % 'delete',
-        check_str='rule:' + base.ADMIN_IN_SYSTEM_PROJECTS,
+        check_str='rule:' + base.ADMIN_OR_CONFIGURATOR,
         description="Delete a host Parameter.",
         operations=[
             {
@@ -45,7 +45,7 @@ ihosts_rules = [
     ),
     policy.DocumentedRuleDefault(
         name=POLICY_ROOT % 'get',
-        check_str='rule:' + base.READER_OR_OPERATOR_IN_SYSTEM_PROJECTS,
+        check_str='rule:' + base.READER_OR_OPERATOR_OR_CONFIGURATOR,
         description="Get host Parameters.",
         operations=[
             {
@@ -60,7 +60,7 @@ ihosts_rules = [
     ),
     policy.DocumentedRuleDefault(
         name=POLICY_ROOT % 'patch',
-        check_str='rule:' + base.ADMIN_OR_OPERATOR_IN_SYSTEM_PROJECTS,
+        check_str='rule:' + base.ADMIN_OR_OPERATOR_OR_CONFIGURATOR,
         description="Modify host value.",
         operations=[
             {

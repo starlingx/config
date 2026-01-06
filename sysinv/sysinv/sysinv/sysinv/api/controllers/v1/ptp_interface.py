@@ -1,6 +1,6 @@
 ########################################################################
 #
-# Copyright (c) 2021 Wind River Systems, Inc.
+# Copyright (c) 2021, 2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -158,8 +158,8 @@ class PtpInterfaceController(rest.RestController):
     def get_all(self, parent_uuid=None, marker=None, limit=None, sort_key='id',
                 sort_dir='asc'):
         """Retrieve a list of PTP interfaces."""
-        LOG.debug("PtpInterfaceController.get_all: parent %s uuid %s type %s" %
-                  (self._parent, parent_uuid, type))
+        LOG.debug("PtpInterfaceController.get_all: parent %s uuid %s" %
+                  (self._parent, parent_uuid))
         if self._parent and not parent_uuid:
             raise exception.InvalidParameterValue(_(
                 "Parent id not specified."))
@@ -304,32 +304,34 @@ class PtpInterfaceController(rest.RestController):
     @wsme_pecan.wsexpose(None, types.uuid, status_code=204)
     def delete(self, ptp_interface_uuid):
         """Delete a PTP interface."""
-        LOG.debug("PtpInterfaceController.delete: %s" % ptp_interface_uuid)
+        LOG.info(f"PtpInterfaceController.delete: {ptp_interface_uuid}")
         if self._parent:
             raise exception.OperationNotPermitted
-
         try:
             ptp_interface_obj = objects.ptp_interface.get_by_uuid(
                 pecan.request.context, ptp_interface_uuid)
-        except exception.PtpInterfaceNotFound:
-            raise
-
-        # Only allow delete if there are no associated hosts/interfaces and
-        # parameters
-        parameters = pecan.request.dbapi.ptp_parameters_get_list(
-            ptp_interface=ptp_interface_uuid)
-        if parameters:
+        except (exception.PtpInterfaceNotFound, exception.InvalidParameterValue):
             raise wsme.exc.ClientSideError(
-                "PTP interface %s is still associated with PTP parameter(s)"
-                % ptp_interface_uuid)
+                _("No PTP interface found for %s" % ptp_interface_uuid))
+        except Exception as e:
+            LOG.error(f"Failed to retrieve PTP interface {ptp_interface_uuid}: {str(e)}")
+            raise wsme.exc.ClientSideError(
+                _("Error retrieving PTP interface %s" % ptp_interface_uuid))
 
-        interfaces = pecan.request.dbapi.ptp_interface_get_assignees(
+        interface_parameters_cleared = utils.cleanup_ptp_parameters(
+            ptp_interface_obj.uuid, "interface")
+        host_interface_associations_cleared = utils.cleanup_host_if_associations(
             ptp_interface_obj.id)
-        if interfaces:
-            raise wsme.exc.ClientSideError(
-                "PTP interface %s is still associated with host interface(s)"
-                % ptp_interface_uuid)
+        ptp_interface_deleted = interface_parameters_cleared and host_interface_associations_cleared
 
-        LOG.debug("PtpInterfaceController.delete: all clear for %s" %
-                  ptp_interface_uuid)
-        pecan.request.dbapi.ptp_interface_destroy(ptp_interface_uuid)
+        if not ptp_interface_deleted:
+            raise wsme.exc.ClientSideError(
+                f"PTP interface {ptp_interface_uuid} is still associated with PTP configuration")
+        else:
+            LOG.info(f"PtpInterfaceController.delete: all clear for {ptp_interface_uuid}")
+            try:
+                pecan.request.dbapi.ptp_interface_destroy(ptp_interface_obj.id)
+            except Exception as e:
+                LOG.error(f"Failed to destroy PTP interface {ptp_interface_uuid}: {str(e)}")
+                raise wsme.exc.ClientSideError(
+                    f"Failed to delete PTP interface {ptp_interface_uuid}")

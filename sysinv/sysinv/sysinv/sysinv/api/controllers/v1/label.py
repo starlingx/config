@@ -1,4 +1,4 @@
-# Copyright (c) 2018-2024 Wind River Systems, Inc.
+# Copyright (c) 2018-2024,2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -7,10 +7,12 @@ import json
 import os
 import pecan
 from pecan import rest
+import re
 import wsme
 import wsmeext.pecan as wsme_pecan
 from wsme import types as wtypes
 
+from contextlib import suppress
 from oslo_log import log
 from oslo_utils import excutils
 from sysinv._i18n import _
@@ -152,15 +154,19 @@ class LabelController(rest.RestController):
                                                   sort_key=sort_key,
                                                   sort_dir=sort_dir)
 
-    def _apply_manifest_after_label_operation(self, uuid, keys):
+    def _apply_manifest_after_label_operation(self, host_uuid, keys):
         if (common.LABEL_DISABLE_NOHZ_FULL in keys or
                 constants.KUBE_POWER_MANAGER_LABEL in keys):
             pecan.request.rpcapi.update_grub_config(
-                pecan.request.context, uuid)
+                pecan.request.context, host_uuid)
 
         if constants.KUBE_POWER_MANAGER_LABEL in keys:
             pecan.request.rpcapi.configure_power_manager(
                 pecan.request.context)
+
+        if _check_if_stalld_label_modified(keys):
+            pecan.request.rpcapi.configure_stalld(
+                pecan.request.context, host_uuid)
 
     @wsme_pecan.wsexpose(LabelCollection, types.uuid, types.uuid,
                          int, wtypes.text, wtypes.text)
@@ -203,14 +209,14 @@ class LabelController(rest.RestController):
     @cutils.synchronized(LOCK_NAME)
     @wsme_pecan.wsexpose(LabelCollection, types.uuid, types.boolean,
                          body=types.apidict)
-    def post(self, uuid, overwrite=False, body=None):
+    def post(self, host_uuid, overwrite=False, body=None):
         """Assign label(s) to a host.
         """
         if self._from_ihosts:
             raise exception.OperationNotPermitted
 
         LOG.info("patch_data: %s" % body)
-        host = objects.host.get_by_uuid(pecan.request.context, uuid)
+        host = objects.host.get_by_uuid(pecan.request.context, host_uuid)
 
         # Probably will never happen, but add an extra guard to be absolutely
         # sure no null values make it into the database.
@@ -226,13 +232,13 @@ class LabelController(rest.RestController):
 
         _semantic_check_k8s_plugins_labels(host, body)
 
+        _semantic_check_stalld_labels(host, body)
+
         existing_labels = {}
         for label_key in body.keys():
             label = None
-            try:
+            with suppress(exception.HostLabelNotFoundByKey):
                 label = pecan.request.dbapi.label_query(host.id, label_key)
-            except exception.HostLabelNotFoundByKey:
-                pass
             if label:
                 if overwrite:
                     existing_labels.update({label_key: label.uuid})
@@ -268,7 +274,7 @@ class LabelController(rest.RestController):
                     label_uuid = existing_labels.get(key)
                     new_label = pecan.request.dbapi.label_update(label_uuid, {'label_value': value})
                 else:
-                    new_label = pecan.request.dbapi.label_create(uuid, values)
+                    new_label = pecan.request.dbapi.label_create(host_uuid, values)
                 new_records.append(new_label)
             except exception.HostLabelAlreadyExists:
                 # We should not be here
@@ -277,11 +283,11 @@ class LabelController(rest.RestController):
         try:
             vim_api.vim_host_update(
                 None,
-                uuid,
+                host_uuid,
                 host.hostname,
                 constants.VIM_DEFAULT_TIMEOUT_IN_SECS)
             self._apply_manifest_after_label_operation(
-                uuid, body.keys())
+                host_uuid, body.keys())
         except Exception as e:
             LOG.warn(_("No response vim_api host:%s e=%s" %
                      (host.hostname, e)))
@@ -350,6 +356,7 @@ def _check_host_locked(host, host_labels):
              common.LABEL_OPENVSWITCH,
              common.LABEL_REMOTE_STORAGE,
              common.LABEL_SRIOVDP,
+             common.LABEL_SRIOVDP_ISRDMA,
              common.LABEL_SRIOVDP_VHOSTNET,
              constants.KUBE_TOPOLOGY_MANAGER_LABEL,
              constants.KUBE_CPU_MANAGER_LABEL,
@@ -388,6 +395,154 @@ def evaluate_case_agnostic_policy_name(policy_name, policy_value):
                 "Setting kube-cpu-mgr-policy to 'none' is not supported"))
     else:
         _case_agnostic_check(policy_value, constants.KUBE_CPU_MEMORY_MANAGER_VALUES, policy_name)
+
+
+def _check_if_stalld_label_modified(keys: list[str]) -> bool:
+    # check for starlingx.io/stalld substring in any of the labels
+    return any(constants.LABEL_STALLD in label_key for label_key in keys)
+
+
+def _is_stalld_enabled(host, body: dict) -> bool:
+
+    def _is_enabled_in_db(host) -> tuple[bool, bool]:
+        # default value if missing from db
+        found_in_db, stalld_enabled = False, constants.LABEL_VALUE_STALLD_DISABLED
+        with suppress(exception.HostLabelNotFoundByKey):
+            label_key = constants.LABEL_STALLD
+            label = pecan.request.dbapi.label_query(host.id, label_key)
+            stalld_enabled = label.label_value
+            found_in_db = True
+        return found_in_db, (stalld_enabled == constants.LABEL_VALUE_STALLD_ENABLED)
+
+    def _is_enabled_in_body(body: dict) -> tuple[bool, bool]:
+        label_key = constants.LABEL_STALLD
+        found = label_key in body.keys()
+        stalld_enabled = body.get(label_key, constants.LABEL_VALUE_STALLD_DISABLED)
+        return found, (stalld_enabled == constants.LABEL_VALUE_STALLD_ENABLED)
+
+    found_in_body, stalld_enabled_in_body = _is_enabled_in_body(body)
+    found_in_db, stalld_enabled_in_db = _is_enabled_in_db(host)
+
+    if found_in_body:
+        # user input highest priority
+        return stalld_enabled_in_body
+    elif found_in_db:
+        # check database
+        return stalld_enabled_in_db
+
+    # otherwise use the default value 'disabled'
+    return False
+
+
+def _semantic_check_stalld_cpu_list_is_not_empty(host, body: dict) -> None:
+    """ Check that stalld will not be started with an empty cpu list.
+
+    Args:
+        host: host
+        body (dict): dictionary of label key values being updated
+    """
+    keys = body.keys()
+    if not _check_if_stalld_label_modified(keys):
+        return None
+
+    if not _is_stalld_enabled(host, body):
+        return None
+
+    label_key = constants.LABEL_STALLD_CPU_FUNCTIONS
+    supported_values = constants.VALID_STALLD_CPU_FUNCTION_VALUES
+
+    cpu_function = body.get(label_key, None)
+    if not cpu_function:
+        # default value if missing from db
+        cpu_function = constants.LABEL_VALUE_CPU_DEFAULT
+        with suppress(exception.HostLabelNotFoundByKey):
+            label_key = constants.LABEL_STALLD_CPU_FUNCTIONS
+            label = pecan.request.dbapi.label_query(host.id, label_key)
+            cpu_function = label.label_value
+
+    if cpu_function.lower() == constants.LABEL_VALUE_CPU_ALL:
+        # all cpus - assume there will be at least 1 cpu on the node
+        return None
+
+    if cpu_function.lower() == constants.LABEL_VALUE_CPU_APPLICATION_ISOLATED:
+        functions = {
+            constants.ISOLATED_FUNCTION
+        }
+    elif cpu_function.lower() == constants.LABEL_VALUE_CPU_APPLICATION:
+        functions = {
+            constants.APPLICATION_FUNCTION,
+            constants.ISOLATED_FUNCTION
+        }
+    else:
+        # should not get here
+        msg = \
+            f"{host.hostname} invalid value {label_key}={cpu_function}. "\
+            f"Supported values are {supported_values}"
+        LOG.error(msg)
+        raise wsme.exc.ClientSideError(_(msg))
+
+    cpu_count = 0
+    for cpu in pecan.request.dbapi.icpu_get_by_ihost(host.uuid):
+        if cpu.allocated_function in functions or not functions:
+            cpu_count += 1
+    if cpu_count == 0:
+        msg = \
+            f"{host.hostname} stalld cpu list empty,"\
+            f" update cpu core assignments for {functions}"
+        raise wsme.exc.ClientSideError(_(msg))
+
+
+def _semantic_check_custom_stalld_label_format(host, body: dict) -> None:
+    """Check that custom stalld labels have the correct format
+        starlingx.io/stalld.<paramater>=<value>
+    """
+    keys = body.keys()
+    stalld_labels = [label for label in keys if constants.LABEL_STALLD in label]
+    for label_key in stalld_labels:
+        # skip supported labels they are validated elsewhere
+        if label_key in constants.SUPPORTED_STALLD_LABELS:
+            continue
+        if not re.match(constants.REGEX_STALLD_CUSTOM_LABEL, label_key):
+            msg = \
+                f"{host.hostname} '{label_key}' invalid format,"\
+                f" format example 'starlingx.io/stalld.<paramater>'"
+            raise wsme.exc.ClientSideError(_(msg))
+
+
+def _semantic_check_stalld_labels(host, body: dict) -> None:
+    """
+    Perform semantic checks to ensure the stalld labels have supported values
+    """
+    keys = body.keys()
+    stalld_labels = [label for label in keys if constants.LABEL_STALLD in label]
+    if not stalld_labels:
+        return None
+
+    if constants.WORKER not in host.subfunctions:
+        msg = f"{stalld_labels} can only be modified on worker nodes."
+        raise wsme.exc.ClientSideError(_(msg))
+
+    # tuple format ( label_key, supported_values)
+    label_tuples = [
+        # starlingx.io/stalld=[enabled|disabled]
+        (constants.LABEL_STALLD,
+         constants.VALID_STALLD_VALUES),
+        # starlingx.io/stalld_cpu_functions=[all|application|application_isolated]
+        (constants.LABEL_STALLD_CPU_FUNCTIONS,
+         constants.VALID_STALLD_CPU_FUNCTION_VALUES)]
+
+    for (label_key, supported_values) in label_tuples:
+        label_value = body.get(label_key, None)
+        if label_value:
+            label_value = label_value.lower()
+        if label_value and label_value not in supported_values:
+            msg = \
+                f"{host.hostname} invalid value {label_key}={label_value}. "\
+                f"Supported values are {supported_values}"
+            raise wsme.exc.ClientSideError(_(msg))
+
+    _semantic_check_stalld_cpu_list_is_not_empty(host, body)
+    _semantic_check_custom_stalld_label_format(host, body)
 
 
 def _semantic_check_worker_labels(body):

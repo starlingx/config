@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2019-2023 Wind River Systems, Inc.
+# Copyright (c) 2019-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -559,8 +559,230 @@ class ApiServiceParameterTestCaseMixin(object):
                     ',1.1.1.1'
             )
         },
-    ]
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_PLATFORM_FM,
+            'name': constants.SERVICE_PARAM_NAME_FM_DATABASE_MAX_OVERFLOW_SIZE,
+            'value': '1'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_PLATFORM_FM,
+            'name': constants.SERVICE_PARAM_NAME_FM_DATABASE_MAX_OVERFLOW_SIZE,
+            'value': '10'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_PLATFORM_FM,
+            'name': constants.SERVICE_PARAM_NAME_FM_DATABASE_MAX_POOL_SIZE,
+            'value': '1'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_PLATFORM_FM,
+            'name': constants.SERVICE_PARAM_NAME_FM_DATABASE_MAX_POOL_SIZE,
+            'value': '10'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_PLATFORM_FM,
+            'name': constants.SERVICE_PARAM_NAME_FM_DATABASE_MAX_POOL_TIMEOUT,
+            'value': '1'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_PLATFORM_FM,
+            'name': constants.SERVICE_PARAM_NAME_FM_DATABASE_MAX_POOL_TIMEOUT,
+            'value': '10'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG,
+            'name': constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_OVERFLOW_SIZE,
+            'value': '1'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG,
+            'name': constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_OVERFLOW_SIZE,
+            'value': '10'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG,
+            'name': constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_POOL_SIZE,
+            'value': '1'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG,
+            'name': constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_POOL_SIZE,
+            'value': '10'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG,
+            'name': constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_POOL_TIMEOUT,
+            'value': '1'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG,
+            'name': constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_POOL_TIMEOUT,
+            'value': '10'
+        },
+        {
+            # invalid empty
+            'service': constants.SERVICE_TYPE_DNS,
+            'section': constants.SERVICE_PARAM_SECTION_DNS_LOCAL,
+            'name': 'invalid_empty',
+            'value': ''
+        },
+        {
+            # invalid starting with dash
+            'service': constants.SERVICE_TYPE_DNS,
+            'section': constants.SERVICE_PARAM_SECTION_DNS_LOCAL,
+            'name': 'invalid_starting_with_dash',
+            'value': '-value'
+        },
+        {
+            # invalid finishing with dash
+            'service': constants.SERVICE_TYPE_DNS,
+            'section': constants.SERVICE_PARAM_SECTION_DNS_LOCAL,
+            'name': 'invalid_finishing_with_dash',
+            'value': 'value-'
+        },
+        {
+            # invalid underscore
+            'service': constants.SERVICE_TYPE_DNS,
+            'section': constants.SERVICE_PARAM_SECTION_DNS_LOCAL,
+            'name': 'invalid_undescore',
+            'value': 'val_ue'
+        },
+        {
+            # invalid finishing with dash 2 labels
+            'service': constants.SERVICE_TYPE_DNS,
+            'section': constants.SERVICE_PARAM_SECTION_DNS_LOCAL,
+            'name': 'invalid_finishing_with_dash_2_labels',
+            'value': 'value_.avf'
+        },
+        {
+            # invalid char comma
+            'service': constants.SERVICE_TYPE_DNS,
+            'section': constants.SERVICE_PARAM_SECTION_DNS_LOCAL,
+            'name': 'invalid_char_comma',
+            'value': 'value,1'
+        },
+        {
+            # invalid char %
+            'service': constants.SERVICE_TYPE_DNS,
+            'section': constants.SERVICE_PARAM_SECTION_DNS_LOCAL,
+            'name': 'invalid_char_%',
+            'value': 'value%.abc'
+        },
+        {
+            # invalid double dots
+            'service': constants.SERVICE_TYPE_DNS,
+            'section': constants.SERVICE_PARAM_SECTION_DNS_LOCAL,
+            'name': 'invalid_double_dots',
+            'value': 'value..1'
+        },
+        {
+            # invalid numeric
+            'service': constants.SERVICE_TYPE_DNS,
+            'section': constants.SERVICE_PARAM_SECTION_DNS_LOCAL,
+            'name': 'invalid_double dots',
+            'value': '123'
+        },
+        {
+            # invalid numeric dot numeric
+            'service': constants.SERVICE_TYPE_DNS,
+            'section': constants.SERVICE_PARAM_SECTION_DNS_LOCAL,
+            'name': 'invalid double_numbers',
+            'value': '123.123'
+        },
+        {
+            # invalid IPv4
+            'service': constants.SERVICE_TYPE_DNS,
+            'section': constants.SERVICE_PARAM_SECTION_DNS_LOCAL,
+            'name': 'invalid_ipv4',
+            'value': '1.1.1.1'
+        },
+        {
+            # invalid IPv6
+            'service': constants.SERVICE_TYPE_DNS,
+            'section': constants.SERVICE_PARAM_SECTION_DNS_LOCAL,
+            'name': 'invalid_ipv6',
+            'value': 'ffa::'
+        },
+        {
+            # invalid bigger than 253
+            'service': constants.SERVICE_TYPE_DNS,
+            'section': constants.SERVICE_PARAM_SECTION_DNS_LOCAL,
+            'name': 'invalid_dommain_bigger_than_253',
+            'value': 'abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijk.'
+                     'abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijk.'
+                     'abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijk.'
+                     'abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefgh.abc'
 
+        },
+        {
+            # invalid label bigger than 63
+            'service': constants.SERVICE_TYPE_DNS,
+            'section': constants.SERVICE_PARAM_SECTION_DNS_LOCAL,
+            'name': 'invalid_label_bigger_than_63',
+            'value': 'abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijk.'
+                     'abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijki.'
+                     'abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijk.'
+                     'abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcde'
+        },
+        {
+            # valid 253 domain with 63 and dash ) dots
+            'service': constants.SERVICE_TYPE_DNS,
+            'section': constants.SERVICE_PARAM_SECTION_DNS_LOCAL,
+            'name': 'valid_253_domain_with_labels',
+            'value': 'abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijk.'
+                     'abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijk.'
+                     'abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijk.'
+                     'abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghi'
+        },
+        {
+            # valid simple domain
+            'service': constants.SERVICE_TYPE_DNS,
+            'section': constants.SERVICE_PARAM_SECTION_DNS_LOCAL,
+            'name': 'valid_simple_domain',
+            'value': 'local'
+        },
+        {
+            # valid simple domain with dot
+            'service': constants.SERVICE_TYPE_DNS,
+            'section': constants.SERVICE_PARAM_SECTION_DNS_LOCAL,
+            'name': 'valid_simple_domain_with_dot',
+            'value': 'registry.central'
+        },
+        {
+            # valid with dash
+            'service': constants.SERVICE_TYPE_DNS,
+            'section': constants.SERVICE_PARAM_SECTION_DNS_LOCAL,
+            'name': 'valid_using_dash',
+            'value': 'regi-stry.central'
+        },
+        {
+            # valid IDN punycode (münich.local)
+            'service': constants.SERVICE_TYPE_DNS,
+            'section': constants.SERVICE_PARAM_SECTION_DNS_LOCAL,
+            'name': 'valid_idn_punicode',
+            'value': 'xn--mnich-kva.local'
+        },
+        {
+            # valid IDN punycode (пример.рф)
+            'service': constants.SERVICE_TYPE_DNS,
+            'section': constants.SERVICE_PARAM_SECTION_DNS_LOCAL,
+            'name': 'valid_idn_punicode2',
+            'value': 'xn--e1afmkfd.xn--p1ai'
+        },
+
+    ]
     service_parameter_wildcard = {
         'service': constants.SERVICE_TYPE_PTP,
         'section': constants.SERVICE_PARAM_SECTION_PTP_GLOBAL,
@@ -667,6 +889,87 @@ class ApiServiceParameterTestCaseMixin(object):
                 formatted_data[field] = None
 
         return formatted_data
+
+
+class CLIConfirmationTestHelper(object):
+    def __init__(self, test_case):
+        self.test_case = test_case
+        self.invalid_msg = (
+            "Parameter '%s' value must be either '%s' or '%s'" %
+            (
+                constants.SERVICE_PARAM_NAME_PLATFORM_CLI_CONFIRMATIONS,
+                constants.SERVICE_PARAM_DISABLED,
+                constants.SERVICE_PARAM_ENABLED
+            )
+        )
+        self.cli_confirmations_service_param_test_cases = {
+            "valid_enabled": {
+                "value": "enabled",
+                "expect_error": False
+            },
+            "invalid_yes": {
+                "value": "yes",
+                "expect_error": True,
+                "error_message": self.invalid_msg
+            },
+            "invalid_capital_enabled": {
+                "value": "ENABLED",
+                "expect_error": True,
+                "error_message": self.invalid_msg
+            },
+            "invalid_numeric": {
+                "value": "123",
+                "expect_error": True,
+                "error_message": self.invalid_msg
+            }
+        }
+
+        self.cli_confirmation_base_object = {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_PLATFORM_CLIENT,
+            'name': constants.SERVICE_PARAM_NAME_PLATFORM_CLI_CONFIRMATIONS,
+        }
+
+    def _create_cli_confirmation_object(self, value="enabled"):
+        obj = dict(self.cli_confirmation_base_object)
+        obj["value"] = value
+        return self.test_case._create_db_object(obj)
+
+    def validate_post(self):
+        sorted_cases = sorted(
+             self.cli_confirmations_service_param_test_cases.items(),
+             key=lambda item: not item[1]["expect_error"]
+        )
+        for name, case in sorted_cases:
+            post_object = dict(self.cli_confirmation_base_object)
+            post_object['value'] = case["value"]
+
+            if case["expect_error"]:
+                self.test_case.post(post_object, expect_errors=True,
+                     error_message=case["error_message"])
+            else:
+                self.test_case.post(post_object, expect_errors=False)
+
+    def validate_delete(self):
+        del_obj = self._create_cli_confirmation_object("enabled")
+        uuid = del_obj.uuid
+        response = self.test_case.delete(self.test_case.get_single_url(uuid),
+                   headers=self.test_case.API_HEADERS)
+        self.test_case.assertEqual(response.status_code, http_client.NO_CONTENT)
+
+    def validate_patch(self):
+        self.patch_object = self._create_cli_confirmation_object("enabled")
+        for name, case in self.cli_confirmations_service_param_test_cases.items():
+            patch_data = {'value': case["value"]}
+            if case["expect_error"]:
+                self.test_case.patch(self.patch_object.uuid,
+                    patch_data,
+                    expect_errors=True,
+                    error_message=case["error_message"])
+            else:
+                response = self.test_case.patch(self.patch_object.uuid, patch_data)
+                self.patch_object.update(patch_data)
+                self.test_case.validate_data(self.patch_object, response)
 
 
 class ApiServiceParameterPostTestSuiteMixin(ApiServiceParameterTestCaseMixin):
@@ -858,6 +1161,248 @@ class ApiServiceParameterPostTestSuiteMixin(ApiServiceParameterTestCaseMixin):
             response = self.post(post_object)
             self.validate_data(post_object, response)
 
+    def test_dns_local_invalid_domains(self):
+        dns_local_index = 94
+        # Test empty value
+        post_object = self.service_parameter_data[dns_local_index]
+        self.post(post_object, expect_errors=True,
+            error_message="The service parameter value is mandatory")
+
+        # invalid starting with dash
+        dns_local_index += 1
+        post_object = self.service_parameter_data[dns_local_index]
+        self.post(post_object, expect_errors=True, error_message="Parameter '" +
+            self.service_parameter_data[dns_local_index]['name'] +
+            "' includes an invalid domain \'" +
+            self.service_parameter_data[dns_local_index]['value'] + "\'.")
+
+        # invalid finishing with dash
+        dns_local_index += 1
+        post_object = self.service_parameter_data[dns_local_index]
+        self.post(post_object, expect_errors=True, error_message="Parameter '" +
+            self.service_parameter_data[dns_local_index]['name'] +
+            "' includes an invalid domain \'" +
+            self.service_parameter_data[dns_local_index]['value'] + "\'.")
+
+        # invalid undescore
+        dns_local_index += 1
+        post_object = self.service_parameter_data[dns_local_index]
+        self.post(post_object, expect_errors=True, error_message="Parameter '" +
+            self.service_parameter_data[dns_local_index]['name'] +
+            "' includes an invalid domain \'" +
+            self.service_parameter_data[dns_local_index]['value'] + "\'.")
+
+        # invalid finishing with dash 2 labels
+        dns_local_index += 1
+        post_object = self.service_parameter_data[dns_local_index]
+        self.post(post_object, expect_errors=True, error_message="Parameter '" +
+            self.service_parameter_data[dns_local_index]['name'] +
+            "' includes an invalid domain \'" +
+            self.service_parameter_data[dns_local_index]['value'] + "\'.")
+
+        # invalid char comma
+        dns_local_index += 1
+        post_object = self.service_parameter_data[dns_local_index]
+        self.post(post_object, expect_errors=True, error_message="Parameter '" +
+            self.service_parameter_data[dns_local_index]['name'] +
+            "' includes an invalid domain \'" +
+            self.service_parameter_data[dns_local_index]['value'] + "\'.")
+
+        # invalid char %
+        dns_local_index += 1
+        post_object = self.service_parameter_data[dns_local_index]
+        self.post(post_object, expect_errors=True, error_message="Parameter '" +
+            self.service_parameter_data[dns_local_index]['name'] +
+            "' includes an invalid domain \'" +
+            self.service_parameter_data[dns_local_index]['value'] + "\'.")
+
+        # invalid double dots
+        dns_local_index += 1
+        post_object = self.service_parameter_data[dns_local_index]
+        self.post(post_object, expect_errors=True, error_message="Parameter '" +
+            self.service_parameter_data[dns_local_index]['name'] +
+            "' includes an invalid domain \'" +
+            self.service_parameter_data[dns_local_index]['value'] + "\'.")
+
+        # invalid numeric
+        dns_local_index += 1
+        post_object = self.service_parameter_data[dns_local_index]
+        self.post(post_object, expect_errors=True, error_message="Parameter '" +
+            self.service_parameter_data[dns_local_index]['name'] +
+            "' includes an invalid domain \'" +
+            self.service_parameter_data[dns_local_index]['value'] + "\'.")
+
+        # invalid numeric dot numeric
+        dns_local_index += 1
+        post_object = self.service_parameter_data[dns_local_index]
+        self.post(post_object, expect_errors=True, error_message="Parameter '" +
+            self.service_parameter_data[dns_local_index]['name'] +
+            "' includes an invalid domain \'" +
+            self.service_parameter_data[dns_local_index]['value'] + "\'.")
+
+        # invalid IPv4
+        dns_local_index += 1
+        post_object = self.service_parameter_data[dns_local_index]
+        self.post(post_object, expect_errors=True, error_message="Parameter '" +
+            self.service_parameter_data[dns_local_index]['name'] +
+            "' includes an invalid domain \'" +
+            self.service_parameter_data[dns_local_index]['value'] + "\'.")
+
+        # invalid IPv6
+        dns_local_index += 1
+        post_object = self.service_parameter_data[dns_local_index]
+        self.post(post_object, expect_errors=True, error_message="Parameter '" +
+            self.service_parameter_data[dns_local_index]['name'] +
+            "' includes an invalid domain \'" +
+            self.service_parameter_data[dns_local_index]['value'] + "\'.")
+
+        # invalid bigger than 253
+        dns_local_index += 1
+        post_object = self.service_parameter_data[dns_local_index]
+        self.post(post_object, expect_errors=True, error_message="Parameter '" +
+            self.service_parameter_data[dns_local_index]['name'] +
+            "' includes an invalid domain \'" +
+            self.service_parameter_data[dns_local_index]['value'] + "\'.")
+
+        # invalid label bigger than 63
+        dns_local_index += 1
+        post_object = self.service_parameter_data[dns_local_index]
+        self.post(post_object, expect_errors=True, error_message="Parameter '" +
+            self.service_parameter_data[dns_local_index]['name'] +
+            "' includes an invalid domain \'" +
+            self.service_parameter_data[dns_local_index]['value'] + "\'.")
+
+    def test_dns_local_valid_domains(self):
+        dns_local_index = 108
+
+        # valid 253 domain with 63 and dash
+        post_object = self.service_parameter_data[dns_local_index]
+        response = self.post(post_object)
+        self.validate_data(post_object, response)
+
+        # valid simple domain
+        dns_local_index += 1
+        post_object = self.service_parameter_data[dns_local_index]
+        response = self.post(post_object)
+        self.validate_data(post_object, response)
+
+        # valid simple domain with dot
+        dns_local_index += 1
+        post_object = self.service_parameter_data[dns_local_index]
+        response = self.post(post_object)
+        self.validate_data(post_object, response)
+
+        # valid with dash
+        dns_local_index += 1
+        post_object = self.service_parameter_data[dns_local_index]
+        response = self.post(post_object)
+        self.validate_data(post_object, response)
+
+        # valid IDN punycode (münich.local)
+        dns_local_index += 1
+        post_object = self.service_parameter_data[dns_local_index]
+        response = self.post(post_object)
+        self.validate_data(post_object, response)
+
+        # valid IDN punycode (пример.рф)
+        dns_local_index += 1
+        post_object = self.service_parameter_data[dns_local_index]
+        response = self.post(post_object)
+        self.validate_data(post_object, response)
+
+    def test_dns_local_invalid_duplicate_domains(self):
+        dns_local_index = 109
+
+        # valid simple domain
+        post_object = self.service_parameter_data[dns_local_index]
+        response = self.post(post_object)
+        self.validate_data(post_object, response)
+
+        # add another DNS entry with same name but different value
+        post_object = self.service_parameter_data[dns_local_index]
+        msg = (
+            'Service parameter add failed: Parameter already exists: service=dns '
+            'section=local name=valid_simple_domain'
+        )
+        self.post(post_object, expect_errors=True,
+            error_message=msg)
+
+        # add another DNS entry with different name but same value
+        post_object = self.service_parameter_data[dns_local_index]
+        post_object['name'] = "other_name"
+        msg = (
+            'Service parameter add failed: Value already exists: service=dns '
+            'section=local name=other_name value=local'
+        )
+        self.post(post_object, expect_errors=True,
+            error_message=msg)
+
+    def test_cli_confirmations_post(self):
+        self.cli_helper = CLIConfirmationTestHelper(self)
+        self.cli_helper.validate_post()
+
+    def test_platform_kernel_sysctl_valid(self):
+        sysctl_kernel_parameters = {
+            "fs.epoll.max_user_watches": "29259397",
+            "kernel.bpf_stats_enabled": "0",
+            "kernel.panic_on_rcu_stall": "0",
+            "kernel.sched_rt_period_us": " 1000000",
+            "kernel.sched_rt_runtime_us": "950000",
+            "net.core.bpf_jit_enable": "1",
+            "net.ipv4.conf.all.forwarding": "1",
+            "user.max_inotify_instances": "128",
+            "vm.dirty_ratio": "20",
+            "vm.swappiness": "60",
+            "kernel.printk": "4 4 1 7",
+        }
+        for parm, value in sysctl_kernel_parameters.items():
+            service_parameter = \
+                {
+                    'service': constants.SERVICE_TYPE_PLATFORM,
+                    'section': constants.SERVICE_PARAM_SECTION_PLATFORM_SYSCTL,
+                    'name': parm,
+                    'value': value
+                }
+            response = self.post(service_parameter)
+            self.validate_data(service_parameter, response)
+
+    def test_platform_kernel_sysctl_readonly(self):
+        sysctl_kernel_parameters = {
+            "dev.cdrom.info": "CD-ROM information, Id: cdrom.c 3.20 2003/12/17",
+            "kernel.arch": "x86_64",
+            "kernel.osrelease": "6.12.0-1-amd64",
+            "kernel.ostype": "Linux",
+            "kernel.version": "#1 SMP PREEMPT_DYNAMIC StarlingX Debian",
+        }
+        for parm, value in sysctl_kernel_parameters.items():
+            service_parameter = \
+                {
+                    'service': constants.SERVICE_TYPE_PLATFORM,
+                    'section': constants.SERVICE_PARAM_SECTION_PLATFORM_SYSCTL,
+                    'name': parm,
+                    'value': value
+                }
+            self.post(service_parameter, expect_errors=True)
+
+    def test_platform_kernel_sysctl_invalid(self):
+        sysctl_kernel_parameters = {
+            "0net.ipv6.xyz": "1",
+            "0net.ipv4.x_9z": "0",
+            "*gssj.sjgsjs": "1",
+            "sjk.*sk.sj": "skjss",
+            "skjs.???.a183": "1",
+            "fake.a123.param": "1",
+        }
+        for parm, value in sysctl_kernel_parameters.items():
+            service_parameter = \
+                {
+                    'service': constants.SERVICE_TYPE_PLATFORM,
+                    'section': constants.SERVICE_PARAM_SECTION_PLATFORM_SYSCTL,
+                    'name': parm,
+                    'value': value
+                }
+            self.post(service_parameter, expect_errors=True)
+
 
 class ApiServiceParameterDeleteTestSuiteMixin(ApiServiceParameterTestCaseMixin):
     """ Tests deletion.
@@ -883,6 +1428,10 @@ class ApiServiceParameterDeleteTestSuiteMixin(ApiServiceParameterTestCaseMixin):
         results = self.get_list()
         returned_uuids = (result.uuid for result in results)
         self.assertNotIn(uuid, returned_uuids)
+
+    def test_cli_confirmations_delete(self):
+        self.cli_helper = CLIConfirmationTestHelper(self)
+        self.cli_helper.validate_delete()
 
 
 class ApiServiceParameterListTestSuiteMixin(ApiServiceParameterTestCaseMixin):
@@ -930,6 +1479,10 @@ class ApiServiceParameterPatchTestSuiteMixin(ApiServiceParameterTestCaseMixin):
         new_data = {'value': 'a_string'}
         self.patch(self.patch_object.uuid, new_data, expect_errors=True,
                    error_message="must be an integer value")
+
+    def test_cli_confirmations_patch(self):
+        self.cli_helper = CLIConfirmationTestHelper(self)
+        self.cli_helper.validate_patch()
 
 
 class PlatformIPv4ControllerApiServiceParameterDeleteTestCase(ApiServiceParameterDeleteTestSuiteMixin,

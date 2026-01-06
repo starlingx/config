@@ -1,0 +1,24 @@
+---
+app_name: app-a
+app_version: 1.0-1
+helm_repo: stx-platform
+behavior:
+  platform_managed_app: true
+dependent_apps:
+  - name: app-b
+    version: 1.0-1
+    action: apply
+supported_k8s_version:
+  minimum: 1.21.8
+---
+app_name: app-b
+app_version: 1.0-1
+helm_repo: stx-platform
+behavior:
+  platform_managed_app: true
+dependent_apps:
+  - name: app-a
+    version: 1.0-1
+    action: apply
+supported_k8s_version:
+  minimum: 1.21.8

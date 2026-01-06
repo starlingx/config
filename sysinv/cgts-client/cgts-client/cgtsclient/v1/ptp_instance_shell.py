@@ -1,11 +1,13 @@
 ########################################################################
 #
-# Copyright (c) 2021-2023 Wind River Systems, Inc.
+# Copyright (c) 2021-2023, 2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
 ########################################################################
 
+from cgtsclient.common import constants
+from cgtsclient.common import unicast_master_table as umt
 from cgtsclient.common import utils
 from cgtsclient import exc
 from cgtsclient.v1 import ihost as ihost_utils
@@ -45,7 +47,10 @@ def do_ptp_instance_list(cc, args):
            help="Name of PTP instance [REQUIRED]")
 @utils.arg('service',
            metavar='<service type>',
-           choices=['ptp4l', 'phc2sys', 'ts2phc', 'clock', 'synce4l'],
+           choices=[
+               'ptp4l', 'phc2sys', 'ts2phc', 'clock', 'synce4l',
+               constants.PTP_INSTANCE_TYPE_GNSS_MONITOR
+           ],
            help="Service type [REQUIRED]")
 def do_ptp_instance_add(cc, args):
     """Add a PTP instance."""
@@ -77,14 +82,56 @@ def do_ptp_instance_delete(cc, args):
     print('Deleted PTP instance: %s' % uuid)
 
 
-def _ptp_instance_parameter_op(cc, op, instance, parameters):
+def _ptp_instance_parameter_op(cc, op, instance, section, parameters):
     if len(parameters) == 0:
         raise exc.CommandError('Missing PTP parameter')
     ptp_instance = ptp_instance_utils._find_ptp_instance(cc, instance)
+
+    # check for supported parameters in case of gnss-monitor type
+    if (ptp_instance.service == constants.PTP_INSTANCE_TYPE_GNSS_MONITOR and op == "add"):
+        for param_keypair in parameters:
+            if param_keypair.find("=") < 0:
+                raise exc.CommandError(f"Bad PTP parameter keypair: {param_keypair}")
+            (param_name, param_value) = param_keypair.split("=", 1)
+
+            if param_name not in constants.PTP_INSTANCE_TYPE_GNSS_MONITOR_SUPPORTED_PARAMETERS:
+                raise exc.CommandError(
+                    f"Parameter {param_name} is not supported. Supported parameters:"
+                    f"{constants.PTP_INSTANCE_TYPE_GNSS_MONITOR_SUPPORTED_PARAMETERS}"
+                )
+    # sanity check for PTP4l's unicast_master_table sectional parameters
+    elif (
+        ptp_instance.service == constants.PTP_INSTANCE_TYPE_PTP4L
+        and section.startswith("unicast_master_table")
+    ):
+        umt_data = umt.UnicastMasterTable()
+        for param_keypair in parameters:
+            if param_keypair.find("=") < 0:
+                raise exc.CommandError(f"Bad PTP parameter keypair: {param_keypair}")
+            (param_name, param_value) = param_keypair.split("=", 1)
+
+            if param_name not in constants.PTP_INSTANCE_TYPE_PTP4L_UMT_SUPPORTED_PARAMETERS:
+                raise exc.CommandError(
+                    f"Parameter {param_name} is not supported. Supported parameters:"
+                    f"{constants.PTP_INSTANCE_TYPE_PTP4L_UMT_SUPPORTED_PARAMETERS}"
+                )
+            # compliance to value format
+            err_msg = umt_data.add(param_name, param_value)
+            if err_msg is not None:
+                raise exc.CommandError(
+                    f"Bad PTP parameter keypair: {param_keypair} error: {err_msg}"
+                )
+
+        # check compliance
+        err_msg = umt_data.comply()
+        if err_msg is not None:
+            raise exc.CommandError(f"Bad PTP parameter keypair, error: {err_msg}")
+
     patch = []
     for parameter in parameters:
         patch.append({'op': op,
                       'path': '/ptp_parameters/-',
+                      'section': section,
                       'value': parameter})
     ptp_instance = cc.ptp_instance.update(ptp_instance.uuid, patch)
     _print_ptp_instance_show(ptp_instance)
@@ -93,6 +140,10 @@ def _ptp_instance_parameter_op(cc, op, instance, parameters):
 @utils.arg('nameoruuid',
            metavar='<name or UUID>',
            help="Name or UUID of PTP instance")
+@utils.arg('--section',
+           metavar='<section_name>',
+           default='global',
+           help='Section name of PTP parameters (default: global)')
 @utils.arg('parameters',
            metavar='<name=value>',
            nargs='+',
@@ -102,12 +153,17 @@ def _ptp_instance_parameter_op(cc, op, instance, parameters):
 def do_ptp_instance_parameter_add(cc, args):
     """Add parameter(s) to a PTP instance."""
     _ptp_instance_parameter_op(cc, op='add', instance=args.nameoruuid,
+                               section=args.section,
                                parameters=args.parameters[0])
 
 
 @utils.arg('nameoruuid',
            metavar='<name or UUID>',
            help="Name or UUID of PTP instance")
+@utils.arg('--section',
+           metavar='<section_name>',
+           default='global',
+           help='Section name of PTP parameters (default: global)')
 @utils.arg('parameters',
            metavar='<name=value>',
            nargs='+',
@@ -117,6 +173,7 @@ def do_ptp_instance_parameter_add(cc, args):
 def do_ptp_instance_parameter_delete(cc, args):
     """Delete parameter(s) from a PTP instance."""
     _ptp_instance_parameter_op(cc, op='remove', instance=args.nameoruuid,
+                               section=args.section,
                                parameters=args.parameters[0])
 
 

@@ -4,6 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 import base64
+import datetime
 import json
 import os
 import sys
@@ -12,10 +13,12 @@ import socket
 import subprocess
 
 from cryptography import x509
+from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.x509.oid import NameOID
 
 from oslo_log import log as logging
@@ -175,8 +178,28 @@ class Client(object):
                 local_cert = x509.load_pem_x509_certificate(ca_cert)
                 if server_cert_serial != local_cert.serial_number:
                     return False
-
                 LOG.info("Cert Serial validation OK")
+
+                self.hostname = msg['hostname']
+                ipsec_cert_file = '{}{}{}.crt'.format(constants.CERT_SYSTEM_LOCAL_DIR,
+                                                      constants.CERT_NAME_PREFIX,
+                                                      self.hostname[constants.UNIT_HOSTNAME])
+                ipsec_cert = utils.load_data(ipsec_cert_file)
+                leaf_cert = x509.load_pem_x509_certificate(ipsec_cert)
+                try:
+                    pub_local_key = local_cert.public_key()
+                    pub_local_key.verify(leaf_cert.signature, leaf_cert.tbs_certificate_bytes,
+                                          padding.PKCS1v15(), leaf_cert.signature_hash_algorithm)
+                except InvalidSignature:
+                    return False
+                else:
+                    LOG.info("Cert Signature validation OK")
+
+                date_now = datetime.datetime.now()
+                if date_now > leaf_cert.not_valid_after or date_now < leaf_cert.not_valid_before:
+                    return False
+
+                LOG.info("Cert Expiry validation OK")
                 return True
 
             self.ots_token = msg['token']
@@ -288,15 +311,8 @@ class Client(object):
                     LOG.exception("Failed to load StrongSwan connections: %s" % err)
                     return False
 
-                rekey = subprocess.run(['swanctl', '--rekey', '--ike', constants.IKE_SA_NAME,
-                                        '--reauth'], stdout=subprocess.PIPE,
-                                        stderr=subprocess.PIPE, check=False)
-
-                if rekey.returncode != 0:
-                    err = "Error: %s" % (rekey.stderr.decode("utf-8"))
-                    LOG.exception("Failed to rekey IKE SA with StrongSwan: %s" % err)
-                    return False
-
+                # The new credential and conns are loaded. When auto reauth happens, the new
+                # certificate will be used.
                 LOG.info('IPsec certificate renewed successfully with load-creds/conns')
 
         return True
@@ -343,7 +359,7 @@ class Client(object):
                         self.state = State.END_STAGE
                     elif not self._handle_rcvd_data(self.data):
                         if self.op_code == constants.OP_CODE_CERT_VALIDATION:
-                            LOG.error("Cert Serial validation failed")
+                            LOG.error("Cert validation failed")
                             exit_code = 2
                         else:
                             LOG.error("Error handling data from server")

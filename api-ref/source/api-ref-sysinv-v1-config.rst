@@ -2600,7 +2600,8 @@ itemNotFound (404)
    "updated_at (Optional)", "plain", "xsd:dateTime", "The time when the object was last updated."
    "uses (Optional)", "plain", "xsd:list", "Interfaces which the current interface uses."
    "used_by (Optional)", "plain", "xsd:list", "Interfaces which use the current interface."
-   "max_tx_rate (Optional)", "plain", "xsd:integer", "The Maximum Transmission Rate of the interface, in Mbps. Only applicable if ``ifclass : pci-sriov`` and ``iftype : vf``"
+   "max_tx_rate (Optional)", "plain", "xsd:integer", "The Maximum Transmission Rate of the interface, in Mbps. Only applicable for combinations - ``ifclass : pci-sriov`` and ``iftype : vf`` or ``ifclass : platform`` and ``iftype : VLAN/AE/Ethernet``."
+   "max_rx_rate (Optional)", "plain", "xsd:integer", "The Maximum Reception Rate of the interface, in Mbps. Only applicable if ``ifclass : platform`` and ``iftype : VLAN/AE/Ethernet``."
 
 ::
 
@@ -2629,8 +2630,10 @@ itemNotFound (404)
          "vlan_id": null,
          "imtu": 1500,
          "aemode": null,
-         "ifclass": "platform"
-         "ifname": "eth1"
+         "ifclass": "platform",
+         "ifname": "eth1",
+         "max_tx_rate": 30,
+         "max_rx_rate": 30,
        },
        {
          "forihostid": 2,
@@ -2716,7 +2719,8 @@ itemNotFound (404)
    "ports (Optional)", "plain", "xsd:list", "URIs to the physical ports of this interface."
    "uses (Optional)", "plain", "xsd:list", "Interfaces which the current interface uses."
    "used_by (Optional)", "plain", "xsd:list", "Interfaces which use the current interface."
-   "max_tx_rate (Optional)", "plain", "xsd:integer", "The Maximum Transmission Rate of the interface, in Mbps. Only applicable if ``ifclass : pci-sriov`` and ``iftype : vf``"
+   "max_tx_rate (Optional)", "plain", "xsd:integer", "The Maximum Transmission Rate of the interface, in Mbps. Only applicable for combinations - ``ifclass : pci-sriov`` and ``iftype : vf`` or ``ifclass : platform`` and ``iftype : VLAN/AE/Ethernet``."
+   "max_rx_rate (Optional)", "plain", "xsd:integer", "The Maximum Reception Rate of the interface, in Mbps. Only applicable if ``ifclass : platform`` and ``iftype : VLAN/AE/Ethernet``."
    "uuid (Optional)", "plain", "csapi:UUID", "The universally unique identifier for this object."
    "links (Optional)", "plain", "xsd:list", "For convenience, resources contain links to themselves. This allows a client to easily obtain rather than construct resource URIs. The following types of link relations are associated with resources: a self link containing a versioned link to the resource, and a bookmark link containing a permanent link to a resource that is appropriate for long term storage."
    "created_at (Optional)", "plain", "xsd:dateTime", "The time when the object was created."
@@ -2806,7 +2810,8 @@ badMediaType (415)
    "used_by (Optional)", "plain", "xsd:list", "This attribute specifies a comma-separated list of interfaces that use this interface."
    "imtu (Optional)", "plain", "xsd:integer", "This attribute specifies the interface's Maximum Transmit Unit."
    "sriov_numvfs (Optional)", "plain", "xsd:integer", "The number of VFs to configure on the interface's port; only applicable if ``ifclass : pci-sriov`` where only a single port is associated with the interface."
-   "max_tx_rate (Optional)", "plain", "xsd:integer", "The Maximum Transmission Rate of the interface, in Mbps. Only applicable if ``ifclass : pci-sriov`` and ``iftype : vf``"
+   "max_tx_rate (Optional)", "plain", "xsd:integer", "The Maximum Transmission Rate of the interface, in Mbps. Only applicable for combinations - ``ifclass : pci-sriov`` and ``iftype : vf`` or ``ifclass : platform`` and ``iftype : VLAN/AE/Ethernet``."
+   "max_rx_rate (Optional)", "plain", "xsd:integer", "The Maximum Reception Rate of the interface, in Mbps. Only applicable if ``ifclass : platform`` and ``iftype : VLAN/AE/Ethernet``."
    "ihost_uuid (Optional)", "plain", "csapi:UUID", "The UUID of the host to create the interface on."
 
 **Response parameters**
@@ -2832,7 +2837,8 @@ badMediaType (415)
    "ports (Optional)", "plain", "xsd:list", "URIs to the physical ports of this interface."
    "uses (Optional)", "plain", "xsd:list", "Interfaces which the current interface uses."
    "used_by (Optional)", "plain", "xsd:list", "Interfaces which use the current interface."
-   "max_tx_rate (Optional)", "plain", "xsd:integer", "The Maximum Transmission Rate of the interface, in Mbps. Only applicable if ``ifclass : pci-sriov`` and ``iftype : vf``"
+   "max_tx_rate (Optional)", "plain", "xsd:integer", "The Maximum Transmission Rate of the interface, in Mbps. Only applicable for combinations - ``ifclass : pci-sriov`` and ``iftype : vf`` or ``ifclass : platform`` and ``iftype : VLAN/AE/Ethernet``."
+   "max_rx_rate (Optional)", "plain", "xsd:integer", "The Maximum Reception Rate of the interface, in Mbps. Only applicable if ``ifclass : platform`` and ``iftype : VLAN/AE/Ethernet``."
    "uuid (Optional)", "plain", "csapi:UUID", "The universally unique identifier for this object."
    "links (Optional)", "plain", "xsd:list", "For convenience, resources contain links to themselves. This allows a client to easily obtain rather than construct resource URIs. The following types of link relations are associated with resources: a self link containing a versioned link to the resource, and a bookmark link containing a permanent link to a resource that is appropriate for long term storage."
    "created_at (Optional)", "plain", "xsd:dateTime", "The time when the object was created."
@@ -2939,7 +2945,8 @@ badMediaType (415)
    "used_by (Optional)", "plain", "xsd:list", "This attribute specifies a comma-separated list of interfaces that use this interface."
    "imtu (Optional)", "plain", "xsd:integer", "This attribute specifies the interface's Maximum Transmit Unit."
    "sriov_numvfs (Optional)", "plain", "xsd:integer", "The number of VFs to configure on the interface's port; only applicable if ``ifclass : pci-sriov`` where only a single port is associated with the interface."
-   "max_tx_rate (Optional)", "plain", "xsd:integer", "The Maximum Transmission Rate of the interface, in Mbps. Only applicable if ``ifclass : pci-sriov`` and ``iftype : vf``"
+   "max_tx_rate (Optional)", "plain", "xsd:integer", "The Maximum Transmission Rate of the interface, in Mbps. Only applicable for combinations - ``ifclass : pci-sriov`` and ``iftype : vf`` or ``ifclass : platform`` and ``iftype : VLAN/AE/Ethernet``."
+   "max_rx_rate (Optional)", "plain", "xsd:integer", "The Maximum Reception Rate of the interface, in Mbps. Only applicable if ``ifclass : platform`` and ``iftype : VLAN/AE/Ethernet``."
 
 **Response parameters**
 
@@ -2964,7 +2971,8 @@ badMediaType (415)
    "ports (Optional)", "plain", "xsd:list", "URIs to the physical ports of this interface."
    "uses (Optional)", "plain", "xsd:list", "Interfaces which the current interface uses."
    "used_by (Optional)", "plain", "xsd:list", "Interfaces which use the current interface."
-   "max_tx_rate (Optional)", "plain", "xsd:integer", "The Maximum Transmission Rate of the interface, in Mbps. Only applicable if ``ifclass : pci-sriov`` and ``iftype : vf``"
+   "max_tx_rate (Optional)", "plain", "xsd:integer", "The Maximum Transmission Rate of the interface, in Mbps. Only applicable for combinations - ``ifclass : pci-sriov`` and ``iftype : vf`` or ``ifclass : platform`` and ``iftype : VLAN/AE/Ethernet``."
+   "max_rx_rate (Optional)", "plain", "xsd:integer", "The Maximum Reception Rate of the interface, in Mbps. Only applicable if ``ifclass : platform`` and ``iftype : VLAN/AE/Ethernet``."
    "uuid (Optional)", "plain", "csapi:UUID", "The universally unique identifier for this object."
    "links (Optional)", "plain", "xsd:list", "For convenience, resources contain links to themselves. This allows a client to easily obtain rather than construct resource URIs. The following types of link relations are associated with resources: a self link containing a versioned link to the resource, and a bookmark link containing a permanent link to a resource that is appropriate for long term storage."
    "created_at (Optional)", "plain", "xsd:dateTime", "The time when the object was created."
@@ -6930,6 +6938,146 @@ Deletes a device label
    "device_label_uuid", "URI", "csapi:UUID", "The unique identifier of a device label."
 
 This operation does not accept a request body.
+
+--------------
+Host labels
+--------------
+
+************************
+List all the host labels
+************************
+
+.. rest_method:: GET /v1/ihosts/{ihost_uuid}/labels
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+computeFault (400, 500, ...), serviceUnavailable (503), badRequest (400),
+unauthorized (401), forbidden (403), badMethod (405), overLimit (413),
+itemNotFound (404)
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "labels ", "plain", "xsd:list", "The list of host labels."
+   "uuid ", "plain", "csapi:UUID", "The universally unique identifier for this object."
+   "label_key ", "plain", "xsd:string", "The key of the device label."
+   "label_value ", "plain", "xsd:string", "The value of the device label."
+   "host_uuid ", "plain", "csapi:UUID", "The universally unique identifier for the host object."
+
+::
+
+   {
+      "labels": [
+         {
+            "uuid": "71caa220-390f-4403-86a3-8061dba35d06",
+            "label_key": "key1",
+            "label_value": "value1",
+            "host_uuid": "960c759f-fc00-42a1-b67e-a796bf709258"
+         },
+         {
+            "uuid": "4512b32f-943a-48d0-9449-9119205302c2",
+            "label_key": "key5",
+            "label_value": "value5",
+            "host_uuid": "960c759f-fc00-42a1-b67e-a796bf709258"
+         }
+      ]
+   }
+
+******************************
+Assign host labels to a host
+******************************
+
+.. rest_method:: POST /v1/labels/{ihost_uuid}?overwrite={overwrite_parameter}
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+computeFault (400, 500, ...), serviceUnavailable (503), badRequest (400),
+unauthorized (401), forbidden (403), badMethod (405), overLimit (413),
+itemNotFound (404)
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "ihost_uuid ", "plain", "csapi:UUID", "The universally unique identifier for the host object."
+   "overwrite_parameter (Optional)", "plain", "xsd:boolean", "Overwrite label if it already exists."
+   "host_labels", "URI", "xsd:list", "List of key-value paired of device labels."
+
+::
+
+   {
+      "key1": "value1",
+      "key2": "value2",
+      "key3": "value3"
+   }
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "labels ", "plain", "xsd:list", "The list of host labels."
+   "uuid ", "plain", "csapi:UUID", "The universally unique identifier for this object."
+   "label_key ", "plain", "xsd:string", "The key of the device label."
+   "label_value ", "plain", "xsd:string", "The value of the device label."
+   "host_uuid ", "plain", "csapi:UUID", "The universally unique identifier for the host object."
+
+::
+
+   {
+      "labels": [
+         {
+            "uuid": "bfb37f67-d231-4bf2-836b-677c9cd04dd6",
+            "label_key": "key1",
+            "label_value": "value1",
+            "host_uuid": "960c759f-fc00-42a1-b67e-a796bf709258"
+         },
+         {
+            "uuid": "85acec16-a163-4ed3-9e24-005602979cd6",
+            "label_key": "key2",
+            "label_value": "value2",
+            "host_uuid": "960c759f-fc00-42a1-b67e-a796bf709258"
+         },
+         {
+            "uuid": "45fb9fff-5b32-4088-ad65-acc191fcd8b2",
+            "label_key": "key3",
+            "label_value": "value3",
+            "host_uuid": "960c759f-fc00-42a1-b67e-a796bf709258"
+         }
+      ]
+   }
+
+************************
+Delete a host label
+************************
+
+.. rest_method:: DELETE /v1/labels/{host_label_uuid}
+
+**Normal response codes**
+
+204
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "host_label_uuid", "URI", "csapi:UUID", "The unique identifier of the host label."
 
 ------------------
 Service Parameter
@@ -13534,4 +13682,56 @@ Will reply with updated kernel value
       "hostname": "controller-0",
       "kernel_provisioned": "lowlatency",
       "kernel_running": "standard"
+   }
+
+
+-------------------------
+Host VIM Actions
+-------------------------
+
+These APIs allow the user to trigger actions in VIM.
+
+Supported actions:
+- host-audit
+
+********************
+Trigger Action
+********************
+
+.. rest_method:: POST /v1/ihosts/{ihost_uuid}/vim
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+computeFault (400, 500, ...), serviceUnavailable (503),
+unauthorized (401), forbidden (403), itemNotFound (404)
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "ihost_uuid", "URI", "csapi:UUID", "The unique identifier of the host"
+   "vim_event", "plain", "xsd:string", "The action to trigger (host-audit)"
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "ihost_uuid", "plain", "csapi:UUID", "The unique identifier of the host"
+   "hostname", "plain", "xsd:string", "The host name"
+   "vim_event", "plain", "xsd:string", "The action that was triggered"
+
+::
+
+   {
+      "ihost_uuid": "e551b1f0-ab6d-43a9-8eb1-05c39025a161",
+      "hostname": "controller-0",
+      "vim_event": "host-audit",
    }

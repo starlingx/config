@@ -1,4 +1,4 @@
-# Copyright (c) 2017-2024 Wind River Systems, Inc.
+# Copyright (c) 2017-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -9,6 +9,7 @@ import ruamel.yaml as yaml
 import re
 import numpy as np
 
+from contextlib import suppress
 from oslo_log import log as logging
 from oslo_serialization import base64
 from sysinv.common import constants
@@ -79,6 +80,7 @@ class PlatformPuppet(base.BasePuppet):
         config.update(self._get_host_lldp_config(host))
         config.update(self._get_ttys_dcd_config(host))
         config.update(self._get_host_tuned_devices(host))
+        config.update(self._get_stalld_config(host))
         return config
 
     def get_host_config_upgrade(self, host):
@@ -297,6 +299,8 @@ class PlatformPuppet(base.BasePuppet):
                 user.passwd_hash,
             'platform::users::params::sysadmin_password_max_age':
                 user.passwd_expiry_days,
+            'platform::users::params::sysadmin_password_last_changed':
+                user.passwd_last_change,
         }
 
     def _get_haproxy_config(self):
@@ -751,7 +755,6 @@ class PlatformPuppet(base.BasePuppet):
                 'platform::compute::grub::params::n_cpus': n_cpus,
                 'platform::compute::grub::params::cpu_options': cpu_options,
                 'platform::compute::grub::params::ignore_recovery': ignore_recovery,
-                'platform::compute::grub::params::bios_cstate': True
             })
         return config
 
@@ -1082,14 +1085,19 @@ class PlatformPuppet(base.BasePuppet):
              os.path.isfile(constants.OLD_ANSIBLE_BOOTSTRAP_COMPLETED_FLAG))
 
         if bootstrap_completed:
-            cert_data = utils.get_admin_ep_cert(
-                system.distributed_cloud_role)
-
-            if cert_data is None:
-                return config
-
-            dc_root_ca_crt = cert_data['dc_root_ca_crt']
-            admin_ep_crt = cert_data['admin_ep_crt']
+            try:
+                cert_data = utils.get_admin_ep_cert(
+                    system.distributed_cloud_role)
+            except Exception as e:
+                LOG.error("Error retrieving adminep certificate data:\n%s" % e)
+                # Puppet doesn't update the CA files if the content is empty
+                dc_root_ca_crt = ''
+                admin_ep_crt = ''
+            else:
+                if cert_data is None:
+                    return config
+                dc_root_ca_crt = cert_data['dc_root_ca_crt']
+                admin_ep_crt = cert_data['admin_ep_crt']
 
             config.update({
                 'platform::config::dccert::params::dc_root_ca_crt':
@@ -1156,3 +1164,102 @@ class PlatformPuppet(base.BasePuppet):
             "platform::tty::params::active_device":
                 host.console.split(',')[0]
         }
+
+    def _get_stalld_config(self, host):
+        LOG.debug(f"{host.hostname} _get_stalld_config()")
+
+        def _get_label_value(_label_key,
+                             _supported_values,
+                             _default_value):
+            label_value = _default_value
+            with suppress(exception.HostLabelNotFoundByKey):
+                label = self.dbapi.label_query(host.id, _label_key)
+                label_value = label.label_value.lower()
+                # unsupported value in database
+                if label_value not in _supported_values:
+                    LOG.error(f"Unexpected {_label_key}='{label.label_value}' "
+                              "using default values of "
+                              f"'{_default_value}' instead")
+                    label_value = _default_value
+            return label_value
+
+        stalld_enabled = _get_label_value(
+            constants.LABEL_STALLD,
+            constants.VALID_STALLD_VALUES,
+            constants.LABEL_VALUE_STALLD_DISABLED)
+
+        stalld_cpu_functions = _get_label_value(
+            constants.LABEL_STALLD_CPU_FUNCTIONS,
+            constants.VALID_STALLD_CPU_FUNCTION_VALUES,
+            constants.LABEL_VALUE_CPU_DEFAULT)
+
+        cpus = []
+        if stalld_cpu_functions == constants.LABEL_VALUE_CPU_ALL:
+            cpus = self._get_host_cpu_list(host,
+                                           threads=True)
+        elif stalld_cpu_functions == constants.LABEL_VALUE_CPU_APPLICATION_ISOLATED:
+            cpus = self._get_host_cpu_list(host,
+                                           constants.ISOLATED_FUNCTION,
+                                           threads=True)
+        else:
+            # constants.LABEL_VALUE_CPU_APPLICATION = 'application'
+            cpus_app = self._get_host_cpu_list(
+                host,
+                constants.APPLICATION_FUNCTION,
+                threads=True)
+            cpus_iso = self._get_host_cpu_list(
+                host,
+                constants.ISOLATED_FUNCTION,
+                threads=True)
+            cpus = cpus_app + cpus_iso
+
+        if not cpus:
+            LOG.error(f"{host.hostname} - {stalld_cpu_functions} "
+                        "stalld cpu_list is empty")
+            LOG.error("stalld auto-disabled update cpu core assignment")
+            stalld_enabled = constants.LABEL_VALUE_STALLD_DISABLED
+
+        # generate cpu_list
+        cpus = sorted(cpus, key=lambda c: c.cpu)
+        cpu_set = set([c.cpu for c in cpus])
+        stalld_cpu_list = utils.format_range_set(cpu_set)
+
+        config = {
+            "platform::stalld::params::enable":
+                stalld_enabled == constants.LABEL_VALUE_STALLD_ENABLED,
+            "platform::stalld::params::cpu_list":
+                f"'{stalld_cpu_list}'"
+        }
+
+        # custom stalld labels
+        config.update(self._get_custom_stalld_config(host))
+
+        LOG.debug(f"{host.hostname} updating stalld config\n{config}")
+        return config
+
+    def _get_custom_stalld_config(self, host):
+        config = {}
+
+        stalld_label_list = self.dbapi.label_get_all_like(
+            pattern=f"{constants.CUSTOM_STALLD_LABEL_STRING}%",
+            hostid=host.id
+        )
+
+        for label in stalld_label_list:
+            label_key = label.label_key
+            label_value = label.label_value
+
+            # skip supported stalld label keys which are also case insensitive
+            if label_key.lower() in constants.SUPPORTED_STALLD_LABELS:
+                continue
+
+            custom_parameter = label_key.replace(
+                constants.CUSTOM_STALLD_LABEL_STRING,
+                ''
+            )
+            config.update({
+                f"platform::stalld::params::{custom_parameter}":
+                    f"'{label_value}'"
+            })
+
+        return config

@@ -7,14 +7,19 @@
 # coding=utf-8
 #
 
+import difflib
+import functools
 import json
 import netaddr
+import os
 import pecan
 import re
+import stat
 import wsme
 
 from oslo_log import log
-from six.moves.urllib.parse import urlparse
+from oslo_utils import uuidutils
+from urllib.parse import urlparse
 from sysinv._i18n import _
 from sysinv.common import constants
 from sysinv.common import exception
@@ -30,6 +35,43 @@ SERVICE_PARAMETER_DATA_FORMAT_SKIP = 'skip'
 
 IDENTITY_CONFIG_TOKEN_EXPIRATION_MIN = 3600
 IDENTITY_CONFIG_TOKEN_EXPIRATION_MAX = 14400
+
+
+@functools.lru_cache(maxsize=1)
+def _get_supported_kernel_runtime_parameters() -> tuple[list[str], list[str]]:
+    """
+    Traverse the '/proc/sys' folder
+    and get the list supported kernel runtime parameters
+    """
+    supported_parameters, readonly_parameters = [], []
+    prefix = '/proc/sys/'
+    for root, directories, files in os.walk(f'{prefix}'):
+        for f in files:
+            fullpath = f"{root}/{f}"
+            path = fullpath[len(prefix):]
+            param = path.replace('/', '.')
+            current_permissions = os.stat(fullpath).st_mode
+            if (current_permissions & stat.S_IWUSR):
+                supported_parameters.append(param)
+            else:
+                readonly_parameters.append(param)
+    return supported_parameters, readonly_parameters
+
+
+def _validate_sysctl_kernel_parameter(name, value):
+    supported_list, readonly_list = _get_supported_kernel_runtime_parameters()
+    if name in readonly_list:
+        msg = f"Parameter '{name}={value}' cannot be modified. It is readonly."
+        LOG.error(_(msg))
+        raise wsme.exc.ClientSideError(_(msg))
+
+    if name not in supported_list:
+        msg = f"Parameter '{name}={value}' is not supported. "
+        matches = difflib.get_close_matches(name, supported_list)
+        if matches:
+            msg += f"Did you mean '{matches[0]}'?"
+        LOG.error(_(msg))
+        raise wsme.exc.ClientSideError(_(msg))
 
 
 def _validate_boolean(name, value):
@@ -142,6 +184,30 @@ def _validate_token_expiry_time(name, value):
             "Parameter '%s' must be an integer value." % name))
 
 
+def _validate_identity_role_bindings(name, value):
+    """Check role bindings syntax"""
+    lines = value.split(";")
+    for line in lines:
+        split_line = line.split(":")
+        if len(split_line) != 2:
+            raise wsme.exc.ClientSideError(_(
+                "Parameter '%s' misconfigured: %s"
+                % (name, line)))
+        if "" in split_line:
+            raise wsme.exc.ClientSideError(_(
+                "Parameter '%s' misconfigured with empty string: %s"
+                % (name, line)))
+        rhs = split_line[1].split(",")
+        if len(rhs) > 3 or len(rhs) < 1:
+            raise wsme.exc.ClientSideError(_(
+                "Parameter '%s' misconfigured: %s must contain 1-3 terms"
+                % (name, split_line[1])))
+        if "" in rhs:
+            raise wsme.exc.ClientSideError(_(
+                "Parameter '%s' misconfigured: %s has an empty term"
+                % (name, rhs)))
+
+
 def _validate_ip_address(name, value):
     """Check if ip value is valid"""
     if not cutils.is_valid_ip(value):
@@ -173,15 +239,38 @@ def _validate_SAN_list(name, value):
                 % entry))
 
 
+def _validate_uri(name, parsed_value):
+    """Check if the uri is valid"""
+
+    if not parsed_value.netloc or not parsed_value.scheme:
+        raise wsme.exc.ClientSideError(_(
+            "Parameter '%s' must be a valid uri." % name))
+
+    if parsed_value.netloc and parsed_value.netloc != parsed_value.hostname:
+        try:
+            parsed_value.port
+        except ValueError as e:
+            raise wsme.exc.ClientSideError(_(
+                "Invalid port in uri: %s" % str(e)))
+        if parsed_value.netloc[-1] == ":" and parsed_value.port is None:
+            raise wsme.exc.ClientSideError(_(
+                "Port number is missing in uri"))
+
+    if parsed_value.hostname is None or not cutils.is_valid_domain_or_ip(parsed_value.netloc):
+        raise wsme.exc.ClientSideError(_(
+            "Parameter '%s' has invalid domain name or IP address." % name))
+
+    if parsed_value.path == "/":
+        raise wsme.exc.ClientSideError(_(
+            "Parameter '%s' has an empty path" % name))
+
+
 def _validate_oidc_issuer_url(name, value):
     """Check if oidc issuer address is valid"""
 
-    # is_valid_domain_or_ip does not work with entire urls
-    # for example, the 'https://' needs to be removed
+    _validate_not_empty(name, value)
     parsed_value = urlparse(value)
-    if not parsed_value.netloc or not cutils.is_valid_domain_or_ip(parsed_value.netloc):
-        raise wsme.exc.ClientSideError(_(
-            "Parameter '%s' must be a valid address or domain." % name))
+    _validate_uri(name, parsed_value)
 
 
 def _deprecated_oidc_params(name, value):
@@ -246,12 +335,12 @@ def _validate_ldap_uri(name, value):
 
     _validate_not_empty(name, value)
     parsed_value = urlparse(value)
-    if not parsed_value.netloc or parsed_value.scheme != "ldaps":
+
+    if parsed_value.scheme and parsed_value.scheme != "ldaps":
         raise wsme.exc.ClientSideError(_(
-            "Parameter '%s' must be a valid ldap uri." % name))
-    if not cutils.is_valid_domain_name(parsed_value.netloc):
-            raise wsme.exc.ClientSideError(_(
-                "Parameter '%s' has invalid domain name." % name))
+            "Parameter '%s' must be a valid ldap uri using ldaps protocol." % name))
+
+    _validate_uri(name, parsed_value)
 
 
 def _validate_ldap_dn(name, value):
@@ -315,6 +404,12 @@ def _validate_hbs_period(name, value):
     _validate_range(name, value,
                     SERVICE_PARAM_PLAT_MTCE_HBS_PERIOD_MIN,
                     SERVICE_PARAM_PLAT_MTCE_HBS_PERIOD_MAX)
+
+
+def _validate_sched_rt_prio(name, value):
+    _validate_range(name, value,
+                    constants.SERVICE_PARAM_PLATFORM_SCHED_RT_MIN_PRIO,
+                    constants.SERVICE_PARAM_PLATFORM_SCHED_RT_MAX_PRIO)
 
 
 def _validate_hbs_failure_action(name, value):
@@ -603,6 +698,13 @@ def _validate_dns_host_record(name, value):
             "Parameter '%s' must contain valid ip address and host name." % name))
 
 
+def _validate_dns_local(name, value):
+    if not cutils.is_valid_dns_local(value):
+        raise wsme.exc.ClientSideError(_(
+            "Parameter '%s' includes an invalid domain '%s'." %
+            (name, value)))
+
+
 def _validate_max_cpu_min_percentage(name, value):
     return _validate_range(name, value, 60, 100)
 
@@ -612,6 +714,14 @@ def _validate_sysinv_api_workers(name, value):
     MAX_WORKERS = cutils.get_platform_core_count(pecan.request.dbapi)
     MIN_WORKERS = 1
     return _validate_range(name, value, MIN_WORKERS, MAX_WORKERS)
+
+
+def _validate_host_unlock_blocking_period(name, value):
+    """
+    Check if the blocking period is valid.
+    Values between 1 second and 600 seconds accepted.
+    """
+    return _validate_range(name, value, 1, 600)
 
 
 def _validate_drbd_net_hmac(name, value):
@@ -628,33 +738,6 @@ def _validate_drbd_net_hmac(name, value):
          constants.SERVICE_PARAM_PLATFORM_DRBD_HMAC_SHA256)))
 
 
-def _validate_oot(name, value):
-    """Check if specified value is supported"""
-
-    # Convert the input value to a list for validation against
-    # constants.SERVICE_PARAM_PLAT_KERNEL_OOT_VALUES
-    driver_list = list(map(str.strip, value.split(',')))
-
-    # first check none should not be co exists with other values
-    # it should be none or any other combination
-    if len(driver_list) > 1 and 'none' in value:
-        msg = "'none' should be the only value, it cannot coexist with others"
-        raise wsme.exc.ClientSideError(_(msg))
-
-    # Ensure that the driver list is a subset of
-    # constants.SERVICE_PARAM_PLAT_KERNEL_OOT_VALUES, and raise
-    # an error if it does not match the predefined OOT values.
-    # it checks whether all elements in the driver_list
-    # are also present in the constants.SERVICE_PARAM_PLAT_KERNEL_OOT_VALUES.
-    # If they are, the expression evaluates to True; otherwise, it evaluates to False
-
-    if not (all(x in constants.SERVICE_PARAM_PLAT_KERNEL_OOT_VALUES
-            for x in driver_list)):
-        msg = "Parameter '{}' value must be one of '{}' .".format(
-            name, constants.SERVICE_PARAM_PLAT_KERNEL_OOT_VALUES)
-        raise wsme.exc.ClientSideError(_(msg))
-
-
 def _validate_cli_confirmations(name, value):
     """Check if specified value is supported"""
     try:
@@ -668,6 +751,24 @@ def _validate_cli_confirmations(name, value):
         "Parameter '%s' value must be either '%s' or '%s'" %
         (name, constants.SERVICE_PARAM_DISABLED,
          constants.SERVICE_PARAM_ENABLED)))
+
+
+def _validate_postgres_pool_configuration(name, value):
+    """Check if the system type, distributed cloud role and the values respects
+    the requirements"""
+    _validate_positive_integer(name, value)
+
+    try:
+        system = pecan.request.dbapi.isystem_get_one()
+        if system.distributed_cloud_role != constants.\
+                DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER and \
+                system.system_type == constants.TIS_AIO_BUILD:
+            return
+    except Exception:
+        pass
+
+    raise wsme.exc.ClientSideError(_(
+        "Connection Pool parameters are only accepted on AIO systems."))
 
 
 def parse_volume_string_to_dict(parameter):
@@ -858,13 +959,80 @@ def get_k8s_configmap_name(parameter):
     return parameter['section'].replace('_', '-') + '---' + parameter['name']
 
 
+def get_service_parameter_k8s_application_audit(dbapi):
+    """
+    Retrieves the value of the Kubernetes application audit service parameter from the database.
+
+    If the parameter does not exist, it creates the parameter with the default enabled value
+    and returns the enabled constant.
+
+    Args:
+        dbapi: Database API object.
+
+    Returns:
+        str: The value of the Kubernetes application audit service parameter.
+    """
+
+    try:
+        service_parameter = dbapi.service_parameter_get_one(
+            constants.SERVICE_TYPE_KUBERNETES,
+            constants.SERVICE_PARAM_SECTION_KUBERNETES_CONFIG,
+            constants.SERVICE_PARAM_NAME_K8S_APPLICATION_AUDIT)
+        LOG.debug("K8s application audit service parameter found with value: "
+                  f"{service_parameter.value}")
+        return (
+            service_parameter.value
+            if service_parameter.value == constants.SERVICE_PARAM_ENABLED
+            else constants.SERVICE_PARAM_DISABLED
+        )
+    except exception.NotFound:
+        LOG.info("K8s application audit service parameter not found. Creating with "
+                  "default enabled value.")
+        params = {
+            'service_param': constants.SERVICE_TYPE_KUBERNETES,
+            'param_section': constants.SERVICE_PARAM_SECTION_KUBERNETES_CONFIG,
+            'param_name': constants.SERVICE_PARAM_NAME_K8S_APPLICATION_AUDIT,
+            'value': constants.SERVICE_PARAM_ENABLED,
+        }
+        create_service_parameter(
+            dbapi, params
+        )
+        return constants.SERVICE_PARAM_ENABLED
+
+
+def create_service_parameter(dbapi, params):
+    """
+    Creates service parameter in the database.
+
+    Args:
+        dbapi: Database API object.
+        value: The value of the service parameter.
+    """
+
+    try:
+        dbapi.service_parameter_create({
+            'uuid': uuidutils.generate_uuid(),
+            'service': params['service_param'],
+            'section': params['param_section'],
+            'name': params['param_name'],
+            'value': params['value'],
+        })
+        LOG.info(f"Service parameter '{params}'created successfully.")
+    except Exception as e:
+        LOG.error(f"Failed to create k8s application audit service parameter: {e}")
+        raise
+
+
 PLATFORM_CONFIG_PARAMETER_OPTIONAL = [
     constants.SERVICE_PARAM_NAME_PLAT_CONFIG_VIRTUAL,
     constants.SERVICE_PARAM_NAME_PLATFORM_MAX_CPU_PERCENTAGE,
     constants.SERVICE_PARAM_NAME_PLAT_CONFIG_INTEL_PSTATE,
     constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_API_WORKERS,
     constants.SERVICE_PARAM_NAME_PLATFORM_SCTP_AUTOLOAD,
-    constants.SERVICE_PARAM_NAME_PLATFORM_CLI_CONFIRMATIONS
+    constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_POOL_SIZE,
+    constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_POOL_TIMEOUT,
+    constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_OVERFLOW_SIZE,
+    constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_HOST_UNLOCK_BLOCKING_PERIOD
 ]
 
 PLATFORM_CONFIG_PARAMETER_READONLY = [
@@ -882,8 +1050,14 @@ PLATFORM_CONFIG_PARAMETER_VALIDATOR = {
         _validate_sysinv_api_workers,
     constants.SERVICE_PARAM_NAME_PLATFORM_SCTP_AUTOLOAD:
         _validate_sctp_autoload,
-    constants.SERVICE_PARAM_NAME_PLATFORM_CLI_CONFIRMATIONS:
-        _validate_cli_confirmations,
+    constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_POOL_SIZE:
+        _validate_postgres_pool_configuration,
+    constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_POOL_TIMEOUT:
+        _validate_postgres_pool_configuration,
+    constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_OVERFLOW_SIZE:
+        _validate_postgres_pool_configuration,
+    constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_HOST_UNLOCK_BLOCKING_PERIOD:
+        _validate_host_unlock_blocking_period,
 }
 
 PLATFORM_CONFIG_PARAMETER_RESOURCE = {
@@ -895,8 +1069,14 @@ PLATFORM_CONFIG_PARAMETER_RESOURCE = {
         'platform::sysinv::params::sysinv_api_workers',
     constants.SERVICE_PARAM_NAME_PLATFORM_SCTP_AUTOLOAD:
         'platform::params::sctp_autoload',
-    constants.SERVICE_PARAM_NAME_PLATFORM_CLI_CONFIRMATIONS:
-        'platform::params::cli_confirmations',
+    constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_POOL_SIZE:
+        'platform::sysinv::custom::params::db_pool_size',
+    constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_POOL_TIMEOUT:
+        'platform::sysinv::custom::params::db_idle_timeout',
+    constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_OVERFLOW_SIZE:
+        'platform::sysinv::custom::params::db_over_size',
+    constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_HOST_UNLOCK_BLOCKING_PERIOD:
+        'platform::sysinv::params::host_unlock_blocking_period'
 }
 
 IDENTITY_LDAP_PARAMETER_OPTIONAL = [
@@ -952,6 +1132,19 @@ IDENTITY_CONFIG_PARAMETER_VALIDATOR = {
 
 IDENTITY_CONFIG_PARAMETER_RESOURCE = {
     constants.SERVICE_PARAM_IDENTITY_CONFIG_TOKEN_EXPIRATION: 'openstack::keystone::params::token_expiration',
+}
+
+IDENTITY_STX_PARAMETER_OPTIONAL = [
+    constants.SERVICE_PARAM_NAME_IDENTITY_STX_ROLE_BINDINGS,
+]
+
+IDENTITY_STX_PARAMETER_VALIDATOR = {
+    constants.SERVICE_PARAM_NAME_IDENTITY_STX_ROLE_BINDINGS:
+        _validate_identity_role_bindings,
+}
+
+IDENTITY_STX_PARAMETER_RESOURCE = {
+    constants.SERVICE_PARAM_NAME_IDENTITY_STX_ROLE_BINDINGS: 'platform::params::oidc_role_binding',
 }
 
 IDENTITY_LOCAL_OPENLDAP_PARAMETER_OPTIONAL = [
@@ -1019,7 +1212,6 @@ SERVICE_PARAM_PLAT_MTCE_MNFA_THRESHOLD_MAX = 100
 SERVICE_PARAM_PLAT_MTCE_MNFA_TIMEOUT_MIN = 100
 SERVICE_PARAM_PLAT_MTCE_MNFA_TIMEOUT_MAX = 86400
 
-
 PLATFORM_MTCE_PARAMETER_VALIDATOR = {
     constants.SERVICE_PARAM_PLAT_MTCE_WORKER_BOOT_TIMEOUT:
         _validate_worker_boot_timeout,
@@ -1052,7 +1244,9 @@ PLATFORM_MTCE_PARAMETER_RESOURCE = {
 
 PLATFORM_KERNEL_PARAMETER_OPTIONAL = [
     constants.SERVICE_PARAM_NAME_PLATFORM_AUDITD,
-    constants.SERVICE_PARAM_NAME_PLATFORM_OOT,
+    constants.SERVICE_PARAM_PLATFORM_KSOFTIRQD_PRIO,
+    constants.SERVICE_PARAM_PLATFORM_IRQ_WORK_PRIO,
+    constants.SERVICE_PARAM_PLATFORM_KTHREAD_PRIO,
 ]
 
 PLATFORM_KEYSTONE_PARAMETER_OPTIONAL = [
@@ -1079,6 +1273,12 @@ PLATFORM_POSTGRESQL_PARAMETER_OPTIONAL = [
     constants.SERVICE_PARAM_NAME_POSTGRESQL_MAX_PARALLEL_WORKERS_PER_GATHER,
 ]
 
+PLATFORM_FM_PARAMETER_OPTIONAL = [
+    constants.SERVICE_PARAM_NAME_FM_DATABASE_MAX_POOL_SIZE,
+    constants.SERVICE_PARAM_NAME_FM_DATABASE_MAX_POOL_TIMEOUT,
+    constants.SERVICE_PARAM_NAME_FM_DATABASE_MAX_OVERFLOW_SIZE,
+]
+
 PLATFORM_DRBD_PARAMETER_OPTIONAL = [
     constants.SERVICE_PARAM_NAME_DRBD_HMAC,
     constants.SERVICE_PARAM_NAME_DRBD_SECRET,
@@ -1087,7 +1287,9 @@ PLATFORM_DRBD_PARAMETER_OPTIONAL = [
 
 PLATFORM_KERNEL_PARAMETER_VALIDATOR = {
     constants.SERVICE_PARAM_NAME_PLATFORM_AUDITD: _validate_kernel_audit,
-    constants.SERVICE_PARAM_NAME_PLATFORM_OOT: _validate_oot,
+    constants.SERVICE_PARAM_PLATFORM_KSOFTIRQD_PRIO: _validate_sched_rt_prio,
+    constants.SERVICE_PARAM_PLATFORM_IRQ_WORK_PRIO: _validate_sched_rt_prio,
+    constants.SERVICE_PARAM_PLATFORM_KTHREAD_PRIO: _validate_sched_rt_prio,
 }
 
 PLATFORM_KEYSTONE_PARAMETER_VALIDATOR = {
@@ -1125,6 +1327,15 @@ PLATFORM_POSTGRESQL_PARAMETER_VALIDATOR = {
         _validate_zero_or_positive_integer,
 }
 
+PLATFORM_FM_PARAMETER_VALIDATOR = {
+    constants.SERVICE_PARAM_NAME_FM_DATABASE_MAX_POOL_SIZE:
+        _validate_postgres_pool_configuration,
+    constants.SERVICE_PARAM_NAME_FM_DATABASE_MAX_POOL_TIMEOUT:
+        _validate_postgres_pool_configuration,
+    constants.SERVICE_PARAM_NAME_FM_DATABASE_MAX_OVERFLOW_SIZE:
+        _validate_postgres_pool_configuration,
+}
+
 PLATFORM_DRBD_PARAMETER_VALIDATOR = {
     constants.SERVICE_PARAM_NAME_DRBD_HMAC:
         _validate_drbd_net_hmac,
@@ -1137,8 +1348,12 @@ PLATFORM_DRBD_PARAMETER_VALIDATOR = {
 PLATFORM_KERNEL_PARAMETER_RESOURCE = {
     constants.SERVICE_PARAM_NAME_PLATFORM_AUDITD:
         'platform::compute::grub::params::g_audit',
-    constants.SERVICE_PARAM_NAME_PLATFORM_OOT:
-        'platform::compute::grub::params::g_out_of_tree_drivers',
+    constants.SERVICE_PARAM_PLATFORM_KSOFTIRQD_PRIO:
+        'platform::params::ksoftirqd_priority',
+    constants.SERVICE_PARAM_PLATFORM_IRQ_WORK_PRIO:
+        'platform::params::irq_work_priority',
+    constants.SERVICE_PARAM_PLATFORM_KTHREAD_PRIO:
+        'platform::compute::grub::params::g_kthread_prio',
 }
 
 PLATFORM_KEYSTONE_PARAMETER_RESOURCE = {
@@ -1178,6 +1393,15 @@ PLATFORM_POSTGRESQL_PARAMETER_RESOURCE = {
         'platform::postgresql::custom::params::max_parallel_maintenance_workers',
     constants.SERVICE_PARAM_NAME_POSTGRESQL_MAX_PARALLEL_WORKERS_PER_GATHER:
         'platform::postgresql::custom::params::max_parallel_workers_per_gather',
+}
+
+PLATFORM_FM_PARAMETER_RESOURCE = {
+    constants.SERVICE_PARAM_NAME_FM_DATABASE_MAX_POOL_SIZE:
+        'platform::fm::custom::params::db_pool_size',
+    constants.SERVICE_PARAM_NAME_FM_DATABASE_MAX_POOL_TIMEOUT:
+        'platform::fm::custom::params::db_idle_timeout',
+    constants.SERVICE_PARAM_NAME_FM_DATABASE_MAX_OVERFLOW_SIZE:
+        'platform::fm::custom::params::db_over_size',
 }
 
 PLATFORM_DRBD_PARAMETER_RESOURCE = {
@@ -1306,6 +1530,30 @@ DOCKER_ICR_REGISTRY_PARAMETER_RESOURCE = {
         'platform::docker::params::icr_registry_secure',
 }
 
+DOCKER_CONCURRENCY_PARAMETER_OPTIONAL = [
+    constants.SERVICE_PARAM_NAME_MAX_CONCURRENT_UPLOADS,
+    constants.SERVICE_PARAM_NAME_MAX_CONCURRENT_DOWNLOADS,
+    constants.SERVICE_PARAM_NAME_MAX_KUBE_APP_DOWNLOAD_THREADS,
+]
+
+DOCKER_CONCURRENCY_PARAMETER_VALIDATOR = {
+    constants.SERVICE_PARAM_NAME_MAX_CONCURRENT_UPLOADS:
+        _validate_positive_integer,
+    constants.SERVICE_PARAM_NAME_MAX_CONCURRENT_DOWNLOADS:
+        _validate_positive_integer,
+    constants.SERVICE_PARAM_NAME_MAX_KUBE_APP_DOWNLOAD_THREADS:
+        _validate_positive_integer,
+}
+
+DOCKER_CONCURRENCY_PARAMETER_RESOURCE = {
+    constants.SERVICE_PARAM_NAME_MAX_CONCURRENT_DOWNLOADS:
+        'platform::docker::params::max_concurrent_downloads',
+    constants.SERVICE_PARAM_NAME_MAX_CONCURRENT_UPLOADS:
+        'platform::docker::params::max_concurrent_uploads',
+    constants.SERVICE_PARAM_NAME_MAX_KUBE_APP_DOWNLOAD_THREADS:
+        'platform::docker::params::max_kube_app_download_threads',
+}
+
 KUBERNETES_CERTIFICATES_PARAMETER_OPTIONAL = [
     constants.SERVICE_PARAM_NAME_KUBERNETES_API_SAN_LIST,
 ]
@@ -1325,7 +1573,8 @@ KUBERNETES_CERTIFICATES_PARAMETER_DATA_FORMAT = {
 
 KUBERNETES_CONFIG_PARAMETER_OPTIONAL = [
     constants.SERVICE_PARAM_NAME_KUBERNETES_POD_MAX_PIDS,
-    constants.SERVICE_PARAM_NAME_KUBERNETES_AUTOMATIC_RECOVERY
+    constants.SERVICE_PARAM_NAME_KUBERNETES_AUTOMATIC_RECOVERY,
+    constants.SERVICE_PARAM_NAME_K8S_APPLICATION_AUDIT
 ]
 
 KUBERNETES_CONFIG_PARAMETER_VALIDATOR = {
@@ -1566,6 +1815,58 @@ DNS_HOST_RECORD_PARAMETER_DATA_FORMAT = {
     constants.SERVICE_PARAM_NAME_DNS_HOST_RECORD_HOSTS: SERVICE_PARAMETER_DATA_FORMAT_ARRAY,
 }
 
+DNS_LOCAL_PARAMETER_OPTIONAL = [
+    constants.SERVICE_PARAM_NAME_WILDCARD
+]
+
+DNS_LOCAL_PARAMETER_VALIDATOR = {
+    constants.SERVICE_PARAM_NAME_WILDCARD: _validate_dns_local,
+}
+
+DNS_LOCAL_PARAMETER_DATA_FORMAT = {
+    constants.SERVICE_PARAM_NAME_DNS_LOCAL_DOMAINS: SERVICE_PARAMETER_DATA_FORMAT_ARRAY,
+}
+
+PLATFORM_CLIENT_PARAMETER_OPTIONAL = [
+    constants.SERVICE_PARAM_NAME_PLATFORM_CLI_CONFIRMATIONS
+]
+
+PLATFORM_CLIENT_PARAMETER_VALIDATOR = {
+    constants.SERVICE_PARAM_NAME_PLATFORM_CLI_CONFIRMATIONS:
+        _validate_cli_confirmations,
+}
+
+PLATFORM_CLIENT_PARAMETER_RESOURCE = {
+    constants.SERVICE_PARAM_NAME_PLATFORM_CLI_CONFIRMATIONS:
+        'platform::params::cli_confirmations',
+}
+
+MODULE_I801_I2C_INTERRUPTS_OPTIONAL = [
+    constants.SERVICE_PARAM_NAME_MODULE_I801_I2C_INTERRUPTS
+]
+
+MODULE_I801_I2C_INTERRUPTS_VALIDATOR = {
+    constants.SERVICE_PARAM_NAME_MODULE_I801_I2C_INTERRUPTS:
+        _validate_enabled_disabled,
+}
+
+MODULE_I801_I2C_INTERRUPTS_RESOURCE = {
+    constants.SERVICE_PARAM_NAME_MODULE_I801_I2C_INTERRUPTS:
+        'platform::module::i801::params::i2c_interrupts',
+}
+
+PLATFORM_SYSCTL_KERNEL_PARAMETER_OPTIONAL = [
+    constants.SERVICE_PARAM_NAME_WILDCARD
+]
+
+PLATFORM_SYSCTL_KERNEL_PARAMETER_VALIDATOR = {
+    constants.SERVICE_PARAM_NAME_WILDCARD: _validate_sysctl_kernel_parameter,
+}
+
+PLATFORM_SYSCTL_KERNEL_PARAMETER_RESOURCE = {
+    constants.SERVICE_PARAM_NAME_WILDCARD: 'platform::sysctl::kernel::params',
+}
+
 # Service Parameter Schema
 SERVICE_PARAM_MANDATORY = 'mandatory'
 SERVICE_PARAM_OPTIONAL = 'optional'
@@ -1584,6 +1885,11 @@ SERVICE_PARAMETER_SCHEMA = {
             SERVICE_PARAM_OPTIONAL: IDENTITY_CONFIG_PARAMETER_OPTIONAL,
             SERVICE_PARAM_VALIDATOR: IDENTITY_CONFIG_PARAMETER_VALIDATOR,
             SERVICE_PARAM_RESOURCE: IDENTITY_CONFIG_PARAMETER_RESOURCE,
+        },
+        constants.SERVICE_PARAM_SECTION_IDENTITY_STX: {
+            SERVICE_PARAM_OPTIONAL: IDENTITY_STX_PARAMETER_OPTIONAL,
+            SERVICE_PARAM_VALIDATOR: IDENTITY_STX_PARAMETER_VALIDATOR,
+            SERVICE_PARAM_RESOURCE: IDENTITY_STX_PARAMETER_RESOURCE,
         },
         constants.SERVICE_PARAM_SECTION_IDENTITY_LDAP_DOMAIN1: {
             SERVICE_PARAM_OPTIONAL: IDENTITY_LDAP_PARAMETER_OPTIONAL,
@@ -1658,11 +1964,26 @@ SERVICE_PARAMETER_SCHEMA = {
             SERVICE_PARAM_VALIDATOR: PLATFORM_POSTGRESQL_PARAMETER_VALIDATOR,
             SERVICE_PARAM_RESOURCE: PLATFORM_POSTGRESQL_PARAMETER_RESOURCE,
         },
+        constants.SERVICE_PARAM_SECTION_PLATFORM_FM: {
+            SERVICE_PARAM_OPTIONAL: PLATFORM_FM_PARAMETER_OPTIONAL,
+            SERVICE_PARAM_VALIDATOR: PLATFORM_FM_PARAMETER_VALIDATOR,
+            SERVICE_PARAM_RESOURCE: PLATFORM_FM_PARAMETER_RESOURCE,
+        },
         constants.SERVICE_PARAM_SECTION_PLATFORM_DRBD: {
             SERVICE_PARAM_OPTIONAL: PLATFORM_DRBD_PARAMETER_OPTIONAL,
             SERVICE_PARAM_VALIDATOR: PLATFORM_DRBD_PARAMETER_VALIDATOR,
             SERVICE_PARAM_RESOURCE: PLATFORM_DRBD_PARAMETER_RESOURCE,
         },
+        constants.SERVICE_PARAM_SECTION_PLATFORM_CLIENT: {
+            SERVICE_PARAM_OPTIONAL: PLATFORM_CLIENT_PARAMETER_OPTIONAL,
+            SERVICE_PARAM_VALIDATOR: PLATFORM_CLIENT_PARAMETER_VALIDATOR,
+            SERVICE_PARAM_RESOURCE: PLATFORM_CLIENT_PARAMETER_RESOURCE,
+        },
+        constants.SERVICE_PARAM_SECTION_PLATFORM_SYSCTL: {
+            SERVICE_PARAM_OPTIONAL: PLATFORM_SYSCTL_KERNEL_PARAMETER_OPTIONAL,
+            SERVICE_PARAM_VALIDATOR: PLATFORM_SYSCTL_KERNEL_PARAMETER_VALIDATOR,
+            SERVICE_PARAM_RESOURCE: PLATFORM_SYSCTL_KERNEL_PARAMETER_RESOURCE,
+        }
     },
     constants.SERVICE_TYPE_RADOSGW: {
         constants.SERVICE_PARAM_SECTION_RADOSGW_CONFIG: {
@@ -1718,6 +2039,11 @@ SERVICE_PARAMETER_SCHEMA = {
             SERVICE_PARAM_OPTIONAL: DOCKER_REGISTRIES_PARAMETER_OPTIONAL,
             SERVICE_PARAM_VALIDATOR: DOCKER_REGISTRIES_PARAMETER_VALIDATOR,
             SERVICE_PARAM_RESOURCE: DOCKER_ICR_REGISTRY_PARAMETER_RESOURCE
+        },
+        constants.SERVICE_PARAM_SECTION_DOCKER_CONCURRENCY: {
+            SERVICE_PARAM_OPTIONAL: DOCKER_CONCURRENCY_PARAMETER_OPTIONAL,
+            SERVICE_PARAM_VALIDATOR: DOCKER_CONCURRENCY_PARAMETER_VALIDATOR,
+            SERVICE_PARAM_RESOURCE: DOCKER_CONCURRENCY_PARAMETER_RESOURCE
         }
     },
     constants.SERVICE_TYPE_KUBERNETES: {
@@ -1805,6 +2131,18 @@ SERVICE_PARAMETER_SCHEMA = {
             SERVICE_PARAM_OPTIONAL: DNS_HOST_RECORD_PARAMETER_OPTIONAL,
             SERVICE_PARAM_VALIDATOR: DNS_HOST_RECORD_PARAMETER_VALIDATOR,
             SERVICE_PARAM_DATA_FORMAT: DNS_HOST_RECORD_PARAMETER_DATA_FORMAT,
+        },
+        constants.SERVICE_PARAM_SECTION_DNS_LOCAL: {
+            SERVICE_PARAM_OPTIONAL: DNS_LOCAL_PARAMETER_OPTIONAL,
+            SERVICE_PARAM_VALIDATOR: DNS_LOCAL_PARAMETER_VALIDATOR,
+            SERVICE_PARAM_DATA_FORMAT: DNS_LOCAL_PARAMETER_DATA_FORMAT,
+        },
+    },
+    constants.SERVICE_TYPE_MODULE: {
+        constants.SERVICE_PARAM_SECTION_MODULE_I801: {
+            SERVICE_PARAM_OPTIONAL: MODULE_I801_I2C_INTERRUPTS_OPTIONAL,
+            SERVICE_PARAM_VALIDATOR: MODULE_I801_I2C_INTERRUPTS_VALIDATOR,
+            SERVICE_PARAM_RESOURCE: MODULE_I801_I2C_INTERRUPTS_RESOURCE,
         },
     },
 }

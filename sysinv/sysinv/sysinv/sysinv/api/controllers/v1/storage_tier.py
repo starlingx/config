@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2018 Wind River Systems, Inc.
+# Copyright (c) 2013-2019, 2021, 2025 Wind River Systems, Inc.
 #
 
 import copy
@@ -43,6 +43,7 @@ from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils as cutils
 from sysinv import objects
+from sysinv.common.storage_backend_conf import StorageBackendConfig
 
 LOG = log.getLogger(__name__)
 
@@ -351,7 +352,7 @@ class StorageTierController(rest.RestController):
         _delete(self, tier_uuid)
 
 
-def _check_parameters(tier):
+def _check_parameters(tier, is_rook_ceph_backend=False):
 
     # check and fill in the cluster information
     clusterId = tier.get('forclusterid') or tier.get('cluster_uuid')
@@ -368,7 +369,7 @@ def _check_parameters(tier):
 
     # Make sure that the default system tier is present
     default_tier_name = constants.SB_TIER_DEFAULT_NAMES[constants.SB_TIER_TYPE_CEPH]
-    if 'name' not in tier or tier['name'] != default_tier_name:
+    if not is_rook_ceph_backend and ('name' not in tier or tier['name'] != default_tier_name):
         tiers = pecan.request.dbapi.storage_tier_get_all(name=default_tier_name)
         if len(tiers) == 0:
             raise wsme.exc.ClientSideError(
@@ -405,8 +406,11 @@ def _check(self, op, tier):
     # Semantic checks
     LOG.debug("storage_tier: Semantic check for %s operation" % op)
 
+    is_rook_ceph_backend = StorageBackendConfig.has_backend(
+        pecan.request.dbapi, constants.SB_TYPE_CEPH_ROOK)
+
     # Check storage tier parameters
-    _check_parameters(tier)
+    _check_parameters(tier, is_rook_ceph_backend)
 
     if op == "add":
         # See if this storage tier already exists
@@ -416,52 +420,58 @@ def _check(self, op, tier):
                                              "already present." %
                                              tier['name']))
 
-        # Deny adding secondary tier if initial configuration is not done.
-        if not cutils.is_initial_config_complete():
-            msg = _("Operation denied. Adding secondary tiers to a cluster requires "
-                    "initial configuration to be complete and controller node unlocked.")
-            raise wsme.exc.ClientSideError(msg)
-
-        if cutils.is_aio_system(pecan.request.dbapi):
-            # Deny adding secondary tiers if primary tier backend is not configured
-            # for cluster.
-            clusterId = tier.get('forclusterid') or tier.get('cluster_uuid')
-            cluster_tiers = pecan.request.dbapi.storage_tier_get_by_cluster(clusterId)
-            configured = False if cluster_tiers else True
-            for t in cluster_tiers:
-                if t.forbackendid:
-                    bk = pecan.request.dbapi.storage_backend_get(t.forbackendid)
-                    if bk.state != constants.SB_STATE_CONFIGURED:
-                        msg = _("Operation denied. Storage backend '%s' "
-                                "of tier '%s' must be in '%s' state."
-                                % (bk.name, t['name'], constants.SB_STATE_CONFIGURED))
-                        raise wsme.exc.ClientSideError(msg)
-                    configured = True
-            if not configured:
+        if not is_rook_ceph_backend:
+            # Deny adding secondary tier if initial configuration is not done.
+            if not cutils.is_initial_config_complete():
                 msg = _("Operation denied. Adding secondary tiers to a cluster requires "
-                        "primary tier storage backend of this cluster to be configured.")
+                        "initial configuration to be complete and controller node unlocked.")
                 raise wsme.exc.ClientSideError(msg)
-        else:
-            # Deny adding secondary tier if ceph is down on standard
-            num_monitors, required_monitors, __ = \
-                self._ceph.get_monitors_status(pecan.request.dbapi)
-            if num_monitors < required_monitors:
-                raise wsme.exc.ClientSideError(_(
-                     "Operation denied. Ceph is not operational. "
-                     "Only %d storage monitor available. "
-                     "At least %s unlocked and enabled hosts with "
-                     "monitors are required. Please ensure hosts "
-                     "with monitors are unlocked and enabled.") %
-                     (num_monitors, required_monitors))
+
+            if cutils.is_aio_system(pecan.request.dbapi):
+                # Deny adding secondary tiers if primary tier backend is not configured
+                # for cluster.
+                clusterId = tier.get('forclusterid') or tier.get('cluster_uuid')
+                cluster_tiers = pecan.request.dbapi.storage_tier_get_by_cluster(clusterId)
+                configured = False if cluster_tiers else True
+                for t in cluster_tiers:
+                    if t.forbackendid:
+                        bk = pecan.request.dbapi.storage_backend_get(t.forbackendid)
+                        if bk.state != constants.SB_STATE_CONFIGURED:
+                            msg = _("Operation denied. Storage backend '%s' "
+                                    "of tier '%s' must be in '%s' state."
+                                    % (bk.name, t['name'], constants.SB_STATE_CONFIGURED))
+                            raise wsme.exc.ClientSideError(msg)
+                        configured = True
+                if not configured:
+                    msg = _("Operation denied. Adding secondary tiers to a cluster requires "
+                            "primary tier storage backend of this cluster to be configured.")
+                    raise wsme.exc.ClientSideError(msg)
+            else:
+                # Deny adding secondary tier if ceph is down on standard
+                num_monitors, required_monitors, __ = \
+                    self._ceph.get_monitors_status(pecan.request.dbapi)
+                if num_monitors < required_monitors:
+                    raise wsme.exc.ClientSideError(_(
+                        "Operation denied. Ceph is not operational. "
+                        "Only %d storage monitor available. "
+                        "At least %s unlocked and enabled hosts with "
+                        "monitors are required. Please ensure hosts "
+                        "with monitors are unlocked and enabled.") %
+                        (num_monitors, required_monitors))
 
     elif op == "delete":
-        if tier['name'] == constants.SB_TIER_DEFAULT_NAMES[
-                constants.SB_TIER_TYPE_CEPH]:
-            raise wsme.exc.ClientSideError(_("Storage Tier %s cannot be "
+        tiers = pecan.request.dbapi.storage_tier_get_list()
+        if len(tiers) == 1:
+            raise wsme.exc.ClientSideError(_("Storage Tier '%s' cannot be deleted. "
+                                             "At least one Storage Tier is required.") % tier['name'])
+
+        if (not is_rook_ceph_backend and
+                tier['name'] == constants.SB_TIER_DEFAULT_NAMES[constants.SB_TIER_TYPE_CEPH]):
+            raise wsme.exc.ClientSideError(_("Storage Tier '%s' cannot be "
                                              "deleted.") % tier['name'])
 
         if tier['status'] != constants.SB_TIER_STATUS_DEFINED:
-            raise wsme.exc.ClientSideError(_("Storage Tier %s cannot be "
+            raise wsme.exc.ClientSideError(_("Storage Tier '%s' cannot be "
                                              "deleted. It is %s") % (
                                                  tier['name'],
                                                  tier['status']))
@@ -504,6 +514,16 @@ def _create(self, tier):
     # Semantic checks
     tier = _check(self, "add", tier)
 
+    rook_ceph = None
+    try:
+        rook_ceph = pecan.request.dbapi.storage_backend_get_by_name(constants.SB_DEFAULT_NAMES[
+                                                                    constants.SB_TYPE_CEPH_ROOK])
+    except exception.StorageBackendNotFoundByName:
+        pass
+
+    if rook_ceph is not None:
+        tier['forbackendid'] = rook_ceph.id
+
     LOG.info("storage_tier._create with validated params: %s" % tier)
 
     ret_tier = pecan.request.dbapi.storage_tier_create(tier)
@@ -511,27 +531,28 @@ def _create(self, tier):
     LOG.info("storage_tier._create final, created, tier: %s" %
              ret_tier.as_dict())
 
-    # update the crushmap with the new tier
-    try:
-        # If we are adding a tier where the crushmap file has yet to be applied,
-        # then set the crushmap first. This will also add this new tier to the
-        # crushmap, otherwise just add the new tier.
-        crushmap_flag_file = os.path.join(constants.SYSINV_CONFIG_PATH,
-                                          constants.CEPH_CRUSH_MAP_APPLIED)
-        if not os.path.isfile(crushmap_flag_file):
-            try:
-                self._ceph.set_crushmap()
-            except exception.CephCrushMapNotApplied as e:
-                LOG.warning("Crushmap not applied, seems like ceph cluster is not configured. "
-                            "Operation will be retried with first occasion. "
-                            "Reason: %s" % str(e))
-        else:
-            self._ceph.crushmap_tiers_add()
-    except (exception.CephCrushMaxRecursion,
-            exception.CephCrushInvalidTierUse) as e:
-        pecan.request.dbapi.storage_tier_destroy(ret_tier.id)
-        raise wsme.exc.ClientSideError(_("Failed to update the crushmap for "
-                                         "tier: %s - %s") % (ret_tier.name, e))
+    if rook_ceph is None:
+        # update the crushmap with the new tier
+        try:
+            # If we are adding a tier where the crushmap file has yet to be applied,
+            # then set the crushmap first. This will also add this new tier to the
+            # crushmap, otherwise just add the new tier.
+            crushmap_flag_file = os.path.join(constants.SYSINV_CONFIG_PATH,
+                                              constants.CEPH_CRUSH_MAP_APPLIED)
+            if not os.path.isfile(crushmap_flag_file):
+                try:
+                    self._ceph.set_crushmap()
+                except exception.CephCrushMapNotApplied as e:
+                    LOG.warning("Crushmap not applied, seems like ceph cluster is not configured. "
+                                "Operation will be retried with first occasion. "
+                                "Reason: %s" % str(e))
+            else:
+                self._ceph.crushmap_tiers_add()
+        except (exception.CephCrushMaxRecursion,
+                exception.CephCrushInvalidTierUse) as e:
+            pecan.request.dbapi.storage_tier_destroy(ret_tier.id)
+            raise wsme.exc.ClientSideError(_("Failed to update the crushmap for "
+                                             "tier: %s - %s") % (ret_tier.name, e))
 
     return ret_tier
 
@@ -544,12 +565,24 @@ def _delete(self, tier_uuid):
     # Semantic checks
     _check(self, "delete", tier.as_dict())
 
-    # update the crushmap by removing the tier
-    try:
-        self._ceph.crushmap_tier_delete(tier.name)
-    except exception.CephCrushMapNotApplied:
-        # If crushmap has not been applied then there is no rule to update.
-        pass
+    is_ceph_rook_backend = StorageBackendConfig.has_backend(
+        pecan.request.dbapi, constants.SB_TYPE_CEPH_ROOK)
+
+    if is_ceph_rook_backend:
+        stors = pecan.request.dbapi.istor_get_by_tier(tier.id)
+        if stors:
+            msg = _("Cannot delete storage tier '%s' before remove stors (%s)." % (
+                    tier.name,
+                    ", ".join([stor.uuid for stor in stors])
+                    ))
+            raise wsme.exc.ClientSideError(msg)
+    else:
+        # update the crushmap by removing the tier
+        try:
+            self._ceph.crushmap_tier_delete(tier.name)
+        except exception.CephCrushMapNotApplied:
+            # If crushmap has not been applied then there is no rule to update.
+            pass
 
     try:
         pecan.request.dbapi.storage_tier_destroy(tier.id)

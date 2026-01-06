@@ -9,18 +9,15 @@
 from __future__ import absolute_import
 
 import eventlet
-import glob
 import os
-import re
-import sys
 import tempfile
 import yaml
 
 from six import iteritems
-from stevedore import extension
 
 from oslo_log import log as logging
 from sysinv.common import exception
+from sysinv.common import plugin_manager
 from sysinv.common import utils
 from sysinv.helm import common
 from sysinv.helm import utils as helm_utils
@@ -60,384 +57,56 @@ def helm_context(func):
     return _wrapper
 
 
-def suppress_stevedore_errors(manager, entrypoint, exception):
-    """
-    stevedore.ExtensionManager will try to import the entry point defined in the module.
-    For helm_applications, both stx_openstack and platform_integ_apps are virtual modules.
-    So ExtensionManager will throw the "Could not load ..." error message, which is expected.
-    Just suppress this error message to avoid cause confusion.
-    """
-    pass
-
-
 LOCK_NAME = 'HelmOperator'
 
 
 class HelmOperator(object):
     """Class to encapsulate helm override operations for System Inventory"""
 
-    # Define the stevedore namespaces that will need to be managed for plugins
-    STEVEDORE_APPS = 'systemconfig.helm_applications'
-    STEVEDORE_FLUXCD = 'systemconfig.fluxcd.kustomize_ops'
-    STEVEDORE_LIFECYCLE = 'systemconfig.app_lifecycle'
-
     def __init__(self, dbapi=None):
         self.dbapi = dbapi
+        self.plugins = plugin_manager.PluginManager()
 
         # Audit discoverable app plugins to remove any stale plugins that may
         # have been removed since this host was last tasked to manage
         # applications
-        self.audit_plugins()
+        self.plugins.audit_plugins(self.dbapi)
 
         # Find all plugins for apps, charts per app, and fluxcd operators
         self.discover_plugins()
 
-    def audit_plugins(self):
-        """ Verify that only enabled application plugins are discoverable """
-
-        # An enabled plugin will have a python path configuration file name with the
-        # following format: stx_app-platform-integ-apps-1.0-8.pth
-        PTH_PATTERN = re.compile(
-            f"{common.HELM_OVERRIDES_PATH}/([\w-]+)/(\d+\.\d+-\d+.*)/plugins")
-
-        pattern = f"{common.APP_PLUGIN_PATH}/{common.APP_PTH_PREFIX}*.pth"
-        discoverable_pths = glob.glob(pattern)
-        LOG.debug(f"PluginHelper: Discoverable app plugins: {discoverable_pths}")
-
-        # Examine existing pth files to make sure they are still valid
-        for pth in discoverable_pths:
-            with open(pth, 'r') as f:
-                contents = f.readlines()
-
-            if len(contents) == 1:
-                plugin_folder = contents[0].strip('\n')
-                LOG.debug(f"PluginHelper: Plugin Path: {plugin_folder}")
-                match = PTH_PATTERN.match(plugin_folder)
-                if match:
-                    app = match.group(1)
-                    ver = match.group(2)
-                    try:
-                        app_obj = self.dbapi.kube_app_get(app)
-                        if app_obj.app_version == ver:
-                            LOG.info(f"PluginHelper: App {app}, version {ver}: Found "
-                                     "valid plugin")
-                            continue
-                        else:
-                            LOG.warning("PluginHelper: Stale plugin pth file "
-                                        f"found {pth}: Wrong plugin version "
-                                        f"enabled {ver} != {app_obj.app_version}")
-                    except exception.KubeAppNotFound:
-                        LOG.warning("PluginHelper: Stale plugin pth file found "
-                                    f"{pth}: App is not active.")
-                else:
-                    LOG.warning(f"PluginHelper: Invalid pth file {pth}: Invalid "
-                                "name or version.")
-
-                # Remove plugin folder from sys.path
-                try:
-                    sys.path.remove(plugin_folder)
-                except ValueError:
-                    LOG.warning(f"Failed to remove directory {plugin_folder} from sys.path "
-                                f"while evaluating invalid plugin .pth file {pth}.")
-            else:
-                LOG.warning(f"PluginHelper: Invalid pth file {pth}: Only one path "
-                            "is expected.")
-
-            LOG.info(f"PluginHelper: Removing invalid plugin pth: {pth}")
-            os.remove(pth)
-
     @utils.synchronized(LOCK_NAME)
     def discover_plugins(self):
-        """ Scan for all available plugins """
+        self.plugins.discover_plugins(self)
 
-        LOG.debug("HelmOperator: Loading available helm, fluxcd and lifecycle plugins.")
-
-        # Initialize the plugins
-        self.helm_system_applications = {}
-        self.chart_operators = {}
-        self.fluxcd_kustomize_operators = {}
-        self.app_lifecycle_operators = {}
-
-        # Need to purge the stevedore plugin cache so that when we discover the
-        # plugins, new plugin resources are found. If the cache exists, then no
-        # new plugins are discoverable.
-        self.purge_cache()
-
-        # dict containing sequence of helm charts per app
-        self.helm_system_applications = self._load_helm_applications()
-
-        # dict containing FluxCD kustomize operators per app
-        self.fluxcd_kustomize_operators = self._load_fluxcd_kustomize_operators()
-
-        # dict containing app lifecycle operators per app
-        self.app_lifecycle_operators = self._load_app_lifecycle_operators()
-
-    @utils.synchronized(LOCK_NAME)
-    def purge_cache_by_location(self, install_location):
-        """Purge the stevedore entry point cache."""
-        for lifecycle_ep in extension.ExtensionManager.ENTRY_POINT_CACHE[self.STEVEDORE_LIFECYCLE]:
-            lifecycle_distribution = None
-
-            try:
-                lifecycle_distribution = utils.get_distribution_from_entry_point(lifecycle_ep)
-                (project_name, project_location) = \
-                    utils.get_project_name_and_location_from_distribution(lifecycle_distribution)
-
-                if project_location == install_location:
-                    extension.ExtensionManager.ENTRY_POINT_CACHE[self.STEVEDORE_LIFECYCLE].remove(lifecycle_ep)
-                    break
-            except Exception as e:
-                LOG.error("Error while trying to purge lifecycle entry point {}, error: {}".
-                          format(lifecycle_ep, e))
-
-                # Temporary suppress errors on Debian until Stevedore is reworked.
-                # See https://storyboard.openstack.org/#!/story/2009101
-                if utils.is_debian():
-                    LOG.info("Deleting {} from cache".format(lifecycle_ep))
-                    try:
-                        extension.ExtensionManager.ENTRY_POINT_CACHE[self.STEVEDORE_LIFECYCLE].remove(lifecycle_ep)
-                    except Exception as e:
-                        LOG.error("Tried removing lifecycle_ep {}, error: {}".format(lifecycle_ep, e))
-                else:
-                    raise
-        else:
-            LOG.info("Couldn't find endpoint distribution located at %s for "
-                     "%s" % (install_location, lifecycle_distribution))
-
-        for fluxcd_ep in extension.ExtensionManager.ENTRY_POINT_CACHE[self.STEVEDORE_FLUXCD]:
-            fluxcd_distribution = None
-
-            try:
-                fluxcd_distribution = utils.get_distribution_from_entry_point(fluxcd_ep)
-                (project_name, project_location) = \
-                    utils.get_project_name_and_location_from_distribution(fluxcd_distribution)
-
-                if project_location == install_location:
-                    extension.ExtensionManager.ENTRY_POINT_CACHE[self.STEVEDORE_FLUXCD].remove(fluxcd_ep)
-                    break
-            except Exception as e:
-                LOG.error("Error while trying to purge flux entry point {}, error: {}".
-                          format(fluxcd_ep, e))
-
-                # Temporary suppress errors on Debian until Stevedore is reworked.
-                # See https://storyboard.openstack.org/#!/story/2009101
-                if utils.is_debian():
-                    LOG.info("Deleting {} from cache".format(fluxcd_ep))
-                    try:
-                        extension.ExtensionManager.ENTRY_POINT_CACHE[self.STEVEDORE_FLUXCD].remove(fluxcd_ep)
-                    except Exception as e:
-                        LOG.error("Tried removing fluxcd_ep {}, error: {}".format(fluxcd_ep, e))
-                else:
-                    raise
-        else:
-            LOG.info("Couldn't find endpoint distribution located at %s for "
-                     "%s" % (install_location, fluxcd_distribution))
-
-        for app_ep in extension.ExtensionManager.ENTRY_POINT_CACHE[self.STEVEDORE_APPS]:
-            try:
-                if utils.is_debian():
-                    if app_ep.name in install_location:
-                        namespace = app_ep.value
-                        purged_list = []
-                        for helm_ep in extension.ExtensionManager.ENTRY_POINT_CACHE[namespace]:
-                            helm_distribution = utils.get_distribution_from_entry_point(helm_ep)
-                            (helm_project_name, helm_project_location) = \
-                                utils.get_project_name_and_location_from_distribution(helm_distribution)
-
-                            if helm_project_location != install_location:
-                                purged_list.append(helm_ep)
-
-                        if purged_list:
-                            extension.ExtensionManager.ENTRY_POINT_CACHE[namespace] = purged_list
-                        else:
-                            del extension.ExtensionManager.ENTRY_POINT_CACHE[namespace]
-                            extension.ExtensionManager.ENTRY_POINT_CACHE[self.STEVEDORE_APPS].remove(app_ep)
-                            LOG.info("Removed stevedore namespace: %s" % namespace)
-                else:
-                    app_distribution = utils.get_distribution_from_entry_point(app_ep)
-                    (app_project_name, app_project_location) = \
-                        utils.get_project_name_and_location_from_distribution(app_distribution)
-
-                    if app_project_location == install_location:
-                        namespace = utils.get_module_name_from_entry_point(app_ep)
-
-                        purged_list = []
-                        for helm_ep in extension.ExtensionManager.ENTRY_POINT_CACHE[namespace]:
-                            helm_distribution = utils.get_distribution_from_entry_point(helm_ep)
-                            (helm_project_name, helm_project_location) = \
-                                utils.get_project_name_and_location_from_distribution(helm_distribution)
-
-                            if helm_project_location != install_location:
-                                purged_list.append(helm_ep)
-
-                        if purged_list:
-                            extension.ExtensionManager.ENTRY_POINT_CACHE[namespace] = purged_list
-                        else:
-                            del extension.ExtensionManager.ENTRY_POINT_CACHE[namespace]
-                            extension.ExtensionManager.ENTRY_POINT_CACHE[self.STEVEDORE_APPS].remove(app_ep)
-                            LOG.info("Removed stevedore namespace: %s" % namespace)
-            except Exception as e:
-                # Temporary suppress errors on Debian until Stevedore is reworked.
-                # See https://storyboard.openstack.org/#!/story/2009101
-                if utils.is_debian():
-                    LOG.info("Tried removing app_ep {}, error: {}".format(app_ep, e))
-                    continue
-                else:
-                    raise
-
-    def purge_cache(self):
-        """Purge the stevedore entry point cache."""
-        if self.STEVEDORE_APPS in extension.ExtensionManager.ENTRY_POINT_CACHE:
-            for entry_point in extension.ExtensionManager.ENTRY_POINT_CACHE[self.STEVEDORE_APPS]:
-                namespace = utils.get_module_name_from_entry_point(entry_point)
-                try:
-                    del extension.ExtensionManager.ENTRY_POINT_CACHE[namespace]
-                    LOG.debug("Deleted entry points for %s." % namespace)
-                except KeyError:
-                    LOG.info("No entry points for %s found." % namespace)
-
-            try:
-                del extension.ExtensionManager.ENTRY_POINT_CACHE[self.STEVEDORE_APPS]
-                LOG.debug("Deleted entry points for %s." % self.STEVEDORE_APPS)
-            except KeyError:
-                LOG.info("No entry points for %s found." % self.STEVEDORE_APPS)
-
-        else:
-            LOG.info("No entry points for %s found." % self.STEVEDORE_APPS)
-
-        try:
-            del extension.ExtensionManager.ENTRY_POINT_CACHE[self.STEVEDORE_FLUXCD]
-            LOG.debug("Deleted entry points for %s." % self.STEVEDORE_FLUXCD)
-        except KeyError:
-            LOG.info("No entry points for %s found." % self.STEVEDORE_FLUXCD)
-
-        try:
-            del extension.ExtensionManager.ENTRY_POINT_CACHE[self.STEVEDORE_LIFECYCLE]
-            LOG.debug("Deleted entry points for %s." % self.STEVEDORE_LIFECYCLE)
-        except KeyError:
-            LOG.info("No entry points for %s found." % self.STEVEDORE_LIFECYCLE)
-
-    def _load_app_lifecycle_operators(self):
-        """Build a dictionary of AppLifecycle operators"""
-
-        operators_dict = {}
-
-        app_lifecycle_operators = extension.ExtensionManager(
-            namespace=self.STEVEDORE_LIFECYCLE,
-            invoke_on_load=True, invoke_args=())
-
-        sorted_app_lifecycle_operators = sorted(
-            app_lifecycle_operators.extensions, key=lambda x: x.name)
-
-        for operator in sorted_app_lifecycle_operators:
-            if (operator.name[-(LIFECYCLE_PLUGIN_SUFFIX_LENGTH - 1):].isdigit() and
-                    operator.name[-LIFECYCLE_PLUGIN_SUFFIX_LENGTH:-3] == '_'):
-                operator_name = operator.name[0:-LIFECYCLE_PLUGIN_SUFFIX_LENGTH]
-            else:
-                operator_name = operator.name
-            operators_dict[operator_name] = operator.obj
-
-        return operators_dict
-
-    def get_app_lifecycle_operator(self, app_name):
+    def get_app_lifecycle_operator(self, plugin_name):
         """Return an AppLifecycle operator based on app name"""
+        plugin_name = utils.find_app_plugin_name(plugin_name)
+        plugin = self.plugins.get_plugin(plugin_manager.PLUGIN_NS_LIFECYCLE_OPS, plugin_name)
+        return plugin.operator
 
-        plugin_name = utils.find_app_plugin_name(app_name)
-        if plugin_name in self.app_lifecycle_operators:
-            operator = self.app_lifecycle_operators[plugin_name]
-        else:
-            operator = self.app_lifecycle_operators['generic']
-
-        return operator
-
-    def _load_fluxcd_kustomize_operators(self):
-        """Build a dictionary of FluxCD kustomize operators"""
-
-        operators_dict = {}
-        dist_info_dict = {}
-
-        fluxcd_kustomize_operators = extension.ExtensionManager(
-            namespace=self.STEVEDORE_FLUXCD,
-            invoke_on_load=True, invoke_args=())
-
-        sorted_fluxcd_kustomize_operators = sorted(
-            fluxcd_kustomize_operators.extensions, key=lambda x: x.name)
-
-        for op in sorted_fluxcd_kustomize_operators:
-            if (op.name[-(FLUXCD_PLUGIN_SUFFIX_LENGTH - 1):].isdigit() and
-                    op.name[-FLUXCD_PLUGIN_SUFFIX_LENGTH:-3] == '_'):
-                op_name = op.name[0:-FLUXCD_PLUGIN_SUFFIX_LENGTH]
-            else:
-                op_name = op.name
-            operators_dict[op_name] = op.obj
-
-            distribution = utils.get_distribution_from_entry_point(op.entry_point)
-            (project_name, project_location) = \
-                utils.get_project_name_and_location_from_distribution(distribution)
-
-            # Extract distribution information for logging
-            dist_info_dict[op_name] = {
-                'name': project_name,
-                'location': project_location,
-            }
-
-        # Provide some log feedback on plugins being used
-        for (app_name, info) in iteritems(dist_info_dict):
-            LOG.info("Plugins for %-20s: loaded from %-20s - %s." % (app_name,
-                info['name'], info['location']))
-
-        return operators_dict
-
-    def get_fluxcd_kustomize_operator(self, app_name):
+    def get_fluxcd_kustomize_operator(self, plugin_name):
         """Return a kustomize operator based on app name"""
 
-        plugin_name = utils.find_app_plugin_name(app_name)
-        if plugin_name in self.fluxcd_kustomize_operators:
-            kustomize_op = self.fluxcd_kustomize_operators[plugin_name]
-        else:
-            kustomize_op = self.fluxcd_kustomize_operators['generic']
-        return kustomize_op
+        plugin_name = utils.find_app_plugin_name(plugin_name)
+        plugin = self.plugins.get_plugin(plugin_manager.PLUGIN_NS_KUSTOMIZE_OPS, plugin_name)
+        return plugin.operator
 
-    def _load_helm_applications(self):
-        """Build a dictionary of supported helm applications"""
-
-        helm_application_dict = {}
-        helm_applications = extension.ExtensionManager(
-            namespace=self.STEVEDORE_APPS,
-            on_load_failure_callback=suppress_stevedore_errors
+    def get_helm_system_application_relation(self, plugin_name):
+        return self.plugins.get_subnamespace_relation_by_plugin_name(
+            plugin_manager.PLUGIN_NS_HELM_APPLICATIONS,
+            plugin_name
         )
-        for entry_point in helm_applications.list_entry_points():
-            helm_application_dict[entry_point.name] = \
-                utils.get_module_name_from_entry_point(entry_point)
 
-        supported_helm_applications = {}
-        for name, namespace in helm_application_dict.items():
-            supported_helm_applications[name] = []
-            helm_plugins = extension.ExtensionManager(
-                namespace=namespace, invoke_on_load=True, invoke_args=(self,))
-            sorted_helm_plugins = sorted(helm_plugins.extensions, key=lambda x: x.name)
-            for plugin in sorted_helm_plugins:
-                distribution = utils.get_distribution_from_entry_point(plugin.entry_point)
-                (project_name, project_location) = \
-                    utils.get_project_name_and_location_from_distribution(distribution)
-
-                LOG.debug("%s: helm plugin %s loaded from %s - %s." % (name,
-                    plugin.name,
-                    project_name,
-                    project_location))
-
-                plugin_name = plugin.name[HELM_PLUGIN_PREFIX_LENGTH:]
-                self.chart_operators.update({plugin_name: plugin.obj})
-                # Remove duplicates, keeping last occurrence only
-                if plugin_name in supported_helm_applications[name]:
-                    supported_helm_applications[name].remove(plugin_name)
-                supported_helm_applications[name].append(plugin_name)
-
-        return supported_helm_applications
-
-    def get_active_helm_applications(self):
-        """ Get the active system applications and charts """
-        return self.helm_system_applications
+    def get_chart_operator(self, plugin_name):
+        plugin = self.plugins.get_plugin(
+            namespace=plugin_manager.PLUGIN_NS_HELM_APPLICATIONS,
+            plugin_name=plugin_name,
+            fallback_to_generic=False
+        )
+        if plugin:
+            return plugin.operator
+        return None
 
     @property
     def context(self):
@@ -456,11 +125,10 @@ class HelmOperator(object):
         """
 
         namespaces = []
-        if chart_name in self.chart_operators:
+        chart_op = self.get_chart_operator(chart_name)
+        if chart_op:
             app_plugin_name = utils.find_app_plugin_name(app_name)
-
-            namespaces = self.chart_operators[chart_name].get_namespaces_by_app(
-                app_plugin_name)
+            namespaces = chart_op.get_namespaces_by_app(app_plugin_name)
         return namespaces
 
     def get_helm_chart_namespaces(self, chart_name):
@@ -474,8 +142,9 @@ class HelmOperator(object):
         """
 
         namespaces = []
-        if chart_name in self.chart_operators:
-            namespaces = self.chart_operators[chart_name].SUPPORTED_NAMESPACES
+        chart_op = self.get_chart_operator(chart_name)
+        if chart_op:
+            namespaces = chart_op.SUPPORTED_NAMESPACES
         return namespaces
 
     @helm_context
@@ -520,11 +189,10 @@ class HelmOperator(object):
         }
         """
         overrides = {}
-        if chart_name in self.chart_operators:
+        chart_op = self.get_chart_operator(chart_name)
+        if chart_op:
             try:
-                overrides.update(
-                    self.chart_operators[chart_name].get_overrides(
-                        cnamespace))
+                overrides.update(chart_op.get_overrides(cnamespace))
             except exception.InvalidHelmNamespace:
                 raise
         return overrides
@@ -544,8 +212,9 @@ class HelmOperator(object):
         app, plugin_name = self._find_kube_app_and_app_plugin_name(app_name)
 
         app_namespaces = {}
-        if plugin_name in self.helm_system_applications:
-            for chart_name in self.helm_system_applications[plugin_name]:
+        helm_system_applications = self.get_helm_system_application_relation(plugin_name)
+        if helm_system_applications:
+            for chart_name in helm_system_applications:
                 try:
                     app_namespaces.update(
                         {chart_name:
@@ -612,15 +281,14 @@ class HelmOperator(object):
         overrides = {}
         plugin_name = utils.find_app_plugin_name(app_name)
 
-        if plugin_name in self.helm_system_applications:
-            for chart_name in self.helm_system_applications[plugin_name]:
-                try:
-                    overrides.update({chart_name:
-                                      self._get_helm_chart_overrides(
-                                          chart_name,
-                                          cnamespace)})
-                except exception.InvalidHelmNamespace as e:
-                    LOG.info(e)
+        helm_system_applications = self.get_helm_system_application_relation(plugin_name)
+        for chart_name in helm_system_applications:
+            try:
+                overrides.update(
+                    {chart_name: self._get_helm_chart_overrides(chart_name, cnamespace)}
+                )
+            except exception.InvalidHelmNamespace as e:
+                LOG.info(e)
         return overrides
 
     def merge_overrides(self, file_overrides=None, set_overrides=None):
@@ -693,21 +361,16 @@ class HelmOperator(object):
         :param cnamespace: (optional) namespace
         """
 
-        if chart_name in self.chart_operators:
-            namespaces = self.chart_operators[chart_name].SUPPORTED_NAMESPACES
+        chart_op = self.get_chart_operator(chart_name)
+        if chart_op:
+            namespaces = chart_op.SUPPORTED_NAMESPACES
             if cnamespace and cnamespace not in namespaces:
                 LOG.exception("The %s chart does not support namespace: %s" %
                               (chart_name, cnamespace))
                 return
-
             try:
-                overrides = self._get_helm_chart_overrides(
-                    chart_name,
-                    cnamespace)
-                self._write_chart_overrides(path,
-                                            chart_name,
-                                            cnamespace,
-                                            overrides)
+                overrides = self._get_helm_chart_overrides(chart_name, cnamespace)
+                self._write_chart_overrides(path, chart_name, cnamespace, overrides)
             except Exception as e:
                 LOG.exception("failed to create chart overrides for %s: %s" %
                               (chart_name, e))
@@ -753,9 +416,8 @@ class HelmOperator(object):
             app.name, app.app_version)
         kustomize_op.load(fluxcd_manifests_dir)
 
-        if plugin_name in self.helm_system_applications:
-            app_overrides = self._get_helm_application_overrides(plugin_name,
-                                                                 cnamespace)
+        if self.get_helm_system_application_relation(plugin_name):
+            app_overrides = self._get_helm_application_overrides(plugin_name, cnamespace)
             for (chart_name, overrides) in iteritems(app_overrides):
                 if combined:
                     # The overrides at this point are the system overrides. For
@@ -807,9 +469,9 @@ class HelmOperator(object):
                 # GenericFluxCDKustomizeOperator is used and chart specific
                 # operations can be skipped.
                 if kustomize_op.APP:
-                    if chart_name in self.chart_operators:
-                        self.chart_operators[chart_name].execute_kustomize_updates(
-                            kustomize_op)
+                    chart_op = self.get_chart_operator(chart_name)
+                    if chart_op:
+                        chart_op.execute_kustomize_updates(kustomize_op)
 
             # Update the kustomization manifests based on platform conditions
             kustomize_op.platform_mode_kustomize_updates(self.dbapi, mode)
@@ -864,9 +526,9 @@ class HelmOperator(object):
 
     def remove_helm_chart_overrides(self, path, chart_name, cnamespace=None):
         """Remove the overrides files for a chart"""
-
-        if chart_name in self.chart_operators:
-            namespaces = self.chart_operators[chart_name].SUPPORTED_NAMESPACES
+        chart_op = self.get_chart_operator(chart_name)
+        if chart_op:
+            namespaces = chart_op.SUPPORTED_NAMESPACES
 
             filenames = []
             if cnamespace and cnamespace in namespaces:
@@ -945,7 +607,7 @@ class HelmOperator(object):
             raise
 
 
-class HelmOperatorData(HelmOperator):
+class HelmOperatorData(object):
     """Class to allow retrieval of helm managed data"""
 
     # TODO (rchurch): decouple. Plugin chart names. This class needs to be
@@ -959,9 +621,12 @@ class HelmOperatorData(HelmOperator):
     HELM_CHART_CEILOMETER = 'ceilometer'
     HELM_CHART_DCDBSYNC = 'dcdbsync'
 
+    def __init__(self, helm_operator=None):
+        self.helm_op = helm_operator
+
     @helm_context
     def get_keystone_auth_data(self):
-        keystone_operator = self.chart_operators[self.HELM_CHART_KEYSTONE]
+        keystone_operator = self.helm_op.get_chart_operator(self.HELM_CHART_KEYSTONE)
 
         # use stx_admin account to communicate with openstack app
         username = common.USER_STX_ADMIN
@@ -992,7 +657,7 @@ class HelmOperatorData(HelmOperator):
 
     @helm_context
     def get_keystone_endpoint_data(self):
-        keystone_operator = self.chart_operators[self.HELM_CHART_KEYSTONE]
+        keystone_operator = self.helm_op.get_chart_operator(self.HELM_CHART_KEYSTONE)
         endpoint_data = {
             'endpoint_override':
                 'http://keystone.openstack.svc.cluster.local:80',
@@ -1003,7 +668,7 @@ class HelmOperatorData(HelmOperator):
 
     @helm_context
     def get_keystone_oslo_db_data(self):
-        keystone_operator = self.chart_operators[self.HELM_CHART_KEYSTONE]
+        keystone_operator = self.helm_op.get_chart_operator(self.HELM_CHART_KEYSTONE)
         endpoints_overrides = keystone_operator.\
             _get_endpoints_oslo_db_overrides(self.HELM_CHART_KEYSTONE,
                                              ['keystone'])
@@ -1021,7 +686,7 @@ class HelmOperatorData(HelmOperator):
 
     @helm_context
     def get_nova_endpoint_data(self):
-        nova_operator = self.chart_operators[self.HELM_CHART_NOVA]
+        nova_operator = self.helm_op.get_chart_operator(self.HELM_CHART_NOVA)
         endpoint_data = {
             'endpoint_override':
                 'http://nova-api-internal.openstack.svc.cluster.local:80',
@@ -1032,7 +697,7 @@ class HelmOperatorData(HelmOperator):
 
     @helm_context
     def get_nova_oslo_messaging_data(self):
-        nova_operator = self.chart_operators[self.HELM_CHART_NOVA]
+        nova_operator = self.helm_op.get_chart_operator(self.HELM_CHART_NOVA)
         endpoints_overrides = nova_operator._get_endpoints_overrides()
         auth_data = {
             'host':
@@ -1052,7 +717,7 @@ class HelmOperatorData(HelmOperator):
 
     @helm_context
     def get_cinder_endpoint_data(self):
-        cinder_operator = self.chart_operators[self.HELM_CHART_CINDER]
+        cinder_operator = self.helm_op.get_chart_operator(self.HELM_CHART_CINDER)
         endpoint_data = {
             'region_name':
                 cinder_operator.get_region_name(),
@@ -1065,7 +730,7 @@ class HelmOperatorData(HelmOperator):
 
     @helm_context
     def get_glance_endpoint_data(self):
-        glance_operator = self.chart_operators[self.HELM_CHART_GLANCE]
+        glance_operator = self.helm_op.get_chart_operator(self.HELM_CHART_GLANCE)
         endpoint_data = {
             'region_name':
                 glance_operator.get_region_name(),
@@ -1078,7 +743,7 @@ class HelmOperatorData(HelmOperator):
 
     @helm_context
     def get_neutron_endpoint_data(self):
-        neutron_operator = self.chart_operators[self.HELM_CHART_NEUTRON]
+        neutron_operator = self.helm_op.get_chart_operator(self.HELM_CHART_NEUTRON)
         endpoint_data = {
             'region_name':
                 neutron_operator.get_region_name(),
@@ -1087,7 +752,7 @@ class HelmOperatorData(HelmOperator):
 
     @helm_context
     def get_heat_endpoint_data(self):
-        heat_operator = self.chart_operators[self.HELM_CHART_HEAT]
+        heat_operator = self.helm_op.get_chart_operator(self.HELM_CHART_HEAT)
         endpoint_data = {
             'region_name':
                 heat_operator.get_region_name(),
@@ -1096,8 +761,7 @@ class HelmOperatorData(HelmOperator):
 
     @helm_context
     def get_ceilometer_endpoint_data(self):
-        ceilometer_operator = \
-            self.chart_operators[self.HELM_CHART_CEILOMETER]
+        ceilometer_operator = self.helm_op.get_chart_operator(self.HELM_CHART_CEILOMETER)
         endpoint_data = {
             'region_name':
                 ceilometer_operator.get_region_name(),
@@ -1106,7 +770,7 @@ class HelmOperatorData(HelmOperator):
 
     @helm_context
     def get_dcdbsync_endpoint_data(self):
-        dcdbsync_operator = self.chart_operators[self.HELM_CHART_DCDBSYNC]
+        dcdbsync_operator = self.helm_op.get_chart_operator(self.HELM_CHART_DCDBSYNC)
         endpoints_overrides = dcdbsync_operator._get_endpoints_overrides()
         endpoint_data = {
             'keystone_password':

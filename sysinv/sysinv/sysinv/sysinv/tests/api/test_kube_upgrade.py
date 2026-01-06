@@ -183,13 +183,6 @@ class TestKubeUpgrade(base.FunctionalTest):
         self.mock_check_kube_control_plane_pods.return_value = (True, [])
         self.addCleanup(p.stop)
 
-        # _check_psp_policies
-        # returns (Success Boolean, List of psp resources [])
-        p = mock.patch.object(health.Health, '_check_psp_policies')
-        self.mock_check_psp_policies = p.start()
-        self.mock_check_psp_policies.return_value = (True, [])
-        self.addCleanup(p.stop)
-
     def _patch_current(self, bool_val=True):
         return {
             'data': [
@@ -430,7 +423,7 @@ class TestPostKubeUpgrade(TestKubeUpgrade,
     @mock.patch('sysinv.common.usm_service.is_usm_authapi_ready', lambda: True)
     def test_create_upgrade_path_not_supported(self):
         # Test creation of upgrade when upgrade path is not supported
-        create_dict = dbutils.post_get_test_kube_upgrade(to_version='v1.43.3')
+        create_dict = dbutils.post_get_test_kube_upgrade(to_version='v1.42.1')
         with mock.patch('sysinv.common.usm_service.get_platform_upgrade',
                         side_effect=exception.NotFound()):
             result = self.post_json('/kube_upgrade', create_dict,

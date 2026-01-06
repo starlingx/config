@@ -70,7 +70,6 @@ OAM_DC = {
         {
             constants.PLATFORM_DCMANAGER_PARAMS_API_PORT,  # noqa: E501 docu: DC Manager Params API,platform,oam,Not used,Allowed (service public endpoint) on system controller and subclouds.,,,y,y,n,n
             constants.PLATFORM_DCORCH_PARAMS_SYSINV_API_PROXY_PORT,  # noqa: E501 docu: DC Orchestration sys-inv params API,platform,oam,Allowed (service public endpoint) on system controller,Allowed (service public endpoint) on system controller,DC Orchestration params patch API,,y,y,n,n
-            constants.PLATFORM_DCORCH_PARAMS_PATCH_API_PROXY_PORT,  # noqa: E501 docu: DC Orchestration params patch API, platform,oam,Not used,Allowed (service public endpoint) on system controller.,corch-patch-api-proxy public endpoint.,,y,y,n,n
             constants.PLATFORM_DCORCH_PARAMS_USM_API_PROXY_PORT,  # noqa: E501 docu: DC Orchestration USM params API,platform,oam,Allowed (service public endpoint) on system controller,Allowed (service public endpoint) on system controller,DC Orchestration USM params API,,y,y,n,n
             constants.PLATFORM_DCORCH_PARAMS_IDENTITY_API_PROXY_PORT  # noqa: E501 docu: DC Orchestration Identity params API,platform,oam,Allowed (service public endpoint) on system controller,Allowed (service public endpoint) on system controller,DC Orchestration Identity params API,,y,y,n,n
         }
@@ -171,8 +170,6 @@ SYSTEM_CONFIG = {
         constants.PLATFORM_DCMANAGER_PARAMS_API_PORT,  # noqa: E501 docu: DC Manager Params API,platform,oam,Not used,Allowed (service public endpoint) on system controller and subclouds.,,,n,n,n,n
     "platform::dcorch::params::sysinv_api_proxy_port":
         constants.PLATFORM_DCORCH_PARAMS_SYSINV_API_PROXY_PORT,  # noqa: E501 docu: DC Orchestration sys-inv params API,platform,Andre?,Andre?,Andre?,<Andre - please add note>,Andre?,n,n,n,n
-    "platform::dcorch::params::patch_api_proxy_port":
-        constants.PLATFORM_DCORCH_PARAMS_PATCH_API_PROXY_PORT,  # noqa: E501 docu: DC Orchestration params patch API,platform,oam,Not used,Allowed (service public endpoint) on system controller.,dcorch-patch-api-proxy public endpoint.,,n,n,n,n
     "platform::dcorch::params::usm_api_proxy_port":
         constants.PLATFORM_DCORCH_PARAMS_USM_API_PROXY_PORT,  # noqa: E501 docu: DC Orchestration USM params API,platform,Andre?,Andre?,Andre?,<Andre - please add note>,Andre?,n,n,n,n
     "platform::dcorch::params::identity_api_proxy_port":

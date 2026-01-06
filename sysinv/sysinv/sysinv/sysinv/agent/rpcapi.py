@@ -235,6 +235,38 @@ class AgentAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
 
         return retval
 
+    def kube_upgrade_abort(self, context, current_kube_version, back_to_kube_version):
+        """Asynchronously, abort kubernetes upgrade
+
+        Kubernetes upgrade abort on controller hosts. This is currently supported only
+        on AIO-SX and will be supported on all other deployment configurations in future
+        releases.
+
+        :param: context: context object
+        :param: current_kube_version: current kubernetes version
+        :param: back_to_kube_version: kubernetes version to be rolled back to
+        """
+        return self.fanout_cast(context,
+                         self.make_msg("kube_upgrade_abort",
+                                       current_kube_version=current_kube_version,
+                                       back_to_kube_version=back_to_kube_version))
+
+    def kube_upgrade_control_plane(self, context, host_uuid, to_kube_version, is_first_master):
+        """Asynchronously, upgrade control plane components on this host.
+
+        Upgrade control plane components on controller hosts.
+
+        :param: context: request context
+        :param: host_uuid: UUID of the host reporting status
+        :param: to_kube_version: Kube version to which control plane is being upgraded to
+        :param: is_first_master: True if this is the first master being upgraded, False otherwise
+        """
+        return self.cast(context,
+                         self.make_msg("kube_upgrade_control_plane",
+                                        host_uuid=host_uuid,
+                                        to_kube_version=to_kube_version,
+                                        is_first_master=is_first_master))
+
     def update_host_lvm(self, context, host_uuid):
         """Synchronously, update LVM physical volume
 
@@ -260,6 +292,23 @@ class AgentAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                        retimer_included=retimer_included),
                          topic=topic)
 
+    def kube_upgrade_kubelet(self, context, host_uuid, to_kube_version, is_final_version):
+        """Asynchronously, upgrade kubelet on this host.
+
+        Upgrade kubelet on controller and worker hosts.
+
+        :param: context: context object
+        :param: from_kube_version: current kubernetes version
+        :param: to_kube_version: kubernetes version being upgraded to
+        :param: is_final_version: True if to_kube_version is the final version in the
+                                  current kubernetes upgrade attempt else False
+        """
+        return self.cast(context,
+                         self.make_msg("kube_upgrade_kubelet",
+                                        host_uuid=host_uuid,
+                                        to_kube_version=to_kube_version,
+                                        is_final_version=is_final_version))
+
     def report_initial_inventory(self, context, host_uuid):
         """ Synchronously, request the agent to re-report initial inventory
         """
@@ -267,3 +316,35 @@ class AgentAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.call(context,
                          self.make_msg("report_initial_inventory",
                                        host_uuid=host_uuid))
+
+    def pull_kubernetes_images(self, context, host_uuid, images, crictl_auth):
+        """Asynchronously, pull kubernetes images
+
+        :param context: request context
+        :param host_uuid: the host uuid
+        :param images: list of images to be downloaded
+        :param: crictl_auth: Auth string to pull kubernetes images
+        :return:  none ... uses asynchronous cast().
+        """
+        return self.cast(context,
+                         self.make_msg("pull_kubernetes_images",
+                                       host_uuid=host_uuid,
+                                       images=images,
+                                       crictl_auth=crictl_auth))
+
+    def pin_kubernetes_control_plane_images(self, context, host_uuid, version):
+        """Asynchronously, pin kubernetes static pod images of current kubernetes version
+
+        Following images are pinned
+        - kube-apiserver
+        - kube-controller-manager
+        - kube-scheduler
+
+        :param: context: request context
+        :param: host_uuid: the host uuid
+        :param: version: Version of images to be pinned
+        """
+        return self.cast(context,
+                         self.make_msg('pin_kubernetes_control_plane_images',
+                                       host_uuid=host_uuid,
+                                       version=version))

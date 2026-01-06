@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2019-2023 Wind River Systems, Inc.
+# Copyright (c) 2019-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -264,7 +264,6 @@ class KubeUpgradeController(rest.RestController):
 
         force = body.get('force', False) is True
         alarm_ignore_list = body.get('alarm_ignore_list')
-        system = pecan.request.dbapi.isystem_get_one()
 
         # There must not be a platform upgrade in progress
         try:
@@ -299,19 +298,21 @@ class KubeUpgradeController(rest.RestController):
         # The upgrade path must be supported
         current_kube_version = self._kube_operator.kube_get_kubernetes_version()
         version_states = self._kube_operator.kube_get_version_states()
+        cp_versions_next = self._kube_operator.kube_get_higher_patch_version(
+            current_kube_version, to_version)
 
         # The target version must be available state
-        if system.system_mode == constants.SYSTEM_MODE_SIMPLEX:
-            if version_states.get(to_version) != kubernetes.KUBE_STATE_AVAILABLE:
-                raise wsme.exc.ClientSideError(_(
-                    "The target Kubernetes version %s is not in "
-                    "available state" % (target_version_obj.version)))
-        else:
-            if not target_version_obj.can_upgrade_from(current_kube_version):
-                raise wsme.exc.ClientSideError(_(
-                    "The installed Kubernetes version %s cannot upgrade to "
-                    "version %s" % (current_kube_version,
-                                    target_version_obj.version)))
+        if version_states.get(to_version) != kubernetes.KUBE_STATE_AVAILABLE:
+            raise wsme.exc.ClientSideError(_(
+                "The target Kubernetes version %s is not in "
+                "available state" % (target_version_obj.version)))
+
+        # The target version must be in the next higher versions
+        if to_version not in cp_versions_next:
+            raise wsme.exc.ClientSideError(_(
+                "The installed Kubernetes version %s cannot upgrade to "
+                "version %s" % (current_kube_version,
+                                target_version_obj.version)))
 
         # The current kubernetes version must be active
         if version_states.get(current_kube_version) != \
@@ -573,14 +574,12 @@ class KubeUpgradeController(rest.RestController):
                     "in %s" % system.system_mode))
             # Make sure upgrade is in the correct state to cordon
             if kube_upgrade_obj.state not in [
-                    kubernetes.KUBE_UPGRADED_NETWORKING,
                     kubernetes.KUBE_UPGRADED_STORAGE,
                     kubernetes.KUBE_UPGRADE_CORDON_FAILED]:
                 raise wsme.exc.ClientSideError(_(
-                    "Kubernetes upgrade must be in %s, %s or %s state "
+                    "Kubernetes upgrade must be in %s or %s state "
                     "to cordon" %
-                    (kubernetes.KUBE_UPGRADED_NETWORKING,
-                     kubernetes.KUBE_UPGRADED_STORAGE,
+                    (kubernetes.KUBE_UPGRADED_STORAGE,
                      kubernetes.KUBE_UPGRADE_CORDON_FAILED)))
 
             # Update the upgrade state

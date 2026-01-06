@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2018-2024 Wind River Systems, Inc.
+# Copyright (c) 2018-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -49,6 +49,10 @@ KUBE_ROOTCA_CERT_SECRET = 'system-kube-rootca-certificate'
 # retry for urllib3 max retry error
 API_RETRY_ATTEMPT_NUMBER = 20
 API_RETRY_INTERVAL = 10 * 1000
+
+# Kubeadm API reference
+KUBEADM_API_V1BETA3 = "kubeadm.k8s.io/v1beta3"
+KUBEADM_API_V1BETA4 = "kubeadm.k8s.io/v1beta4"
 
 
 class KubernetesPuppet(base.BasePuppet):
@@ -208,7 +212,7 @@ class KubernetesPuppet(base.BasePuppet):
 
             # The root CA cert/key are not stored in kubernetes yet
             if not secret:
-                return 'undef', 'undef'
+                return None, None
             if hasattr(secret, 'data') and secret.data:
                 cert = secret.data.get('tls.crt', None)
                 key = secret.data.get('tls.key', None)
@@ -219,7 +223,7 @@ class KubernetesPuppet(base.BasePuppet):
         except exception.KubeNotConfigured:
             # During ansible bootstrap, kubernetes is not configured.
             # Set the cert and key to 'undef'
-            return 'undef', 'undef'
+            return None, None
 
     @staticmethod
     def _get_kubernetes_components_cert_and_key(secret_names):
@@ -234,7 +238,7 @@ class KubernetesPuppet(base.BasePuppet):
                                                 KUBE_ROOTCA_CERT_NS)
                 # The respective cert/key are not stored in kubernetes yet
                 if not secret:
-                    certificate_dict[secret_name] = 'undef', 'undef'
+                    certificate_dict[secret_name] = None, None
                 if hasattr(secret, 'data') and secret.data:
                     cert = secret.data.get('tls.crt', None)
                     key = secret.data.get('tls.key', None)
@@ -243,7 +247,7 @@ class KubernetesPuppet(base.BasePuppet):
             except exception.KubeNotConfigured:
                 # During ansible bootstrap, kubernetes is not configured.
                 # Set the cert and key to 'undef'
-                certificate_dict[secret_name] = 'undef', 'undef'
+                certificate_dict[secret_name] = None, None
         return certificate_dict
 
     @staticmethod
@@ -275,8 +279,11 @@ class KubernetesPuppet(base.BasePuppet):
         return config
 
     def _retry_on_token(ex):  # pylint: disable=no-self-argument
-        LOG.warn('Retrying in _get_kubernetes_join_cmd')
-        return True
+        if isinstance(ex, subprocess.TimeoutExpired):
+            LOG.warn('Retrying in _get_kubernetes_join_cmd')
+            return True
+        else:
+            return False
 
     @retry(stop_max_attempt_number=API_RETRY_ATTEMPT_NUMBER,
            wait_fixed=API_RETRY_INTERVAL,
@@ -285,7 +292,7 @@ class KubernetesPuppet(base.BasePuppet):
         # The token expires after 24 hours and is needed for a reinstall.
         # The puppet manifest handles the case where the node already exists.
         try:
-            join_cmd_additions = ' --v=5'
+            join_cmd_additions = ' --v=4'
             if host.personality == constants.CONTROLLER:
                 # Upload the certificates used during kubeadm join
 
@@ -301,13 +308,29 @@ class KubernetesPuppet(base.BasePuppet):
                 # Fix up kubeadm-config ConfigMap IPv6 address formatting if needed
                 self._kube_operator.kubeadm_configmap_reformat(None)
 
-                # Get kubeadm version
+                # kubeadm version is system-wide
                 try:
                     kube_version = self.dbapi.kube_cmd_version_get()
                     kubeadm_version = kube_version.kubeadm_version
                 except Exception:
                     LOG.exception("Exception getting kubeadm version")
                     raise exception.KubeVersionUnavailable()
+
+                # If there's a k8s upgrade in progress the kubeadm version
+                # is determined by the upgrade state of the host.
+                kube_upgrade_state = None
+                try:
+                    kube_upgrade_obj = objects.kube_upgrade.get_one(
+                        self.context)
+                    kube_upgrade_state = kube_upgrade_obj.state
+                except exception.NotFound:
+                    kube_upgrade_obj = None
+                if kube_upgrade_state:
+                    kube_host_upgrade = objects.kube_host_upgrade.get_by_host_id(
+                        self.context, host.id)
+                    if kube_host_upgrade.status is not None and \
+                            'upgrad' in kube_host_upgrade.status:
+                        kubeadm_version = kube_host_upgrade.target_version.lstrip('v')
 
                 # We will create a temp file with the kubeadm config
                 # We need this because the kubeadm config could have changed
@@ -326,43 +349,92 @@ class KubernetesPuppet(base.BasePuppet):
                         LOG.error("Command %s: timed out." % cmd)
                         os.unlink(temp_kubeadm_config_view)
                         raise
+                    except subprocess.CalledProcessError as ex:
+                        os.unlink(temp_kubeadm_config_view)
+                        raise exception.SysinvException(
+                            "kubectl get kubeadm-config failed with error: [%s]" % (ex))
 
                 # We will use a custom key to encrypt kubeadm certificates
                 # to make sure all hosts decrypt using the same key
                 key = str(keyring.get_password(CERTIFICATE_KEY_SERVICE,
                         CERTIFICATE_KEY_USER))
 
-                with open(temp_kubeadm_config_view, "a") as f:
-                    f.write("---\r\napiVersion: kubeadm.k8s.io/v1beta3\r\n"
-                            "kind: InitConfiguration\r\ncertificateKey: "
-                            "{}".format(key))
+                # In a multi-node setup, during a Kubernetes upgrade, if
+                # kubeadm has not yet been upgraded and an unexpected reboot
+                # occurs, other nodes may fail to join due to version skew.
+                # updating the apiVersion to match the kubelet version
+                # restores the cluster to a stable state.
 
-                # Replace API reference of kubeadm.k8s.io/v1beta3 to
-                # kubeadm.k8s.io/v1beta2 for k8s version less than or
-                # equal to 1.21.8
-                if LooseVersion(kubeadm_version) <= LooseVersion("1.21.8"):
-                    with open(temp_kubeadm_config_view, 'r') as f:
-                        kubeadm_config_content = f.read()
-                        update_kubeadm_config = \
-                            kubeadm_config_content.replace('kubeadm.k8s.io/v1beta3',
-                                                           'kubeadm.k8s.io/v1beta2')
-                    with open(temp_kubeadm_config_view, 'w') as f:
-                        f.write(update_kubeadm_config)
+                failed_states = {
+                    kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES_FAILED,
+                    kubernetes.KUBE_PRE_UPDATING_APPS_FAILED,
+                    kubernetes.KUBE_UPGRADING_NETWORKING_FAILED,
+                    kubernetes.KUBE_UPGRADING_STORAGE_FAILED,
+                }
+
+                system = self.dbapi.isystem_get_one()
+                if system.system_mode != constants.SYSTEM_MODE_SIMPLEX:
+                    if (
+                        kube_upgrade_obj
+                        and kube_version.kubelet_version != kubeadm_version
+                        and kube_upgrade_obj.state in failed_states
+                    ):
+                        kubeadm_version = kube_version.kubelet_version
+
+                # Update API reference to kubeadm.k8s.io/v1beta3 when k8s
+                # version is less than 1.31
+                api_version = (
+                    KUBEADM_API_V1BETA3
+                    if LooseVersion(kubeadm_version) < LooseVersion("1.31.5")
+                    else KUBEADM_API_V1BETA4
+                )
+
+                with open(temp_kubeadm_config_view, "a") as f:
+                    f.write(
+                        "---\n"
+                        f"apiVersion: {api_version}\n"
+                        "kind: InitConfiguration\n"
+                        f"certificateKey: {key}\n"
+                    )
+
                 # Because we're passing in the entire kubeadm config, if we're doing
                 # a K8s upgrade we need to use the "new" version of kubeadm in case
                 # changes have been made to the kubeadm-config ConfigMap that are
                 # not understood by the "old" kubeadm.
                 kubeadm_path = constants.KUBEADM_PATH_FORMAT_STR.format(kubeadm_ver=kubeadm_version)
-                cmd = [kubeadm_path, 'init', 'phase', 'upload-certs', '--upload-certs', '--config',
-                       temp_kubeadm_config_view]
+                cmd = [
+                    kubeadm_path,
+                    'init',
+                    'phase',
+                    'upload-certs',
+                    '--upload-certs',
+                    '--config',
+                    temp_kubeadm_config_view
+                ]
 
                 try:
-                    subprocess.check_call(cmd, timeout=30)  # pylint: disable=not-callable
-                except subprocess.TimeoutExpired:
-                    LOG.error("Command %s: timed out." % cmd)
-                    os.unlink(temp_kubeadm_config_view)
+                    result = subprocess.run(
+                        cmd,
+                        capture_output=True,
+                        text=True,
+                        timeout=30,
+                        check=True
+                    )
+                    LOG.info("Command succeeded: %s", cmd)
+                    LOG.debug("stderr: %s", result.stderr)
+                except subprocess.CalledProcessError as e:
+                    LOG.error("Command failed: %s", cmd)
+                    LOG.error("Return code: %d", e.returncode)
+                    LOG.error("stderr: %s", e.stderr)
+                    raise exception.SysinvException(
+                        "uploading certificate key to the cluster"
+                        "failed with error: [%s]" % e)
+                except subprocess.TimeoutExpired as e:
+                    LOG.error("Command timed out: %s", cmd)
+                    LOG.error("stderr: %s", e.stderr)
                     raise
-                os.unlink(temp_kubeadm_config_view)
+                finally:
+                    os.unlink(temp_kubeadm_config_view)
                 join_cmd_additions += \
                     " --control-plane --certificate-key %s" % key
 
@@ -373,22 +445,49 @@ class KubernetesPuppet(base.BasePuppet):
                 join_cmd_additions += \
                     " --apiserver-advertise-address %s" % host_cluster_ip
 
-            cmd = ['kubeadm', KUBECONFIG, 'token', 'create', '--print-join-command',
-                   '--description', 'Bootstrap token for %s' % host.hostname]
+                # Customize port to kube-apiserver
+                join_cmd_additions += \
+                    " --apiserver-bind-port %s" % str(constants.KUBE_APISERVER_INTERNAL_PORT)
+
+            cmd = [
+                  'kubeadm',
+                  KUBECONFIG,
+                  'token',
+                  'create',
+                  '--print-join-command',
+                  '--description', f"Bootstrap token for {host.hostname}"
+            ]
             try:
-                join_cmd = subprocess.check_output(  # pylint: disable=not-callable
-                    cmd, universal_newlines=True, timeout=30)
-            except subprocess.TimeoutExpired:
-                LOG.error("Command %s: timed out." % cmd)
+                LOG.info("Running command: %s", cmd)
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                    check=True
+                )
+                join_cmd = result.stdout.strip()
+                LOG.debug("stderr: %s", result.stderr)
+            except subprocess.CalledProcessError as e:
+                LOG.error("Command failed: %s", cmd)
+                LOG.error("Return code: %d", e.returncode)
+                LOG.error("stderr: %s", e.stderr)
+                raise exception.SysinvException(
+                    "kubeadm token create failed with error: [%s]" % e)
+            except subprocess.TimeoutExpired as e:
+                LOG.error("Command timed out: %s", cmd)
+                LOG.error("stderr: %s", e.stderr)
                 raise
             join_cmd_additions += \
                 " --cri-socket /var/run/containerd/containerd.sock"
             join_cmd = join_cmd.strip() + join_cmd_additions
             LOG.info('get_kubernetes_join_cmd join_cmd=%s' % join_cmd)
-        except Exception:
-            LOG.warning("Exception generating bootstrap token")
-            raise exception.SysinvException(
-                'Failed to generate bootstrap token')
+        except Exception as e:
+            LOG.exception("Exception generating bootstrap token")
+            stderr = getattr(e, 'stderr', None)
+            if stderr:
+                LOG.error("Captured stderr: %s", stderr)
+            raise exception.SysinvException('Failed to generate bootstrap token') from e
 
         return join_cmd
 
@@ -764,11 +863,14 @@ class KubernetesPuppet(base.BasePuppet):
 
         labels = self.dbapi.label_get_by_host(host.uuid)
         need_vhostnet = False
-        for l in labels:
-            if (constants.SRIOVDP_VHOSTNET_LABEL ==
-                    str(l.label_key) + '=' + str(l.label_value)):
-                need_vhostnet = True
-                break
+        is_rdma_enabled = True  # Default for backward compatibility
+
+        labels_set = {f"{l.label_key}={l.label_value}" for l in labels}
+
+        need_vhostnet = constants.SRIOVDP_VHOSTNET_LABEL in labels_set
+
+        # RDMA is enabled by default, just disabled if sriovdp-isrdma=disabled is present
+        is_rdma_enabled = constants.SRIOVDP_ISRDMA_DISABLED_LABEL not in labels_set
 
         resources = {}
         interfaces = self._get_network_interfaces_by_class(ifclass)
@@ -860,7 +962,8 @@ class KubernetesPuppet(base.BasePuppet):
                     if port['pciaddr'] not in pci_addr_list:
                         pci_addr_list.append(port['pciaddr'])
 
-                if interface.is_a_mellanox_device(self.context, iface):
+                # Default isRdma=False when parameter is absent from selectors
+                if is_rdma_enabled and interface.is_a_mellanox_device(self.context, iface):
                     resource['selectors']['isRdma'] = True
 
                 if need_vhostnet:

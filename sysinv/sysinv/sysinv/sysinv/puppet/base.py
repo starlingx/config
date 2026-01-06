@@ -54,6 +54,10 @@ class BasePuppet(object):
     def generate_optimized_hieradata(self):
         return self._operator.generate_optimized_hieradata
 
+    @property
+    def helm_operator(self):
+        return self._operator.helm_operator
+
     def get_static_config(self):
         return {}
 

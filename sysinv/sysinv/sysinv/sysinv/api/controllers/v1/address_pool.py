@@ -55,9 +55,12 @@ SUBCLOUD_WRITABLE_NETWORK_TYPES = [constants.NETWORK_TYPE_ADMIN,
                                    constants.NETWORK_TYPE_SYSTEM_CONTROLLER,
                                    constants.NETWORK_TYPE_SYSTEM_CONTROLLER_OAM]
 
-# Address pool for the management network in an AIO-SX installation
+# Address pool for networks below in an AIO-SX installation
 # is allowed to be deleted/modified post install
-AIOSX_WRITABLE_NETWORK_TYPES = [constants.NETWORK_TYPE_MGMT]
+AIOSX_RUNTIME_WRITABLE_NETWORK_TYPES = (
+    constants.NETWORK_TYPE_MGMT,
+    constants.NETWORK_TYPE_STORAGE,
+)
 
 
 class AddressPoolPatchType(types.JsonPatchType):
@@ -377,8 +380,7 @@ class AddressPoolController(rest.RestController):
             if nw_type in SUBCLOUD_WRITABLE_NETWORK_TYPES:
                 continue
 
-            # The management address pool can be changed for AIO-SX, if the host is locked.
-            if nw_type in AIOSX_WRITABLE_NETWORK_TYPES:
+            if nw_type in AIOSX_RUNTIME_WRITABLE_NETWORK_TYPES:
                 if self._get_system_mode() == constants.SYSTEM_MODE_SIMPLEX:
                     chosts = pecan.request.dbapi.ihost_get_by_personality(constants.CONTROLLER)
                     for host in chosts:
@@ -388,6 +390,19 @@ class AddressPoolController(rest.RestController):
                                     .format(host['hostname']))
                             raise wsme.exc.ClientSideError(msg)
                     continue
+
+            # Check sx-to-dx migration case
+            if nw_type in (
+                constants.NETWORK_TYPE_MGMT,
+                constants.NETWORK_TYPE_CLUSTER_HOST,
+                constants.NETWORK_TYPE_STORAGE,
+                constants.NETWORK_TYPE_PXEBOOT,
+            ):
+                if self._get_system_mode() == constants.SYSTEM_MODE_DUPLEX:
+                    system = pecan.request.dbapi.isystem_get_one()
+                    if (system.capabilities.get('simplex_to_duplex_migration') or
+                            system.capabilities.get('simplex_to_duplex-direct_migration')):
+                        continue
 
             # An addresspool except the admin and system controller's pools
             # are considered read-only after the initial configuration is
@@ -529,15 +544,15 @@ class AddressPoolController(rest.RestController):
     ALL_CTL_ADDR_FIELDS = ['floating_address', 'controller0_address', 'controller1_address']
 
     def _get_required_address_fields(self, network_types):
-        if constants.NETWORK_TYPE_OAM in network_types:
+        sx_floating_only_networks = [constants.NETWORK_TYPE_OAM,
+                                     constants.NETWORK_TYPE_MGMT,
+                                     constants.NETWORK_TYPE_ADMIN,
+                                     constants.NETWORK_TYPE_PXEBOOT]
+        if any(x in network_types for x in sx_floating_only_networks):
             if utils.get_system_mode() == constants.SYSTEM_MODE_SIMPLEX:
                 return self.FLOATING_ADDR_FIELD
             else:
                 return self.ALL_CTL_ADDR_FIELDS
-        if constants.NETWORK_TYPE_MGMT in network_types:
-            return self.ALL_CTL_ADDR_FIELDS
-        if constants.NETWORK_TYPE_ADMIN in network_types:
-            return self.ALL_CTL_ADDR_FIELDS
         return []
 
     def _check_required_addresses(self, updated_addrpool, network_types):
@@ -675,6 +690,12 @@ class AddressPoolController(rest.RestController):
         updates = self._get_updates(patch)
         self._check_modification_allowed(network_types)
         existing_addresses = self._validate_updates(addrpool, network_types, updates)
+
+        if constants.NETWORK_TYPE_MGMT in network_types:
+            if self._get_system_mode() == constants.SYSTEM_MODE_SIMPLEX and \
+                    cutils.is_initial_config_complete():
+                pecan.request.rpcapi.set_mgmt_network_reconfig_flag(pecan.request.context)
+
         field_updates = self._update_addresses(addrpool, network_types, updates, existing_addresses)
         self._update_no_proxy_list(addrpool, network_types, field_updates)
         addrpool = self._apply_addrpool_updates(addrpool, updates, field_updates)
@@ -805,16 +826,21 @@ class AddressPoolController(rest.RestController):
             updates[addr_id_field] = address.id
 
     def _apply_network_specific_address_updates(self, addrpool, network_types, commands):
-        if constants.NETWORK_TYPE_OAM in network_types:
-            self._apply_oam_address_updates(addrpool, commands)
+        for network_type in (
+            constants.NETWORK_TYPE_OAM,
+            constants.NETWORK_TYPE_MGMT,
+            constants.NETWORK_TYPE_ADMIN,
+            constants.NETWORK_TYPE_CLUSTER_HOST,
+            constants.NETWORK_TYPE_STORAGE,
+            constants.NETWORK_TYPE_PXEBOOT,
+        ):
+            if network_type in network_types:
+                system = pecan.request.dbapi.isystem_get_one()
+                if system.capabilities.get('simplex_to_duplex_migration') or \
+                        system.capabilities.get('simplex_to_duplex-direct_migration'):
+                    self._aio_sx_to_dx_address_migration(addrpool, commands)
 
-    def _apply_oam_address_updates(self, addrpool, commands):
-        system = pecan.request.dbapi.isystem_get_one()
-        if system.capabilities.get('simplex_to_duplex_migration') or \
-                system.capabilities.get('simplex_to_duplex-direct_migration'):
-            self._aio_sx_to_dx_oam_migration(addrpool, commands)
-
-    def _aio_sx_to_dx_oam_migration(self, addrpool, commands):
+    def _aio_sx_to_dx_address_migration(self, addrpool, commands):
         create_cmd = commands['create'].get('controller0_address', None)
         if not create_cmd:
             return
@@ -875,7 +901,7 @@ class AddressPoolController(rest.RestController):
         if constants.NETWORK_TYPE_MGMT in network_types:
             if self._get_system_mode() == constants.SYSTEM_MODE_SIMPLEX and \
                     cutils.is_initial_config_complete():
-                pecan.request.rpcapi.set_mgmt_network_reconfig_flag(pecan.request.context)
+                pecan.request.rpcapi.update_mgmt_config(pecan.request.context)
 
         if constants.NETWORK_TYPE_ADMIN in network_types:
             if is_primary and operation == constants.API_DELETE:
@@ -889,10 +915,6 @@ class AddressPoolController(rest.RestController):
                 for host in hosts:
                     pecan.request.rpcapi.update_admin_config(pecan.request.context, host,
                                                              disable=disable)
-
-        if constants.NETWORK_TYPE_SYSTEM_CONTROLLER_OAM in network_types:
-            if cutils.is_initial_config_complete() and operation == constants.API_PATCH:
-                pecan.request.rpcapi.update_dnsmasq_config(pecan.request.context)
 
     def _check_delete_primary(self, addrpool, networks):
         nets = []
@@ -970,6 +992,11 @@ class AddressPoolController(rest.RestController):
         # from the no_proxy list
         if self._has_to_update_no_proxy_list(network_types):
             caddress_pool.remove_management_addresses_from_no_proxy_list([addrpool])
+
+        if constants.NETWORK_TYPE_MGMT in network_types:
+            if self._get_system_mode() == constants.SYSTEM_MODE_SIMPLEX and \
+                    cutils.is_initial_config_complete():
+                pecan.request.rpcapi.set_mgmt_network_reconfig_flag(pecan.request.context)
 
         # If the primary pool is being removed, the network will be automatically removed and also
         # the network-addrpool entry for the secondary pool. The addresses from the secondary pool

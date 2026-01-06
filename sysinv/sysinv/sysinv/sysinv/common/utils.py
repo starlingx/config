@@ -46,6 +46,7 @@ import itertools as it
 import json
 import keyring
 import math
+import netaddr
 import os
 import pathlib
 import psutil
@@ -53,6 +54,7 @@ import pyudev
 import pwd
 import random
 import re
+import threading
 import rfc3986
 import shutil
 import signal
@@ -65,25 +67,21 @@ import sys
 import tempfile
 import time
 import tsconfig.tsconfig as tsc
-import types
 import uuid
 import wsme
 import yaml
 
 from eventlet.green import subprocess
 from eventlet import greenthread
-import netaddr
-
+from fm_api import constants as fm_constants
+from jinja2 import Environment
+from jinja2 import FileSystemLoader
 from oslo_concurrency import lockutils
 from oslo_config import cfg
 from oslo_log import log as logging
 from oslo_utils import uuidutils
 from oslo_serialization import base64
-
-from fm_api import constants as fm_constants
-
 from six.moves import range
-
 from sysinv._i18n import _
 from sysinv.common import exception
 from sysinv.common import constants
@@ -96,15 +94,6 @@ try:
     from tsconfig.tsconfig import SW_VERSION
 except ImportError:
     SW_VERSION = "unknown"
-
-
-if six.PY3:
-    USE_IMPORTLIB_METADATA_STDLIB = False
-    try:
-        import importlib.metadata
-        USE_IMPORTLIB_METADATA_STDLIB = True
-    except ImportError:
-        import importlib_metadata
 
 
 utils_opts = [
@@ -185,6 +174,38 @@ def exception_msg(exception):
     return str(exception)
 
 
+def subprocess_open(command, timeout=5):
+    """
+    Helper method to execute a shell command, capture output,
+    and avoid zombie processes.
+
+    :param command: The shell command to execute.
+    :param timeout: Timeout in seconds for the command (default: 5).
+
+    :returns: a tuple: (stdout, stderr) from the command, or ("", "")
+    if an error occurs.
+    """
+    stdout, stderr = "", ""
+
+    try:
+        with subprocess.Popen(command,
+                             stdout=subprocess.PIPE,
+                             shell=True,
+                             universal_newlines=True) as process:
+            stdout, stderr = process.communicate(timeout=timeout)
+
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.communicate()  # Reap the process to avoid zombie
+        LOG.error("Command '%s' timed out", command)
+        return ("", "")
+    except Exception as e:
+        LOG.error("Could not execute command '%s': %s", command, e)
+        return ("", "")
+
+    return (stdout, stderr)
+
+
 def execute(*cmd, **kwargs):
     """Helper method to execute command with optional retry.
 
@@ -203,6 +224,9 @@ def execute(*cmd, **kwargs):
     :param attempts:           How many times to retry cmd.
     :param run_as_root:        True | False. Defaults to False. If set to True,
                                the command is run with rootwrap.
+    :param timeout             Passed to subprocess.communicate.
+                               timeout in seconds (integer value)
+                               Defaults to None
 
     :raises exception.SysinvException: on receiving unknown arguments
     :raises exception.ProcessExecutionError:
@@ -222,6 +246,13 @@ def execute(*cmd, **kwargs):
     attempts = kwargs.pop('attempts', 1)
     run_as_root = kwargs.pop('run_as_root', False)
     shell = kwargs.pop('shell', False)
+    timeout = kwargs.pop('timeout', None)
+    if timeout:
+        try:
+            timeout = int(timeout)
+        except Exception:
+            raise exception.SysinvException("Invalid value for timeout: [%s]. "
+                                            "Please use a valid integer." % (timeout))
 
     if len(kwargs):
         raise exception.SysinvException(_('Got unknown keyword args '
@@ -254,9 +285,9 @@ def execute(*cmd, **kwargs):
                                    shell=shell)
             result = None
             if process_input is not None:
-                result = obj.communicate(process_input)
+                result = obj.communicate(process_input, timeout=timeout)
             else:
-                result = obj.communicate()
+                result = obj.communicate(timeout=timeout)
             obj.stdin.close()  # pylint: disable=E1101
             _returncode = obj.returncode  # pylint: disable=E1101
             LOG.debug(_('Result was %s') % _returncode)
@@ -275,7 +306,7 @@ def execute(*cmd, **kwargs):
                         stderr=stderr,
                         cmd=' '.join(cmd))
             return result
-        except exception.ProcessExecutionError:
+        except (exception.ProcessExecutionError, Exception):
             if not attempts:
                 raise
             else:
@@ -314,6 +345,231 @@ def trycmd(*args, **kwargs):
         err = ''
 
     return out, err
+
+
+def execute_and_watch(cmd, timeout=60, log_prefix=None):
+    """Helper script to execute a command and scrape output while it executes
+
+    Runs a command using subprocess Popen and scrapes its output by piping stdout.
+    The method is most suitable for commands that takes longer to run and needs to be tuned to its
+    output to track its progress. Hence, this requires a timeout to ensure that the comamnd is
+    eventually terminated.
+
+    :param: cmd: list. Command to be executed in the format acceptable by subprocess.Popen
+                       e.g. ['ls', '-la']
+    :param: timeout: Request timeout in seconds. Integer/String. Default value: 60
+    :param: log_prefix: String prefix to be added to logs in case required
+
+    :returns: integer. Return code of the command in case of successful execution of the command.
+    :raises: SysinvException in case of an error.
+    """
+    try:
+        process = None
+
+        if not isinstance(timeout, int) or \
+                (isinstance(timeout, str) and not timeout.isnumeric()) or isinstance(timeout, bool):
+            raise exception.SysinvException("Invalid timeout type: %s" % (type(timeout)))
+
+        timeout = int(timeout)
+
+        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                   text=True, bufsize=1)
+
+        def _capture_output():
+            for line in process.stdout:
+                if log_prefix:
+                    line = "[%s]: %s" % (log_prefix, line)
+                LOG.info(line)
+                # Ensure that the buffer is flushed
+                sys.stdout.flush()
+
+        t = threading.Thread(target=_capture_output)
+
+        t.start()
+
+        return_code = process.wait(timeout=timeout)
+
+        t.join(timeout=timeout)
+
+        if return_code == 0:
+            LOG.info("Command %s execution successful" % (cmd))
+        else:
+            raise exception.ProcessExecutionError(
+                cmd=cmd, exit_code=return_code, stderr=process.stderr.read())
+
+    except exception.ProcessExecutionError as ex:
+        if process:
+            process.kill()
+        raise exception.SysinvException("Command %s execution failed with error: [%s] and "
+                                        "exit code: [%s]" % (cmd, ex.stderr, ex.exit_code))
+    except Exception as ex:
+        if process:
+            process.kill()
+        raise exception.SysinvException("Command %s execution failed with error: [%s] "
+                                        % (cmd, ex))
+
+
+def systemctl_is_active_service(service_name):
+    """Check if a systemd service is active
+
+    :param: service_name: string: Name of the service to be checked
+    :raises: SysinvException
+    """
+    active = True
+    try:
+        cmd = [constants.SYSTEMCTL_PATH, constants.IS_ACTIVE_COMMAND, service_name]
+        execute(*cmd, check_exit_code=0)
+    except exception.ProcessExecutionError:
+        active = False
+    except Exception as ex:
+        raise exception.SysinvException("Failed to check if the service [%s] is active or not. "
+                                        "Error: [%s]" % (service_name, ex))
+    return active
+
+
+def systemctl_is_enabled_service(service_name):
+    """Check if a systemd service is enabled
+
+    :param: service_name: string: Name of the service to be checked
+    :raises: SysinvException
+    """
+    enabled = True
+    try:
+        cmd = [constants.SYSTEMCTL_PATH, constants.IS_ENABLED_COMMAND, service_name]
+        execute(*cmd, check_exit_code=0)
+    except exception.ProcessExecutionError:
+        enabled = False
+    except Exception as ex:
+        raise exception.SysinvException("Failed to check if the service [%s] is enabled or not. "
+                                        "Error: [%s]" % (service_name, ex))
+    return enabled
+
+
+def systemctl_mask_service(service_name, runtime=False, now=False):
+    """Mask a systemd service
+
+    :param: service_name: string: Name of the service to be masked
+    :raises: SysinvException
+    """
+    try:
+        cmd = [constants.SYSTEMCTL_PATH, constants.MASK_COMMAND, service_name]
+        if runtime:
+            cmd.append(constants.SYSTEMCTL_RUNTIME_FLAG)
+        if now:
+            cmd.append(constants.SYSTEMCTL_NOW_FLAG)
+        execute(*cmd, check_exit_code=0)
+        LOG.info("Service %s masked successfully" % (service_name))
+    except Exception as ex:
+        raise exception.SysinvException("Failed to mask the service %s with error: [%s]"
+                                        % (service_name, ex))
+
+
+def systemctl_unmask_service(service_name, runtime=False, now=False):
+    """Unmask a systemd service
+
+    :param: service_name: string: Name of the service to be unmasked
+    :raises: SysinvException
+    """
+    try:
+        cmd = [constants.SYSTEMCTL_PATH, constants.UNMASK_COMMAND, service_name]
+        if runtime:
+            cmd.append(constants.SYSTEMCTL_RUNTIME_FLAG)
+        if now:
+            cmd.append(constants.SYSTEMCTL_NOW_FLAG)
+        execute(*cmd, check_exit_code=0)
+        LOG.info("Service %s unmasked successfully" % (service_name))
+    except Exception as ex:
+        raise exception.SysinvException("Failed to unmask the service %s with error: [%s]"
+                                        % (service_name, ex))
+
+
+def systemctl_restart_service(service_name):
+    """Restart a service using systemctl
+
+    :param: service_name: string: Name of the service to be restarted
+    :raises: SysinvException upon failure
+    """
+    try:
+        cmd = [constants.SYSTEMCTL_PATH, constants.RESTART_COMMAND, service_name]
+        execute(*cmd, check_exit_code=0)
+        LOG.info("Service %s restarted successfully" % (service_name))
+    except Exception as ex:
+        raise exception.SysinvException("Failed to restart the service %s with error: [%s]"
+                                        % (service_name, ex))
+
+
+def systemctl_start_service(service_name):
+    """Start a service using systemctl
+
+    :param: service_name: string: Name of the service to be started
+    :raises: SysinvException upon failure
+    """
+    try:
+        cmd = [constants.SYSTEMCTL_PATH, constants.START_COMMAND, service_name]
+        execute(*cmd, check_exit_code=0)
+        LOG.info("Service %s started successfully" % (service_name))
+    except Exception as ex:
+        raise exception.SysinvException("Failed to start the service %s with error: [%s]"
+                                        % (service_name, ex))
+
+
+def pmon_start_service(service_name):
+    """Start a systemd service using pmon
+
+    :param: service_name: string: Name of the service to be started
+    :raises: SysinvException upon failure
+    """
+    try:
+        cmd = [constants.PMON_START_FULL_PATH, service_name]
+        execute(*cmd, check_exit_code=0)
+        LOG.info("Service %s pmon-started successfully" % (service_name))
+    except Exception as ex:
+        raise exception.SysinvException("Failed to start the service %s with error: [%s]"
+                                        % (service_name, ex))
+
+
+def pmon_stop_service(service_name):
+    """Stop a systemd service using pmon
+
+    :param: service_name: string: Name of the service to be stopped
+    :raises: SysinvException upon failure
+    """
+    try:
+        cmd = [constants.PMON_STOP_FULL_PATH, service_name]
+        execute(*cmd, check_exit_code=0)
+        LOG.info("Service %s pmon-stopped successfully" % (service_name))
+    except Exception as ex:
+        raise exception.SysinvException("Failed to stop the service %s with error: [%s]"
+                                        % (service_name, ex))
+
+
+def sm_restart_service(service_name, safe=True):
+    """Restart a service using sm-restart
+
+    :param: service_name: string: Name of the service to be restarted
+    :param: safe: If True, service will be restarted with command sm-restart-safe otherwise
+                  with just sm-restart.
+    :raises: SysinvException upon failure or service is not managed by sm
+    """
+    try:
+        if safe:
+            command = constants.SM_RESTART_SAFE
+        else:
+            command = constants.SM_RESTART
+
+        cmd = [command, 'service', service_name]
+
+        stdout, _ = execute(*cmd, check_exit_code=0)
+
+        if "does not exist" in stdout:
+            raise exception.SysinvException("service %s is not managed by the service-manager."
+                                            % (service_name))
+
+        LOG.info("Service %s restarted successfully" % (service_name))
+
+    except Exception as ex:
+        raise exception.SysinvException("Failed to restart the service %s with error: [%s]"
+                                        % (service_name, ex))
 
 
 # def ssh_connect(connection):
@@ -427,6 +683,24 @@ def is_valid_mac(address):
     m = "[0-9a-f]{2}([-:])[0-9a-f]{2}(\\1[0-9a-f]{2}){4}$"
     if isinstance(address, six.string_types) and re.match(m, address.lower()):
         return True
+    return False
+
+
+def is_empty_value(value):
+    """checks empty or nullish values
+
+    :param value: value to be checked
+    :return bool: True if value is empty or nullish
+    """
+    if not value:
+        return True
+
+    if isinstance(value, str):
+        if len(value.strip()) == 0:
+            return True
+        if value.strip().lower() in ["none", "null"]:
+            return True
+
     return False
 
 
@@ -1870,11 +2144,18 @@ def update_mgmt_controller_routes(dbapi, mgmt_iface_id, host=None):
     # Mirror the management routes from the mate controller.
     # Do this by copying all the routes configured on the management
     # interface on the mate controller (if it exists).
+
     if host:
         host_id = host.id
     else:
         mgmt_iface = dbapi.iinterface_get(mgmt_iface_id)
         host_id = mgmt_iface.forihostid
+        host = dbapi.ihost_get(host_id)
+
+    if host and host.personality != constants.CONTROLLER:
+        LOG.debug("Host ID: {} is {}. Ignore route update for iface id: {}"
+                  .format(host_id, host.personality, mgmt_iface_id))
+        return
 
     controller_hosts = dbapi.ihost_get_by_personality(constants.CONTROLLER)
     mate_controller = None
@@ -1884,7 +2165,8 @@ def update_mgmt_controller_routes(dbapi, mgmt_iface_id, host=None):
             break
 
     if not mate_controller:
-        LOG.info("DC Config: Mate controller for host id %s not found. Routes not added." % host_id)
+        LOG.info("DC Config: Mate controller for host id {} not found."
+                 " Routes not added.".format(host_id))
         return
 
     mate_interfaces = dbapi.iinterface_get_all(forihostid=mate_controller.id)
@@ -1893,7 +2175,8 @@ def update_mgmt_controller_routes(dbapi, mgmt_iface_id, host=None):
             mate_mgmt_iface = interface
             break
     else:
-        LOG.error("Management interface for host %d not found." % mate_controller.hostname)
+        LOG.error("Management interface for host {} not found."
+                  .format(mate_controller.hostname))
         return
 
     routes = dbapi.routes_get_by_interface(mate_mgmt_iface.id)
@@ -1908,8 +2191,9 @@ def update_mgmt_controller_routes(dbapi, mgmt_iface_id, host=None):
         except exception.RouteAlreadyExists:
             LOG.info("DC Config: Attempting to add duplicate route to system controller.")
 
-        LOG.info("DC Config: Added route to subcloud: %s/%s gw:%s on mgmt_iface_id: %s" %
-                 (new_route['network'], new_route['prefix'], new_route['gateway'], mgmt_iface_id))
+        LOG.info("DC Config: Added route to subcloud: {}/{} gw:{} on mgmt_iface_id: {}"
+                 .format(new_route['network'], new_route['prefix'],
+                         new_route['gateway'], mgmt_iface_id))
 
 
 def perform_distributed_cloud_config(dbapi, mgmt_iface_id, host):
@@ -2263,24 +2547,58 @@ def is_valid_dns_hostname(value):
         return False
 
 
+def is_valid_dns_local(value):
+    """
+    Validate domain names acceptable by dnsmasq 'local=' directive
+    with TLD based on RFC specs including IDN Punycode.
+    """
+    # If the name ends with a trailing dot (e.g. "example.local."),
+    # remove it — dnsmasq and DNS treat it as canonical but optional.
+    if value.endswith('.'):
+        value = value[:-1]
+
+    pattern = re.compile(
+        # length must be 1 to 253 chars
+        r'^(?=.{1,253}$)'
+        # dash can't be used in the first character of the first label
+        # dash can't be used as the last chareacter of the label
+        # labels must contains 1 to 63 alphanumeric or dash chars
+        r'(?!-)([A-Za-z0-9-]{1,63})(?<!-)'
+        # zero or more labels, each:
+        #  - preceded by a dot
+        #  - not starting or ending with a dash
+        r'(\.(?!-)([A-Za-z0-9-]{1,63})(?<!-))*$'
+    )
+
+    # Empty strings not allowed
+    if not value:
+        return False
+
+    # Doesn't contain underscore or double dots
+    if '..' in value or '_' in value:
+        return False
+
+    # Reject domain made only of digits only even with dots
+    if value.replace('.', '').isdigit():
+        return False
+
+    return bool(pattern.match(value))
+
+
 def verify_checksum(path):
     """ Find and validate the checksum file in a given directory. """
     rc = True
     for f in os.listdir(path):
         if f.endswith('.md5'):
-            cwd = os.getcwd()
-            os.chdir(path)
             with open(os.devnull, "w") as fnull:
                 try:
                     subprocess.check_call(['md5sum', '-c', f],  # pylint: disable=not-callable
-                                          stdout=fnull, stderr=fnull)
+                                          cwd=path, stdout=fnull, stderr=fnull)
                     LOG.info("Checksum file is included and validated.")
+                    return rc
                 except Exception as e:
                     LOG.exception(e)
                     rc = False
-                finally:
-                    os.chdir(cwd)
-                    return rc
     LOG.info("Checksum file is not included, skipping validation.")
     return rc
 
@@ -2950,10 +3268,11 @@ def get_cert_subject_string_hash(cert):
     return hashed_attributes
 
 
-def get_certificate_from_file(file_path):
+def get_certificate_from_file(file_path, index=0):
     """ Extract certificate from a specific file
 
     :param file_path: the absolute path of the file which has the certificate
+    :index: index of certificate in the list returns from the extract_certs_from_pem()
     :returns: a x509.Certificate object that will store information regarding this certificate
     """
     LOG.debug("extracting information of certificate in %s" % file_path)
@@ -2961,7 +3280,7 @@ def get_certificate_from_file(file_path):
         with open(file_path, 'rb') as file_data:
             file_data.seek(0, os.SEEK_SET)
             read_file = file_data.read()
-            certificate = extract_certs_from_pem(read_file)[0]
+            certificate = extract_certs_from_pem(read_file)[index]
     except Exception as e:
         LOG.warning("No certificate was extracted from file %s"
                     "due to %s" % (file_path, e))
@@ -3437,120 +3756,6 @@ def TempDirectory():
             LOG.error(_('Could not remove tmpdir: %s'), str(e))
 
 
-def get_stevedore_major_version():
-    if six.PY2:
-        # Hardcode Stevedore 1.25.0 for CentOS7 that has Python2.
-        # Support for Python2 will be dropped soon, and this removed.
-        return 1
-
-    package = 'stevedore'
-    if USE_IMPORTLIB_METADATA_STDLIB:
-        distribution = importlib.metadata.distribution
-    else:
-        distribution = importlib_metadata.distribution
-
-    return int(distribution(package).version.split('.')[0])
-
-
-def get_distribution_from_entry_point(entry_point):
-    """
-    With Stevedore 3.0.0 the entry_point object was changed.
-    https://docs.openstack.org/releasenotes/stevedore/victoria.html
-
-    This affects some of our Stevedore based logic on Debian Bullseye which
-    currently uses Stevedore 3.2.2.
-
-    In Python3.9.2 used on Debian Bullseye the EntryPoint returned by
-    importlib does not hold a reference to a Distribution object.
-    https://bugs.python.org/issue42382
-
-    Determine the missing information by parsing all modules in Python3 envs.
-    This can be removed when Python will be patched or upgraded.
-
-    :param entry_point: An EntryPoint object
-    :return: A Distribution object
-    :raises exception.SysinvException: If distribution could not be found
-    """
-    # Just a refactor on this path
-    if get_stevedore_major_version() < 3:
-        return entry_point.dist
-
-    if six.PY2:
-        raise exception.SysinvException(_(
-            "Python2 + Stevedore 3 and later support not implemented: "
-            "parsing modules in Python2 not implemented."))
-
-    loaded_entry_point = entry_point.load()
-    if isinstance(loaded_entry_point, types.ModuleType):
-        module_path = loaded_entry_point.__file__
-    else:
-        module_path = sys.modules[loaded_entry_point.__module__].__file__
-    if USE_IMPORTLIB_METADATA_STDLIB:
-        distributions = importlib.metadata.distributions
-    else:
-        distributions = importlib_metadata.distributions
-
-    for distribution in distributions():
-        try:
-            relative = pathlib.Path(module_path).relative_to(
-                distribution.locate_file("")
-            )
-        except ValueError:
-            pass
-        else:
-            if distribution.files and relative in distribution.files:
-                return distribution
-
-    raise exception.SysinvException(_(
-            "Distribution information for entry point {} "
-            "could not be found.".format(entry_point)))
-
-
-def get_project_name_and_location_from_distribution(distribution):
-    """
-    With Stevedore 3.0.0 the entry_point object was changed.
-    https://docs.openstack.org/releasenotes/stevedore/victoria.html
-
-    This affects some of our Stevedore based logic on Debian Bullseye which
-    currently uses Stevedore 3.2.2.
-
-    Determine the missing information by parsing the Distribution object.
-
-    :param distribution: A Distribution object
-    :return: Tuple of project name and project location. Location being
-             the parent of directory named <project name>
-    """
-    # Just a refactor on this path
-    if get_stevedore_major_version() < 3:
-        return (distribution.project_name, distribution.location)
-
-    project_name = distribution.metadata.get('Name')
-    project_location = str(distribution._path.parent)
-    return (project_name, project_location)
-
-
-def get_module_name_from_entry_point(entry_point):
-    """
-    With Stevedore 3.0.0 the entry_point object was changed.
-    https://docs.openstack.org/releasenotes/stevedore/victoria.html
-
-    This affects some of our Stevedore based logic on Debian Bullseye which
-    currently uses Stevedore 3.2.2.
-
-    :param entry_point: An EntryPoint object
-    :return: Module name
-    :raises exception.SysinvException: If module name could not be found
-    """
-    if 'module_name' in dir(entry_point):
-        return entry_point.module_name
-    elif 'module' in dir(entry_point):
-        return entry_point.module
-
-    raise exception.SysinvException(_(
-            "Module name for entry point {} "
-            "could not be determined.".format(entry_point)))
-
-
 def get_mpath_from_dm(dm_device):
     """Get mpath node from /dev/dm-N"""
     mpath_device = None
@@ -3792,9 +3997,43 @@ def is_bundle_extension_valid(filename):
     return file_extension.lower() == ".tgz"
 
 
+def get_host_mgmt_ip(dbapi, host_obj):
+    """Return the host's management network primary address
+
+    :param dbapi: the database api
+    :param host_obj: the host object
+
+    :return: the address in string format, or None if not found
+    """
+    if host_obj.hostname:
+        hostname = host_obj.hostname
+
+        if host_obj.hostname == constants.CONTROLLER_0_HOSTNAME:
+
+            # During mgmt network reconfiguration, do not change the mgmt IP
+            # in maintencance as it will be updated after the unlock.
+            if os.path.isfile(tsc.MGMT_NETWORK_RECONFIGURATION_ONGOING):
+                return gethostbyname(constants.CONTROLLER_0_FQDN)
+
+            system = dbapi.isystem_get_one()
+            if (system.capabilities.get('simplex_to_duplex_migration') or
+                    system.capabilities.get('simplex_to_duplex-direct_migration')):
+                        # during migration, controller-0 is still using the mgmt floating address,
+                        # the unit address will be available only after unlock to finish
+                        # migration to DX
+                        hostname = constants.CONTROLLER_HOSTNAME
+
+        addr_name = format_address_name(hostname, constants.NETWORK_TYPE_MGMT)
+        addr_obj = get_primary_address_by_name(dbapi, addr_name,
+                                               constants.NETWORK_TYPE_MGMT)
+        if addr_obj:
+            return addr_obj.address
+    return None
+
+
 def get_primary_address_by_name(dbapi, db_address_name, networktype, raise_exc=False):
     """Search address by database name to retrieve the relevant address from
-       the primary pool, if multipĺe entries for the same name are found, the
+       the primary pool, if multiple entries for the same name are found, the
        query will use the network's pool_uuid to get the address family (IPv4 or
        IPv6) related to the primary.
 
@@ -3805,6 +4044,26 @@ def get_primary_address_by_name(dbapi, db_address_name, networktype, raise_exc=F
 
     :return: the address object if found, None otherwise
     """
+    if (
+        is_aio_simplex_system(dbapi)
+        and networktype in (
+            constants.NETWORK_TYPE_ADMIN,
+            constants.NETWORK_TYPE_MGMT,
+            constants.NETWORK_TYPE_CLUSTER_HOST,
+            constants.NETWORK_TYPE_STORAGE,
+            constants.NETWORK_TYPE_PXEBOOT,
+        )
+        and db_address_name == f"{constants.CONTROLLER_0_HOSTNAME}-{networktype}"
+    ):
+        db_address_name = f"{constants.CONTROLLER_HOSTNAME}-{networktype}"
+    else:
+        system = dbapi.isystem_get_one()
+        if (system.capabilities.get('simplex_to_duplex_migration') or
+                system.capabilities.get('simplex_to_duplex-direct_migration')) and \
+                db_address_name == f"{constants.CONTROLLER_0_HOSTNAME}-{networktype}":
+            if len(dbapi.address_get_by_name(db_address_name)) == 0:
+                db_address_name = f"{constants.CONTROLLER_HOSTNAME}-{networktype}"
+
     # first search directly by name
     address = dbapi.address_get_by_name(db_address_name)
     if len(address) == 0:
@@ -3847,7 +4106,7 @@ def get_primary_address_by_name(dbapi, db_address_name, networktype, raise_exc=F
 
 def get_secondary_address_by_name(dbapi, db_address_name, networktype, raise_exc=False):
     """Search address by database name to retrieve the relevant address from
-       the secondary pool, if multipĺe entries for the same name are found, the
+       the secondary pool, if multiple entries for the same name are found, the
        query will use the network's pool_uuid to get the address family (IPv4 or
        IPv6) related to the secondary.
 
@@ -3864,6 +4123,23 @@ def get_secondary_address_by_name(dbapi, db_address_name, networktype, raise_exc
     if not db_address_name or not networktype:
         LOG.err(f"no db_address_name={db_address_name} or networktype={networktype} provided")
         return address
+
+    if (
+        is_aio_simplex_system(dbapi)
+        and networktype in (
+            constants.NETWORK_TYPE_MGMT,
+            constants.NETWORK_TYPE_CLUSTER_HOST,
+        )
+        and db_address_name == f"{constants.CONTROLLER_0_HOSTNAME}-{networktype}"
+    ):
+        db_address_name = f"{constants.CONTROLLER_HOSTNAME}-{networktype}"
+    else:
+        system = dbapi.isystem_get_one()
+        if (system.capabilities.get('simplex_to_duplex_migration') or
+                system.capabilities.get('simplex_to_duplex-direct_migration')) and \
+                db_address_name == f"{constants.CONTROLLER_0_HOSTNAME}-{networktype}":
+            if len(dbapi.address_get_by_name(db_address_name)) == 0:
+                db_address_name = f"{constants.CONTROLLER_HOSTNAME}-{networktype}"
 
     try:
         networks = dbapi.networks_get_by_type(networktype)
@@ -4234,6 +4510,18 @@ def get_resources_list_via_kubectl_kustomize(manifest_dir):
     return resources_list
 
 
+def filter_helm_objects(resources, kind):
+    """
+    Filters the resources to include only those with the parameterized kind".
+
+    param: resources: The list of dictionaries representing the KRM resources.
+
+    Returns: List of dictionaries containing the requested kind.
+    """
+
+    return [resource for resource in resources if resource.get('kind') == kind]
+
+
 def filter_helm_releases(resources):
     """
     Filters the resources to include only those with kind 'HelmRelease'.
@@ -4243,7 +4531,19 @@ def filter_helm_releases(resources):
     Returns: List of dictionaries with kind 'HelmRelease'.
     """
 
-    return [resource for resource in resources if resource.get('kind') == 'HelmRelease']
+    return filter_helm_objects(resources, 'HelmRelease')
+
+
+def filter_helm_repositories(resources):
+    """
+    Filters the resources to include only those with kind 'HelmRepository'.
+
+    param: resources: The list of dictionaries representing the KRM resources.
+
+    Returns: List of dictionaries with kind 'HelmRepository'.
+    """
+
+    return filter_helm_objects(resources, 'HelmRepository')
 
 
 def is_certificate_request_created(name):
@@ -4278,6 +4578,20 @@ def is_certificate_request_created(name):
     return False
 
 
+def run_kubectl(cmd):
+    """Run a kubectl command and return stdout, stderr)."""
+    process = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        universal_newlines=True
+    )
+
+    stdout, stderr = process.communicate()
+
+    return stdout.strip("'"), stderr.strip("'")
+
+
 def get_certificate_request(name):
     """
     Get a CertificateRequest resource
@@ -4288,22 +4602,48 @@ def get_certificate_request(name):
     """
 
     try:
-        cmd = ['kubectl', '--kubeconfig', kubernetes.KUBERNETES_ADMIN_CONF,
-               '-n', constants.CERT_NAMESPACE_PLATFORM_CERTS, 'get',
-               constants.CERT_REQUEST_RESOURCE, name, '-o',
-               "jsonpath='{.status.certificate}'"]
+        # Try a few times to wait for the certificaterequest to be ready
+        interval = 2
+        count = 3
+        for i in range(count):
+            # check if the certificaterequest is ready
+            cmd = ['kubectl', '--kubeconfig', kubernetes.KUBERNETES_ADMIN_CONF,
+                   '-n', constants.CERT_NAMESPACE_PLATFORM_CERTS, 'get',
+                   constants.CERT_REQUEST_RESOURCE, name, '-o',
+                   "jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}'"]
+            ready, stderr = run_kubectl(cmd)
 
-        process = subprocess.Popen(cmd,
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        universal_newlines=True)
+            # certificaterequest is ready
+            if ready == "True":
+                break
 
-        stdout, stderr = process.communicate()
+            if i == count - 1:
+                raise exception.SysinvException("CertificateRequest %s is not ready "
+                                                "in %s seconds." % (name, interval * count))
+            LOG.info(f"{name} is not ready: {stderr}. Will retry in {interval} seconds ...")
+            time.sleep(interval)
 
-        if process.returncode != 0:
-            LOG.error(f"Failed to get CertificateRequest resource. {stderr}")
-            return None
+        # Try a few times to retrieve the certificate from the certificaterequest
+        interval = 2
+        count = 3
+        for i in range(count):
+            cmd = ['kubectl', '--kubeconfig', kubernetes.KUBERNETES_ADMIN_CONF,
+                   '-n', constants.CERT_NAMESPACE_PLATFORM_CERTS, 'get',
+                   constants.CERT_REQUEST_RESOURCE, name, '-o',
+                   "jsonpath='{.status.certificate}'"]
+            cert, stderr = run_kubectl(cmd)
 
-        return stdout.strip("'")
+            # The certificate is retrieved
+            if cert:
+                break
+
+            if i == count - 1:
+                raise exception.SysinvException("Certificate %s is not retrieved "
+                                                "in %s seconds." % (name, interval * count))
+            LOG.info(f"{name} is still empty: {stderr}. Will retry in {interval} seconds ...")
+            time.sleep(interval)
+
+        return cert
 
     except Exception as e:
         LOG.error(f"Error trying to get CertificateRequest resource, reason: {e}")
@@ -4341,3 +4681,260 @@ def delete_certificate_request(name):
         LOG.error(f"Error trying to delete CertificateRequest resource, reason: {e}")
 
     return False
+
+
+def truncate_message(message, max_length=255):
+    """Truncate a progress message to fit within the database field limit.
+
+    :param message: The progress message to truncate.
+    :param max_length: The maximum allowed length for the message (default is 255).
+    :returns: The truncated message.
+    """
+    if not isinstance(message, str):
+        raise ValueError("Message must be a string.")
+    if max_length <= 0:
+        raise ValueError("Maximum length must be a positive integer.")
+    return (message[:max_length - 3] + '...') if len(message) > max_length else message
+
+
+def update_app_status(rpc_app, new_status=None, new_progress=None):
+    """Update the status and progress of an application in the database.
+
+    :param rpc_app: The application object to update.
+    :param new_status: The new status to set for the application.
+    :param new_progress: The new progress message to set for the application.
+    """
+    if new_status is not None:
+        rpc_app.status = new_status
+
+    # Define a persistent lock object at the module level
+    rpc_app_lock = threading.Lock()
+
+    # New progress info can contain large messages from exceptions raised.
+    # It may need to be truncated to fit the corresponding database field.
+    if new_progress is not None:
+        new_progress = truncate_message(new_progress)
+        rpc_app.progress = new_progress
+
+    with rpc_app_lock:
+        rpc_app.save()
+
+
+def get_app_metadata_from_tarfile(absolute_tarball_path):
+    """Extract metadata from a tar file.
+
+    :params app_name: application name
+    :params tarball_name: absolute path of app tarfile
+    :returns: metadata dictionary
+    """
+    metadata = {}
+    with TempDirectory() as app_path:
+        if not extract_tarfile(app_path, absolute_tarball_path):
+            LOG.error("Failed to extract tar file {}.".format(
+                os.path.basename(absolute_tarball_path)))
+            return None
+        metadata_file = os.path.join(app_path,
+                                     constants.APP_METADATA_FILE)
+
+        if os.path.exists(metadata_file):
+            with io.open(metadata_file, 'r', encoding='utf-8') as f:
+                # The RoundTripLoader removes the superfluous quotes by default.
+                # Set preserve_quotes=True to preserve all the quotes.
+                # The assumption here: there is just one yaml section
+                metadata = yaml.safe_load(f)
+
+    return metadata
+
+
+def compare_lists_of_dict(dependent_parent_list, dependent_parent_exceptions):
+    """
+    Compare two lists of dictionaries to determine if they are equivalent.
+    This function converts the input lists of dictionaries into sets of tuples,
+    where each tuple represents the key-value pairs of a dictionary. It then
+    compares the two sets for equality.
+    Args:
+        dependent_parent_list (list[dict]): A list of dictionaries representing
+            the first set of dependent parents.
+        dependent_parent_exceptions (list[dict]): A list of dictionaries representing
+            the second set of dependent parents to compare against.
+    Returns:
+        bool: True if the two lists are equivalent (contain the same dictionaries),
+              False otherwise.
+    """
+    # Convert both lists to sets of tuples for easier comparison
+    set_parent_list = {tuple(item.items()) for item in dependent_parent_list}
+    set_parent_exceptions = {tuple(item.items()) for item in dependent_parent_exceptions}
+
+    # Compare the sets
+    return set_parent_list == set_parent_exceptions
+
+
+def pmon_restart_service(service_name):
+    """Restart a systemd service using pmon
+
+    :param: service_name: string: Name of the service to be restarted
+    :raises: SysinvException upon failure
+    """
+    try:
+        cmd = [constants.PMON_RESTART_FULL_PATH, service_name]
+        execute(*cmd, check_exit_code=0)
+        LOG.info("Service %s pmon-restarted successfully" % (service_name))
+    except Exception as ex:
+        raise exception.SysinvException("Failed to restart the service %s with error: [%s]"
+                                        % (service_name, ex))
+
+
+def flatten_nested_lists(nested_lists):
+    """
+    Recursively flattens a nested list structure into a single flat list.
+
+    Args:
+        nested_lists (list): A list which may contain other nested lists at arbitrary depth.
+
+    Returns:
+        list: A flat list containing all the elements from the nested lists.
+
+    Example:
+        >>> flatten_nested_lists([1, [2, [3, 4], 5], 6])
+        [1, 2, 3, 4, 5, 6]
+    """
+
+    flat_list = []
+    for item in nested_lists:
+        if isinstance(item, list):
+            flat_list.extend(flatten_nested_lists(item))
+        else:
+            flat_list.append(item)
+    return flat_list
+
+
+def render_jinja_template_from_file(path_to_template, template_file_name,
+                                    custom_filters=None, values=None):
+    """ Render a jinja template with values passed
+
+    :param: path_to_template: Full path to the parent directory of .j2 template file
+    :param: template_file_name: .j2 template file name
+    :param: custom_filters: dictionary of custom filters with built-in jinja2 filters as keys
+                            and their equivalent handler methods (either library or custom)
+                            as values
+    :param: values: key-value pairs to be rendered
+    :returns: rendered_string
+    :raises: SysinvEnxception in case of an error
+    """
+    rendered_string = ""
+    try:
+        file_loader = FileSystemLoader(path_to_template)
+        env = Environment(loader=file_loader, autoescape=True)
+        if custom_filters:
+            env.filters.update(custom_filters)
+        template = env.get_template(template_file_name)
+        if not values:
+            values = {}
+        rendered_string = template.render(values)
+    except Exception as e:
+        raise exception.SysinvException("Failed to render jinja template [%s] at [%s] "
+                                        "with values: [%s]. Error: [%s] "
+                                        % (template_file_name, path_to_template, values, e))
+    return rendered_string
+
+
+def verify_activate_rollback_in_progress(dbapi):
+    """
+    Check if a platform upgrade is currently in the 'activate-rollback' or
+    'activate-rollback-failed' state.
+    Args:
+        dbapi: Database API object used to access upgrade information.
+
+    Returns:
+        bool: True if an activate rollback is in progress or failed, False otherwise.
+    """
+
+    result = False
+    try:
+        upgrade = usm_service.get_platform_upgrade(dbapi)
+    except exception.NotFound:
+        pass
+    else:
+        if upgrade.state in [
+            constants.DEPLOY_STATE_ACTIVATE_ROLLBACK,
+            constants.DEPLOY_STATE_ACTIVATE_ROLLBACK_FAILED
+        ]:
+            result = True
+
+    return result
+
+
+def remove_public_registry_port(img_tag):
+    """
+    Fix image tag by removing public registry port when pushing to
+    the local registry.
+
+    image goes from the incorrect format:
+    registry.local:9001/public.example.com:30093/stx/some-image:some-tag
+
+    to the compliant:
+    registry.local:9001/public.example.com/stx/some-image:some-tag
+
+    :param img_tag: str
+    :return: str
+
+    """
+    regex_pattern = r"(?P<url1>.*)\/(?P<url2>.+)(?P<port>:\d+)\/(?P<image>.+)"
+    substitution_pattern = "\\g<url1>/\\g<url2>/\\g<image>"
+
+    return re.sub(regex_pattern, substitution_pattern, img_tag, 1)
+
+
+def atomic_update_yaml_file(values, file_path):
+    """
+    Atomically updates a YAML file with the provided values.
+    This function creates a temporary file within the same folder as the file_path
+    parameter and updates it with the values parameter, then atomically renames the
+    temporary file to the target file path. This ensures that the update is atomic
+    and reduces the risk of data corruption.
+
+    Args:
+        values (iterable): The data to be written to the YAML file.
+        file_path (str): The path to the YAML file to be updated.
+    """
+
+    if os.path.exists(file_path):
+        # Get the directory of the file to be updated
+        file_dir = os.path.dirname(file_path)
+        with tempfile.TemporaryDirectory(dir=file_dir) as temp_dirname:
+            # Create a temporary file path in the same directory
+            temp_file_path = os.path.join(temp_dirname, os.path.basename(file_path))
+
+            with open(temp_file_path, 'w', encoding='utf-8') as f:
+                try:
+                    # Write the values to the temporary file using yaml.safe_dump
+                    yaml.safe_dump(values, f, default_flow_style=False)
+                    LOG.debug(f"Temporary file {temp_file_path} generated")
+                except Exception as e:
+                    raise exception.SysinvException(
+                        f"Failed to generate temporary file {temp_file_path}: {e}")
+            try:
+                # Atomically rename the temporary file to the target file path
+                os.rename(temp_file_path, file_path)
+                LOG.debug(f"Updated file {file_path} atomically with {temp_file_path}")
+            except Exception as e:
+                raise exception.SysinvException(f"Failed to update file "
+                        f"{file_path} with temporary file {temp_file_path}: {e}")
+    else:
+        raise exception.SysinvException(f"File {file_path} does not exist. Cannot update.")
+
+
+def is_enrollment_in_progress():
+    """Check if enrollment is in progress"""
+
+    return os.path.isfile(constants.ANSIBLE_ENROLLMENT_FLAG) or \
+        os.path.isfile(constants.ANSIBLE_ENROLLMENT_COMPLETED_FLAG)
+
+
+def config_is_reboot_required(config_uuid):
+    """Check if the supplied config_uuid has the reboot required flag
+
+    :param config_uuid UUID object or UUID string
+    :return True if reboot is required, False otherwise
+    """
+    return int(uuid.UUID(config_uuid)) & constants.CONFIG_REBOOT_REQUIRED

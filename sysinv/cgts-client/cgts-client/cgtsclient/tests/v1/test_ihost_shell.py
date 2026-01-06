@@ -250,3 +250,11 @@ class HostTest(test_shell.ShellTest):
                          FAKE_KERNEL['kernel_provisioned'])
         self.assertEqual(kernel['kernel_running'],
                          FAKE_KERNEL['kernel_running'])
+
+    @mock.patch('cgtsclient.v1.ihost.ihostManager.vim_host_audit')
+    def test_vim_host_audit(self, mock_vim_host_audit):
+        self.make_env()
+        mock_vim_host_audit.return_value = None
+        results = self.shell(f"vim-host-audit {FAKE_IHOST['hostname']}")
+        self.assertIn("Host audit initiated successfully", results)
+        mock_vim_host_audit.assert_called_once_with(FAKE_IHOST['uuid'])

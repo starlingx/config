@@ -288,8 +288,6 @@ class SssdPuppet(base.BasePuppet):
                     domain_parameters['ldap_uri'] = uri
                     domain_parameters['ldap_access_filter'] = access_filter
                     domain_parameters['ldap_search_base'] = search_base
-                    sudo_search_base = "OU=sudoers," + search_base[search_base.find('DC='):]
-                    domain_parameters['ldap_sudo_search_base'] = sudo_search_base
                     domain_parameters['ldap_default_bind_dn'] = default_bind_dn
                     domain_parameters['ldap_default_authtok'] = default_authtok
         else:

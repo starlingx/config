@@ -23,6 +23,7 @@ class User(base.SysinvObject):
             'root_sig': utils.str_or_none,
             'passwd_hash': utils.str_or_none,
             'passwd_expiry_days': utils.int_or_none,
+            'passwd_last_change': utils.int_or_none,
             'reserved_1': utils.str_or_none,
             'reserved_2': utils.str_or_none,
             'reserved_3': utils.str_or_none,

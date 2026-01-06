@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2023 Wind River Systems, Inc.
+# Copyright (c) 2013-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -21,8 +21,9 @@ import requests
 import ruamel.yaml as yaml
 from ruamel.yaml.compat import StringIO
 import shutil
+import subprocess
+import sys
 import time
-import tsconfig.tsconfig as tsc
 import urllib3
 
 from eventlet import greenpool
@@ -37,8 +38,9 @@ from six.moves import http_client as httplib
 from urllib3.exceptions import MaxRetryError
 
 from oslo_log import log as logging
-from sysinv.common import exception
 from sysinv.common import constants
+from sysinv.common import exception
+from sysinv.common import utils
 from sysinv.common.retrying import retry
 
 K8S_MODULE_MAJOR_VERSION = int(K8S_MODULE_VERSION.split('.')[0])
@@ -52,15 +54,26 @@ CERT_MANAGER_GROUP = 'cert-manager.io'
 V1_ALPHA_2 = 'v1alpha2'
 CERT_MANAGER_VERSION = 'v1'
 
-
 # Kubernetes Files
-KUBERNETES_ADMIN_CONF = '/etc/kubernetes/admin.conf'
-KUBERNETES_ROOTCA_CERT = '/etc/kubernetes/pki/ca.crt'
-KUBERNETES_NEW_ROOTCA_CERT = '/etc/kubernetes/pki/ca_new.crt'
-KUBERNETES_APISERVER_CERT = '/etc/kubernetes/pki/apiserver.crt'
+KUBEADM_FLAGS_FILE = '/var/lib/kubelet/kubeadm-flags.env'
+KUBERNETES_CONF_DIR = '/etc/kubernetes/'
+KUBERNETES_ADMIN_CONF = os.path.join(KUBERNETES_CONF_DIR, 'admin.conf')
+KUBERNETES_KUBELET_CONF = os.path.join(KUBERNETES_CONF_DIR, 'kubelet.conf')
+KUBERNETES_SUPER_ADMIN_CONF = os.path.join(KUBERNETES_CONF_DIR, 'super-admin.conf')
+KUBERNETES_CONF_CERTS = os.path.join(KUBERNETES_CONF_DIR, 'pki')
+KUBERNETES_ROOTCA_CERT = os.path.join(KUBERNETES_CONF_CERTS, 'ca.crt')
+KUBERNETES_NEW_ROOTCA_CERT = os.path.join(KUBERNETES_CONF_CERTS, 'ca_new.crt')
+KUBERNETES_APISERVER_CERT = os.path.join(KUBERNETES_CONF_CERTS, 'apiserver.crt')
+KUBE_CONTROL_PLANE_MANIFESTS_PATH = os.path.join(KUBERNETES_CONF_DIR, 'manifests')
 
 # Kubernetes clusters
 KUBERNETES_CLUSTER_DEFAULT = "kubernetes"
+
+# Kubernetes symlinks paths
+KUBERNETES_VERSIONED_BINARIES_ROOT = '/usr/local/kubernetes/'
+KUBERNETES_SYMLINKS_ROOT = '/var/lib/kubernetes/'
+KUBERNETES_SYMLINKS_STAGE_1 = os.path.join(KUBERNETES_SYMLINKS_ROOT, 'stage1')
+KUBERNETES_SYMLINKS_STAGE_2 = os.path.join(KUBERNETES_SYMLINKS_ROOT, 'stage2')
 
 # Kubernetes users
 KUBERNETES_ADMIN_USER = "kubernetes-admin"
@@ -79,6 +92,13 @@ NAMESPACE_DEPLOYMENT = 'deployment'
 KUBE_APISERVER = 'kube-apiserver'
 KUBE_CONTROLLER_MANAGER = 'kube-controller-manager'
 KUBE_SCHEDULER = 'kube-scheduler'
+
+# Kubernetes systemd service names
+KUBE_CONTAINERD_SYSTEMD_SERVICE_NAME = 'containerd'
+KUBE_DOCKER_SYSTEMD_SERVICE_NAME = 'docker'
+KUBE_ETCD_SYSTEMD_SERVICE_NAME = 'etcd'
+KUBE_ISOLCPU_PLUGIN_SYSTEMD_SERVICE_NAME = 'isolcpu_plugin'
+KUBELET_SYSTEMD_SERVICE_NAME = 'kubelet'
 
 # Kubernetes upgrade states
 KUBE_UPGRADE_STARTED = 'upgrade-started'
@@ -147,14 +167,17 @@ KUBE_ROOTCA_UPDATED_HOST_TRUSTNEWCA = 'updated-host-trust-new-ca'
 KUBE_ROOTCA_UPDATING_HOST_TRUSTNEWCA_FAILED = 'updating-host-trust-new-ca-failed'
 
 # Kubeadm and Kubelet initial versions
-# This corresponds to the latest K8s version from the previous release
-K8S_INITIAL_CMD_VERSION = '1.24.4'
+K8S_INITIAL_CMD_VERSION = '1.32.2'
 
 # Kubernetes constants
 MANIFEST_APPLY_TIMEOUT = 60 * 15
 MANIFEST_APPLY_INTERVAL = 10
 POD_START_TIMEOUT = 60 * 2
-POD_START_INTERVAL = 10
+# Static pods are generally first to get started upon kubelet start and are up fairly quick
+STATIC_POD_START_INTERVAL = 1
+
+# Kubeadm to Kubelet minor version skew toleration
+KUBELET_MINOR_SKEW_TOLERANCE = 3
 
 # retry for urllib3 max retry error
 # Function will fail after 200 seconds
@@ -170,6 +193,13 @@ KUBE_CONTROL_PLANE_STATIC_PODS_BACKUP_PATH = os.path.join(
     KUBE_CONTROL_PLANE_BACKUP_PATH, 'static-pod-manifests')
 KUBE_CONTROL_PLANE_ETCD_BACKUP_PATH = os.path.join(
     KUBE_CONTROL_PLANE_BACKUP_PATH, 'etcd')
+KUBE_CONFIG_BACKUP_PATH = os.path.join(KUBE_CONTROL_PLANE_BACKUP_PATH, 'k8s-config')
+KUBE_CONTROL_PLANE_STATIC_PODS_MANIFESTS_ABORT = os.path.join(
+    KUBE_CONTROL_PLANE_BACKUP_PATH, 'static-pod-manifests-abort')
+
+# App update constants for Kubernetes upgrades
+KUBE_APP_UPDATE_TIMEOUT_LIMIT_IN_MINUTES = 30
+KUBE_APP_UPDATE_PROGRESS_CHECK_INTERVAL_IN_SECONDS = 10
 
 
 def k8s_health_check(tries=20, try_sleep=5, timeout=5,
@@ -222,6 +252,55 @@ def k8s_health_check(tries=20, try_sleep=5, timeout=5,
         LOG.info('k8s control-plane endpoint %s healthy' %
                  healthz_endpoint)
     return rc
+
+
+def k8s_wait_for_control_plane_terminated(tries=5, try_sleep=1, timeout=5):
+    """ This checks if all k8s control-plane endpoints are down
+
+    Each endpoint is tested up to 'tries' times using a API connection
+    timeout, and a sleep interval between tries.
+
+    :param tries: maximum number of tries
+    :param try_sleep: sleep interval between tries (seconds)
+    :param timeout: timeout waiting for response (seconds)
+
+    :return: True if all endpoints are down
+             False otherwise
+    """
+
+    healthz_endpoints = [constants.APISERVER_READYZ_ENDPOINT,
+                         constants.CONTROLLER_MANAGER_HEALTHZ_ENDPOINT,
+                         constants.SCHEDULER_HEALTHZ_ENDPOINT]
+
+    threads = {}
+    threadpool = greenpool.GreenPool(len(healthz_endpoints))
+    result = True
+
+    LOG.info("Checking Kubernetes control plane endpoints ...")
+
+    # Check endpoints in parallel
+    for endpoint in healthz_endpoints:
+        threads[endpoint] = threadpool.spawn(k8s_health_check,
+                                             tries,
+                                             try_sleep,
+                                             timeout,
+                                             endpoint,
+                                             False)
+
+    # Wait for all checks to finish
+    threadpool.waitall()
+
+    # Check results
+    terminated = []
+    for endpoint, thread in threads.items():
+        if thread.wait() is False:
+            terminated.append(endpoint)
+
+    if len(terminated) == len(healthz_endpoints):
+        result = True
+    else:
+        result = False
+    return result
 
 
 def k8s_wait_for_endpoints_health(tries=20, try_sleep=5, timeout=5, quiet=False):
@@ -356,55 +435,99 @@ def get_kube_versions():
     """Provides a list of supported kubernetes versions in
        increasing order."""
     return [
-        {'version': 'v1.24.4',
-         'upgrade_from': ['v1.23.1'],
+        {'version': 'v1.32.2',
+         'upgrade_from': ['v1.31.5'],
          'downgrade_to': [],
          'applied_patches': [],
          'available_patches': [],
          },
-        {'version': 'v1.25.3',
-         'upgrade_from': ['v1.24.4'],
+        {'version': 'v1.33.0',
+         'upgrade_from': ['v1.32.2'],
          'downgrade_to': [],
          'applied_patches': [],
          'available_patches': [],
          },
-        {'version': 'v1.26.1',
-         'upgrade_from': ['v1.25.3'],
-         'downgrade_to': [],
-         'applied_patches': [],
-         'available_patches': [],
-         },
-        {'version': 'v1.27.5',
-         'upgrade_from': ['v1.26.1'],
-         'downgrade_to': [],
-         'applied_patches': [],
-         'available_patches': [],
-         },
-        {'version': 'v1.28.4',
-         'upgrade_from': ['v1.27.5'],
-         'downgrade_to': [],
-         'applied_patches': [],
-         'available_patches': [],
-         },
-        {'version': 'v1.29.2',
-         'upgrade_from': ['v1.28.4'],
-         'downgrade_to': [],
-         'applied_patches': [],
-         'available_patches': [],
-         },
-        {'version': 'v1.30.6',
-         'upgrade_from': ['v1.29.2'],
-         'downgrade_to': [],
-         'applied_patches': [],
-         'available_patches': [],
-         },
-        {'version': 'v1.31.5',
-         'upgrade_from': ['v1.30.6'],
+        {'version': 'v1.34.1',
+         'upgrade_from': ['v1.33.0'],
          'downgrade_to': [],
          'applied_patches': [],
          'available_patches': [],
          },
     ]
+
+
+def get_all_supported_k8s_versions():
+    """Return all supported kubernetes versions for an STX release
+
+    This returns a list of all kubernetes versions supported for a particular
+    release by scanning /usr/local/kubernetes
+
+    :returns: List of version strings e.g. ['1.29.2', '1.30.6', '1.31.5', '1.32.2']
+    """
+    try:
+        k8s_versions = os.listdir(KUBERNETES_VERSIONED_BINARIES_ROOT)
+        LOG.info("Supported kubernetes versions: %s" % (k8s_versions))
+    except Exception as ex:
+        raise exception.SysinvException("Error retrieving supported kubernetes versions for the "
+                                        "release: %s" % (ex))
+    return k8s_versions
+
+
+def get_k8s_images(kube_version):
+    """Provides a list of images for a kubernetes version.
+
+    :param: kube_version: kubernetes version string.
+    :returns: nested dictionary component name as a key and upstream (public) image name:tag as
+              value.
+              e.g. {'kube-apiserver': 'registry.k8s.io/kube-apiserver:v1.29.2',
+                    'kube-controller-manager': 'registry.k8s.io/kube-controller-manager:v1.29.2',
+                    'kube-scheduler': 'registry.k8s.io/kube-scheduler:v1.29.2',
+                    'kube-proxy': 'registry.k8s.io/kube-proxy:v1.29.2',
+                    'coredns': 'registry.k8s.io/coredns/coredns:v1.11.1',
+                    'pause': 'registry.k8s.io/pause:3.9',
+                    'etcd': 'registry.k8s.io/etcd:3.5.10-0'}
+    """
+    try:
+        kubeadm_path = constants.KUBEADM_PATH_FORMAT_STR.format(kubeadm_ver=kube_version)
+        cmd = [kubeadm_path, 'config', 'images', 'list', '--kubernetes-version', kube_version]
+        stdout, _ = utils.execute(*cmd, check_exit_code=0)
+        images = stdout.split()
+        # It may be feasible to do below parsing wherever required but doing it once will
+        # make it easier and efficient to access using image name whenever required. So do
+        # just once here itstead of doing repetitively at different places.
+        image_dict = {}
+        for image in images:
+            key = image.split('/')[1].split(':')[0]
+            image_dict.update({key: image})
+        LOG.info("List of images for kubernetes version %s: %s" % (kube_version, image_dict))
+    except Exception as ex:
+        raise exception.SysinvException("Error getting all kubernetes images: %s" % (ex))
+    return image_dict
+
+
+def get_k8s_images_for_all_versions():
+    """Provides a list of images for supported kubernetes versions.
+
+    :returns: nested dictionary containing kubernetes version and component name
+              as a key and upstream (public) image name:tag as value.
+              e.g. {'1.29.2': {
+                    'kube-apiserver': 'registry.k8s.io/kube-apiserver:v1.29.2',
+                    'kube-controller-manager': 'registry.k8s.io/kube-controller-manager:v1.29.2',
+                    'kube-scheduler': 'registry.k8s.io/kube-scheduler:v1.29.2',
+                    'kube-proxy': 'registry.k8s.io/kube-proxy:v1.29.2',
+                    'coredns': 'registry.k8s.io/coredns/coredns:v1.11.1',
+                    'pause': 'registry.k8s.io/pause:3.9',
+                    'etcd': 'registry.k8s.io/etcd:3.5.10-0'}, '1.30.6': {...},}
+    """
+    try:
+        all_images = {}
+        k8s_versions = get_all_supported_k8s_versions()
+        for version in k8s_versions:
+            images_dict = get_k8s_images(version)
+            all_images.update({version: images_dict})
+    except Exception as ex:
+        raise exception.SysinvException("Error getting all kubernetes images: %s" % (ex))
+    return all_images
 
 
 def get_latest_supported_version():
@@ -458,11 +581,116 @@ def get_kube_storage_upgrade_version(kube_upgrade):
         return kube_upgrade.to_version
 
 
+def kube_drain_node_with_options(node_name):
+    """Drain a node with command line options
+
+    :param: node_name: string. Name of the node to be drained.
+    :raise: SysinvException
+    """
+    try:
+        LOG.info("Started draining node %s ..." % (node_name))
+        cmd = ['kubectl', '--kubeconfig=%s' % KUBERNETES_ADMIN_CONF,
+               'drain', node_name, '--ignore-daemonsets', '--delete-emptydir-data',
+               '--force', '--skip-wait-for-delete-timeout=1', '--timeout=150s']
+
+        process = subprocess.Popen(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1)
+
+        for line in process.stdout:
+            LOG.info("[Node %s drain]: %s" % (node_name, line))
+            sys.stdout.flush()
+
+        return_code = process.wait()
+
+        if return_code == 0:
+            LOG.info("Node %s drained successfully." % (node_name))
+        else:
+            stderr = process.stderr.read()
+            # Allow the cordon to succeed when pod failed to evict due to pod disruption budget
+            # or when pod failed to evict in the given timeout.
+            if ("violate the pod's disruption budget" in stderr or
+                    "global timeout reached" in stderr):
+                LOG.warning("Node drain failed with error: [%s]. Proceeding anyways."
+                            % (process.stderr))
+            else:
+                raise exception.ProcessExecutionError(
+                    cmd=cmd, exit_code=return_code, stderr=stderr)
+
+    except exception.ProcessExecutionError as ex:
+        raise exception.SysinvException("Command [%s] execution failed with error: [%s] and "
+                                        "return code: [%s]" % (cmd, ex.stderr, ex.exit_code))
+    except Exception as ex:
+        raise exception.SysinvException("Failed to cordon node %s. Error: [%s]" % (node_name, ex))
+
+
+def is_node_cordoned(node_name):
+    """Check if a node is drained/cordoned
+
+    :param: node_name: string. Name of the node
+    :raise: SysinvException
+    """
+    try:
+        LOG.info("Checking node cordon status for %s ..." % (node_name))
+        operator = KubeOperator()
+        node_status = operator.kube_get_node_status(node_name)
+        if node_status.spec.unschedulable:
+            return True
+        else:
+            return False
+    except Exception as ex:
+        raise exception.SysinvException("Failed to check cordon status of the node %s. Error: [%s]"
+                                        % (node_name, ex))
+
+
+def kube_uncordon_node(node_name):
+    """Uncordon a node
+
+    :param: node_name: string. Name of the node to be uncordoned.
+    :raise: SysinvException
+    """
+    try:
+        LOG.info("Started node %s uncordon ..." % (node_name))
+        operator = KubeOperator()
+        body = {
+            "spec": {
+                "unschedulable": False
+            }
+        }
+        operator.kube_patch_node(node_name, body)
+        LOG.info("Node %s uncordoned successfully." % (node_name))
+    except Exception as ex:
+        raise exception.SysinvException("Node [%s] uncordon failed with error: [%s] "
+                                        % (node_name, ex))
+
+
 def is_k8s_configured():
     """Check to see if the k8s admin config file exists."""
     if os.path.isfile(KUBERNETES_ADMIN_CONF):
         return True
     return False
+
+
+def enable_kubelet_garbage_collection():
+    """Enables kubelet garbage collection
+
+    This method virtually enables back kubelet image garbage collection by removing
+    high(100) image garbage collection threshold in the kubelet config.
+    Note that, this DOES NOT restart the kubelet after updating the value and must be
+    restarted explicitly to take effect.
+
+    :raises: SysinvException if an error is encountered
+    """
+    try:
+        stream = None
+        with open(KUBEADM_FLAGS_FILE, "r") as file:
+            stream = file.read()
+        if stream and "image-gc-high-threshold" in stream:
+            stream = stream.replace("--image-gc-high-threshold 100 ", "")
+            with open(KUBEADM_FLAGS_FILE, "w") as file:
+                file.write(stream)
+    except Exception as ex:
+        raise exception.SysinvException("Failed to enable kubelet garbage "
+                                        "collection. Error: [%s]" % (ex))
 
 
 def create_configmap_obj(namespace, name, filename, **kwargs):
@@ -480,6 +708,36 @@ def create_configmap_obj(namespace, name, filename, **kwargs):
         raise
 
 
+def kubectl_apply(manifests_path, timeout=60):
+    """Helper function to apply kubernetes manifests
+
+    This method runs kubectl apply for manifest(s) at path "manifests_path"
+
+    :param: manifest_path: Full path to a manifest yaml file or dir containing
+                           one or multiple yaml manifests
+    :param: timeout: Request timeout in seconds. Integer/String. Default value: 60
+
+    :raises: Raises SysinvException upon failure
+    """
+
+    if isinstance(timeout, (int, float)) and not isinstance(timeout, bool):
+        str_timeout = str(timeout)
+    elif isinstance(timeout, str) and timeout.isnumeric():
+        str_timeout = str(timeout)
+    else:
+        LOG.warning("Invalid input for kubectl apply timeout. Ignoring and using default 60s.")
+        str_timeout = '60'
+
+    try:
+        request_timeout_str = f"--request-timeout={str_timeout}s"
+        cmd = ["kubectl", f"--kubeconfig={KUBERNETES_ADMIN_CONF}", "apply",
+               "-f", manifests_path, request_timeout_str]
+        utils.execute(*cmd, attempts=5, delay_on_retry=True, check_exit_code=0)
+    except Exception as e:
+        raise exception.SysinvException("Failed to apply kubernetes manifest(s) at: [%s] "
+                                          "with error: [%s]" % (manifests_path, e))
+
+
 def backup_kube_static_pods(backup_path):
     """Backup manifests of control plane static pods i.e. kube-apiserver,
     kube-controller-manager, kube-scheduler to a secured location.
@@ -487,11 +745,36 @@ def backup_kube_static_pods(backup_path):
     :param backup_path: secured location to backup static pods
      """
     try:
-        shutil.copytree('/etc/kubernetes/manifests/', backup_path)
+        shutil.copytree(KUBE_CONTROL_PLANE_MANIFESTS_PATH, backup_path)
         LOG.info('Kubernetes static pod manifests copied to: %s' % backup_path)
     except Exception as e:
         LOG.error('Error copying kubernetes static pods manifests: %s' % e)
         raise
+
+
+def disable_kubelet_garbage_collection():
+    """ Disables kubelet garbage collection
+
+    This method virtually disables kubelet image garbage collection by setting
+    image garbage collection threshold to a high value(100) in the kubelet config.
+    Note that, this DOES NOT restart the kubelet after updating
+    the value and must be restarted explicitly to take effect.
+
+    :raises: SysinvException if an error is encountered
+    """
+    try:
+        stream = None
+        with open(KUBEADM_FLAGS_FILE, "r") as file:
+            stream = file.read()
+        if stream and "image-gc-high-threshold" not in stream:
+            line = stream.split('"')
+            flags = '--image-gc-high-threshold 100 ' + line[1]
+            newline = line[0] + '"' + flags + '"\n'
+            with open(KUBEADM_FLAGS_FILE, "w") as file:
+                file.write(newline)
+    except Exception as ex:
+        raise exception.SysinvException("Failed to disable kubelet garbage "
+                                        "collection. Error: [%s]" % (ex))
 
 
 # https://github.com/kubernetes-client/python/issues/895
@@ -526,6 +809,7 @@ class KubeOperator(object):
 
     def __init__(self, host=None):
         self.host = host
+        self._kube_client_apps_v1 = None
         self._kube_client_batch = None
         self._kube_client_core = None
         self._kube_client_policy = None
@@ -550,6 +834,12 @@ class KubeOperator(object):
             c.host = self.host
         Configuration.set_default(c)
         return c
+
+    def _get_kubernetesclient_apps_v1_api(self):
+        if not self._kube_client_apps_v1:
+            self._load_kube_config()
+            self._kube_client_apps_v1 = client.AppsV1Api()
+        return self._kube_client_apps_v1
 
     def _get_kubernetesclient_batch(self):
         if not self._kube_client_batch:
@@ -597,12 +887,17 @@ class KubeOperator(object):
         if isinstance(ex, MaxRetryError):
             LOG.warn('Retrying against MaxRetryError: {}'.format(ex))
             return True
+        elif isinstance(ex, ApiException):
+            if ex.status == httplib.FORBIDDEN:
+                LOG.warn('Retrying against FORBIDDEN: {}'.format(ex))
+                return True
+            else:
+                return False
         else:
             return False
 
     def _retry_on_urllibs3_RetryError(ex):  # pylint: disable=no-self-argument
-        if isinstance(ex, MaxRetryError):
-            LOG.warn('Retrying against MaxRetryError: {}'.format(ex))
+        if __class__._retry_on_urllibs3_MaxRetryError(ex):
             return True
         elif isinstance(ex, ValueError):
             LOG.warn('Retrying against ValueError: {}'.format(ex))
@@ -937,6 +1232,33 @@ class KubeOperator(object):
                       "%s" % (body['metadata']['name'], namespace, e))
             raise
 
+    def kube_patch_service_account(self, name, namespace, body):
+        c = self._get_kubernetesclient_core()
+        try:
+            c.patch_namespaced_service_account(name, namespace, body)
+        except Exception as e:
+            LOG.error("Failed to patch service account %s under Namespace %s: "
+                      "%s" % (name, namespace, e))
+            raise
+
+    def kube_patch_deployment(self, name, namespace, body):
+        c = self._get_kubernetesclient_apps_v1_api()
+        try:
+            c.patch_namespaced_deployment(name, namespace, body)
+        except Exception as e:
+            LOG.error("Failed to patch Deployment %s under Namespace %s: "
+                      "%s" % (name, namespace, e))
+            raise
+
+    def kube_patch_daemonset(self, name, namespace, body):
+        c = self._get_kubernetesclient_apps_v1_api()
+        try:
+            c.patch_namespaced_daemon_set(name, namespace, body)
+        except Exception as e:
+            LOG.error("Failed to patch Daemonset %s under Namespace %s: "
+                      "%s" % (name, namespace, e))
+            raise
+
     def kube_create_config_map(self, namespace, body):
         c = self._get_kubernetesclient_core()
         try:
@@ -1068,6 +1390,59 @@ class KubeOperator(object):
                 raise
         else:
             return cr_obj
+
+    def get_helmcharts_info(self, namespace):
+        """
+        Gets all HelmChart resources in the given namespace and extracts their names and versions.
+
+        :param namespace (str): The Kubernetes namespace to query.
+        :return (dict): dictionary with chart names as keys and chart versions as values.
+        """
+
+        custom_objects_api = self._get_kubernetesclient_custom_objects()
+        group = constants.FLUXCD_CRD_HELM_CHART_GROUP
+        version = constants.FLUXCD_CRD_HELM_CHART_VERSION
+        plural = constants.FLUXCD_CRD_HELM_CHART_PLURAL
+
+        try:
+            response = custom_objects_api.list_namespaced_custom_object(
+                group=group,
+                version=version,
+                namespace=namespace,
+                plural=plural
+            )
+
+            charts_info = {}
+            for item in response.get("items", []):
+                chart_name = item.get("spec", {}).get("chart", "")
+                chart_version = item.get("spec", {}).get("version", "")
+                charts_info[chart_name] = chart_version
+            return charts_info
+        except Exception as e:
+            LOG.error(e)
+            return {}
+
+    def patch_custom_resource(self, group, version, namespace, plural, name, body):
+        """
+        Patches a custom Kubernetes resource using the provided body.
+
+        :param group (str): The API group of the custom resource.
+        :param version (str): The API version of the custom resource.
+        :param namespace (str): The namespace where the resource is located.
+        :param plural (str): The plural name of the custom resource.
+        :param name (str): The name of the resource to patch.
+        :param body (dict): The patch body to apply to the resource.
+        """
+        custom_resource_api = self._get_kubernetesclient_custom_objects()
+
+        cr_obj = self.get_custom_resource(group, version, namespace, plural, name)
+        if cr_obj:
+            custom_resource_api.patch_namespaced_custom_object(group,
+                                                            version,
+                                                            namespace,
+                                                            plural,
+                                                            name,
+                                                            body)
 
     def apply_custom_resource(self, group, version, namespace, plural, name, body):
         custom_resource_api = self._get_kubernetesclient_custom_objects()
@@ -1225,6 +1600,18 @@ class KubeOperator(object):
             LOG.error("Failed to delete clusterwide custom resource object, %s" % (e))
             raise
 
+    def delete_custom_resource_definition(self, name):
+        extentions_api = self._get_kubernetesclient_extensions()
+
+        try:
+            extentions_api.delete_custom_resource_definition(name)
+        except ApiException as e:
+            if e.reason == "Not Found":
+                LOG.error("Failed to delete CRD %s: %s" % (name, e))
+        except Exception as e:
+            LOG.error("Kubernetes exception in delete_custom_resource_definition: %s" % e)
+            raise
+
     def kube_get_service_account(self, name, namespace):
         c = self._get_kubernetesclient_core()
         try:
@@ -1351,35 +1738,78 @@ class KubeOperator(object):
 
         return kubelet_versions
 
+    def kubelet_version_skew(self, kubeadm_version, kubelet_version):
+        """ Calculate integer skew between kubeadm (control-plane) minor
+            version and kubelet minor version.
+
+        Reference: https://kubernetes.io/releases/version-skew-policy/
+        kubelet may be up to three minor versions older than kube-apiserver.
+
+        This routine transforms major.minor.patch version string 'X.Y.Z'
+        to scaled representation 100*int(X) + int(Y). The major version is
+        scaled by 100. This ensures that major version changes go beyond
+        the skew limit. The patch version is ignored.
+
+        :param kubeadm_version: control-plane K8S version
+        :param kubelet_version: kubelet K8S version
+
+        :return: integer: skew between kubeadm minor version
+                 and kubelet minor version
+        """
+        def safe_strip(input_string):
+            if not input_string:
+                return ''
+            return ''.join(c for c in input_string if c in '1234567890.')
+
+        if any(value is None for value in (kubeadm_version, kubelet_version)):
+            raise ValueError("Invalid kubelet version skew input")
+
+        # Split major.minor.patch into integer components
+        try:
+            kubeadm_map = list(map(int, safe_strip(kubeadm_version).split(".")[:2]))
+            kubelet_map = list(map(int, safe_strip(kubelet_version).split(".")[:2]))
+        except Exception as e:
+            LOG.error("kubelet_version_skew: Unexpected error: %s, "
+                      "kubeadm_version=%s, kubelet_version=%s"
+                      % (e, kubeadm_version, kubelet_version))
+            raise ValueError("Invalid kubelet version skew input")
+
+        if len(kubeadm_map) != 2 or len(kubelet_map) != 2:
+            raise ValueError("Invalid kubelet version skew input")
+
+        # Calculate integer skew between kubeadm and kubelet minor version
+        skew = (
+                100 * (kubeadm_map[0] - kubelet_map[0]) +
+                (kubeadm_map[1] - kubelet_map[1])
+        )
+        return skew
+
     def kube_get_higher_patch_version(self, current_version, target_version):
         """Returns the list of all k8s "v<major>.<minor>.<patch>"
         versions that are greater than the current_version and up
         to the final target_version, keeping only the highest patch
         version for a given minor version. The list will contain minor
         versions that increment by 1 each time."""
+        if current_version is None or not current_version:
+            LOG.error("Current version not available.")
+            return []
 
         if LooseVersion(target_version) <= LooseVersion(current_version):
-            LOG.error("Target version should be greater than or "
-                      "equal to current version")
-            return None
+            LOG.warning("Target version %s should be greater than the current version %s"
+                        % (target_version, current_version))
         # Get version lists
         kube_versions = get_kube_versions()
         kube_versions = sorted(kube_versions, key=lambda v: LooseVersion(v['version']))
-        current_major_minor = ".".join(current_version.split(".")[:2])
         major_minor_version = set()
         final_versions = list()
         intermediate_versions = list()
 
         # loop over all k8s versions in minor.major.patch version sorted order
-        # exclude from the list:
-        # -- versions > the current version
-        # -- versions <= target_version
-        # -- version == current version
+        # Include versions: > the current version, and <= target_version
         for version in kube_versions:
             major_minor = ".".join(version['version'].split(".")[:2])
-            if LooseVersion(version['version']) > LooseVersion(current_version) \
-                and LooseVersion(version['version']) <= LooseVersion(target_version) \
-                    and current_major_minor not in major_minor:
+            if ((LooseVersion(version['version']) > LooseVersion(current_version)) and
+                    (LooseVersion(version['version']) <= LooseVersion(target_version))):
                 intermediate_versions.append(version['version'])
                 major_minor_version.add(major_minor)
 
@@ -1449,8 +1879,7 @@ class KubeOperator(object):
             for version in kube_versions:
                 if active_version in version['upgrade_from']:
                     version_states[version['version']] = KUBE_STATE_AVAILABLE
-                if (tsc.system_mode == constants.SYSTEM_MODE_SIMPLEX) and \
-                        LooseVersion(version['version']) > LooseVersion(active_version):
+                if LooseVersion(version['version']) > LooseVersion(active_version):
                     version_states[version['version']] = KUBE_STATE_AVAILABLE
 
         return version_states
@@ -1483,6 +1912,16 @@ class KubeOperator(object):
         except Exception as e:
             LOG.error("Kubernetes exception in "
                       "kube_get_pods: %s" % e)
+            raise
+
+    def kube_get_all_configmaps(self):
+        c = self._get_kubernetesclient_core()
+        try:
+            api_response = c.list_config_map_for_all_namespaces()
+            return api_response.items
+        except Exception as e:
+            LOG.error("Kubernetes exception in "
+                      "kube_get_all_configmaps: %s" % e)
             raise
 
     def kube_delete_pod(self, name, namespace, **kwargs):
@@ -1709,22 +2148,6 @@ class KubeOperator(object):
             return 1
 
         return 0
-
-    def get_psp_resource(self):
-        try:
-            # Create an API client
-            c = self._get_kubernetesclient_policy()
-
-            # Retrieve the resource items
-            api_response = c.list_pod_security_policy()
-            LOG.debug("Response: %s" % api_response)
-            items = api_response.items
-
-            # Return the items if present, or False if not found
-            return items if items else False
-        except Exception as e:
-            LOG.exception("Failed to fetch PodSecurityPolicies: %s" % e)
-            raise
 
     def kube_read_clusterrolebinding(self, name):
         """read a clusterrolebinding with data

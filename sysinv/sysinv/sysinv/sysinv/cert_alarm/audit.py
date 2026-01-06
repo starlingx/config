@@ -102,6 +102,26 @@ class CertAlarmAudit(object):
             if entry[1] is not None:
                 utils.add_cert_snapshot(entry[0], entry[1], entry[2], entry[3])
 
+        # 4. Process all IPsec certificates
+        LOG.debug('Processing IPsec certificates...')
+        try:
+            all_crs = utils.get_ipsec_cert_requests()
+
+            if all_crs:
+                LOG.info('Number of IPsec certs to process=%d' % len(all_crs))
+                for item in all_crs:
+                    LOG.info('Processing item: %s' % item["metadata"]["name"])
+                    (certname_secret, exp_date_secret, anno_data_secret, mode_metadata) = \
+                            utils.retrieve_ipsec_certificate_data_from_csr(item)
+                    # if cert not present, exp_date will be None
+                    if exp_date_secret is not None:
+                        utils.add_cert_snapshot(certname_secret,
+                                                exp_date_secret,
+                                                anno_data_secret,
+                                                mode_metadata)
+        except Exception as e:
+            LOG.error(e)
+
     def apply_action_full_audit(self):
         for cert_name in utils.CERT_SNAPSHOT:
             entity_id = utils.CERT_SNAPSHOT[cert_name].get(utils.ENTITY_ID,
@@ -199,7 +219,7 @@ class CertAlarmAudit(object):
         renew_before = None
         if utils.SNAPSHOT_KEY_RENEW_BEFORE in snapshot:
             renew_before = self.parse_time(snapshot[utils.SNAPSHOT_KEY_RENEW_BEFORE])
-        LOG.debug('cert_name=%s, entity_id=%s, expiry=%s, alarm_before=%s, renew_before=%s'
+        LOG.info('cert_name=%s, entity_id=%s, expiry=%s, alarm_before=%s, renew_before=%s'
             % (cert_name, entity_id, expiry, alarm_before, renew_before))
 
         # set threshold date to raise alarms

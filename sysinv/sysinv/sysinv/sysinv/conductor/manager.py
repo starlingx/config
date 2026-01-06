@@ -29,7 +29,6 @@ collection of inventory data for each host.
 
 """
 
-import docker
 from enum import Enum
 import errno
 import filecmp
@@ -38,6 +37,7 @@ import hashlib
 import io
 import json
 import math
+import netaddr
 import os
 import psutil
 import re
@@ -54,6 +54,8 @@ import traceback
 import uuid
 import copy
 import xml.etree.ElementTree as ElementTree
+from concurrent.futures import as_completed
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from datetime import datetime
 from datetime import timedelta
@@ -97,7 +99,9 @@ from sysinv.api.controllers.v1 import kube_app as kube_api
 from sysinv.api.controllers.v1 import mtce_api
 from sysinv.api.controllers.v1 import utils
 from sysinv.api.controllers.v1 import vim_api
+from sysinv.common import app_dependents
 from sysinv.common import app_metadata
+from sysinv.common import app_update_manager
 from sysinv.common import barbican_config
 from sysinv.common import fpga_constants
 from sysinv.common import constants
@@ -113,8 +117,10 @@ from sysinv.common import kubernetes
 from sysinv.common import openstack_config_endpoints
 from sysinv.common import retrying
 from sysinv.common import service
+from sysinv.common import service_parameter
 from sysinv.common import usm_service as usm_service
 from sysinv.common import utils as cutils
+from sysinv.common.image_download import ContainerImageDownloader
 from sysinv.common.inotify import flags
 from sysinv.common.inotify import INotify
 from sysinv.common.retrying import retry
@@ -133,6 +139,7 @@ from sysinv.puppet import common as puppet_common
 from sysinv.puppet import puppet
 from sysinv.puppet import interface as pinterface
 from sysinv.helm import helm
+from sysinv.helm.flux import FluxDeploymentManager
 from sysinv.helm.lifecycle_constants import LifecycleConstants
 from sysinv.helm.lifecycle_hook import LifecycleHookInfo
 from sysinv.zmq_rpc.zmq_rpc import ZmqRpcServer
@@ -156,9 +163,6 @@ conductor_opts = [
        cfg.IntOpt('managed_app_auto_recovery_interval',
                   default=300,
                   help='Interval to run managed app auto recovery'),
-       cfg.IntOpt('kube_upgrade_downgrade_retry_interval',
-                  default=3600,
-                  help='Interval in seconds between retries to upgrade/downgrade kubernetes components'),
        cfg.IntOpt('fw_update_large_timeout',
                   default=3600,
                   help='Timeout interval in seconds for a large device image'),
@@ -191,10 +195,7 @@ app_framework_opts = [
     cfg.BoolOpt('missing_auto_update',
         default=False,
         help='Auto update an application if not specified in the '
-             'application metadata'),
-    cfg.BoolOpt('skip_k8s_application_audit',
-        default=False,
-        help='Skip application audit operation if specified as True'),
+             'application metadata')
 ]
 
 CONF = cfg.CONF
@@ -332,6 +333,7 @@ class ConductorManager(service.PeriodicService):
         self._kube = None
         self._fernet = None
         self._inotify = None
+        self._image_downloader = None
 
         self._openstack = None
         self._api_token = None
@@ -375,10 +377,13 @@ class ConductorManager(service.PeriodicService):
         # Guard for a function that should run only once per conductor start
         self._has_loaded_missing_apps_metadata = False
 
-        self.apps_metadata = {constants.APP_METADATA_APPS: {},
-                              constants.APP_METADATA_PLATFORM_MANAGED_APPS: {},
-                              constants.APP_METADATA_DESIRED_STATES: {},
-                              constants.APP_METADATA_ORDERED_APPS: []}
+        self.apps_metadata = {
+            constants.APP_METADATA_APPS: {},
+            constants.APP_METADATA_PLATFORM_MANAGED_APPS: {},
+            constants.APP_METADATA_DESIRED_STATES: {},
+            constants.APP_METADATA_ORDERED_APPS: {},
+            constants.APP_METADATA_CYCLIC_DEPENDENCIES: []
+        }
 
         self._backup_action_map = dict()
         for action in [constants.BACKUP_ACTION_SEMANTIC_CHECK,
@@ -392,6 +397,8 @@ class ConductorManager(service.PeriodicService):
             self._backup_action_map[action] = impl
 
         self._initialize_backup_actions_log()
+        self._app_alarm_audit_counter = 0  # Counter for alarm audit frequency
+        self._k8s_upgrade_downloading_images_on_inactive_controller = False
 
     def start(self):
         try:
@@ -434,7 +441,11 @@ class ConductorManager(service.PeriodicService):
 
         self._kube_app_bundle_storage = KubeAppBundleStorageFactory.createKubeAppBundleStorage()
         self._openstack = openstack.OpenStackOperator(self.dbapi)
-        self._puppet = puppet.PuppetOperator(self.dbapi)
+
+        # Make sure that any puppet plugins that need to access helm plugins to
+        # generate data uses the same operator as managed by the app framework
+        self._helm = helm.HelmOperator(self.dbapi)
+        self._puppet = puppet.PuppetOperator(self.dbapi, helm_operator=self._helm)
 
         # create /var/run/sysinv if required. On DOR, the manifests
         # may not run to create this volatile directory.
@@ -451,9 +462,9 @@ class ConductorManager(service.PeriodicService):
         # until host unlock and we need ceph-mon up in order to configure
         # ceph for the initial unlock.
         # kube_app operator will load app metadata from database
-        self._helm = helm.HelmOperator(self.dbapi)
         self._app = kube_app.AppOperator(self.dbapi, self._helm, self.apps_metadata)
         self._docker = kube_app.DockerHelper(self.dbapi)
+        self._image_downloader = ContainerImageDownloader(self.dbapi)
         self._kube = kubernetes.KubeOperator()
         self._kube_app_helper = kube_api.KubeAppHelper(self.dbapi)
         self._fernet = fernet.FernetOperator()
@@ -535,8 +546,10 @@ class ConductorManager(service.PeriodicService):
         # process has been restarted
         if self.host_uuid and os.path.exists(ACTIVE_CONFIG_REBOOT_REQUIRED):
             ahost = self.dbapi.ihost_get(self.host_uuid)
-            self._host_reboot_config_uuid[self.host_uuid] = \
-                [ahost.config_target]
+            self._host_reboot_config_uuid[self.host_uuid] = {
+                'original': ahost.config_target,
+                'latest': ahost.config_target
+            }
 
     def _check_dnsmasq_not_ready(self, ex):
         # DNSMASQ starts before the sysinv-conductor but it may not be ready
@@ -892,19 +905,19 @@ class ConductorManager(service.PeriodicService):
          'value': constants.SERVICE_PARAM_PLATFORM_KEEP_FREE_DEFAULT
          },
         {'service': constants.SERVICE_TYPE_PLATFORM,
-         'section': constants.SERVICE_PARAM_SECTION_PLATFORM_KERNEL,
-         'name': constants.SERVICE_PARAM_NAME_PLATFORM_OOT,
-         'value': ",".join(constants.SERVICE_PARAM_PLAT_KERNEL_OOT_VALUES[1:]),
-         },
-        {'service': constants.SERVICE_TYPE_PLATFORM,
          'section': constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG,
          'name': constants.SERVICE_PARAM_NAME_PLATFORM_SCTP_AUTOLOAD,
          'value': constants.SERVICE_PARAM_PLATFORM_SCTP_AUTOLOAD_ENABLED,
          },
         {'service': constants.SERVICE_TYPE_PLATFORM,
-         'section': constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG,
+         'section': constants.SERVICE_PARAM_SECTION_PLATFORM_CLIENT,
          'name': constants.SERVICE_PARAM_NAME_PLATFORM_CLI_CONFIRMATIONS,
          'value': constants.SERVICE_PARAM_DISABLED,
+         },
+        {'service': constants.SERVICE_TYPE_PLATFORM,
+         'section': constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG,
+         'name': constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_HOST_UNLOCK_BLOCKING_PERIOD,
+         'value': constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_HOST_UNLOCK_BLOCKING_PERIOD_DEFAULT,
          },
     ]
 
@@ -1046,6 +1059,13 @@ class ConductorManager(service.PeriodicService):
                     ihost_mtc = host.as_dict()
                     ihost_mtc['operation'] = 'modify'
                     ihost_mtc = cutils.removekeys_nonmtce(ihost_mtc)
+
+                    host_mgmt_ip = cutils.get_host_mgmt_ip(self.dbapi, host)
+                    if host_mgmt_ip:
+                        ihost_mtc['mgmt_ip'] = host_mgmt_ip
+                    else:
+                        LOG.info(f"cannot find mgmt address for host='{host.hostname}'")
+
                     mtce_api.host_modify(
                              self._api_token, self._mtc_address,
                              self._mtc_port, ihost_mtc,
@@ -1305,6 +1325,7 @@ class ConductorManager(service.PeriodicService):
         mgmt_network = self.dbapi.network_get_by_type(
             constants.NETWORK_TYPE_MGMT
         )
+        is_aio_simplex = cutils.is_aio_simplex_system(self.dbapi)
 
         func = "_generate_dnsmasq_hosts_file"
         with open(temp_dnsmasq_hosts_file, 'w') as f_out, \
@@ -1332,9 +1353,10 @@ class ConductorManager(service.PeriodicService):
             # get the list of hosts for the host id's needed below.
             ihosts = self.dbapi.ihost_get_list()
 
+            addresses = self.dbapi._addresses_get_by_pool_uuid(mgmt_network.pool_uuid)
+
             # Loop through mgmt addresses to write to file
-            for address in self.dbapi._addresses_get_by_pool_uuid(
-                    mgmt_network.pool_uuid):
+            for address in addresses:
                 line = None
                 hostname = re.sub("-%s$" % constants.NETWORK_TYPE_MGMT,
                                   '', str(address.name))
@@ -1349,14 +1371,19 @@ class ConductorManager(service.PeriodicService):
                                     "controller-platform-nfs"]
 
                 if hostname == constants.CONTROLLER_HOSTNAME:
+                    # For simplex with no controller-0/controller-1 addresses, set
+                    # controller-0.internal as an alias to the controller entry.
+                    if is_aio_simplex:
+                        controller_alias.append(constants.CONTROLLER_0_FQDN)
                     addn_line_internal = self._dnsmasq_addn_host_entry_to_string(
                             address.address, constants.CONTROLLER_FQDN, controller_alias)
-                else:
+                    f_out_addn.write(addn_line_internal)
+                elif not (hostname == constants.CONTROLLER_0_HOSTNAME and is_aio_simplex):
                     hostname_internal = hostname + "." + constants.INTERNAL_DOMAIN
                     hostname_alias = [hostname]
                     addn_line_internal = self._dnsmasq_addn_host_entry_to_string(
                             address.address, hostname_internal, hostname_alias)
-                f_out_addn.write(addn_line_internal)
+                    f_out_addn.write(addn_line_internal)
 
             # Add pxecontroller to dnsmasq.hosts file
             pxeboot_network = self.dbapi.network_get_by_type(
@@ -1469,7 +1496,7 @@ class ConductorManager(service.PeriodicService):
         # The controller IP will be in the dnsmasq.addn_hosts.
         # Since the /opt/platform is not mounted during the startup it is
         # necessary to copy DNSMASQ files to /etc/platform/
-        if cutils.is_aio_simplex_system(self.dbapi):
+        if is_aio_simplex:
             ETC_PLAT = tsc.PLATFORM_CONF_PATH + '/'
 
             if os.path.isfile(dnsmasq_hosts_file):
@@ -1499,10 +1526,16 @@ class ConductorManager(service.PeriodicService):
                                 dnsmasq_addn_hosts_file)):
             os.rename(temp_dnsmasq_addn_hosts_file, dnsmasq_addn_hosts_file)
 
+        # Generate the dnsmasq addn_conf file
+        # Avoid duplicate service restart with 'False' flag
+        dnsmasq_addn_conf_file = config_dir + 'dnsmasq.addn_conf'
+        if not os.path.isfile(dnsmasq_addn_conf_file):
+            self._generate_dnsmasq_conf_file(False)
+
         LOG.info("{}: Restarting dnsmasq".format(func))
         os.system("pkill -HUP dnsmasq")
 
-    def _generate_dnsmasq_conf_file(self):
+    def _generate_dnsmasq_conf_file(self, service_restart=True):
         """Regenerates the dnsmasq addn_conf file from database."""
 
         if (self.topic == 'test-topic'):
@@ -1519,6 +1552,11 @@ class ConductorManager(service.PeriodicService):
                     section=constants.SERVICE_PARAM_SECTION_DNS_HOST_RECORD):
 
                 f_out_addn.write("host-record=%s\n" % host_record['value'])
+            for local_domain in self.dbapi.service_parameter_get_all(
+                    service=constants.SERVICE_TYPE_DNS,
+                    section=constants.SERVICE_PARAM_SECTION_DNS_LOCAL):
+
+                f_out_addn.write("local=/%s/\n" % local_domain['value'])
 
         # Update conf files atomically and reload dnsmasq
         if (not os.path.isfile(dnsmasq_addn_conf_file) or
@@ -1526,9 +1564,9 @@ class ConductorManager(service.PeriodicService):
                                 dnsmasq_addn_conf_file)):
             os.rename(temp_dnsmasq_addn_conf_file, dnsmasq_addn_conf_file)
 
-        LOG.info("_generate_dnsmasq_conf_file: sm-restart-safe dnsmasq")
-
-        os.system("sm-restart-safe service dnsmasq")
+        if service_restart:
+            LOG.info("_generate_dnsmasq_conf_file: sm-restart-safe dnsmasq")
+            os.system("sm-restart-safe service dnsmasq")
 
     def update_apparmor_config(self, context, ihost_uuid):
         """Update the GRUB CMDLINE to enable/disable apparmor"""
@@ -1623,6 +1661,7 @@ class ConductorManager(service.PeriodicService):
         }
         self._config_apply_runtime_manifest(context, config_uuid,
                                             config_dict, force=True)
+        self._update_pxe_config(host)
 
     def report_kernel_config_complete(self, context, ihost_uuid, status, error):
         """ Report kernel config runtime manifest from agent completed run
@@ -1834,11 +1873,17 @@ class ConductorManager(service.PeriodicService):
 
         if (host.personality == constants.CONTROLLER and
                 constants.WORKER in tsc.subfunctions):
-            pxe_config = "pxe-smallsystem-install-%s" % sw_version
+            if constants.LOWLATENCY in host.subfunctions:
+                pxe_config = "pxe-smallsystem_lowlatency-install-%s" % sw_version
+            else:
+                pxe_config = "pxe-smallsystem-install-%s" % sw_version
         elif host.personality == constants.CONTROLLER:
             pxe_config = "pxe-controller-install-%s" % sw_version
         elif host.personality == constants.WORKER:
-            pxe_config = "pxe-worker-install-%s" % sw_version
+            if constants.LOWLATENCY in host.subfunctions:
+                pxe_config = "pxe-worker_lowlatency-install-%s" % sw_version
+            else:
+                pxe_config = "pxe-worker-install-%s" % sw_version
         elif host.personality == constants.STORAGE:
             pxe_config = "pxe-storage-install-%s" % sw_version
 
@@ -2108,23 +2153,29 @@ class ConductorManager(service.PeriodicService):
         for pool_uuid in pool_uuid_list:
             pool = self.dbapi.address_pool_get(pool_uuid)
 
+            haddrname = hostname
+            if cutils.is_aio_simplex_system(self.dbapi) \
+                    and hostname == constants.CONTROLLER_0_HOSTNAME:
+                haddrname = constants.CONTROLLER_HOSTNAME
+
             # check for static mgmt IP
             mgmt_ip = self._lookup_static_ip_address_family(
-                hostname, constants.NETWORK_TYPE_MGMT, pool.family)
+                haddrname, constants.NETWORK_TYPE_MGMT, pool.family)
 
             # make sure address in address table and update dnsmasq host file
             if mgmt_ip:
-                LOG.info("Static mgmt ip {} for host{}".format(mgmt_ip, hostname))
-                self._create_or_update_address(context, hostname, mgmt_ip,
+                LOG.info("Static mgmt ip {} for host={}".format(mgmt_ip, hostname))
+                self._create_or_update_address(context, haddrname, mgmt_ip,
                                                constants.NETWORK_TYPE_MGMT,
                                                mgmt_interface_id, pool_uuid)
             # if no static address, then allocate one
             if not mgmt_ip:
-                address_name = cutils.format_address_name(hostname,
+                address_name = cutils.format_address_name(haddrname,
                                                         constants.NETWORK_TYPE_MGMT)
                 mgmt_ip = self._allocate_pool_address(mgmt_interface_id, pool_uuid,
                                                       address_name).address
-                LOG.info(f"Allocated mgmt ip {mgmt_ip} for host={hostname}")
+                LOG.info(f"Allocated mgmt ip {mgmt_ip} for host={hostname}"
+                         f" address_name={address_name}")
 
         self._generate_dnsmasq_hosts_file(existing_host=host)
         self._allocate_cluster_host_address_for_host(host)
@@ -2386,7 +2437,7 @@ class ConductorManager(service.PeriodicService):
                 # flag after they have been applied.
                 config_uuid = self._config_update_hosts(context, personalities,
                                                         host_uuids=[host.uuid])
-                if utils.config_is_reboot_required(host.config_target):
+                if cutils.config_is_reboot_required(host.config_target):
                     config_uuid = self._config_set_reboot_required(config_uuid)
 
                 config_dict = {
@@ -2400,7 +2451,7 @@ class ConductorManager(service.PeriodicService):
 
             # Regenerate config target uuid, node is going for reboot!
             config_uuid = self._config_update_hosts(context, personalities)
-            if utils.config_is_reboot_required(host.config_target):
+            if cutils.config_is_reboot_required(host.config_target):
                 config_uuid = self._config_set_reboot_required(config_uuid)
             self._puppet.update_host_config(host, config_uuid)
 
@@ -2493,6 +2544,10 @@ class ConductorManager(service.PeriodicService):
 
            reload the related service on keystone password change"""
 
+        if os.path.isfile(constants.SKIP_KEYSTONE_PASSWORD_UPDATE):
+            LOG.info("Skipping service config for keystone user: %s" % username)
+            return
+
         LOG.info("Updating service config for keystone user: %s" % username)
         personalities = [constants.CONTROLLER]
         config_uuid = self._config_update_hosts(context, personalities)
@@ -2523,255 +2578,8 @@ class ConductorManager(service.PeriodicService):
         }
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
-    def _docker_registry_tagged_image_list(self):
-        untagged_registry_images = self._docker_registry_image_list()
-        registry_images = list()
-
-        for image in untagged_registry_images:
-            image_tags_response = docker_registry.docker_registry_get(
-                f"{image}/tags/list"
-            )
-            tags = image_tags_response.json()['tags']
-            if tags:
-                for tag in tags:
-                    registry_images.append(f"{image}:{tag}")
-
-        return registry_images
-
-    def _k8s_image_list(self, k8s_version):
-        cmd = [
-            f"/usr/local/kubernetes/{k8s_version}/stage1/usr/bin/kubeadm",
-            "--kubeconfig=/etc/kubernetes/admin.conf",
-            "config", "images", "list",
-            "--kubernetes-version", k8s_version]
-
-        try:
-            output = subprocess.check_output(  # pylint: disable=not-callable
-                cmd, stderr=subprocess.STDOUT, universal_newlines=True
-            )
-
-            # The command returns a list of tagged images with a line break (\n)
-            # between them and after the last element. Because of that, after
-            # removing the line break, the last item in the array is empty.
-            return output.split("\n")[:-1]
-        except json.JSONDecodeError as e:
-            LOG.error(f"Could not parse output, error={e}")
-        except subprocess.CalledProcessError as e:
-            LOG.error(f"Could not list kubernetes images, error={e}")
-        except FileNotFoundError:
-            LOG.error("The specified kubernetes version was not found")
-        except Exception as e:
-            LOG.error(
-                f"An error occurred when retrieving the kubernetes images, error={e}"
-            )
-
-    def _pull_image(self, image, registries_info, docker_client):
-        """Pull an image from a registry based on the service parameters
-
-        :param image: tagged image to download
-        :param registries_info: registries information from service parameters
-        :return: None if the image pull failed or the image if it succeeded
-        """
-
-        target_image = None
-
-        try:
-            LOG.info(f"Image {image} download started from public/private registry")
-
-            target_image, registry_auth = (
-                self._docker._get_img_tag_with_registry(image, registries_info)
-            )
-            docker_client.pull(target_image, auth_config=registry_auth)
-        except Exception:
-            LOG.error(f"Image {image} download failed")
-
-        return target_image
-
-    def _push_images_to_local_registry_and_crictl(
-        self, docker_client, local_registry_auth, crictl_auth, registries_info, image
-    ):
-        """Pushes an image to both local registry and crictl.
-
-        If the image does not exist in local registry, it is downloaded and tagged.
-        Otherwise, it is just pushed to crictl
-
-        :param docker_client: docker's client
-        :param local_registry_auth: authentication for the local registry
-        :param crictl_auth: crictl authentication
-        :param image: tagged image to push
-        :param registries_info: registries information from service parameters
-        :return: True if the operation was successful or False otherwise
-        """
-
-        start = time.time()
-        local_image = None
-
-        if not image.startswith(constants.DOCKER_REGISTRY_SERVER):
-            target_image = self._pull_image(image, registries_info, docker_client)
-
-            if not target_image:
-                LOG.info(f"Retrying the image download for {image}")
-                # If the first request failed, retry the image pull
-                target_image = self._pull_image(image, registries_info, docker_client)
-
-                if not target_image:
-                    LOG.info(
-                        f"Image {image} download failed twice, stopping the execution"
-                    )
-                    return False
-
-            try:
-                LOG.info(f"Image {image} tag and push started")
-
-                # After pulling the image, it needs to be sent to the system's local
-                # registry, so it needs to be tagged to registry.local:9000
-                local_image = f"{constants.DOCKER_REGISTRY_SERVER}/{image}"
-
-                docker_client.tag(target_image, local_image)
-                docker_client.push(local_image, auth_config=local_registry_auth)
-            except Exception as e:
-                LOG.error(f"Image {image} tag and push failed: {e}")
-                return False
-
-            try:
-                LOG.info(
-                    f"Remove images {target_image} and {local_image} after push "
-                    "to local registry"
-                )
-
-                docker_client.remove_image(target_image)
-                docker_client.remove_image(local_image)
-            except Exception as e:
-                LOG.error(f"Image {image} remove failed: {e}")
-                return False
-
-        # After the image was downloaded to local registry, upload it to crictl
-        try:
-            # If the image wasn't originally in the docker registry, it won't contain
-            # the registry.local:9001 at the start, so we need to updated it
-            if local_image:
-                image = local_image
-
-            LOG.info(f"Image {image} push to containerd image cache started")
-
-            subprocess.check_call(  # pylint: disable=not-callable
-                ["crictl", "pull", "--creds", crictl_auth, image]
-            )
-        except Exception as e:
-            LOG.error(f"Image {image} download to crictl failed: {e}")
-            return False
-
-        elapsed_time = time.time() - start
-        LOG.info(
-            f"Image {image} download succeeded in {elapsed_time} seconds"
-        )
-
-        return True
-
-    def push_k8s_images(self, k8s_version):
-        start_time = time.time()
-
-        k8s_version = k8s_version.strip("v")
-        k8s_images = self._k8s_image_list(k8s_version)
-
-        if not k8s_images:
-            # The error logs are provided in _k8s_image_list
-            return False
-
-        registry_images = self._docker_registry_tagged_image_list()
-        crictl_images = self._docker._get_crictl_image_list()
-
-        docker_client = docker.APIClient(timeout=constants.APP_INSTALLATION_TIMEOUT)
-        local_registry_auth = cutils.get_local_docker_registry_auth()
-        crictl_auth = (
-            f"{local_registry_auth['username']}:{local_registry_auth['password']}"
-        )
-        registries = self._docker.retrieve_specified_registries()
-
-        # TODO(rlima): create a method to get elements common to both lists
-        # and skip their check
-        for image in k8s_images:
-            if image in registry_images:
-                image = f"{constants.DOCKER_REGISTRY_SERVER}/{image}"
-                if image in crictl_images:
-                    continue
-
-            success = self._push_images_to_local_registry_and_crictl(
-                docker_client, local_registry_auth, crictl_auth, registries, image
-            )
-            if not success:
-                return False
-
-        LOG.info(
-            f"Image download for {k8s_version} completed in "
-            f"{time.time() - start_time}"
-        )
-
-        return True
-
-    def _docker_registry_image_list(self):
-        try:
-            image_list_response = docker_registry.docker_registry_get("_catalog")
-        except requests.exceptions.SSLError:
-            LOG.exception("Failed to get docker registry catalog")
-            raise exception.DockerRegistrySSLException()
-        except Exception:
-            LOG.exception("Failed to get docker registry catalog")
-            raise exception.DockerRegistryAPIException()
-
-        if image_list_response.status_code != 200:
-            LOG.error(
-                f"Bad response from docker registry: {image_list_response.status_code}"
-            )
-            return []
-
-        image_list_response = image_list_response.json()
-        # responses from the registry looks like this
-        # {u'repositories': [u'meliodas/satesatesate', ...]}
-        # we need to turn that into what we want to return:
-        # [{'name': u'meliodas/satesatesate'}]
-        if 'repositories' not in image_list_response:
-            return []
-
-        return image_list_response['repositories']
-
     def docker_registry_image_list(self, context, filter_out_untagged):
-        try:
-            image_list_response = docker_registry.docker_registry_get("_catalog")
-        except requests.exceptions.SSLError:
-            LOG.exception("Failed to get docker registry catalog")
-            raise exception.DockerRegistrySSLException()
-        except Exception:
-            LOG.exception("Failed to get docker registry catalog")
-            raise exception.DockerRegistryAPIException()
-
-        if image_list_response.status_code != 200:
-            LOG.error("Bad response from docker registry: %s"
-                % image_list_response.status_code)
-            return []
-
-        image_list_response = image_list_response.json()
-        images = []
-        # responses from the registry looks like this
-        # {u'repositories': [u'meliodas/satesatesate', ...]}
-        # we need to turn that into what we want to return:
-        # [{'name': u'meliodas/satesatesate'}]
-        if 'repositories' not in image_list_response:
-            return images
-
-        image_list_response = image_list_response['repositories']
-        if filter_out_untagged:
-            for image in image_list_response:
-                image_tags_response = docker_registry.docker_registry_get(
-                    "%s/tags/list" % image)
-                tags_response = image_tags_response.json()
-                tags = tags_response['tags']
-                if tags:
-                    images.append({'name': image})
-        else:
-            for image in image_list_response:
-                images.append({'name': image})
-        return images
+        return self._image_downloader.docker_registry_image_list(filter_out_untagged)
 
     def docker_registry_image_tags(self, context, image_name):
         try:
@@ -2785,8 +2593,10 @@ class ConductorManager(service.PeriodicService):
             raise exception.DockerRegistryAPIException()
 
         if image_tags_response.status_code != 200:
-            LOG.error("Bad response from docker registry: %s"
-                % image_tags_response.status_code)
+            LOG.error(
+                "Bad response from docker registry: %s"
+                % image_tags_response.status_code
+            )
             return []
 
         image_tags_response = image_tags_response.json()
@@ -4617,12 +4427,14 @@ class ConductorManager(service.PeriodicService):
                 ct[cpu_id] = icpu.get('thread')
 
         # Capture 'previous' topology in dictionary format
+        pu = {}
         ps = {}
         pc = {}
         pt = {}
         if num_cpus_db > 0:
             for icpu in icpus:
                 cpu_id = icpu.get('cpu')
+                cpu_uuid = icpu.get('uuid')
                 core_id = icpu.get('core')
                 thread_id = icpu.get('thread')
                 forinodeid = icpu.get('forinodeid')
@@ -4631,6 +4443,7 @@ class ConductorManager(service.PeriodicService):
                     if forinodeid == inode.get('id'):
                         socket_id = inode.get('numa_node')
                         break
+                pu[cpu_id] = cpu_uuid
                 ps[cpu_id] = socket_id
                 pc[cpu_id] = core_id
                 pt[cpu_id] = thread_id
@@ -4665,9 +4478,47 @@ class ConductorManager(service.PeriodicService):
                                     reference='current (CHANGED)',
                                     sockets=cs, cores=cc, threads=ct)
 
-            # there has been an update.  Delete db entries and replace.
-            for icpu in icpus:
-                self.dbapi.icpu_destroy(icpu.uuid)
+            # During HW replacement, topology can change for identical CPU models.
+            # An example, CPU #1 has core 2 disabled in HW, but CPU #2 has core 3 disabled.
+            # This will cause a divergence in the core ID enumeration posted by firmware.
+            # Even though technically the CPUs are functionally equivalent.
+            if (
+                # Only AIO-SX supports HW replacement
+                utils.is_host_simplex_controller(host=ihost)
+                and os.path.isfile(tsc.RESTORE_IN_PROGRESS_FLAG)
+                and ps == cs
+                and pt == ct
+                and pc != cc
+            ):
+                # NOTE: We only support fixing core id.
+                # We will use the CPU ID to fix the core ID.
+                LOG.info('Detected core_id divergence during restore')
+                for cpu_id, previous_core_id in pc.items():
+                    cpu_uuid = pu[cpu_id]
+                    current_core_id = cc[cpu_id]
+                    if previous_core_id == current_core_id:
+                        continue
+                    LOG.info(
+                        'Updating core_id on cpu=(%s): %s -> %s',
+                        cpu_uuid, previous_core_id, current_core_id,
+                    )
+                    self.dbapi.icpu_update(cpu_uuid, {"core": current_core_id})
+
+                # As a future precaution, trigger a grub config update.
+                # However, there is no known issues related to the grub config, in this context.
+                self.update_grub_config(context, ihost_uuid, True)
+                return
+
+            else:
+                # there has been an update.  Delete db entries and replace.
+                if os.path.isfile(tsc.RESTORE_IN_PROGRESS_FLAG):
+                    LOG.error(
+                        'Unable to restore the CPU configuration. '
+                        'CPU configuration will be reset.'
+                    )
+
+                for icpu in icpus:
+                    self.dbapi.icpu_destroy(icpu.uuid)
 
         # sort the list of cpus by socket and coreid
         cpu_list = sorted(icpu_dict_array, key=self._sort_by_socket_and_coreid)
@@ -4933,28 +4784,13 @@ class ConductorManager(service.PeriodicService):
         :returns: pass or fail
         """
 
-        def is_same_disk(i, idisk):
-            # Upgrades R3->R4: An update from an N-1 agent will be missing the
-            # persistent naming fields.
-            if 'device_path' in i:
-                if i.get('device_path') is not None:
-                    if idisk.device_path == i.get('device_path'):
-                        # Update from R4 node: Use R4 disk identification logic
-                        return True
-                    elif not idisk.device_path:
-                        # TODO: remove R5. still need to compare device_node
-                        # because not inventoried for R3 node controller-0
-                        if idisk.device_node == i.get('device_node'):
-                            LOG.info("host_uuid=%s idisk.device_path not"
-                                     "set, match on device_node %s" %
-                                     (ihost_uuid, idisk.device_node))
-                            return True
-                else:
-                    return False
-            elif idisk.device_node == i.get('device_node'):
-                # Update from R3 node: Fall back to R3 disk identification
-                # logic.
-                return True
+        def does_disk_path_exist(i, idisk):
+
+            if i.get('device_path') is not None:
+                if idisk.device_path == i.get('device_path'):
+                    LOG.info("The disk is the same, because the %s matches" % "device_path")
+                    return True
+
             return False
 
         ihost_uuid.strip()
@@ -4984,6 +4820,9 @@ class ConductorManager(service.PeriodicService):
 
         idisks = self.dbapi.idisk_get_by_ihost(ihost_uuid)
 
+        idisk_dict_array.sort(key=lambda i: i.get('device_path') is None)
+        LOG.debug(f"Disks received from agent: {str(idisk_dict_array)}")
+
         for i in idisk_dict_array:
             disk_dict = {'forihostid': forihostid}
             # this could overwrite capabilities - do not overwrite device_function?
@@ -4995,11 +4834,12 @@ class ConductorManager(service.PeriodicService):
                 disk = self.dbapi.idisk_create(forihostid, disk_dict)
             else:
                 found = False
+                is_valid_disk = True
                 for idisk in idisks:
                     LOG.debug("[DiskEnum] for - current idisk: %s - %s -%s" %
                              (idisk.uuid, idisk.device_node, idisk.device_id))
 
-                    if is_same_disk(i, idisk):
+                    if does_disk_path_exist(i, idisk):
                         found = True
                         # The disk has been replaced?
                         if idisk.serial_id != i.get('serial_id'):
@@ -5045,8 +4885,6 @@ class ConductorManager(service.PeriodicService):
                                    idisk.device_id, idisk.capabilities,
                                    disk_dict['capabilities']))
 
-                        # disk = self.dbapi.idisk_update(idisk['uuid'],
-                        #                                disk_dict)
                         disk_dict_capabilities = disk_dict.get('capabilities')
                         if (disk_dict_capabilities and
                                 ('device_function' not in
@@ -5068,15 +4906,25 @@ class ConductorManager(service.PeriodicService):
                                   (idisk['uuid'], str(disk_dict)))
                         disk = self.dbapi.idisk_update(idisk['uuid'],
                                                        disk_dict)
-                    elif not idisk.device_path:
-                        if idisk.device_node == i.get('device_node'):
-                            found = True
-                            disk = self.dbapi.idisk_update(idisk['uuid'],
-                                                           disk_dict)
-                            self.dbapi.journal_update_path(disk)
+                        break
+                else:
+                    if i.get('device_path') is None:
+                        # If the disk's `device_path` is still `None` after
+                        # the disks loop, mark it as invalid.
+                        # This can happen if pyudev takes longer than normal
+                        # to provide all device information.
+                        # Such missing device information is unexpected and
+                        # usually means something went wrong.
+                        # Marking the disk as invalid helps avoid duplicate
+                        # entries caused by temporary inconsistencies.
+                        is_valid_disk = False
+                        LOG.warn(f"The disk received with device_node {i.get('device_node')} is invalid,"
+                                  "because it does not have the device_path value.")
 
-                if not found:
+                if not found and is_valid_disk:
+                    LOG.info(f"Creating new disk with device_path {disk_dict.get('device_path')}")
                     disk = self.dbapi.idisk_create(forihostid, disk_dict)
+                    idisks.append(disk)
 
                 # Update the capabilities if the device is a cinder
                 # disk
@@ -6013,8 +5861,15 @@ class ConductorManager(service.PeriodicService):
                             partition.uuid,
                             {'status': constants.PARTITION_IN_USE_STATUS})
                 except exception.DiskPartitionNotFound:
-                    if ipv['lvm_vg_name'] != constants.LVG_CINDER_VOLUMES:
-                        self._check_pv_partition(ipv)
+                    try:
+                        if ipv['lvm_vg_name'] != constants.LVG_CINDER_VOLUMES:
+                            self._check_pv_partition(ipv)
+                    except exception.DiskNotFound:
+                        # Delete the i_pv entry if its disk_or_part_uuid no longer matches any existing
+                        # partition or disk UUID. This ensures the inventory can complete successfully,
+                        # since the i_pv is no longer linked to any valid disk or partition.
+                        self.dbapi.ipv_destroy(ipv['id'])
+                        continue
 
                 # Save the physical PV associated with cinder volumes for use later
                 if ipv['lvm_vg_name'] == constants.LVG_CINDER_VOLUMES:
@@ -6791,6 +6646,11 @@ class ConductorManager(service.PeriodicService):
                     ihost.save(context)
                 self._clear_device_image_alarm(context)
 
+    def _handle_reboot_completion(self, ihost, config_uuid):
+        """Handle reboot completion"""
+        LOG.info("Host %s completed reboot for config %s" % (ihost.hostname, config_uuid))
+        self._remove_config_from_reboot_config_list(ihost.uuid, config_uuid)
+
     def iconfig_update_by_ihost(self, context,
                                 ihost_uuid, imsg_dict):
         """Update applied iconfig for an ihost with the supplied data.
@@ -6823,6 +6683,12 @@ class ConductorManager(service.PeriodicService):
                                              error))
 
         config_uuid = imsg_dict['config_applied']
+
+        # Handle reboot completion
+        if imsg_dict.get('reboot_completed', None):
+            threads.append(thread_pool.spawn(self._handle_reboot_completion,
+                                             ihost, config_uuid))
+
         threads.append(thread_pool.spawn(self._update_host_config_applied,
                                          context,
                                          ihost,
@@ -6977,12 +6843,13 @@ class ConductorManager(service.PeriodicService):
 
         return False
 
-    def _is_upgrade_in_progress(self):
+    def _upgrade_in_progress(self):
+        upgrade = None
         try:
-            usm_service.get_platform_upgrade(self.dbapi)
-            return True
+            upgrade = usm_service.get_platform_upgrade(self.dbapi)
+            return upgrade
         except exception.NotFound:
-            return False
+            return upgrade
 
     @periodic_task.periodic_task(
         spacing=CONF.conductor_periodic_task_intervals.controller_config_active_apply)
@@ -7000,8 +6867,13 @@ class ConductorManager(service.PeriodicService):
         if not self._controller_config_active_check():
             return  # already finalized on this active controller
 
-        if self._is_upgrade_in_progress():
-            LOG.info("Skipped _controller_config_active_apply while upgrading")
+        upgrade = self._upgrade_in_progress()
+        if upgrade and upgrade.state not in [constants.DEPLOY_STATE_ACTIVATE_DONE,
+                                             constants.DEPLOY_STATE_ACTIVATE_FAILED,
+                                             constants.DEPLOY_STATE_ACTIVATE_ROLLBACK_DONE,
+                                             constants.DEPLOY_STATE_ACTIVATE_ROLLBACK_FAILED]:
+            LOG.info("Skipped _controller_config_active_apply during "
+                     "upgrade for state: %s", str(upgrade.state))
             return
 
         try:
@@ -7148,6 +7020,9 @@ class ConductorManager(service.PeriodicService):
             if ihost.personality:
                 if ihost.administrative == constants.ADMIN_UNLOCKED:
                     ihost_action_str = ihost.ihost_action or ""
+                    host_mgmt_ip = cutils.get_host_mgmt_ip(self.dbapi, ihost)
+                    if not host_mgmt_ip:
+                        LOG.info(f"cannot find mgmt address for host='{ihost.hostname}'")
 
                     if (ihost_action_str.startswith(constants.FORCE_UNSAFE_LOCK_ACTION) or
                             ihost_action_str.startswith(constants.FORCE_LOCK_ACTION) or
@@ -7167,6 +7042,8 @@ class ConductorManager(service.PeriodicService):
                             keepkeys = ['ihost_action', 'vim_progress_status']
                             ihost_mtc = cutils.removekeys_nonmtce(ihost_mtc,
                                                                 keepkeys)
+                            if host_mgmt_ip:
+                                ihost_mtc['mgmt_ip'] = host_mgmt_ip
 
                             if ihost_action_str.startswith(constants.FORCE_LOCK_ACTION):
                                 timeout_in_secs = 6
@@ -7325,6 +7202,7 @@ class ConductorManager(service.PeriodicService):
     PUPPET_RUNTIME_CLASS_DOCKERDISTRIBUTION = 'platform::dockerdistribution::runtime'
     PUPPET_RUNTIME_CLASS_USERS = 'platform::users::runtime'
     PUPPET_RUNTIME_CLASS_OSDS = 'platform::ceph::runtime_osds'
+    PUPPET_RUNTIME_CLASS_PCI = 'platform::kubernetes::worker::pci::runtime'
     PUPPET_RUNTIME_FILES_DOCKER_REGISTRY_KEY_FILE = constants.DOCKER_REGISTRY_KEY_FILE
     PUPPET_RUNTIME_FILES_DOCKER_REGISTRY_CERT_FILE = constants.DOCKER_REGISTRY_CERT_FILE
     PUPPET_RUNTIME_FILES_DOCKER_REGISTRY_PKCS1_KEY_FILE = constants.DOCKER_REGISTRY_PKCS1_KEY_FILE
@@ -7334,7 +7212,8 @@ class ConductorManager(service.PeriodicService):
         PUPPET_RUNTIME_CLASS_ROUTES,
         PUPPET_RUNTIME_CLASS_DOCKERDISTRIBUTION,
         PUPPET_RUNTIME_CLASS_USERS,
-        PUPPET_RUNTIME_CLASS_OSDS
+        PUPPET_RUNTIME_CLASS_OSDS,
+        PUPPET_RUNTIME_CLASS_PCI
     ]
     PUPPET_RUNTIME_FILTER_FILES = [
         PUPPET_RUNTIME_FILES_DOCKER_REGISTRY_KEY_FILE,
@@ -7349,9 +7228,9 @@ class ConductorManager(service.PeriodicService):
         PUPPET_RUNTIME_FILES_DOCKER_CERT_FILE
     ]
 
-    def _check_ready_class_runtime(self, filter_class):
+    def _check_ready_class_runtime(self, filter_class, host_uuids):
         if self._check_runtime_class_apply_in_progress(
-                [filter_class]):
+                [filter_class], host_uuids):
             return False
         return True
 
@@ -7388,29 +7267,34 @@ class ConductorManager(service.PeriodicService):
         # check if needed to wait for filter class
         check_wait = False
         for filter_class in filter_classes:
+            if filter_class == self.PUPPET_RUNTIME_CLASS_PCI:
+                if not self._check_ready_class_runtime(self.PUPPET_RUNTIME_CLASS_PCI, host_uuids):
+                    LOG.info("config type %s filter_mapping %s False (wait) host_uuids %s" %
+                             (CONFIG_APPLY_RUNTIME_MANIFEST, filter_class, host_uuids))
+                    return False
             if filter_class == self.PUPPET_RUNTIME_CLASS_ROUTES:
-                if not self._check_ready_class_runtime(self.PUPPET_RUNTIME_CLASS_ROUTES):
-                    LOG.info("config type %s filter_mapping %s False (check)" %
-                             (CONFIG_APPLY_RUNTIME_MANIFEST, filter_class))
+                if not self._check_ready_class_runtime(self.PUPPET_RUNTIME_CLASS_ROUTES, host_uuids):
+                    LOG.info("config type %s filter_mapping %s False (check) host_uuids %s" %
+                             (CONFIG_APPLY_RUNTIME_MANIFEST, filter_class, host_uuids))
                     check_wait = True
             if filter_class == self.PUPPET_RUNTIME_CLASS_DOCKERDISTRIBUTION:
                 if self.check_restoring_apps_in_progress():
-                    LOG.info("config type %s filter_mapping %s False (wait)" %
-                             (CONFIG_APPLY_RUNTIME_MANIFEST, filter_class))
+                    LOG.info("config type %s filter_mapping %s False (wait), host_uuids %s" %
+                             (CONFIG_APPLY_RUNTIME_MANIFEST, filter_class, host_uuids))
                     # This is not dependent on RPC message, so continue to wait
                     return False
             if filter_class == self.PUPPET_RUNTIME_CLASS_OSDS:
-                if not self._check_ready_class_runtime(self.PUPPET_RUNTIME_CLASS_OSDS):
-                    LOG.info("config type %s filter_mapping %s False (wait)" %
-                             (CONFIG_APPLY_RUNTIME_MANIFEST, filter_class))
+                if not self._check_ready_class_runtime(self.PUPPET_RUNTIME_CLASS_OSDS, host_uuids):
+                    LOG.info("config type %s filter_mapping %s False (wait) host_uuids %s" %
+                             (CONFIG_APPLY_RUNTIME_MANIFEST, filter_class, host_uuids))
                     check_wait = True
             if filter_class == self.PUPPET_RUNTIME_CLASS_USERS:
-                if not self._check_ready_class_runtime(self.PUPPET_RUNTIME_CLASS_USERS):
-                    LOG.info("config type %s filter_mapping %s False (check)" %
-                             (CONFIG_APPLY_RUNTIME_MANIFEST, filter_class))
+                if not self._check_ready_class_runtime(self.PUPPET_RUNTIME_CLASS_USERS, host_uuids):
+                    LOG.info("config type %s filter_mapping %s False (check) host_uuids %s" %
+                             (CONFIG_APPLY_RUNTIME_MANIFEST, filter_class, host_uuids))
                     check_wait = True
-            LOG.info("config type %s filter_mapping %s True (continue)" %
-                     (CONFIG_APPLY_RUNTIME_MANIFEST, filter_class))
+            LOG.info("config type %s filter_mapping %s True (continue) host_uuids %s" %
+                     (CONFIG_APPLY_RUNTIME_MANIFEST, filter_class, host_uuids))
 
         if check_wait:
             # Limit the wait time for deferred config for robustness, in the
@@ -7432,11 +7316,11 @@ class ConductorManager(service.PeriodicService):
         for filter_file in filter_files:
             if filter_file in self.PUPPET_FILTER_FILES_RESTORING_APPS:
                 if self.check_restoring_apps_in_progress():
-                    LOG.info("config type %s filter_mapping %s False (wait)" %
-                             (CONFIG_UPDATE_FILE, filter_file))
+                    LOG.info("config type %s filter_mapping %s False (wait) host_uuids %s" %
+                             (CONFIG_UPDATE_FILE, filter_file, host_uuids))
                     return False
-            LOG.info("config type %s filter_mapping %s True (continue)" %
-                     (CONFIG_UPDATE_FILE, filter_file))
+            LOG.info("config type %s filter_mapping %s True (continue) host_uuids %s" %
+                     (CONFIG_UPDATE_FILE, filter_file, host_uuids))
 
         return True
 
@@ -7544,6 +7428,11 @@ class ConductorManager(service.PeriodicService):
 
         def _cs_audit_deferred_runtime_config(self, context):
             """Apply deferred config runtime manifests when ready"""
+
+            if cutils.is_enrollment_in_progress():
+                LOG.info("subcloud enrollment in progress, pausing audit "
+                         "deferred config runtime manifest.")
+                return
 
             if not self._host_deferred_runtime_config or \
                     not self._ready_to_apply_runtime_config():
@@ -7785,7 +7674,8 @@ class ConductorManager(service.PeriodicService):
                                  app_name,
                                  k8s_version=None,
                                  k8s_upgrade_timing=None,
-                                 async_upload=True):
+                                 async_upload=True,
+                                 skip_validations=False):
         """ Automatically upload managed applications.
 
         :param context: Context of the request.
@@ -7799,7 +7689,7 @@ class ConductorManager(service.PeriodicService):
                  None if there is not an upload version available for the given app.
         """
 
-        if self._patching_operation_is_occurring():
+        if not skip_validations and self._patching_operation_is_occurring():
             return False
 
         # Delete current uploaded version if a newer one is available
@@ -7875,6 +7765,7 @@ class ConductorManager(service.PeriodicService):
                                         app,
                                         tarball.tarball_name,
                                         hook_info)
+                return True
         except exception.KubeAppAlreadyExists as e:
             LOG.exception(e)
             return False
@@ -7900,7 +7791,7 @@ class ConductorManager(service.PeriodicService):
             app = kubeapp_obj.get_by_name(context, app_name)
         except exception.KubeAppNotFound as e:
             LOG.exception(e)
-            return
+            return False
 
         hook_info = LifecycleHookInfo()
         hook_info.init(LifecycleConstants.APP_LIFECYCLE_MODE_AUTO,
@@ -7911,22 +7802,26 @@ class ConductorManager(service.PeriodicService):
             self.app_lifecycle_actions(context, app, hook_info)
         except exception.LifecycleSemanticCheckException as e:
             LOG.info("Auto-apply failed prerequisites for {}: {}".format(app.name, e))
-            return
+            return None
         except exception.SysinvException:
             LOG.exception("Internal sysinv error while auto applying {}"
                           .format(app.name))
-            return
+            return False
         except Exception as e:
             LOG.exception("Automatic operation:{} "
                           "for app {} failed with: {}".format(hook_info,
                                                               app.name,
                                                               e))
-            return
+            return False
 
         if self._patching_operation_is_occurring():
             return
 
-        self._inner_sync_auto_apply(context, app_name)
+        self._inner_sync_auto_apply_with_lock(
+            context,
+            app_name,
+            status_constraints=(constants.APP_UPLOAD_SUCCESS,)
+        )
 
     def update_apps_based_on_k8s_version(self, context, k8s_version, k8s_upgrade_timing):
         """ Update applications based on a given Kubernetes version (blocking).
@@ -7941,55 +7836,45 @@ class ConductorManager(service.PeriodicService):
         LOG.info("Checking available application updates for Kubernetes version {}."
                  .format(k8s_version))
 
-        update_candidates = [app_name for app_name in
-                             self.apps_metadata[constants.APP_METADATA_APPS].keys()]
+        # Launch app updates
+        self._apps_update_operation = app_update_manager.AppUpdateManager(
+            self.dbapi,
+            self.perform_automatic_operation_in_parallel
+        )
+        self._apps_update_operation.update_apps(context, k8s_version, k8s_upgrade_timing)
 
-        # Launch a thread for each update candidate, then wait for all applications
-        # to finish updating.
-        threadpool = greenpool.GreenPool(len(update_candidates))
-        threads = {}
-        result = True
-        for app_name in update_candidates:
+        # Monitor update results
+        max_attempts = int(kubernetes.KUBE_APP_UPDATE_TIMEOUT_LIMIT_IN_MINUTES * 60 /
+                           kubernetes.KUBE_APP_UPDATE_PROGRESS_CHECK_INTERVAL_IN_SECONDS)
+        current_attempt = 0
+        while current_attempt < max_attempts:
+            update_progress = self._apps_update_operation.status
+            if update_progress['status'] == app_update_manager.AppsUpdateStatus.IN_PROGRESS.value:
+                log_message = f"Application updates to match target Kubernetes version \
+                              {k8s_version} in progress."
+                if self._apps_update_operation.successfully_updated:
+                    log_message = log_message + " Apps updated so far: " \
+                        f"{', '.join(update_progress['updated_apps'])}."
+                LOG.info(log_message)
+            elif update_progress['status'] == app_update_manager.AppsUpdateStatus.COMPLETED.value:
+                if self._apps_update_operation.successfully_updated:
+                    LOG.info(f"Apps updated to target Kubernetes version {k8s_version}: "
+                             f"{', '.join(update_progress['updated_apps'])}.")
+                return True
+            elif update_progress['status'] == app_update_manager.AppsUpdateStatus.FAILED.value:
+                LOG.error(f"Failed to update the following apps to match target Kubernetes "
+                          f"version {k8s_version}: "
+                          f"{', '.join(update_progress['failed_apps'])}.")
+                return False
+            else:
+                LOG.warning("Unknown status of application updates to match Kubernetes "
+                            f"version {k8s_version}.")
+            time.sleep(kubernetes.KUBE_APP_UPDATE_PROGRESS_CHECK_INTERVAL_IN_SECONDS)
+            current_attempt += 1
 
-            try:
-                app = kubeapp_obj.get_by_name(context, app_name)
-            except exception.KubeAppNotFound:
-                continue
-
-            # Apps should be either in 'applied' or 'apply-failure' state to be updated.
-            # Applied apps are selected to be updated since they are currently in use.
-            # If the app is in 'apply-failure' state we give it a chance to be
-            # successfully applied via the update process.
-            # If a newer compatible version of an app in 'uploaded' or 'uploaded-failed' state
-            # is available then the current version is removed and the new one is uploaded.
-            if (app.status == constants.APP_APPLY_SUCCESS or
-                    app.status == constants.APP_APPLY_FAILURE):
-                threads[app.name] = threadpool.spawn(self._auto_update_app,
-                                                     context,
-                                                     app_name,
-                                                     k8s_version,
-                                                     k8s_upgrade_timing,
-                                                     async_update=False)
-            elif (app.status == constants.APP_UPLOAD_SUCCESS or
-                    app.status == constants.APP_UPLOAD_FAILURE):
-                threads[app.name] = threadpool.spawn(self._auto_upload_managed_app,
-                                                     context,
-                                                     app_name,
-                                                     k8s_version,
-                                                     k8s_upgrade_timing,
-                                                     async_upload=False)
-
-        # Wait for all updates to finish
-        threadpool.waitall()
-
-        # Check result values
-        for app_name, thread in threads.items():
-            if thread.wait() is False:
-                LOG.error("Failed to update {} to match target Kubernetes version {}"
-                          .format(app_name, k8s_version))
-                result = False
-
-        return result
+        LOG.error(f"Application update operation to match target Kubernetes version {k8s_version} "
+                  "timed out.")
+        return False
 
     def _get_app_bundle_for_update(self, app, k8s_version=None, k8s_upgrade_timing=None):
         """ Retrieve metadata from the most updated application bundle
@@ -8098,7 +7983,9 @@ class ConductorManager(service.PeriodicService):
                          app_name,
                          k8s_version=None,
                          k8s_upgrade_timing=None,
-                         async_update=True):
+                         async_update=True,
+                         skip_validations=False,
+                         ignore_locks=False):
         """Auto update applications
 
         :param context: Context of the request.
@@ -8108,6 +7995,8 @@ class ConductorManager(service.PeriodicService):
         :param async_update: Update asynchronously if True. Update synchronously if False.
         :return: True if the update successfully started when running asynchronously.
                  True if the app was successfully updated when running synchronously.
+                 True if the app is a dependent application of any currently applied
+                 applications.
                  False if an error has occurred.
                  None if there is not an updated version available for the given app.
         """
@@ -8147,8 +8036,9 @@ class ConductorManager(service.PeriodicService):
                                                               e))
             return False
 
-        if self._patching_operation_is_occurring():
+        if not skip_validations and self._patching_operation_is_occurring():
             return False
+
         LOG.debug("Application %s: Checking "
                   "for update ..." % app_name)
         app_bundle = self._get_app_bundle_for_update(app, k8s_version, k8s_upgrade_timing)
@@ -8156,6 +8046,15 @@ class ConductorManager(service.PeriodicService):
             # Skip if no bundles are found
             LOG.debug("No bundle found for updating %s" % app_name)
             return
+
+        # get the list of dependent parent app that list the current application as a dependency
+        blocking_parent_list = None
+        if not skip_validations:
+            blocking_parent_list = \
+                app_dependents.get_blocking_parent_dependencies(app.name,
+                                                                app.app_version,
+                                                                app_bundle.version,
+                                                                self.dbapi)
 
         LOG.info("Found new tarfile version for %s: %s"
                  % (app.name, app_bundle.file_path))
@@ -8168,11 +8067,32 @@ class ConductorManager(service.PeriodicService):
             # Skip if tarball check fails
             return False
 
-        if app_bundle.version in \
+        if not skip_validations and blocking_parent_list:
+            # get dependent_parent_exceptions declared in metadata.yaml of the current app
+            dependent_parent_exceptions = tarball.metadata.get(
+                    constants.APP_METADATA_DEPENDENT_PARENT_EXCEPTIONS, {})
+
+            skip_auto_update_msg = (f"Auto-update skipped for: {app.name} because "
+                                     "it is app dependent of other applications "
+                                     "that are currently applied.")
+
+            # If this app is a dependency for other currently applied apps,
+            # and there are no exceptions, skip auto-update.
+            if not dependent_parent_exceptions:
+                LOG.info(skip_auto_update_msg)
+                return True
+
+            # If the dependent parent list does not match the exceptions, skip auto-update.
+            if not app_dependents.validate_parent_exceptions(blocking_parent_list,
+                                                             dependent_parent_exceptions):
+                LOG.info(skip_auto_update_msg)
+                return True
+
+        if not skip_validations and (app_bundle.version in
             app.app_metadata.get(
                 constants.APP_METADATA_UPGRADES, {}).get(
-                constants.APP_METADATA_FAILED_VERSIONS, []) and \
-                    k8s_version is None:
+                constants.APP_METADATA_FAILED_VERSIONS, []) and
+                    k8s_version is None):
             # Skip if this version was previously failed to
             # be updated. Allow retrying only if a Kubernetes version is
             # defined, meaning that Kubernetes upgrade is in progress.
@@ -8181,26 +8101,62 @@ class ConductorManager(service.PeriodicService):
                       % (app.name, tarball.app_version, app.app_version))
             return False
 
-        return self._inner_sync_auto_update(context, app, tarball, k8s_version, async_update)
+        if ignore_locks:
+            return self._inner_sync_auto_update(context, app, tarball, k8s_version, async_update)
+
+        return self._inner_sync_auto_update_with_lock(
+            context,
+            app,
+            tarball,
+            k8s_version,
+            async_update
+        )
 
     @cutils.synchronized(LOCK_APP_AUTO_MANAGE)
-    def _inner_sync_auto_update(self,
-                                context,
-                                applied_app,
-                                tarball,
-                                k8s_version=None,
-                                async_update=True):
-        # Check no other app is in progress of apply/update/recovery
-        for other_app in self.dbapi.kube_app_get_all():
-            if other_app.status in [constants.APP_APPLY_IN_PROGRESS,
-                                    constants.APP_UPDATE_IN_PROGRESS,
-                                    constants.APP_RECOVER_IN_PROGRESS]:
-                LOG.info("%s requires update but %s "
-                         "is in progress of apply/update/recovery. "
-                         "Will retry on next audit",
-                         applied_app.name, other_app.name)
-                return False
+    def _inner_sync_auto_update_with_lock(
+        self,
+        context,
+        applied_app,
+        tarball,
+        k8s_version=None,
+        async_update=True
+    ):
+        return self._inner_sync_auto_update(
+            context,
+            applied_app,
+            tarball,
+            k8s_version,
+            async_update
+        )
 
+    def _inner_sync_auto_update(
+        self,
+        context,
+        applied_app,
+        tarball,
+        k8s_version=None,
+        async_update=True
+    ):
+        """
+        Synchronize and auto-update a application.
+
+        This method handles the process of transitioning an applied application
+        to an inactive state, creating or updating the target application, and
+        initiating the update process either asynchronously or synchronously.
+
+        Args:
+            context (object): The request context for the operation.
+            applied_app (object): The currently applied application object.
+            tarball (object): The tarball object containing application details.
+            k8s_version (str, optional): The Kubernetes version for the update. Defaults to None.
+            async_update (bool, optional): Whether to perform the update asynchronously.
+                                           Defaults to True.
+
+        Returns:
+            bool: True if the update process is initiated successfully, False otherwise.
+                  If `async_update` is False, the return value will be the result of
+                  `perform_app_update`.
+        """
         # Set the status for the current applied app to inactive
         applied_app.status = constants.APP_INACTIVE_STATE
         applied_app.progress = None
@@ -8572,11 +8528,10 @@ class ConductorManager(service.PeriodicService):
         # No need to detect again until conductor restart
         self._do_detect_swact = False
 
-    def _populate_app_bundle_metadata(self):
+    def _populate_app_bundle_metadata(self, tarballs_path=constants.HELM_APP_ISO_INSTALL_PATH):
         """Read metadata of all application bundles and store in the database"""
-
         bundle_list = []
-        for file_path in glob.glob("{}/*.tgz".format(constants.HELM_APP_ISO_INSTALL_PATH)):
+        for file_path in glob.glob("{}/*.tgz".format(tarballs_path)):
             bundle_data = app_metadata.extract_bundle_metadata(file_path)
             if bundle_data:
                 bundle_list.append(bundle_data)
@@ -8656,6 +8611,67 @@ class ConductorManager(service.PeriodicService):
 
             time.sleep(1)
 
+    def _audit_application_alarms(self):
+        """Audit and clear outdated alarms for application apply/update progress."""
+        # Check for reapply pending alarm to skip audit
+        reapply_pending_alarms = self.fm_api.get_faults_by_id(
+            fm_constants.FM_ALARM_ID_APPLICATION_REAPPLY_PENDING) or []
+        if reapply_pending_alarms:
+            return
+        target_alarms = [
+            fm_constants.FM_ALARM_ID_APPLICATION_APPLYING,
+            fm_constants.FM_ALARM_ID_APPLICATION_UPDATING
+        ]
+        alarm_description = f"for application alarms {', '.join(target_alarms)}"
+        LOG.info(f"Starting alarm audit {alarm_description}")
+
+        alarms = []
+        for alarm_id in target_alarms:
+            alarm_list = self.fm_api.get_faults_by_id(alarm_id)
+            if not alarm_list:
+                continue
+            alarms.extend(alarm_list)
+        if not alarms:
+            LOG.info(f"No alarms found {alarm_description}")
+        else:
+            # Fetch all applications
+            apps = self.dbapi.kube_app_get_all()
+
+            for alarm in alarms:
+                # Extract app name from entity_instance_id
+                # (e.g., k8s_application=platform-integ-apps -> platform-integ-apps)
+                entity_parts = alarm.entity_instance_id.split('=')
+                if (len(entity_parts) != 2 or
+                        entity_parts[0] != fm_constants.FM_ENTITY_TYPE_APPLICATION):
+                    LOG.warning(f"Invalid entity_instance_id format: {alarm.entity_instance_id}")
+                    continue
+                app_name = entity_parts[1]
+
+                # Find matching application (handle multiple or none)
+                matching_apps = [app for app in apps if app.name == app_name]
+                if not matching_apps:
+                    LOG.warning(f"No matching application found for alarm "
+                                f"{alarm.alarm_id} with entity {alarm.entity_instance_id}"
+                                )
+                    continue
+
+                for app in matching_apps:
+                    # Check if the application is uploaded/applied and progress is completed
+                    if app.status in [constants.APP_UPLOAD_SUCCESS, constants.APP_APPLY_SUCCESS]:
+                        try:
+                            self.fm_api.clear_fault(alarm.alarm_id, alarm.entity_instance_id)
+                            LOG.info(
+                                f"Cleared outdated alarm {alarm.alarm_id} for application {app_name}"
+                            )
+                        except Exception as e:
+                            LOG.error(
+                                f"Failed to clear alarm {alarm.alarm_id} for {app_name}: {str(e)}"
+                            )
+                    else:
+                        LOG.debug(f"Alarm {alarm.alarm_id} for {app_name} retained, status: "
+                                  f"{app.status}, progress: {app.progress}"
+                                  )
+
     @periodic_task.periodic_task(spacing=CONF.conductor_periodic_task_intervals.k8s_application,
                                  run_immediately=True)
     def _k8s_application_audit(self, context):
@@ -8663,10 +8679,15 @@ class ConductorManager(service.PeriodicService):
 
         LOG.debug("Periodic Task: _k8s_application_audit: Starting")
 
-        skip_k8s_application_audit = CONF.app_framework.skip_k8s_application_audit
-        if skip_k8s_application_audit:
-            LOG.info("Skipping k8s_application_audit since "
-                "skip_k8s_application_audit config option is set to true.")
+        # Retrieve the 'k8s_application_audit' service parameter.
+        # If it does not exist, create it and set its status to enabled.
+        service_parameter_value = \
+            service_parameter.get_service_parameter_k8s_application_audit(self.dbapi)
+
+        # Skip audit if the service parameter is set to 'disabled'.
+        if service_parameter_value == 'disabled':
+            LOG.info("Skipping _k8s_application_audit, "
+                     "service parameter k8s_application_audit is disabled.")
             return
 
         # Make sure that the active controller is unlocked/enabled. Only
@@ -8748,9 +8769,21 @@ class ConductorManager(service.PeriodicService):
                             app_name] in [constants.APP_UPLOAD_SUCCESS, constants.APP_APPLY_SUCCESS]:
                     self._auto_upload_managed_app(context, app_name)
 
+        apps = []
+        apps = self.determine_apps_reapply_order(name_only=True,
+                                                     filter_active=False)
+
         # Check the application state and take the appropriate action
         # App applies need to be done in a specific order
-        for app_name in self.determine_apps_reapply_order(name_only=True, filter_active=False):
+        operation_apps_map = {
+            constants.APP_APPLY_OP: [],
+            constants.APP_UPDATE_OP: []
+        }
+        # TODO(dbarbosa): Add apps_to_reaply list and perform the reapply
+        # call using the perform_automatic_operation_in_parallel function.
+        # This way the platform cores will be taken into account to process
+        # the reapply of apps in parallel.
+        for app_name in apps:
             if app_name not in self.apps_metadata[constants.APP_METADATA_PLATFORM_MANAGED_APPS].keys():
                 continue
 
@@ -8767,7 +8800,7 @@ class ConductorManager(service.PeriodicService):
                 if app_name in self.apps_metadata[constants.APP_METADATA_DESIRED_STATES].keys() and \
                         self.apps_metadata[constants.APP_METADATA_DESIRED_STATES][
                             app_name] == constants.APP_APPLY_SUCCESS:
-                    self._auto_apply_managed_app(context, app_name)
+                    operation_apps_map[constants.APP_APPLY_OP].append(app_name)
             elif status == constants.APP_APPLY_IN_PROGRESS:
                 # Action: do nothing
                 pass
@@ -8775,7 +8808,7 @@ class ConductorManager(service.PeriodicService):
                 self._auto_recover_managed_app(context, app_name)
             elif status == constants.APP_APPLY_SUCCESS:
                 self.check_pending_app_reapply(context)
-                self._auto_update_app(context, app_name)
+                operation_apps_map[constants.APP_UPDATE_OP].append(app_name)
 
         # Special case, we want to apply some logic to non-managed applications
         for app_name in self.apps_metadata[constants.APP_METADATA_APPS].keys():
@@ -8795,9 +8828,122 @@ class ConductorManager(service.PeriodicService):
             # Automatically update non-managed applications
             if status == constants.APP_APPLY_SUCCESS:
                 self.check_pending_app_reapply(context)
-                self._auto_update_app(context, app_name)
+                operation_apps_map[constants.APP_UPDATE_OP].append(app_name)
+
+        for operation in operation_apps_map:
+            result, _, _ = self.perform_automatic_operation_in_parallel(
+                context,
+                operation_apps_map[operation],
+                operation
+            )
+            if result is None:
+                LOG.warning(f"Auto-{operation} skipped for one or more apps")
+            elif result is False:
+                action = 'updating' if operation == constants.APP_UPDATE_OP else f'{operation}ing'
+                LOG.error(f"Error while auto {action} one or more apps")
+
+        # Run alarm audit every 5 iterations (5 minutes)
+        self._app_alarm_audit_counter += 1
+        if self._app_alarm_audit_counter >= 5:
+            self._audit_application_alarms()
+            self._app_alarm_audit_counter = 0
 
         LOG.debug("Periodic Task: _k8s_application_audit: Finished")
+
+    def recover_and_update_apply_failed_app(self,
+                                            context,
+                                            app_name,
+                                            k8s_version=None,
+                                            k8s_upgrade_timing=None):
+        try:
+            self._inner_sync_auto_apply(context, app_name, async_apply=False)
+            self._auto_update_app(
+                context,
+                app_name,
+                k8s_version=k8s_version,
+                k8s_upgrade_timing=k8s_upgrade_timing,
+                async_update=False,
+                skip_validations=True,
+                ignore_locks=True
+            )
+        except Exception as e:
+            LOG.error(e)
+            return False
+        return True
+
+    def perform_automatic_operation_in_parallel(self, context, apps, op, **kwargs):
+        """
+        Perform an automatic operation on a list of applications using a thread pool.
+        This method executes the specified operation (`op`) on the provided list of
+        applications (`apps`) concurrently, utilizing a thread pool with a number of
+        workers equal to the number of physical CPU cores.
+        Args:
+            context (object): The context object containing runtime information.
+            apps (list): A list of application objects to process.
+            op (str): The operation to perform. Supported operations are:
+                - constants.APP_APPLY_OP: Automatically apply managed applications.
+                - constants.APP_REAPPLY_OP: Automatically reapply managed applications.
+                - constants.APP_UPDATE_OP: Automatically update applications.
+        Returns:
+            tuple: returns a tuple with values values (bool, list, list) - if all operations are
+            completed successfully, the boolean value is returned as True. Otherwise the boolean
+            value is returned as False. If a None value is returned by the app operation, it means
+            the function execution was skipped, and the boolean value will also be returned as
+            None. The other two returned values contain the names of the apps with successful and
+            failed operations.
+        """
+        # Get the number of platform CPU cores
+        core_count = cutils.get_platform_core_count(self.dbapi)
+
+        operation_func = {
+            constants.APP_APPLY_OP: self._auto_apply_managed_app,
+            constants.APP_REAPPLY_OP: self._auto_apply_managed_app,
+            constants.APP_UPDATE_OP: self._auto_update_app,
+            constants.APP_UPLOAD_OP: self._auto_upload_managed_app,
+            constants.APP_RECOVER_UPDATE_OP: self.recover_and_update_apply_failed_app
+        }
+
+        result = True
+        successful_executions = []
+        failed_executions = []
+
+        LOG.info(f"Initiating automatic operation '{op}' on {len(apps)} applications: "
+                 f"{', '.join(apps)} using a thread pool with {core_count} workers.")
+
+        with ThreadPoolExecutor(max_workers=core_count) as executor:
+            futures = {
+                executor.submit(operation_func[op], context, app, **kwargs): app
+                for app in apps
+            }
+
+            for future in as_completed(futures):
+                app_name = futures[future]
+                try:
+                    response = future.result()
+
+                    # If response is "None", the app operation was skipped, e.g. there are
+                    # no app versions available to be updated.
+                    # If response is "True", the app operation was successful, e.g. the app
+                    # was successfully updated.
+                    # If response is "False", the app operation failed, e.g. the app update failed.
+                    if response is None:
+                        LOG.info(f"Automatic operation '{op}' skipped for app {app_name}")
+                        result = None
+                    elif response is True:
+                        successful_executions.append(app_name)
+                        LOG.info(f"Automatic operation '{op}' to the app {app_name} "
+                                 "completed successfully.")
+                    elif response is False:
+                        failed_executions.append(app_name)
+                        result = False
+                    else:
+                        LOG.warning(f"Unknown result of automatic operation '{op}' "
+                                    f"for app {app_name}")
+                except Exception as e:
+                    LOG.error(f"Error occurred while processing the app {app_name}: {e}")
+                    failed_executions.append(app_name)
+                    result = False
+        return result, successful_executions, failed_executions
 
     def check_pending_app_reapply(self, context):
         if self._verify_restore_in_progress():
@@ -8817,9 +8963,11 @@ class ConductorManager(service.PeriodicService):
                      "Ignore app reapply checks.")
             return
 
+        apps = []
+        apps = self.determine_apps_reapply_order(name_only=True, filter_active=False)
+
         # Pick first app that needs to be re-applied
-        for index, app_name in enumerate(
-                self.determine_apps_reapply_order(name_only=True, filter_active=False)):
+        for index, app_name in enumerate(apps):
             if self._app.needs_reapply(app_name):
                 break
         else:
@@ -8831,20 +8979,40 @@ class ConductorManager(service.PeriodicService):
                      "retry on next audit", app_name)
             return
 
-        self._inner_sync_auto_apply(context, app_name, status_constraints=[constants.APP_APPLY_SUCCESS])
+        self._inner_sync_auto_apply_with_lock(
+            context,
+            app_name,
+            status_constraints=(constants.APP_APPLY_SUCCESS,),
+            is_reapply=True
+        )
 
     @cutils.synchronized(LOCK_APP_AUTO_MANAGE)
-    def _inner_sync_auto_apply(self, context, app_name, status_constraints=None):
+    def _inner_sync_auto_apply_with_lock(self,
+                                         context,
+                                         app_name,
+                                         status_constraints=None,
+                                         is_reapply=False):
+        self._inner_sync_auto_apply(context, app_name, status_constraints, is_reapply=is_reapply)
 
-        # Check no other app apply is in progress
-        for other_app in self.dbapi.kube_app_get_all():
-            if other_app.status == constants.APP_APPLY_IN_PROGRESS:
-                LOG.info("%s requires re-apply but %s "
-                            "apply is in progress. "
-                            "Will retry on next audit",
-                         app_name, other_app.name)
-                return
+    def _inner_sync_auto_apply(self,
+                               context,
+                               app_name,
+                               status_constraints=None,
+                               async_apply=True,
+                               is_reapply=False):
+        """
+        Synchronizes and triggers the automatic apply/re-apply of a Kubernetes app
+        based on its presence and status constraints.
 
+        Args:
+            context (object): The request context for the operation.
+            app_name (str): The name of application to be checked
+                            and potentially re-applied.
+            status_constraints (list, optional): A list of acceptable app statuses
+                                                 for re-application. If provided,
+                                                 the app's status must match one
+                                                 of these values to proceed.
+        """
         # Check app is present
         try:
             app = kubeapp_obj.get_by_name(context, app_name)
@@ -8865,119 +9033,12 @@ class ConductorManager(service.PeriodicService):
 
         lifecycle_hook_info = LifecycleHookInfo()
         lifecycle_hook_info.mode = LifecycleConstants.APP_LIFECYCLE_MODE_AUTO
-        greenthread.spawn(self.perform_app_apply, context,
-                          app, app.mode, lifecycle_hook_info)
 
-    @retry(retry_on_result=lambda x: x is False,
-           wait_fixed=(CONF.conductor.kube_upgrade_downgrade_retry_interval * 1000))
-    @cutils.synchronized(LOCK_IMAGE_PULL)
-    def _upgrade_downgrade_kube_networking(self):
-        try:
-            # Get the kubernetes version from the upgrade table
-            # if an upgrade exists
-            kube_upgrade = self.dbapi.kube_upgrade_get_one()
-            kube_version = \
-                kubernetes.get_kube_networking_upgrade_version(kube_upgrade)
-        except exception.NotFound:
-            # Not upgrading kubernetes, get the kubernetes version
-            # from the kubeadm config map
-            kube_version = self._kube.kube_get_kubernetes_version()
-
-        if not kube_version:
-            LOG.error("Unable to get the current kubernetes version.")
-            return False
-
-        try:
-            LOG.info("_upgrade_downgrade_kube_networking executing"
-                     " playbook: %s for version %s" %
-                     (constants.ANSIBLE_KUBE_NETWORKING_PLAYBOOK, kube_version))
-
-            playbook_cmd = ['ansible-playbook', '-e', 'kubernetes_version=%s' % kube_version,
-                            constants.ANSIBLE_KUBE_NETWORKING_PLAYBOOK]
-            returncode = cutils.run_playbook(playbook_cmd)
-
-            if returncode:
-                raise Exception("ansible-playbook returned an error: %s" % returncode)
-        except Exception as e:
-            LOG.error("Failed to upgrade/downgrade kubernetes "
-                      "networking images: {}".format(e))
-            return False
-
-        return True
-
-    @retry(retry_on_result=lambda x: x is False,
-           wait_fixed=(CONF.conductor.kube_upgrade_downgrade_retry_interval * 1000))
-    @cutils.synchronized(LOCK_IMAGE_PULL)
-    def _upgrade_downgrade_kube_storage(self):
-        try:
-            # Get the kubernetes version from the upgrade table
-            # if an upgrade exists
-            kube_upgrade = self.dbapi.kube_upgrade_get_one()
-            kube_version = \
-                kubernetes.get_kube_storage_upgrade_version(kube_upgrade)
-        except exception.NotFound:
-            # Not upgrading kubernetes, get the kubernetes version
-            # from the kubeadm config map
-            kube_version = self._kube.kube_get_kubernetes_version()
-
-        if not kube_version:
-            LOG.error("Unable to get the current kubernetes version.")
-            return False
-
-        try:
-            LOG.info("_upgrade_downgrade_kube_storage executing"
-                     " playbook: %s for version %s" %
-                     (constants.ANSIBLE_KUBE_STORAGE_PLAYBOOK, kube_version))
-
-            playbook_cmd = ['ansible-playbook', '-e', 'kubernetes_version=%s' % kube_version,
-                            constants.ANSIBLE_KUBE_STORAGE_PLAYBOOK]
-            returncode = cutils.run_playbook(playbook_cmd)
-
-            if returncode:
-                raise Exception("ansible-playbook returned an error: %s" % returncode)
-        except Exception as e:
-            LOG.error("Failed to upgrade/downgrade kubernetes "
-                      "storage images: {}".format(e))
-            return False
-
-        return True
-
-    @retry(retry_on_result=lambda x: x is False,
-           wait_fixed=(CONF.conductor.kube_upgrade_downgrade_retry_interval * 1000))
-    @cutils.synchronized(LOCK_IMAGE_PULL)
-    def _upgrade_downgrade_static_images(self):
-        try:
-            # Get the kubernetes version from the upgrade table
-            # if an upgrade exists
-            kube_upgrade = self.dbapi.kube_upgrade_get_one()
-            kube_version = \
-                kubernetes.get_kube_networking_upgrade_version(kube_upgrade)
-        except exception.NotFound:
-            # Not upgrading kubernetes, get the kubernetes version
-            # from the kubeadm config map
-            kube_version = self._kube.kube_get_kubernetes_version()
-
-        if not kube_version:
-            LOG.error("Unable to get the current kubernetes version.")
-            return False
-
-        try:
-            LOG.info("_upgrade_downgrade_kube_static_images executing"
-                     " playbook: %s for version %s" %
-                     (constants.ANSIBLE_KUBE_STATIC_IMAGES_PLAYBOOK, kube_version))
-
-            playbook_cmd = ['ansible-playbook', '-e', 'kubernetes_version=%s' % kube_version,
-                            constants.ANSIBLE_KUBE_STATIC_IMAGES_PLAYBOOK]
-            returncode = cutils.run_playbook(playbook_cmd)
-
-            if returncode:
-                raise Exception("ansible-playbook returned an error: %s" % returncode)
-        except Exception as e:
-            LOG.error("Failed to upgrade/downgrade kubernetes "
-                      "static images: {}".format(e))
-            return False
-
-        return True
+        if async_apply:
+            greenthread.spawn(self.perform_app_apply,
+                              context, app, app.mode, lifecycle_hook_info, is_reapply)
+        else:
+            self.perform_app_apply(context, app, app.mode, lifecycle_hook_info, is_reapply)
 
     def check_nodes_stable(self):
         """Check if the nodes are in a stable state in order to allow apps to be applied"""
@@ -9565,7 +9626,8 @@ class ConductorManager(service.PeriodicService):
 
             config_dict = {
                 "personalities": personalities,
-                "classes": ['platform::kubernetes::duplex_migration::runtime'],
+                "classes": ['platform::kubernetes::duplex_migration::runtime',
+                            'platform::sm::duplex_migration::runtime'],
             }
             self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
@@ -9659,9 +9721,11 @@ class ConductorManager(service.PeriodicService):
             puppet_common.REPORT_INVENTORY_UPDATE:
                 puppet_common.REPORT_PCI_SRIOV_CONFIG,
         }
+        skip_deferred_manifests = os.path.isfile(constants.ANSIBLE_ENROLLMENT_COMPLETED_FLAG)
 
         self._config_apply_runtime_manifest(
-            context, config_uuid, config_dict, force=True)
+            context, config_uuid, config_dict, force=True,
+            skip_deferred_manifests=skip_deferred_manifests)
 
     def update_sriov_vf_config(self, context, host_uuid):
         """update sriov vf configuration for a host
@@ -9702,6 +9766,27 @@ class ConductorManager(service.PeriodicService):
             "classes": ['platform::kubernetes::worker::pci::runtime'],
             puppet_common.REPORT_INVENTORY_UPDATE:
                 puppet_common.REPORT_PCI_SRIOV_CONFIG,
+        }
+
+        self._config_apply_runtime_manifest(
+            context, config_uuid, config_dict, force=True, filter_classes=[self.PUPPET_RUNTIME_CLASS_PCI])
+
+    def update_platform_ratelimit_config(self, context, host_uuid):
+        """update rate limit configuration of platform interfaces
+
+        :param context: an admin context
+        :param host_uuid: the host uuid
+        """
+        # update manifest files and notify agent to apply them
+        personalities = [constants.CONTROLLER,
+                            constants.WORKER]
+        config_uuid = self._config_update_hosts(context, personalities,
+                                                host_uuids=[host_uuid])
+
+        config_dict = {
+            "personalities": personalities,
+            'host_uuids': [host_uuid],
+            "classes": ['platform::network::interfaces::rate_limit::runtime']
         }
 
         self._config_apply_runtime_manifest(
@@ -9791,28 +9876,17 @@ class ConductorManager(service.PeriodicService):
         if cutils.is_initial_config_complete():
             controller_oam = cutils.format_address_name(constants.CONTROLLER_HOSTNAME,
                                                         constants.NETWORK_TYPE_OAM)
-            controller_mgmt = cutils.format_address_name(constants.CONTROLLER_HOSTNAME,
-                                                         constants.NETWORK_TYPE_MGMT)
             oam1 = cutils.get_primary_address_by_name(self.dbapi,
                                                       controller_oam,
                                                       constants.NETWORK_TYPE_OAM)
-            mgmt1 = cutils.get_primary_address_by_name(self.dbapi,
-                                                       controller_mgmt,
-                                                       constants.NETWORK_TYPE_MGMT)
             oam2 = cutils.get_secondary_address_by_name(self.dbapi,
                                                         controller_oam,
                                                         constants.NETWORK_TYPE_OAM)
-            mgmt2 = cutils.get_secondary_address_by_name(self.dbapi,
-                                                         controller_mgmt,
-                                                         constants.NETWORK_TYPE_MGMT)
             registry_sans = []
             restapi_sans = []
             for ip_addr in [oam1, oam2]:
                 if ip_addr is not None:
                     restapi_sans.append(ip_addr.address)
-                    registry_sans.append(ip_addr.address)
-            for ip_addr in [mgmt1, mgmt2]:
-                if ip_addr is not None:
                     registry_sans.append(ip_addr.address)
 
             kube_op = kubernetes.KubeOperator()
@@ -9847,9 +9921,12 @@ class ConductorManager(service.PeriodicService):
         config_uuid = self._config_update_hosts(context, personalities)
 
         config_dict = {}
-        is_aio_simplex_system = cutils.is_aio_simplex_system(self.dbapi)
-        if is_aio_simplex_system:
-            # update all necessary config at runtime for AIO-SX
+        active_controller = utils.HostHelper.get_active_controller(self.dbapi)
+        is_host_simplex_controller = utils.is_host_simplex_controller(active_controller)
+
+        if is_host_simplex_controller:
+            # update all necessary config at runtime for OAM network update on
+            # AIO-SX or an orphan controller.
             config_dict = {
                 "personalities": personalities,
                 "classes": ['platform::network::runtime',
@@ -9859,13 +9936,15 @@ class ConductorManager(service.PeriodicService):
                             'platform::sm::update_oam_config::runtime',
                             'platform::nfv::webserver::runtime',
                             'platform::haproxy::runtime',
-                            'platform::dns',
                             'platform::ntp::server',
                             'platform::dockerdistribution::config',
-                            'platform::dockerdistribution::runtime'],
+                            'platform::dockerdistribution::runtime',
+                            'platform::certalarm::reload'],
                 puppet_common.REPORT_STATUS_CFG:
                     puppet_common.REPORT_OPENSTACK_ENDPOINTS_CONFIG_REQUESTED
             }
+            if not os.path.isfile(tsc.MGMT_NETWORK_RECONFIGURATION_ONGOING):
+                config_dict["classes"].append('platform::dns')
         else:
             # update kube-apiserver cert's SANs at runtime
             config_dict = {
@@ -9875,8 +9954,11 @@ class ConductorManager(service.PeriodicService):
 
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
-        # there is still pending reboot required config to apply if not AIO-SX
-        if not is_aio_simplex_system:
+        # there is still pending reboot required config to apply if not a simplex
+        # or an orphan controller, or if mgmt reconfig is in progress, set reboot
+        # required for this config.
+        if not is_host_simplex_controller or \
+                os.path.isfile(tsc.MGMT_NETWORK_RECONFIGURATION_ONGOING):
             self._config_update_hosts(context, [constants.CONTROLLER], reboot=True)
 
         extoam = self.dbapi.iextoam_get_one()
@@ -9884,7 +9966,7 @@ class ConductorManager(service.PeriodicService):
         self._update_hosts_file('oamcontroller', extoam.oam_floating_ip,
                                 active=False)
 
-        if not is_aio_simplex_system:
+        if not is_host_simplex_controller:
             cutils.touch(
                 self._get_oam_runtime_apply_file(standby_controller=True))
 
@@ -9928,6 +10010,55 @@ class ConductorManager(service.PeriodicService):
         }
         self._config_apply_runtime_manifest(context, config_uuid=config_uuid,
                                             config_dict=config_dict)
+
+    def update_mgmt_config(self, context):
+        """Update the Management network configuration"""
+
+        if cutils.is_initial_config_complete():
+            controller_oam = cutils.format_address_name(constants.CONTROLLER_HOSTNAME,
+                                                        constants.NETWORK_TYPE_OAM)
+            controller_mgmt = cutils.format_address_name(constants.CONTROLLER_HOSTNAME,
+                                                         constants.NETWORK_TYPE_MGMT)
+            oam1 = cutils.get_primary_address_by_name(self.dbapi,
+                                                      controller_oam,
+                                                      constants.NETWORK_TYPE_OAM)
+            mgmt1 = cutils.get_primary_address_by_name(self.dbapi,
+                                                       controller_mgmt,
+                                                       constants.NETWORK_TYPE_MGMT)
+            oam2 = cutils.get_secondary_address_by_name(self.dbapi,
+                                                        controller_oam,
+                                                        constants.NETWORK_TYPE_OAM)
+            mgmt2 = cutils.get_secondary_address_by_name(self.dbapi,
+                                                         controller_mgmt,
+                                                         constants.NETWORK_TYPE_MGMT)
+            openldap_sans = []
+            for ip_addr in [oam1, oam2, mgmt1, mgmt2]:
+                if ip_addr is not None:
+                    openldap_sans.append(ip_addr.address)
+
+            kube_op = kubernetes.KubeOperator()
+            certobj = kube_op.get_custom_resource(kubernetes.CERT_MANAGER_GROUP,
+                                                  kubernetes.CERT_MANAGER_VERSION,
+                                                  kubernetes.NAMESPACE_DEPLOYMENT,
+                                                  'certificates',
+                                                  constants.OPENLDAP_CERT_SECRET_NAME)
+            if certobj is not None:
+                certobj['spec']['ipAddresses'] = list(set(certobj['spec']['ipAddresses']
+                                                    + openldap_sans))
+                kube_op.apply_custom_resource(kubernetes.CERT_MANAGER_GROUP,
+                                              kubernetes.CERT_MANAGER_VERSION,
+                                              kubernetes.NAMESPACE_DEPLOYMENT,
+                                              'certificates',
+                                              constants.OPENLDAP_CERT_SECRET_NAME,
+                                              certobj)
+
+        personalities = [constants.CONTROLLER]
+        config_uuid = self._config_update_hosts(context, personalities)
+        config_dict = {
+            "personalities": personalities,
+            "classes": ['platform::kubernetes::certsans::runtime']
+        }
+        self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
     def update_mgmt_secondary_pool_config(self, context, family, disable=False):
         LOG.info(f"update management secondary pool config family={family}, disable={disable}")
@@ -10076,6 +10207,13 @@ class ConductorManager(service.PeriodicService):
                      "host-unlock due to Management Network reconfiguration.")
             return
 
+        system = self.dbapi.isystem_get_one()
+        if (system.capabilities.get('simplex_to_duplex_migration') or
+                system.capabilities.get('simplex_to_duplex-direct_migration')):
+            LOG.info("Admin network changes will be applied after the next "
+                     "host-unlock due to migration to Duplex.")
+            return
+
         if disable:
             # Note: The SNAT LDAP rule will be removed before the address
             # pool deletion.  No need to do it here.
@@ -10085,7 +10223,8 @@ class ConductorManager(service.PeriodicService):
                 "classes": ['platform::sm::disable_admin_config::runtime',
                             'platform::network::runtime',
                             'platform::haproxy::runtime',
-                            'openstack::keystone::endpoint::runtime',
+                            'openstack::keystone::endpoint::reconfig',
+                            'platform::kubernetes::certsans::runtime',
                             'platform::firewall::runtime']
             }
         else:
@@ -10097,7 +10236,8 @@ class ConductorManager(service.PeriodicService):
                             'platform::network::runtime',
                             'platform::sm::enable_admin_config::runtime',
                             'platform::haproxy::runtime',
-                            'openstack::keystone::endpoint::runtime',
+                            'openstack::keystone::endpoint::reconfig',
+                            'platform::kubernetes::certsans::runtime',
                             'platform::firewall::runtime',
                             'platform::nfv::runtime']
             }
@@ -10632,107 +10772,6 @@ class ConductorManager(service.PeriodicService):
             self.fm_api.clear_fault(fm_constants.FM_ALARM_ID_CONTROLLER_FS_FAILED,
                                     entity_instance_id)
 
-    def handle_upgrade_abort_failure(self, context, kube_upgrade_obj):
-        # Increment the value by 1 to track abort retry count
-        kube_upgrade_obj.recovery_attempts += 1
-        kube_upgrade_obj.save()
-
-        active_controller = utils.HostHelper.get_active_controller(self.dbapi)
-        personalities = [constants.CONTROLLER]
-
-        # Apply the runtime manifest to revert the k8s upgrade process
-        config_dict = {
-            "personalities": personalities,
-            "classes": ['platform::kubernetes::upgrade_abort'],
-            puppet_common.REPORT_STATUS_CFG:
-                puppet_common.REPORT_UPGRADE_ABORT
-        }
-        self._config_apply_runtime_manifest(
-            context, config_uuid=active_controller.config_target, config_dict=config_dict,
-            skip_update_config=True)
-
-    def handle_upgrade_abort_success(self, context, kube_upgrade_obj):
-        controller_hosts = self.dbapi.ihost_get_by_personality(
-            constants.CONTROLLER)
-        for host_obj in controller_hosts:
-            kube_host_upgrade_obj = objects.kube_host_upgrade.get_by_host_id(
-                    context, host_obj.id)
-            kube_host_upgrade_obj.status = None
-            kube_host_upgrade_obj.save()
-        kube_upgrade_obj.state = kubernetes.KUBE_UPGRADE_ABORTED
-        kube_upgrade_obj.save()
-
-    def kube_upgrade_abort_recovery(self, context):
-
-        active_controller = utils.HostHelper.get_active_controller(self.dbapi)
-        personalities = [constants.CONTROLLER]
-
-        # Apply the runtime manifest to revert the k8s upgrade process
-        config_dict = {
-            "personalities": personalities,
-            "classes": ['platform::kubernetes::upgrade_abort_recovery'],
-        }
-        self._config_apply_runtime_manifest(
-            context, config_uuid=active_controller.config_target,
-            config_dict=config_dict, skip_update_config=True)
-
-    def handle_k8s_upgrade_control_plane_failure(self, context, kube_upgrade_obj,
-                                        host_uuid, puppet_class):
-        kube_upgrade_obj.recovery_attempts += 1
-        kube_upgrade_obj.save()
-
-        personalities = [constants.CONTROLLER]
-        config_uuid = self._config_update_hosts(context, personalities,
-            [host_uuid])
-
-        # Apply the runtime manifest to upgrade the control plane
-        config_dict = {
-            "personalities": personalities,
-            "host_uuids": [host_uuid],
-            "classes": [puppet_class],
-            puppet_common.REPORT_STATUS_CFG:
-                puppet_common.REPORT_UPGRADE_CONTROL_PLANE
-        }
-        self._config_apply_runtime_manifest(context, config_uuid, config_dict)
-
-    # Retrying a few times and waiting between each retry
-    # In rare cases, restart of one or more of the control-plane pods may be delayed.
-    @retry(retry_on_result=lambda x: x is False,
-           stop_max_attempt_number=10,
-           wait_fixed=1000)
-    def handle_k8s_upgrade_control_plane_success(self, context, kube_upgrade_obj, host_uuid,
-                                          new_state, fail_state):
-        host_obj = objects.host.get_by_uuid(context, host_uuid)
-        host_name = host_obj.hostname
-        kube_host_upgrade_obj = objects.kube_host_upgrade.get_by_host_id(
-            context, host_obj.id)
-        target_version = kube_host_upgrade_obj.target_version
-        kube_operator = kubernetes.KubeOperator()
-
-        cp_versions = kube_operator.kube_get_control_plane_versions()
-
-        LOG.info("Checking control plane update on host %s, "
-                "cp_versions = %s, target_version = %s" %
-                (host_name, cp_versions, target_version))
-
-        if cp_versions.get(host_name, None) != target_version:
-            LOG.warning("Control plane upgrade failed for host %s" %
-                        host_name)
-            kube_host_upgrade_obj.status = \
-                kubernetes.KUBE_HOST_UPGRADING_CONTROL_PLANE_FAILED
-            kube_host_upgrade_obj.save()
-            kube_upgrade_obj.state = fail_state
-            kube_upgrade_obj.save()
-            return False
-
-        # The control plane update was successful
-        LOG.info("Control plane was updated for host %s" % host_name)
-        kube_host_upgrade_obj.status = None
-        kube_host_upgrade_obj.save()
-        kube_upgrade_obj.state = new_state
-        kube_upgrade_obj.save()
-        return True
-
     def report_config_status(self, context, iconfig, status, error=None):
         """ Callback from Sysinv Agent on manifest apply success or failure
 
@@ -10948,80 +10987,6 @@ class ConductorManager(service.PeriodicService):
             host_uuid = iconfig['host_uuid']
             self.report_apparmor_config_complete(context, host_uuid, status, error)
             success = (status == puppet_common.REPORT_SUCCESS)
-        elif reported_cfg == puppet_common.REPORT_UPGRADE_ABORT:
-            kube_upgrade_obj = objects.kube_upgrade.get_one(context)
-            # The agent is reporting the runtime kube_upgrade_abort has been applied.
-            # Currently kube upgrade abort is only available on AIO-SX,
-            # we may need to change the implementation for multi-node abort.
-            if status == puppet_common.REPORT_SUCCESS:
-                # Upgrade abort action was successful.
-                success = True
-                # below function updates the db with kube_upgrade state
-                # 'upgrade-aborted'
-                self.handle_upgrade_abort_success(context, kube_upgrade_obj)
-            if status == puppet_common.REPORT_FAILURE:
-                # Upgrade abort action failed
-
-                # retry count is incremented in function handle_upgrade_abort_failure
-                # once the retry count reaches AUTO_RECOVERY_COUNT this routine updates
-                # db with state 'upgrade-aborting-failed' until then abort failure handler
-                # is called
-                if kube_upgrade_obj.recovery_attempts < constants.AUTO_RECOVERY_COUNT:
-                    LOG.info("k8s upgrade abort failed - retrying attempt %s"
-                                     % kube_upgrade_obj.recovery_attempts)
-                    self.handle_upgrade_abort_failure(context, kube_upgrade_obj)
-                else:
-                    LOG.warning("k8s upgrade abort failed %s times, giving up"
-                                  % constants.AUTO_RECOVERY_COUNT)
-                    kube_upgrade_obj.state = kubernetes.KUBE_UPGRADE_ABORTING_FAILED
-                    kube_upgrade_obj.save()
-                    self.kube_upgrade_abort_recovery(context)
-        elif reported_cfg == puppet_common.REPORT_UPGRADE_CONTROL_PLANE:
-            # The agent is reporting the runtime kube_upgrade_control_plane has been applied.
-            kube_upgrade_obj = objects.kube_upgrade.get_one(context)
-            host_obj = objects.host.get_by_uuid(context, host_uuid)
-            if kube_upgrade_obj.state == kubernetes.KUBE_UPGRADING_FIRST_MASTER:
-                puppet_class = 'platform::kubernetes::upgrade_first_control_plane'
-                new_state = kubernetes.KUBE_UPGRADED_FIRST_MASTER
-                fail_state = kubernetes.KUBE_UPGRADING_FIRST_MASTER_FAILED
-            elif kube_upgrade_obj.state == kubernetes.KUBE_UPGRADING_SECOND_MASTER:
-                puppet_class = 'platform::kubernetes::upgrade_control_plane'
-                new_state = kubernetes.KUBE_UPGRADED_SECOND_MASTER
-                fail_state = kubernetes.KUBE_UPGRADING_SECOND_MASTER_FAILED
-            else:
-                # To handle the case during orchestrated k8s upgrade where
-                # where nfv timeout earlier than puppet timeout which updates
-                # k8s upgrade state upgrade-aborted
-                LOG.info("Skipping retry: Kubernetes upgrade state %s is not in %s, or %s"
-                         % (kube_upgrade_obj.state, kubernetes.KUBE_UPGRADING_FIRST_MASTER,
-                           kubernetes.KUBE_UPGRADING_SECOND_MASTER))
-                return
-            if status == puppet_common.REPORT_SUCCESS:
-                # Upgrade control-plane action was successful.
-                success = True
-                try:
-                    self.handle_k8s_upgrade_control_plane_success(context, kube_upgrade_obj,
-                                                                  host_uuid, new_state,
-                                                                  fail_state)
-                except retrying.RetryError:
-                    LOG.info("Retry failed while handling k8s upgrade control plane success")
-            if status == puppet_common.REPORT_FAILURE:
-                # Upgrade control-plane action failed to apply puppet manifest.
-                if kube_upgrade_obj.recovery_attempts < constants.CONTROL_PLANE_RETRY_COUNT:
-                    LOG.info("k8s upgrade control plane failed - retrying attempt %s"
-                                     % kube_upgrade_obj.recovery_attempts)
-                    self.handle_k8s_upgrade_control_plane_failure(context, kube_upgrade_obj,
-                                                           host_uuid, puppet_class)
-                else:
-                    LOG.warning("k8s upgrade control plane failed %s times, giving up"
-                                  % constants.AUTO_RECOVERY_COUNT)
-                    kube_upgrade_obj.state = fail_state
-                    kube_upgrade_obj.save()
-                    kube_host_upgrade_obj = objects.kube_host_upgrade.get_by_host_id(
-                        context, host_obj.id)
-                    kube_host_upgrade_obj.status = \
-                        kubernetes.KUBE_HOST_UPGRADING_CONTROL_PLANE_FAILED
-                    kube_host_upgrade_obj.save()
         else:
             LOG.error("Reported configuration '%(cfg)s' is not handled by"
                       " report_config_status! iconfig: %(iconfig)s" %
@@ -12431,9 +12396,21 @@ class ConductorManager(service.PeriodicService):
             personalities = None
         elif service == constants.SERVICE_TYPE_DOCKER:
             reboot = True
-            if section == constants.SERVICE_PARAM_SECTION_DOCKER_PROXY or \
-                    name == constants.SERVICE_PARAM_NAME_DOCKER_AUTH_SECRET:
+            if (section in [constants.SERVICE_PARAM_SECTION_DOCKER_PROXY,
+                            constants.SERVICE_PARAM_SECTION_DOCKER_CONCURRENCY]
+                    or name == constants.SERVICE_PARAM_NAME_DOCKER_AUTH_SECRET):
                 reboot = False
+        elif service == constants.SERVICE_TYPE_MODULE:
+            personalities = [constants.CONTROLLER,
+                             constants.WORKER,
+                             constants.STORAGE]
+            config_dict = {
+                'personalities': personalities,
+                'classes': ['platform::module::runtime']
+            }
+
+            config_uuid = self._config_update_hosts(context, personalities)
+            self._config_apply_runtime_manifest(context, config_uuid, config_dict)
         elif service == constants.SERVICE_TYPE_KUBERNETES:
             reboot = True
             # kube apiserver service parameters can be applied without a reboot
@@ -12451,8 +12428,27 @@ class ConductorManager(service.PeriodicService):
             # diff list or dict, to only target required personalities.
             if section == constants.SERVICE_PARAM_SECTION_KUBERNETES_CONFIG:
                 personalities = [constants.CONTROLLER, constants.WORKER]
+            if section in [constants.SERVICE_PARAM_SECTION_KUBERNETES_SCHEDULER,
+                           constants.SERVICE_PARAM_SECTION_KUBERNETES_CONTROLLER_MANAGER]:
+                # Do not update target config for hosts
+                personalities = None
         elif service == constants.SERVICE_TYPE_PLATFORM:
-            if section == constants.SERVICE_PARAM_SECTION_COLLECTD:
+            if section == constants.SERVICE_PARAM_SECTION_PLATFORM_SYSCTL:
+                personalities = [constants.CONTROLLER,
+                                 constants.WORKER,
+                                 constants.STORAGE]
+                classes = ["platform::sysctl::config_update::runtime"]
+                config_dict = {
+                    'personalities': personalities,
+                    'classes': classes
+                }
+                config_uuid = self._config_update_hosts(context,
+                                                        personalities,
+                                                        reboot=False)
+                self._config_apply_runtime_manifest(context,
+                                                    config_uuid,
+                                                    config_dict)
+            elif section == constants.SERVICE_PARAM_SECTION_COLLECTD:
                 reboot = True
                 personalities = [constants.CONTROLLER,
                                  constants.WORKER,
@@ -12469,16 +12465,23 @@ class ConductorManager(service.PeriodicService):
                 }
                 self._config_apply_runtime_manifest(context, config_uuid, config_dict)
             elif section == constants.SERVICE_PARAM_SECTION_PLATFORM_KERNEL:
-                reboot = True
                 personalities = [constants.CONTROLLER,
                                  constants.WORKER]
-                config_uuid = self._config_update_hosts(context, personalities, reboot=True)
+
+                if name in [constants.SERVICE_PARAM_PLATFORM_KSOFTIRQD_PRIO,
+                            constants.SERVICE_PARAM_PLATFORM_IRQ_WORK_PRIO]:
+                    classes = ['platform::config::file::irq::runtime']
+                    reboot = False
+                else:
+                    classes = ['platform::compute::grub::runtime']
+                    reboot = True
 
                 config_dict = {
                     'personalities': personalities,
-                    "classes": ['platform::compute::grub::runtime']
+                    'classes': classes
                 }
 
+                config_uuid = self._config_update_hosts(context, personalities, reboot=reboot)
                 # Apply runtime config but keep reboot required flag set in
                 # _config_update_hosts() above. Node needs a reboot to clear it.
                 config_uuid = self._config_clear_reboot_required(config_uuid)
@@ -12501,7 +12504,10 @@ class ConductorManager(service.PeriodicService):
                 config_uuid = self._config_clear_reboot_required(config_uuid)
                 self._config_apply_runtime_manifest(context, config_uuid, config_dict, force=True)
             elif section == constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG and \
-                    name == constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_API_WORKERS:
+                    name in [constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_API_WORKERS,
+                    constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_POOL_SIZE,
+                    constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_POOL_TIMEOUT,
+                    constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_OVERFLOW_SIZE]:
                 reboot = True
                 personalities = [constants.CONTROLLER]
                 config_uuid = self._config_update_hosts(context, personalities, reboot=True)
@@ -12545,6 +12551,17 @@ class ConductorManager(service.PeriodicService):
                 }
 
                 self._config_apply_runtime_manifest(context, config_uuid, config_dict, force=True)
+            elif section == constants.SERVICE_PARAM_SECTION_PLATFORM_FM:
+                personalities = [constants.CONTROLLER]
+
+                config_uuid = self._config_update_hosts(context, personalities)
+
+                config_dict = {
+                    'personalities': personalities,
+                    "classes": ['platform::fm::runtime']
+                }
+
+                self._config_apply_runtime_manifest(context, config_uuid, config_dict, force=True)
             elif section == constants.SERVICE_PARAM_SECTION_PLATFORM_DRBD:
                 personalities = [constants.CONTROLLER]
 
@@ -12556,11 +12573,19 @@ class ConductorManager(service.PeriodicService):
                 }
 
                 self._config_apply_runtime_manifest(context, config_uuid, config_dict)
-            elif section == constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG and \
+            elif section == constants.SERVICE_PARAM_SECTION_PLATFORM_CLIENT and \
                     name == constants.SERVICE_PARAM_NAME_PLATFORM_CLI_CONFIRMATIONS:
-                # Do nothing. Does not need to update target config of any hosts
-                personalities = None
+                personalities = [constants.CONTROLLER,
+                                 constants.WORKER,
+                                 constants.STORAGE]
                 reboot = False
+                config_uuid = self._config_update_hosts(context, personalities, reboot=reboot)
+                config_dict = {
+                    'personalities': personalities,
+                    "classes": ['platform::client::cliconfirmations::runtime']
+                }
+                self._config_apply_runtime_manifest(context, config_uuid,
+                       config_dict)
 
         elif service == constants.SERVICE_TYPE_IDENTITY:
             remote_ldap_domains = [constants.SERVICE_PARAM_SECTION_IDENTITY_LDAP_DOMAIN1,
@@ -12577,7 +12602,31 @@ class ConductorManager(service.PeriodicService):
         if do_apply:
             reboot = False
 
-        if personalities is not None:
+        if do_apply and service == constants.SERVICE_TYPE_CEPH:
+            if StorageBackendConfig.has_backend(
+                    self.dbapi, constants.CINDER_BACKEND_CEPH):
+
+                personalities = [constants.CONTROLLER,
+                                constants.WORKER,
+                                constants.STORAGE]
+
+                monitors = self.dbapi.ceph_mon_get_list()
+                host_uuids = []
+                for mon in monitors:
+                    host_uuids.append(mon.ihost_uuid)
+                config_uuid = self._config_update_hosts(context,
+                                                        personalities,
+                                                        host_uuids)
+                config_dict = {
+                    "personalities": personalities,
+                    "host_uuids": host_uuids,
+                    "classes": ['platform::ceph::mon::runtime']
+                }
+                self._config_apply_runtime_manifest(context,
+                                                    config_uuid=config_uuid,
+                                                    config_dict=config_dict)
+
+        if personalities is not None and config_uuid is None:
             config_uuid = self._config_update_hosts(context,
                                                     personalities,
                                                     reboot=reboot)
@@ -12605,6 +12654,13 @@ class ConductorManager(service.PeriodicService):
                     config_dict = {
                         "personalities": personalities,
                         "classes": ['platform::ldap::insecure::runtime']
+                    }
+                    self._config_apply_runtime_manifest(context, config_uuid, config_dict)
+                elif section == constants.SERVICE_PARAM_SECTION_IDENTITY_STX:
+                    personalities = [constants.CONTROLLER]
+                    config_dict = {
+                        "personalities": personalities,
+                        "classes": ['platform::params::config_oidc_role_binding::runtime']
                     }
                     self._config_apply_runtime_manifest(context, config_uuid, config_dict)
                 else:
@@ -12690,29 +12746,6 @@ class ConductorManager(service.PeriodicService):
                                 'platform::docker::runtime']
                 }
                 self._config_apply_runtime_manifest(context, config_uuid, config_dict)
-            elif service == constants.SERVICE_TYPE_CEPH:
-                if StorageBackendConfig.has_backend(
-                        self.dbapi, constants.CINDER_BACKEND_CEPH):
-
-                    personalities = [constants.CONTROLLER,
-                                    constants.WORKER,
-                                    constants.STORAGE]
-
-                    monitors = self.dbapi.ceph_mon_get_list()
-                    host_uuids = []
-                    for mon in monitors:
-                        host_uuids.append(mon.ihost_uuid)
-                    config_uuid = self._config_update_hosts(context,
-                                                            personalities,
-                                                            host_uuids)
-                    config_dict = {
-                        "personalities": personalities,
-                        "host_uuids": host_uuids,
-                        "classes": ['platform::ceph::mon::runtime']
-                    }
-                    self._config_apply_runtime_manifest(context,
-                                                        config_uuid=config_uuid,
-                                                        config_dict=config_dict)
 
     def update_security_feature_config(self, context):
         """Update the kernel options configuration"""
@@ -13366,7 +13399,10 @@ class ConductorManager(service.PeriodicService):
                   (ihost_uuid, config_uuid))
         if ihost_uuid in self._host_reboot_config_uuid:
             try:
-                self._host_reboot_config_uuid[ihost_uuid].remove(config_uuid)
+                reboot_info = self._host_reboot_config_uuid[ihost_uuid]
+                if config_uuid == reboot_info['original'] or config_uuid == reboot_info['latest']:
+                    del self._host_reboot_config_uuid[ihost_uuid]
+
             except ValueError:
                 LOG.info("_remove_config_from_reboot_config_list fail"
                          " host:%s config_uuid %s" % (ihost_uuid, config_uuid))
@@ -13376,7 +13412,7 @@ class ConductorManager(service.PeriodicService):
         LOG.info("_clear_config_from_reboot_config_list host:%s", ihost_uuid)
         if ihost_uuid in self._host_reboot_config_uuid:
             try:
-                del self._host_reboot_config_uuid[ihost_uuid][:]
+                del self._host_reboot_config_uuid[ihost_uuid]
             except ValueError:
                 LOG.info("_clear_config_from_reboot_config_list fail"
                          " host: %s", ihost_uuid)
@@ -13431,7 +13467,7 @@ class ConductorManager(service.PeriodicService):
                 return False
         elif target == applied_reboot:
             if ihost_obj.uuid in self._host_reboot_config_uuid:
-                if len(self._host_reboot_config_uuid[ihost_obj.uuid]) == 0:
+                if not self._host_reboot_config_uuid[ihost_obj.uuid]:
                     # There are no further config required for host, update config_target
                     _align_config_target(context, ihost_obj, applied)
                     return False
@@ -13600,12 +13636,23 @@ class ConductorManager(service.PeriodicService):
         def _sync_update_host_config_target(self,
                                             context, ihost_obj, config_uuid):
             if ihost_obj.config_target != config_uuid:
-                # promote the current config to reboot required if a pending
-                # reboot required is still present
-                if (ihost_obj.config_target and
-                        ihost_obj.config_applied != ihost_obj.config_target):
-                    if utils.config_is_reboot_required(ihost_obj.config_target):
-                        config_uuid = self._config_set_reboot_required(config_uuid)
+                # Check if host is in reboot-related task state
+                if ihost_obj.task and ihost_obj.task in [constants.TASK_REBOOTING,
+                                                        constants.TASK_REBOOT_REQUEST]:
+                    LOG.info("Host %s in reboot task state %s, skipping reboot inheritance" %
+                            (ihost_obj.hostname, ihost_obj.task))
+                else:
+                    # promote the current config to reboot required if a pending
+                    # reboot required is still present
+                    if (ihost_obj.config_target and
+                            ihost_obj.config_applied != ihost_obj.config_target):
+                        if cutils.config_is_reboot_required(ihost_obj.config_target):
+                            config_uuid = self._config_set_reboot_required(config_uuid)
+
+                            # Replace latest with inherited in reboot tracking
+                            if ihost_obj.uuid in self._host_reboot_config_uuid:
+                                self._host_reboot_config_uuid[ihost_obj.uuid]['latest'] = config_uuid
+
                 LOG.info("Setting config target of "
                          "host '%s' to '%s'." % (ihost_obj.hostname, config_uuid))
                 ihost_obj.config_target = config_uuid
@@ -13623,10 +13670,16 @@ class ConductorManager(service.PeriodicService):
         @cutils.synchronized(lock_name, external=False)
         def _sync_update_host_config_applied(self,
                                              context, ihost_obj, config_uuid):
-            self._remove_config_from_reboot_config_list(ihost_obj.uuid,
-                    config_uuid)
+            old_target = ihost_obj.config_target
+            old_applied = ihost_obj.config_applied
+
             if ihost_obj.config_applied != config_uuid:
                 ihost_obj.config_applied = config_uuid
+
+                # Auto-align target if system was in sync
+                if old_target == old_applied and config_uuid != old_target:
+                    ihost_obj.config_target = config_uuid
+                    LOG.info("Auto-aligned target for deferred config: %s" % config_uuid)
                 ihost_obj.save(context)
             if cutils.is_initial_config_complete():
                 self._update_alarm_status(context, ihost_obj)
@@ -13700,11 +13753,13 @@ class ConductorManager(service.PeriodicService):
         for host in hosts:
             if host.personality and host.personality in personalities:
                 if reboot:
-                    if host.uuid in self._host_reboot_config_uuid:
-                        self._host_reboot_config_uuid[host.uuid].append(config_uuid)
-                    else:
-                        self._host_reboot_config_uuid[host.uuid] = []
-                        self._host_reboot_config_uuid[host.uuid].append(config_uuid)
+                    if host.uuid not in self._host_reboot_config_uuid:
+                        self._host_reboot_config_uuid[host.uuid] = {}
+                    self._host_reboot_config_uuid[host.uuid] = {
+                        'original': config_uuid,
+                        'latest': config_uuid
+                    }
+
                     if host.uuid == self.host_uuid:
                         # This ensures that the host_reboot_config_uuid tracking
                         # on this controller is aware that a reboot is required
@@ -13960,7 +14015,7 @@ class ConductorManager(service.PeriodicService):
                 LOG.info("config runtime c=%s, h=%s host_uuids=%s host_intersection=%s" %
                         (c, h, host_uuids, host_intersection))
                 if c in classes_list:
-                    if host_intersection:
+                    if not host_uuids or host_intersection:
                         LOG.info("config runtime removing host_uuids=%s from %s" %
                                 (host_uuids, self._runtime_class_apply_in_progress))
                         self._runtime_class_apply_in_progress.remove((c, h))
@@ -14002,7 +14057,7 @@ class ConductorManager(service.PeriodicService):
 
         for c, h in self._runtime_class_apply_in_progress:
             if c in classes_list:
-                if not host_uuids or next((host for host in host_uuids if host in h)):
+                if not host_uuids or next((host for host in host_uuids if host in h), None):
                     LOG.info("config runtime in progress (%s, %s)" % (c, h))
                     return True
         return False
@@ -14049,6 +14104,18 @@ class ConductorManager(service.PeriodicService):
                 break
         return config
 
+    def _has_host_specific_deferred_config(self, host_uuids):
+        if not self._host_deferred_runtime_config or not host_uuids:
+            return False
+
+        host_uuids = [host_uuids] if isinstance(host_uuids, str) else host_uuids
+
+        for deferred_config in self._host_deferred_runtime_config:
+            deferred_hosts = deferred_config['config_dict'].get('host_uuids', [])
+            if set(host_uuids) & set(deferred_hosts):
+                return True
+        return False
+
     def _try_config_update_puppet(
             self, config_uuid, config_dict,
             deferred_config=None, host_uuids=None, force=False, skip_update_config=False):
@@ -14090,7 +14157,37 @@ class ConductorManager(service.PeriodicService):
         """Prune runtime_config entries older than 24 hours"""
         cutoff_date = datetime.utcnow() - timedelta(hours=24)
         LOG.info("Pruning runtime_config entries older than %s." % cutoff_date)
+        self._delete_old_temp_hieradata(cutoff_date)
         self.dbapi.runtime_config_prune(cutoff_date)
+
+    def _delete_old_temp_hieradata(self, cutoff_date=None):
+        """Delete temporary puppet directories under tsc.PUPPET_PATH older than cutoff_date."""
+        base_path = tsc.PUPPET_PATH
+        prefix = "tmp_puppet_"
+
+        if not cutoff_date:
+            cutoff_date = datetime.utcnow() - timedelta(hours=24)
+
+        LOG.info("Deleting temp puppet dirs in '%s' older than %s", base_path, cutoff_date)
+
+        if not os.path.exists(base_path):
+            LOG.warning("Base path for puppet temp dirs does not exist: %s", base_path)
+            return
+
+        for entry in os.listdir(base_path):
+            full_path = os.path.join(base_path, entry)
+            if not os.path.isdir(full_path):
+                continue
+            if not entry.startswith(prefix):
+                continue
+
+            try:
+                mtime = datetime.utcfromtimestamp(os.path.getmtime(full_path))
+                if mtime < cutoff_date:
+                    LOG.info("Removing old temp puppet dir: %s (mtime: %s)", full_path, mtime)
+                    shutil.rmtree(full_path, ignore_errors=True)
+            except Exception as e:
+                LOG.warning("Failed to delete temp puppet dir %s: %s", full_path, str(e))
 
     def _create_runtime_config_entries(self, config_uuid, config_dict):
         """Create runtime config entries in the database"""
@@ -14121,6 +14218,7 @@ class ConductorManager(service.PeriodicService):
 
         tmp_config_dict = deepcopy(config_dict)
         tmp_config_dict.pop("host_uuids", None)
+        tmp_config_dict.pop("puppet_path", None)
 
         valid_inventory_states = [
                     constants.INV_STATE_INITIAL_INVENTORIED,
@@ -14162,6 +14260,19 @@ class ConductorManager(service.PeriodicService):
                     # already exist in the retry scenario
                     pass
 
+    def _create_temp_puppet_path(self):
+        """Create temporary puppet directory to use during manifest application"""
+        local_hiera_path = os.path.join(tsc.PUPPET_PATH, 'hieradata')
+        temp_puppet_path = tempfile.mkdtemp(dir=tsc.PUPPET_PATH, prefix="tmp_puppet_")
+        temp_hiera_path = os.path.join(temp_puppet_path, 'hieradata')
+        # copy hieradata to temp_dir
+        LOG.info(f"Copying existing hieradata from {local_hiera_path} to {temp_hiera_path}")
+        # Recursively copy hieradata from tsc.PUPPET_PATH into a temporary directory
+        if not os.path.isdir(local_hiera_path):
+            raise RuntimeError(f"Source hieradata directory does not exist: {local_hiera_path}")
+        shutil.copytree(local_hiera_path, temp_hiera_path, dirs_exist_ok=True)
+        return temp_puppet_path
+
     def _config_apply_runtime_manifest(self,
                                        context,
                                        config_uuid,
@@ -14169,7 +14280,8 @@ class ConductorManager(service.PeriodicService):
                                        force=False,
                                        filter_classes=None,
                                        skip_update_config=False,
-                                       timestamp=None):
+                                       timestamp=None,
+                                       skip_deferred_manifests=False):
         """Apply manifests on all hosts affected by the supplied personalities.
            If host_uuids is set in config_dict, only update hiera data and apply
            manifests for these hosts.
@@ -14208,6 +14320,14 @@ class ConductorManager(service.PeriodicService):
                 if host.personality in personalities:
                     if host.sw_version == tsc.SW_VERSION:
                         host_uuids.append(host.uuid)
+                        # Disable route optimization if host is not unlocked or operational
+                        if (host.administrative != constants.ADMIN_UNLOCKED or
+                              host.operational != constants.OPERATIONAL_ENABLED):
+                            config_dict['generate_optimized_hieradata'] = False
+                            LOG.info(
+                                f"Disabling route optimization for host {host.hostname} "
+                                f"(UUID: {host.uuid}): not unlocked or enabled"
+                            )
                     else:
                         LOG.info("Skip applying manifest for host: %s. Version %s mismatch." %
                                  (host.hostname, host.sw_version))
@@ -14226,6 +14346,12 @@ class ConductorManager(service.PeriodicService):
 
         # try to get the config from deferred list
         deferred_config = self._get_from_host_deferred_runtime_config(config_uuid)
+
+        # Enrollment special handling
+        if cutils.is_enrollment_in_progress():
+            manifests = set(config_dict.get('classes', []))
+            if manifests.intersection(constants.ANSIBLE_ENROLLMENT_SKIP_LIST):
+                skip_deferred_manifests = True
 
         # only apply runtime manifests to active controller if ready,
         # otherwise will append to the list of outstanding runtime manifests
@@ -14252,7 +14378,10 @@ class ConductorManager(service.PeriodicService):
         # make this one a deferred config as well.
         # This will prevent newer configs from being applied
         # before older deferred configs.
-        elif deferred_config is None and self._host_deferred_runtime_config:
+        elif (deferred_config is None and
+              self._has_host_specific_deferred_config(host_uuids) and
+              not skip_deferred_manifests):
+
             self._update_host_deferred_runtime_config(
                 CONFIG_APPLY_RUNTIME_MANIFEST,
                 config_uuid,
@@ -14266,6 +14395,10 @@ class ConductorManager(service.PeriodicService):
         if not self._try_config_update_puppet(
                 config_uuid, config_dict, deferred_config, host_uuids, force, skip_update_config):
             return
+
+        # Create temporary hieradata path and add it to config_dict
+        temp_puppet_path = self._create_temp_puppet_path()
+        config_dict.update({"puppet_path": temp_puppet_path})
 
         skip_app_reapply = config_dict.get('generate_optimized_hieradata', False)
 
@@ -14882,26 +15015,6 @@ class ConductorManager(service.PeriodicService):
         config_dict = {
             "personalities": personalities,
             "classes": ['platform::fm::runtime'],
-        }
-        self._config_apply_runtime_manifest(context, config_uuid, config_dict)
-
-    def update_dnsmasq_config(self, context):
-        """Update the dnsmasq configuration"""
-
-        personalities = [constants.CONTROLLER]
-
-        # During management network update, the dnsmasq service should not be
-        # reloaded, expect to update the service config during the controller
-        # config after unlock and reboot, the ongoing flag will be removed then.
-        if os.path.isfile(tsc.MGMT_NETWORK_RECONFIGURATION_ONGOING):
-            LOG.info("DNSMASQ changes will be applied after the next "
-                     "host-unlock due to Management Network reconfiguration.")
-            self._config_update_hosts(context, personalities, reboot=True)
-            return
-        config_uuid = self._config_update_hosts(context, personalities)
-        config_dict = {
-            "personalities": personalities,
-            "classes": ['platform::dns::dnsmasq::runtime'],
         }
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
@@ -16077,10 +16190,22 @@ class ConductorManager(service.PeriodicService):
             overrides = self._helm.get_helm_chart_overrides(chart_name,
                                                             cnamespace)
         else:
-            self._app.activate_app_plugins(app)
+            app = self._app.Application(app)
+            self._helm.plugins.activate_plugins(
+                app_name=app.name,
+                app_version=app.version,
+                has_plugin_path=app.system_app,
+                sync_plugins_dir=app.sync_plugins_dir,
+                args=(self._helm,)
+            )
             overrides = self._helm.get_helm_chart_overrides(chart_name,
                                                             cnamespace)
-            self._app.deactivate_app_plugins(app)
+            self._helm.plugins.deactivate_plugins(
+                app_name=app.name,
+                app_version=app.version,
+                has_plugin_path=app.system_app,
+                sync_plugins_dir=app.sync_plugins_dir,
+            )
 
         return overrides
 
@@ -16172,18 +16297,25 @@ class ConductorManager(service.PeriodicService):
         :param label_dict: a dictionary of host label attributes
 
         """
-        LOG.info("update_kubernetes_label: label_dict=%s" % label_dict)
+        LOG.info(f"update_kubernetes_label: label_dict={label_dict}")
+        if label_dict is None:
+            return
         try:
             host = self.dbapi.ihost_get(host_uuid)
         except exception.ServerNotFound:
             LOG.error("Cannot find host by id %s" % host_uuid)
             return
+
+        # remove stalld labels as they are not used in kubernetes
+        k8slabels = {k: v for k, v in label_dict.items() if constants.LABEL_STALLD not in k}
+        if not k8slabels:
+            return
+
         body = {
             'metadata': {
-                'labels': {}
+                'labels': k8slabels
             }
         }
-        body['metadata']['labels'].update(label_dict)
         try:
             self._kube.kube_patch_node(host.hostname, body)
         except exception.KubeNodeNotFound:
@@ -16248,34 +16380,47 @@ class ConductorManager(service.PeriodicService):
 
         :returns: list of apps or app names
         """
-        try:
-            # Cached entry: precomputed order of reapply evaluation
-            if name_only and not filter_active:
-                return self.apps_metadata[constants.APP_METADATA_ORDERED_APPS]
+        ordered_apps = []
+        ordered_active_apps = []
 
-            ordered_apps = []
-            # Start from already ordered list
-            for app_name in self.apps_metadata[constants.APP_METADATA_ORDERED_APPS]:
+        # Add class apps to ordered_apps list
+        class_data = self.apps_metadata[constants.APP_METADATA_ORDERED_APPS].get(
+            constants.APP_METADATA_CLASS, {})
+        for class_category in class_data.keys():
+            ordered_apps.extend(class_data.get(class_category, []))
+
+        # add independent apps to ordered_apps list
+        ordered_apps.extend(self.apps_metadata[constants.APP_METADATA_ORDERED_APPS].get(
+            constants.APP_METADATA_INDEPENDENT_APPS, []))
+
+        # add dependent apps to ordered_apps list
+        ordered_apps.extend(self.apps_metadata[constants.APP_METADATA_ORDERED_APPS].get(
+            constants.APP_METADATA_DEPENDENT_APPS, []))
+
+        try:
+            if name_only and not filter_active:
+                return ordered_apps
+
+            for app_name in ordered_apps:
                 try:
                     app = self.dbapi.kube_app_get(app_name)
                 except exception.KubeAppNotFound:
                     continue
 
-                if filter_active and app.active:
-                    ordered_apps.append(app)
-                elif not filter_active:
-                    ordered_apps.append(app)
+                if not filter_active or app.active:
+                    ordered_active_apps.append(app)
 
             LOG.info("Apps reapply order: {}".format(
-                [app_.name for app_ in ordered_apps]))
+                [app.name for app in ordered_active_apps]))
 
             if name_only:
-                ordered_apps = [app_.name for app_ in ordered_apps]
+                ordered_active_apps = [app.name for app in ordered_apps]
+
         except Exception as e:
             LOG.error("Error while ordering apps for reapply {}".format(str(e)))
-            ordered_apps = []
+            ordered_active_apps = []
 
-        return ordered_apps
+        return ordered_active_apps
 
     def evaluate_apps_reapply(self, context, trigger):
         """Synchronously, determine whether an application
@@ -16317,12 +16462,13 @@ class ConductorManager(service.PeriodicService):
             return
 
         LOG.info("Evaluating apps reapply {} ".format(trigger))
+
+        apps = []
         apps = self.determine_apps_reapply_order(name_only=False, filter_active=True)
 
         metadata_map = constants.APP_EVALUATE_REAPPLY_TRIGGER_TO_METADATA_MAP
 
         for app in apps:
-
             # We need to get an updated app status before moving on. It may have
             # changed during the for loop execution. This avoids race conditions
             # during upgrade activation.
@@ -16340,9 +16486,10 @@ class ConductorManager(service.PeriodicService):
                 LOG.info(f"Skipping reapply evaluation for {app.name}, "
                          "reason: update in progress.")
             else:
-                app_metadata = self.apps_metadata[constants.APP_METADATA_APPS].get(app.name, {})
+                app_metadata_dict = self.apps_metadata[constants.APP_METADATA_APPS].get(
+                    app.name, {})
                 try:
-                    app_triggers = app_metadata[constants.APP_METADATA_BEHAVIOR][
+                    app_triggers = app_metadata_dict[constants.APP_METADATA_BEHAVIOR][
                         constants.APP_METADATA_EVALUATE_REAPPLY][
                         constants.APP_METADATA_TRIGGERS]
                 except KeyError:
@@ -16428,7 +16575,9 @@ class ConductorManager(service.PeriodicService):
             return
 
         LOG.info("Evaluating app reapply of %s" % app.name)
-        if app.active and app.status == constants.APP_APPLY_SUCCESS:
+        if app.active and app.status in [
+            constants.APP_APPLY_SUCCESS, constants.APP_RESTORE_REQUESTED
+        ]:
             # Hash the existing overrides
             # TODO these hashes can be stored in the db to reduce overhead,
             # as well as removing the writing to disk of the new overrides
@@ -16685,6 +16834,391 @@ class ConductorManager(service.PeriodicService):
             LOG.exception(ex)
             return (False, None)
 
+    def check_status_dependent_app_upload(self, context, db_app, app_name, app_version_regex):
+        """
+        Check the status of a dependent application upload and determine whether
+        to proceed with the upload or skip it based on the application's current
+        state.
+        Args:
+            context (object): The execution context for the operation.
+            db_app (object): The database object representing the dependent application.
+            app_name (str): The name of the dependent application.
+            app_version_regex (str): The version regular expression for the dependent application.
+        Returns:
+            bool: True if the upload can be skipped or successfully completed,
+                  False if the upload fails or the application is in an invalid state.
+        """
+        if (re.fullmatch(app_version_regex, db_app.app_version) is not None and
+                db_app.status == constants.APP_UPLOAD_SUCCESS):
+            LOG.info(f"Dependent app {app_name} is already uploaded. "
+                        f"Skipping upload.")
+            return True
+        elif (re.fullmatch(app_version_regex, db_app.app_version) is not None and
+                db_app.status == constants.APP_APPLY_SUCCESS):
+            LOG.info(f"Dependent app {app_name} is already applied. "
+                        f"Skipping upload.")
+            return True
+        elif (re.fullmatch(app_version_regex, db_app.app_version) is not None and
+                db_app.status == constants.APP_UPLOAD_IN_PROGRESS):
+            # Wait for the app status to be uploaded
+            timeout = constants.APP_UPLOAD_DEPENDENT_APP_TIMEOUT
+            start_time = time.time()
+
+            while time.time() - start_time < timeout:
+                app = kubeapp_obj.get_by_name(context, app_name)
+                if app.status in {constants.APP_UPLOAD_SUCCESS,
+                                    constants.APP_APPLY_IN_PROGRESS,
+                                    constants.APP_APPLY_SUCCESS}:
+                    LOG.info(f"Dependent app {app_name} upload succeeded.")
+                    break
+                elif app.status == constants.APP_UPLOAD_FAILURE:
+                    LOG.error(f"Dependent app {app_name} upload failed.")
+                    return False
+                time.sleep(5)  # Check every 5 seconds
+            else:
+                LOG.error(f"Timeout waiting for dependent app {app_name} to upload.")
+                return False
+            return True
+        elif (re.fullmatch(app_version_regex, db_app.app_version) is not None and
+                db_app.status == constants.APP_APPLY_IN_PROGRESS):
+            LOG.info(f"Dependent app {app_name} is already apply in progress. "
+                        "Skipping upload.")
+            return True
+        elif re.fullmatch(app_version_regex, db_app.app_version) is None:
+            LOG.error(f"Dependent app {app_name} version mismatch. "
+                      "Expected versions should match the regular "
+                      f"expression: {app_version_regex}. "
+                      f"Found version: {db_app.app_version} instead.")
+            return False
+        else:
+            LOG.error(f"Dependent app {app_name} is in an invalid state. "
+                      f"Current status: {db_app.status}.")
+            return False
+
+    def upload_dependent_app(self, context, dependent_app_apply_type):
+        """ Uploads a dependent application to the system.
+
+        This method checks if the dependent application is already uploaded or applied
+        with the same version. If the application is not found, it creates a new app
+        entry in the database and initiates the upload process.
+        Args:
+            context (object): The request context.
+            dependent_app_apply_type (dict): A dictionary containing the dependent app's
+                details, including:
+                - 'name' (str): The name of the dependent app.
+                - 'version' (str): The version of the dependent app.
+        Returns:
+            bool: True if the dependent app is successfully uploaded or already exists
+                  with the same version and status. False otherwise.
+        """
+
+        # Check if the dependent app is already uploaded
+        # and has the same version
+        app_name = dependent_app_apply_type['name']
+        app_version = dependent_app_apply_type['version']
+        # Initialize the app object to None
+        app = None
+
+        try:
+            app = kubeapp_obj.get_by_name(context, app_name)
+            return self.check_status_dependent_app_upload(context, app, app_name, app_version)
+        except exception.KubeAppNotFound:
+            LOG.info(f"Dependent app {app_name} not found. Uploading new app.")
+
+        try:
+            LOG.info(
+                "Starting upload process for dependent app: "
+                f"{app_name}, version: {app_version}"
+            )
+
+            # Check if tarball for app_name, app_version anc current k8s version exists
+            app_bundle = self.dbapi.kube_app_bundle_get_by_version_regex(
+                name=app_name,
+                version_regex=app_version,
+                k8s_version=self._kube.kube_get_kubernetes_version())
+
+            app_data = {'name': app_name,
+                        'app_version': app_bundle.version,
+                        'manifest_name': constants.APP_MANIFEST_NAME_PLACEHOLDER,
+                        'manifest_file': constants.APP_TARFILE_NAME_PLACEHOLDER,
+                        'status': constants.APP_UPLOAD_IN_PROGRESS}
+
+            # Create the app in the database
+            self.dbapi.kube_app_create(app_data)
+            # Get the app object from the database
+            app = kubeapp_obj.get_by_name(context, app_name)
+
+            # check if the tarball is valid
+            tarball = self._check_tarfile(app_name, app_bundle.file_path)
+            if ((tarball.manifest_name is None) or
+                    (tarball.manifest_file is None)):
+                cutils.update_app_status(app, constants.APP_UPLOAD_FAILURE)
+                return False
+
+            app.name = tarball.app_name
+            app.app_version = tarball.app_version
+            app.manifest_name = tarball.manifest_name
+            app.manifest_file = os.path.basename(tarball.manifest_file)
+            app.save()
+
+            hook_info = LifecycleHookInfo()
+            hook_info.mode = LifecycleConstants.APP_LIFECYCLE_MODE_MANUAL
+
+            self.perform_app_upload(context, app, tarball.tarball_name, hook_info)
+
+        except exception.KubeAppBundleNotFound as e:
+            LOG.error(e)
+            return False
+        except exception.KubeAppAlreadyExists:
+            # This prevents race condition within the process of
+            # executing the upload_dependent_app function in parallel.
+            return self.check_status_dependent_app_upload(context, app, app_name, app_version)
+        except Exception as e:
+            LOG.error(
+                f"Failed to upload tarball for dependent app {app_name}, version {app_version} "
+                f"Error: {e}")
+
+            if app:
+                cutils.update_app_status(app, constants.APP_UPLOAD_FAILURE)
+            return False
+
+        return True
+
+    def apply_dependent_apps(
+            self, context, upload_apps_succeeded_list, mutually_exclusive_apps=False):
+        """
+        Apply dependent applications based on a list of successfully uploaded apps.
+
+        This method attempts to apply a list of dependent applications that have
+        been successfully uploaded. It performs lifecycle semantic checks, updates
+        application statuses, and handles errors during the application process.
+
+        Args:
+            context (object): The request context.
+            upload_apps_succeeded_list (list): A list of dictionaries representing
+                successfully uploaded applications. Each dictionary contains at
+                least the 'name' key.
+
+        Returns:
+            tuple: A tuple containing two lists:
+                - apply_apps_succeeded_list (list): A list of applications that
+                  were successfully applied.
+                - apply_apps_failed_list (list): A list of applications that
+                  failed to be applied.
+        """
+
+        apply_apps_succeeded_list = []
+        apply_apps_failed_list = []
+
+        for dependent_app in upload_apps_succeeded_list:
+            if mutually_exclusive_apps and apply_apps_succeeded_list:
+                break
+            app_name = dependent_app['name']
+            app_version = dependent_app['version']
+            LOG.info(f"Starting upload process for dependent app: "
+                     f"{app_name}, version: {app_version}")
+            try:
+                app = kubeapp_obj.get_by_name(context, app_name)
+            except exception.KubeAppNotFound as e:
+                LOG.exception(e)
+                apply_apps_failed_list.append(dependent_app)
+                continue
+
+            if (app.app_version == app_version and
+                    app.status == constants.APP_APPLY_IN_PROGRESS):
+                # Wait for the app status to be applied
+                timeout = constants.APP_INSTALLATION_DEPENDENT_APP_TIMEOUT
+                start_time = time.time()
+
+                while time.time() - start_time < timeout:
+                    app = kubeapp_obj.get_by_name(context, app_name)
+                    LOG.info(f"Checking status of dependent app {app_name}: {app.status}")
+                    if app.status == constants.APP_APPLY_SUCCESS:
+                        LOG.info(f"Dependent app {app_name} aplied succeeded.")
+                        apply_apps_succeeded_list.append(dependent_app)
+                        break
+                    if app.status == constants.APP_APPLY_FAILURE:
+                        LOG.error(f"Dependent app {app_name} apply failed.")
+                        apply_apps_failed_list.append(dependent_app)
+                        break
+                    time.sleep(5)  # Check every 5 seconds
+                else:
+                    LOG.error(f"Timeout waiting for dependent app {app_name} to apply.")
+                    apply_apps_failed_list.append(dependent_app)
+                continue
+
+            elif (app.app_version == app_version and
+                    app.status == constants.APP_APPLY_SUCCESS):
+                LOG.info(f"Dependent app {app_name} is already applied. "
+                         f"Skipping apply.")
+                apply_apps_succeeded_list.append(dependent_app)
+                continue
+
+            hook_info = LifecycleHookInfo()
+            hook_info.init(LifecycleConstants.APP_LIFECYCLE_MODE_MANUAL,
+                        LifecycleConstants.APP_LIFECYCLE_TYPE_SEMANTIC_CHECK,
+                        LifecycleConstants.APP_LIFECYCLE_TIMING_PRE,
+                        constants.APP_APPLY_OP)
+            try:
+                self.app_lifecycle_actions(context, app, hook_info)
+            except exception.LifecycleSemanticCheckException as e:
+                LOG.info(f"Apply dependence failed prerequisites for {app.name}: {e}")
+                apply_apps_failed_list.append(dependent_app)
+                continue
+            except exception.SysinvException:
+                LOG.exception(f"Internal sysinv error while auto applying {app.name}")
+                apply_apps_failed_list.append(dependent_app)
+                continue
+            except Exception as e:
+                LOG.exception(f"Automatic operation:{hook_info} "
+                              f"for app {app.name} failed with: {e}")
+                apply_apps_failed_list.append(dependent_app)
+                continue
+
+            if self._patching_operation_is_occurring():
+                apply_apps_failed_list.append(dependent_app)
+                continue
+
+            # Update the app status to in progress
+            cutils.update_app_status(app, constants.APP_APPLY_IN_PROGRESS)
+
+            try:
+                app_applied = self.perform_app_apply(context, app, app.mode, hook_info)
+                if app_applied:
+                    apply_apps_succeeded_list.append(dependent_app)
+                else:
+                    apply_apps_failed_list.append(dependent_app)
+            except exception.KubeAppApplyFailure as e:
+                LOG.exception(f"Failed to apply dependent app {app.name}: {e}")
+                apply_apps_failed_list.append(dependent_app)
+
+        return apply_apps_succeeded_list, apply_apps_failed_list
+
+    def perform_upload_apply_dependent_apps(self, context, rpc_app, dependent_apps_apply_type):
+        """Upload and apply dependent applications.
+
+        This method handles the upload and application of dependent applications
+        that are required for the main application to function correctly.
+
+        Args:
+            context (object): The request context.
+            rpc_app (object): The main application object.
+            dependent_apps_apply_type (list): A list of dictionaries representing
+                              dependent applications with action
+                              type 'APPLY'. Each dictionary contains
+                              at least the 'name' and 'version' keys.
+
+        Returns:
+            bool: True if all dependent applications were successfully uploaded
+              and applied, False otherwise.
+        """
+        upload_apps_succeeded_list = []
+        upload_apps_failed_list = []
+        apply_apps_failed_list = []
+        # Variables for mutually exclusive apps
+        mutually_exclusive_apps_lists = []
+        uploaded_apps_mutually_exclusive_succeeded = []
+        apply_apps_mutually_exclusive_succeeded = []
+        apply_apps_mutually_exclusive_failed = []
+
+        # get the list of dependent applications that are mutually exclusive
+        for dependent_app in dependent_apps_apply_type:
+            if isinstance(dependent_app, list):
+                mutually_exclusive_apps_lists.append(dependent_app)
+
+        # Combine common dependencies with mutually exclusive dependencies.
+        # Filtering will be done below.
+        flat_dependent_apps = cutils.flatten_nested_lists(dependent_apps_apply_type)
+
+        # Launch a thread for each upload candidate, then wait for all applications
+        # to finish uploading.
+        with ThreadPoolExecutor(max_workers=len(flat_dependent_apps)) as executor:
+            futures = {
+                executor.submit(self.upload_dependent_app, context, dependent_app): dependent_app
+                for dependent_app in flat_dependent_apps
+            }
+
+            # Wait for all uploads to complete
+            for future in as_completed(futures):
+                dependent_app = futures[future]
+                try:
+                    result = future.result()
+                    if result:
+                        LOG.info(f"Successfully uploaded dependent app {dependent_app['name']}.")
+                        upload_apps_succeeded_list.append(dependent_app)
+                    else:
+                        LOG.error(f"Failed to upload dependent app {dependent_app['name']}.")
+                        upload_apps_failed_list.append(dependent_app)
+                except Exception as e:
+                    LOG.error(f"Error uploading dependent app {dependent_app['name']}: {e}")
+                    upload_apps_failed_list.append(dependent_app)
+
+        if mutually_exclusive_apps_lists:
+            # If there are mutually exclusive apps, filter out the ones that failed to upload.
+            upload_failed_app_names = {app['name'] for app in upload_apps_failed_list}
+            uploaded_apps_mutually_exclusive_succeeded = [
+                [app for app in exclusive_group if app['name'] not in upload_failed_app_names]
+                for exclusive_group in mutually_exclusive_apps_lists
+            ]
+
+            if uploaded_apps_mutually_exclusive_succeeded:
+                # Filter mutually exclusive apps that were successfully uploaded from
+                # the upload_apps_succeeded_list variable. The purpose of this is to
+                # be able to call the apply_dependent_apps function separately for
+                # mutually exclusive apps and common dependencies.
+                remove_app_names = {
+                    app["name"]
+                    for group in uploaded_apps_mutually_exclusive_succeeded
+                    for app in group
+                }
+                upload_apps_succeeded_list = [
+                    app for app in upload_apps_succeeded_list if app['name'] not in remove_app_names
+                ]
+
+                # Apply mutually exclusive apps in groups.
+                # Each group will be applied separately.
+                for exclusive_group in uploaded_apps_mutually_exclusive_succeeded:
+                    apply_success, apply_failed = self.apply_dependent_apps(
+                        context, exclusive_group, mutually_exclusive_apps=True
+                    )
+                    apply_apps_mutually_exclusive_succeeded.extend(apply_success)
+                    apply_apps_mutually_exclusive_failed.extend(apply_failed)
+
+        # Only apply dependent applications if the upload was successful.
+        if upload_apps_succeeded_list:
+            _, apply_apps_failed_list = self.apply_dependent_apps(
+                context, upload_apps_succeeded_list
+            )
+
+        # Check result of the apply of mutually exclusive apps dependencies
+        # Track overall result status
+        result = True
+        if mutually_exclusive_apps_lists:
+            # Check if at least one app in each mutually exclusive group succeeded
+            apply_success_app_me_names = \
+                {app['name'] for app in apply_apps_mutually_exclusive_succeeded}
+            for exclusive_group in mutually_exclusive_apps_lists:
+                if not any(item['name'] in apply_success_app_me_names for item in exclusive_group):
+                    LOG.error(
+                        "Failed to apply any mutually exclusive dependent applications in group: "
+                        f"{[item['name'] for item in exclusive_group]}. "
+                        f"Apply failed: {apply_apps_mutually_exclusive_failed}."
+                    )
+                    result = False
+
+        if apply_apps_failed_list or upload_apps_failed_list:
+            LOG.error(
+                "Failed to upload or apply dependent applications. "
+                f"Upload failed: {upload_apps_failed_list}, "
+                f"Apply failed: {apply_apps_failed_list}."
+            )
+            result = False
+
+        if result:
+            LOG.info("Successfully uploaded and applied dependent applications.")
+
+        return result
+
     def perform_app_upload(self, context, rpc_app, tarfile,
                            lifecycle_hook_info_app_upload, images=False):
         """Handling of application upload request (via AppOperator)
@@ -16738,6 +17272,51 @@ class ConductorManager(service.PeriodicService):
         except Exception as e:
             LOG.error("Error performing app_lifecycle_actions %s" % str(e))
 
+        # check if the application has circular dependencies
+        if rpc_app.name in self.apps_metadata[constants.APP_METADATA_CYCLIC_DEPENDENCIES]:
+            LOG.error(
+                f"Circular dependency detected for application {rpc_app.name} - "
+                f"{rpc_app.app_version}. Application cannot be applied."
+            )
+            cutils.update_app_status(rpc_app,
+                                    constants.APP_APPLY_FAILURE,
+                                    "Circular dependency detected.")
+            raise exception.KubeAppApplyFailure(
+                name=rpc_app.name,
+                version=rpc_app.app_version,
+                reason="Circular dependency detected."
+            )
+
+        # Check if the application has dependent apps missing
+        dependent_apps_missing_list = app_dependents.get_dependent_apps_missing(
+            rpc_app.app_metadata, self.dbapi)
+
+        # Check if the application has dependent apps missing of action type 'APPLY'
+        dependent_apps_apply_type = app_dependents.get_dependent_apps_by_action(
+            dependent_apps_missing_list, constants.APP_METADATA_DEPENDENT_APPS_ACTION_APPLY)
+
+        # If dependent apps are missing with action type 'APPLY', install them
+        # before applying the main application
+        if dependent_apps_apply_type:
+            cutils.update_app_status(rpc_app,
+                                     constants.APP_APPLY_IN_PROGRESS,
+                                     "Installing dependent applications")
+
+            result = self.perform_upload_apply_dependent_apps(
+                context, rpc_app, dependent_apps_apply_type)
+
+            if not result:
+                progress_msg = ("Failed to apply dependent apps. "
+                                "Check sysinv logs for details.")
+                cutils.update_app_status(rpc_app,
+                                         constants.APP_APPLY_FAILURE,
+                                         progress_msg)
+                raise exception.KubeAppApplyFailure(
+                    name=rpc_app.name,
+                    version=rpc_app.app_version,
+                    reason="Failed to apply dependent applications."
+                )
+
         # TODO pass context and move hooks inside?
         app_applied = self._app.perform_app_apply(rpc_app, mode,
                                                   lifecycle_hook_info_app_apply,
@@ -16777,6 +17356,98 @@ class ConductorManager(service.PeriodicService):
 
         """
         lifecycle_hook_info_app_update.operation = constants.APP_UPDATE_OP
+
+        # get the app metadata from the tarfile
+        to_app_metadata = cutils.get_app_metadata_from_tarfile(tarfile)
+
+        # Update the apps_metadata registry with the new application metadata
+        # This ensures the circular dependency detection list is current for validation checks
+        self._app.update_and_process_app_metadata(
+            self.apps_metadata, to_rpc_app.name, to_app_metadata, overwrite=True)
+
+        # check if the application has circular dependencies
+        if to_rpc_app.name in self.apps_metadata[constants.APP_METADATA_CYCLIC_DEPENDENCIES]:
+            LOG.error(
+                f"Circular dependency detected for application {to_rpc_app.name} - "
+                f"{to_rpc_app.app_version}. Application cannot be updated."
+            )
+
+            # Set the status for the new app to inactive
+            cutils.update_app_status(
+                to_rpc_app, constants.APP_INACTIVE_STATE
+            )
+
+            # Update the status of the from_rpc_app to indicate the update was aborted
+            progress_msg = (
+                constants.APP_PROGRESS_UPDATE_ABORTED.format(
+                    from_rpc_app.app_version, to_rpc_app.app_version
+                ) + constants.APP_PROGRESS_RECOVER_COMPLETED.format(
+                    from_rpc_app.app_version
+                ) + "Circular dependency detected."
+            )
+            cutils.update_app_status(
+                from_rpc_app,
+                constants.APP_APPLY_SUCCESS,
+                progress_msg
+            )
+
+            # Destroy the new app
+            self.dbapi.kube_app_destroy(to_rpc_app.name,
+                                        version=to_rpc_app.app_version,
+                                        inactive=True)
+
+            raise exception.KubeAppUpdateFailure(
+                name=to_rpc_app.name,
+                from_version=from_rpc_app.app_version,
+                to_version=to_rpc_app.app_version,
+                reason="Circular dependency detected."
+            )
+
+        # Check if the application has dependent apps missing
+        dependent_apps_missing_list = app_dependents.get_dependent_apps_missing(
+            to_app_metadata, self.dbapi)
+
+        # Check if the application has dependent apps missing of action type 'APPLY'
+        dependent_apps_apply_type = app_dependents.get_dependent_apps_by_action(
+            dependent_apps_missing_list, constants.APP_METADATA_DEPENDENT_APPS_ACTION_APPLY)
+
+        # If dependent apps are missing with action type 'APPLY', install them
+        # before applying the main application
+        if dependent_apps_apply_type:
+            cutils.update_app_status(to_rpc_app,
+                                     constants.APP_UPDATE_IN_PROGRESS,
+                                     "Installing dependent applications")
+
+            result = self.perform_upload_apply_dependent_apps(
+                context, to_rpc_app, dependent_apps_apply_type)
+
+            if not result:
+                # If the dependent apps failed to apply, perform recovery manually.
+                # In this point the new charts was not applied yet.
+                progress_msg = ("Failed to apply dependent apps. "
+                                "Check sysinv logs for details.")
+
+                cutils.update_app_status(
+                    from_rpc_app, constants.APP_APPLY_SUCCESS,
+                    constants.APP_PROGRESS_UPDATE_ABORTED.format(
+                        from_rpc_app.app_version, to_rpc_app.app_version) +
+                    constants.APP_PROGRESS_RECOVER_COMPLETED.format(
+                        from_rpc_app.app_version) + progress_msg)
+
+                # Set the status for the new app to inactive
+                cutils.update_app_status(to_rpc_app,
+                                        constants.APP_INACTIVE_STATE)
+
+                # Destroy the new app
+                self.dbapi.kube_app_destroy(to_rpc_app.name,
+                                            version=to_rpc_app.app_version,
+                                            inactive=True)
+
+                raise exception.KubeAppApplyFailure(
+                    name=to_rpc_app.name,
+                    version=to_rpc_app.app_version,
+                    reason="Failed to apply dependent applications."
+                )
 
         return self._app.perform_app_update(from_rpc_app,
                                             to_rpc_app,
@@ -16866,6 +17537,107 @@ class ConductorManager(service.PeriodicService):
             LOG.error("Error performing app_lifecycle_actions %s" % str(e))
 
         return self._app.perform_app_delete(rpc_app, lifecycle_hook_info_app_delete)
+
+    def perform_update_in_all_apps(self, context):
+        """
+            Runs the update process for all applications based on their current status:
+                - Uploading apps with uploaded status
+                - Recovering apps that failed to apply
+                - Updating already applied apps
+            The update logic is handled by an AppUpdateManager instance.
+            :param context: request context.
+        """
+
+        LOG.info("Starting the apps update process.")
+        self._apps_update_operation = app_update_manager.AppUpdateManager(
+            self.dbapi,
+            self.perform_automatic_operation_in_parallel
+        )
+        self._apps_update_operation.update_apps(context)
+
+    def get_apps_update_status(self, context):
+        try:
+            if self._apps_update_operation:
+                return self._apps_update_operation.status
+        except Exception:
+            return
+
+    def execute_automatic_operation_sync(self, context, apps, op, **kwargs):
+        """
+            Perform an automatic operation on a list of applications sequentially.
+            :param context: request context.
+            :param apps (list): list with application names.
+            :param op (str): operation to perform. Supported operations include:
+                    - APP_APPLY_OP
+                    - APP_REAPPLY_OP
+                    - APP_UPDATE_OP
+                    - APP_UPLOAD_OP
+                    - APP_RECOVER_UPDATE_OP
+            :param **kwargs: Additional arguments for the operation.
+            :return tuple: (success: bool, failed_apps: list)
+        """
+        # TODO(edias): This function will no longer be necessary in future releases and should be
+        # deleted. Future releases will use the new inter-app dependency feature, which will allow
+        # rollback operations to use the perform_automatic_operation_in_parallel method instead.
+
+        operation_func = {
+            constants.APP_APPLY_OP: self._auto_apply_managed_app,
+            constants.APP_REAPPLY_OP: self._auto_apply_managed_app,
+            constants.APP_UPDATE_OP: self._auto_update_app,
+            constants.APP_UPLOAD_OP: self._auto_upload_managed_app,
+            constants.APP_RECOVER_UPDATE_OP: self.recover_and_update_apply_failed_app
+        }
+
+        result = True
+        successful_executions = []
+        failed_executions = []
+
+        LOG.info(f"Initiating automatic operation '{op}' on applications: {', '.join(apps)}")
+
+        for app in apps:
+            try:
+                response = operation_func[op](context, app, **kwargs)
+                if response is None:
+                    LOG.info(f"Automatic operation '{op}' skipped for app {app}")
+                elif response is True:
+                    successful_executions.append(app)
+                    LOG.info(f"Automatic operation '{op}' to the app {app} "
+                             "completed successfully.")
+                elif response is False:
+                    failed_executions.append(app)
+                    result = False
+                else:
+                    LOG.warning(f"Unknown result of automatic operation '{op}' for app {app}")
+            except Exception as e:
+                LOG.error(f"Error occurred while processing the app {app}: {e}")
+                failed_executions.append(app)
+                result = False
+        return result, successful_executions, failed_executions
+
+    def rollback_all_apps(self, context):
+        """
+            Rollback all applications to the previous system state. This method removes existing app
+            bundles, restores metadata from the previous ostree path, and initiates the rollback
+            process using the application update manager.
+            :param context: The request context.
+        """
+
+        rollback_ostree_path = constants.ROLLBACK_OSTREE_PATH
+        previous_tarball_path = rollback_ostree_path + constants.HELM_APP_ISO_INSTALL_PATH
+        self._kube_app_bundle_storage.destroy_all()
+        self._populate_app_bundle_metadata(previous_tarball_path)
+
+        LOG.info("Starting the apps rollback process.")
+
+        self._apps_update_operation = app_update_manager.AppUpdateManager(
+            self.dbapi,
+            self.perform_automatic_operation_in_parallel
+        )
+        self._apps_update_operation.rollback_apps(context)
+
+    def run_local_registry_secrets_audit(self, context):
+        LOG.info("Running registry secrets audit manually.")
+        self._app.audit_local_registry_secrets(context)
 
     def reconfigure_service_endpoints(self, context, host):
         """Reconfigure the service endpoints
@@ -16990,6 +17762,103 @@ class ConductorManager(service.PeriodicService):
 
         os.chmod(constants.SYSINV_CONF_DEFAULT_PATH, 0o400)
 
+    def _update_hieradata_file(self, file_path, configs_to_be_updated):
+        """Update hieradata file with provided config parameters
+
+        :param: file_path: full path to the file
+        :param: configs_to_be_updated: dict. config parameters to be updated as key:value
+        :raises: SysinvException in case of error
+        """
+        try:
+            hieradata_content = ""
+
+            def represent_null(representer, _):
+                return representer.represent_scalar('tag:yaml.org,2002:null', 'null')
+
+            yaml_rt = yaml.YAML()
+            yaml_rt.preserve_quotes = True
+            yaml_rt.default_flow_style = False
+            yaml_rt.representer.add_representer(type(None), represent_null)
+
+            with open(file_path, 'r') as file:
+                hieradata_content = yaml_rt.load(file)
+
+            if hieradata_content:
+                for config_parameter in configs_to_be_updated:
+                    if config_parameter in hieradata_content:
+                        hieradata_content[config_parameter] = \
+                            configs_to_be_updated[config_parameter]
+                    else:
+                        raise exception.SysinvException("Config parameter %s not found in hieradata"
+                                                        " file %s" % (config_parameter, file_path))
+                with open(file_path, 'w') as file:
+                    yaml_rt.dump(hieradata_content, file)
+                LOG.info("Hieradata file %s updated with values %s"
+                         % (file_path, configs_to_be_updated))
+            else:
+                raise exception.SysinvException("No contents found in hieradata file: %s"
+                                                % (file_path))
+        except Exception as ex:
+            raise exception.SysinvException("Failed to update hieradata with provided config "
+                                            "parameters. Error: %s" % (ex))
+
+    def report_unfinished_kube_upgrade_from_agent(self, context, host_uuid):
+        """Report unfinished k8s upgrade by sysinv-agent
+
+        This method is only used by sysinv-agent to report about unfinished kubernetes
+        upgrade in sysinv-agent in case of unexpected sysinv-agent restart/fail-start etc.
+        Sysinv-agent does an attempt to finish it but if that does not work, this method is
+        called as a last resort.
+        """
+        try:
+            kube_upgrade = self.dbapi.kube_upgrade_get_one()
+        except exception.NotFound:
+            # Not upgrading kubernetes
+            return
+
+        host_obj = objects.host.get_by_uuid(context, host_uuid)
+        host_name = host_obj.hostname
+        kube_host_upgrade = objects.kube_host_upgrade.get_by_host_id(context, host_obj.id)
+
+        current_kube_state = kube_upgrade.state
+        fail_state = None
+        fail_status = None
+
+        # Following block of conditions ensures kube upgrade status of only the reporting
+        # host is updated and not for false host.
+        if current_kube_state == kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES and \
+                self._k8s_upgrade_downloading_images_on_inactive_controller:
+            fail_state = kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES_FAILED
+            self._k8s_upgrade_downloading_images_on_inactive_controller = False
+        elif current_kube_state == kubernetes.KUBE_UPGRADING_FIRST_MASTER and \
+                kube_host_upgrade.status == kubernetes.KUBE_HOST_UPGRADING_CONTROL_PLANE:
+            fail_state = kubernetes.KUBE_UPGRADING_FIRST_MASTER_FAILED
+            fail_status = kubernetes.KUBE_HOST_UPGRADING_CONTROL_PLANE_FAILED
+        elif current_kube_state == kubernetes.KUBE_UPGRADING_SECOND_MASTER and \
+                kube_host_upgrade.status == kubernetes.KUBE_HOST_UPGRADING_CONTROL_PLANE:
+            fail_state = kubernetes.KUBE_UPGRADING_SECOND_MASTER_FAILED
+            fail_status = kubernetes.KUBE_HOST_UPGRADING_CONTROL_PLANE_FAILED
+        elif current_kube_state == kubernetes.KUBE_UPGRADING_KUBELETS and \
+                kube_host_upgrade.status == kubernetes.KUBE_HOST_UPGRADING_KUBELET:
+            fail_status = kubernetes.KUBE_HOST_UPGRADING_KUBELET_FAILED
+        elif current_kube_state == kubernetes.KUBE_UPGRADE_ABORTING:
+            fail_state = kubernetes.KUBE_UPGRADE_ABORTING_FAILED
+
+        if not any([fail_state, fail_status]):
+            return
+
+        LOG.error("Unfinished kubernetes upgrade report from host [%s] received." % (host_name))
+
+        if fail_state:
+            LOG.error("Transitioning kubernetes upgrade from state [%s] to [%s]."
+                      % (current_kube_state, fail_state))
+            self.dbapi.kube_upgrade_update(kube_upgrade.id, {'state': fail_state})
+
+        if fail_status:
+            LOG.error("Transitioning kubernetes host upgrade status to [%s] for host [%s]."
+                      % (fail_status, host_name))
+            self.dbapi.kube_host_upgrade_update(kube_host_upgrade.id, {'status': fail_status})
+
     def _kube_upgrade_init_actions(self):
         """ Perform any kubernetes upgrade related startup actions"""
         try:
@@ -17103,95 +17972,105 @@ class ConductorManager(service.PeriodicService):
 
         return success
 
+    def _kube_upgrade_state_update(self, context, new_state):
+        """Upgrade kubernetes upgrade state
+
+        :param: context: context object
+        :param: new_state: Kubernetes upgrade state to be updated
+        """
+        kube_upgrade_obj = objects.kube_upgrade.get_one(context)
+        kube_upgrade_obj.state = new_state
+        kube_upgrade_obj.save()
+
+    def report_download_images_result(self, context, result):
+        """
+        :param context: request context.
+        :param result: True if operation was success False otherwise
+        """
+        # Update the upgrade state
+        if result:
+            state = kubernetes.KUBE_UPGRADE_DOWNLOADED_IMAGES
+            LOG.info("Required kubernetes images downloaded successfully on all controllers.")
+        else:
+            state = kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES_FAILED
+            LOG.error("Kubernetes image download failed on the other controller."
+                      "Check sysinv.log on that controller.")
+        self._k8s_upgrade_downloading_images_on_inactive_controller = False
+        self._kube_upgrade_state_update(context, state)
+
     def kube_download_images(self, context, kube_version):
         """Download the kubernetes images for this version"""
 
         kube_operator = kubernetes.KubeOperator()
         kube_upgrade_obj = objects.kube_upgrade.get_one(context)
         system = self.dbapi.isystem_get_one()
-        if system.system_mode == constants.SYSTEM_MODE_SIMPLEX:
-            next_versions = kube_operator.kube_get_higher_patch_version(kube_upgrade_obj.from_version,
-                                                                        kube_version)
-        else:
-            next_versions = [kube_version]
 
-        # For simplex systems, disable image garbage collection by kubelet
-        # during the K8s upgrade.  For duplex this will be done on each controller
-        # by the puppet manifest called below.  It wants to be done before we
-        # pull the images so that they can't be garbage collected by kubelet
-        # before they're needed.
-        if system.system_mode == constants.SYSTEM_MODE_SIMPLEX:
-            try:
-                # Call the helper script used by the puppet manifest.
-                subprocess.check_call(  # pylint: disable=not-callable
-                    ["/bin/bash",
-                     "/usr/share/puppet/modules/platform/files/disable_image_gc.sh"],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL)
-            except subprocess.CalledProcessError:
-                LOG.error("Failed to call disable_image_gc.sh, continuing anyway.")
+        next_versions = kube_operator.kube_get_higher_patch_version(
+                kube_upgrade_obj.from_version, kube_version)
 
+        LOG.info("Downloading images for versions: %s " % (next_versions))
+
+        # Disable image garbage collection by kubelet during the K8s upgrade.
+        # It wants to be done before we pull the images so that they can't be garbage
+        # collected by kubelet before they're needed.
+        try:
+            kubernetes.disable_kubelet_garbage_collection()
+            cutils.pmon_restart_service(kubernetes.KUBELET_SYSTEMD_SERVICE_NAME)
+            LOG.info("Successfully disabled kubelet image garbage collection.")
+        except Exception:
+            LOG.warning("Failed to disable garbage collection in kubelet, continuing anyway.")
+
+        # Create a consolidated list of images of all "next_versions" so that
+        # all of them can be pulled concurrently
+        target_images = []
         for k8s_version in next_versions:
-            LOG.info(f"Downloading images for version {k8s_version}")
+            k8s_version = k8s_version.strip('v')
+            # TODO(kdhokte): call get_all_supported_k8s_versions inside _start() so all images are
+            # cached for future use and accessed whenever required.
+            images = kubernetes.get_k8s_images(k8s_version)
+            target_images.extend(images.values())
 
-            try:
-                success = self.push_k8s_images(k8s_version)
-            except Exception as e:
-                LOG.error(f"An error ocurred when pushing k8s images: {e}")
-                success = False
+        target_images = list(set(target_images))
 
-            if not success:
-                LOG.warning(
-                    "Image download failed, please check sysinv.log for more details"
-                )
-                # Update the upgrade state
-                kube_upgrade_obj = objects.kube_upgrade.get_one(context)
-                kube_upgrade_obj.state = \
-                    kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES_FAILED
-                kube_upgrade_obj.save()
-                return
+        try:
+            success = \
+                self._image_downloader.download_images_from_upstream_to_local_reg_and_crictl(
+                    target_images)
+        except Exception:
+            # handle unexpected exception
+            success = False
 
-        if system.system_mode == constants.SYSTEM_MODE_DUPLEX:
-            # Update the config for the controller host(s)
-            personalities = [constants.CONTROLLER]
-            config_uuid = self._config_update_hosts(context, personalities)
+        if not success:
+            LOG.error("Kubernetes image download operation failed.")
+            # Update the upgrade state
+            self._kube_upgrade_state_update(
+                    context, kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES_FAILED)
+            return
 
-            # Apply the runtime manifest to have docker download the images on
-            # each controller.
-            config_dict = {
-                "personalities": personalities,
-                "classes": ['platform::kubernetes::pre_pull_control_plane_images']
-            }
-            self._config_apply_runtime_manifest(context, config_uuid, config_dict)
-
-            # Wait for the manifest(s) to be applied
-            elapsed = 0
-            while elapsed < kubernetes.MANIFEST_APPLY_TIMEOUT:
-                elapsed += kubernetes.MANIFEST_APPLY_INTERVAL
-                greenthread.sleep(kubernetes.MANIFEST_APPLY_INTERVAL)
-                controller_hosts = self.dbapi.ihost_get_by_personality(
-                    constants.CONTROLLER)
-                for host_obj in controller_hosts:
-                    if host_obj.config_target != host_obj.config_applied:
-                        # At least one controller has not been updated yet
-                        LOG.debug("Waiting for config apply on host %s" %
-                                host_obj.hostname)
-                        break
-                else:
-                    LOG.info("Config was applied for all controller hosts")
-                    break
-            else:
-                LOG.warning("Manifest apply failed for a controller host")
-                kube_upgrade_obj = objects.kube_upgrade.get_one(context)
-                kube_upgrade_obj.state = \
-                    kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES_FAILED
-                kube_upgrade_obj.save()
-                return
-
-        # Update the upgrade state
-        kube_upgrade_obj = objects.kube_upgrade.get_one(context)
-        kube_upgrade_obj.state = kubernetes.KUBE_UPGRADE_DOWNLOADED_IMAGES
-        kube_upgrade_obj.save()
+        if system.system_mode == constants.SYSTEM_MODE_SIMPLEX:
+            self._kube_upgrade_state_update(context, kubernetes.KUBE_UPGRADE_DOWNLOADED_IMAGES)
+            LOG.info("Required kubernetes images downloaded successfully.")
+            return
+        else:
+            controller_hosts = self.dbapi.ihost_get_by_personality(constants.CONTROLLER)
+            agent_api = agent_rpcapi.AgentAPI()
+            for host in controller_hosts:
+                if host.uuid == self.host_uuid:
+                    continue
+                try:
+                    local_registry_auth = cutils.get_local_docker_registry_auth()
+                    crictl_auth = (
+                        f"{local_registry_auth['username']}:{local_registry_auth['password']}"
+                    )
+                    LOG.info("Downloading images on %s" % (host.hostname))
+                    self._k8s_upgrade_downloading_images_on_inactive_controller = True
+                    agent_api.pull_kubernetes_images(context, host.uuid, target_images, crictl_auth)
+                except Exception as ex:
+                    # Handle unexpected exception
+                    LOG.exception("Images download failed on %s. Error: [%s]" % (host.hostname, ex))
+                    self._kube_upgrade_state_update(
+                            context, kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES_FAILED)
+                    self._k8s_upgrade_downloading_images_on_inactive_controller = False
 
     def kube_application_update(self,
                                 context,
@@ -17217,8 +18096,8 @@ class ConductorManager(service.PeriodicService):
                 self._check_installed_apps_compatibility(k8s_version)):
             kube_upgrade_obj = objects.kube_upgrade.get_one(context)
             if kube_upgrade_obj.state not in abort_states:
-                LOG.info("Applications updated to match Kubernetes version %s."
-                         % (kube_upgrade_obj.to_version))
+                LOG.info("Application %s update step to match Kubernetes version %s completed."
+                         % (timing, kube_upgrade_obj.to_version))
                 kube_upgrade_obj.state = success_state
                 kube_upgrade_obj.save()
         else:
@@ -17244,78 +18123,98 @@ class ConductorManager(service.PeriodicService):
     def kube_host_cordon(self, context, host_name):
         """Cordon the pods to evict on this host"""
 
-        kube_upgrade_obj = objects.kube_upgrade.get_one(context)
         system = self.dbapi.isystem_get_one()
-
         if system.system_mode == constants.SYSTEM_MODE_SIMPLEX:
-            cordon_cmd = ['kubectl', '--kubeconfig=%s' % kubernetes.KUBERNETES_ADMIN_CONF,
-                          'drain', host_name, '--ignore-daemonsets', '--delete-emptydir-data',
-                          '--delete-local-data', '--force', '--skip-wait-for-delete-timeout=1',
-                          '--timeout=150s']
-
-            proc = subprocess.Popen(cordon_cmd, stdout=subprocess.PIPE,
-                                   stderr=subprocess.PIPE, universal_newlines=True)
-            stdout, stderr = proc.communicate()
-            if proc.returncode != 0:
-                LOG.error('Error in executing %s: %s' %
-                        (cordon_cmd, stderr))
-                # Allow the cordon to succeed when pod failed to evict due to
-                # pod disruption budget or when pod failed to evict in the
-                # given timeout.
-                if "violate the pod's disruption budget" in stderr or \
-                        "global timeout reached" in stderr:
-                    cordon_status = kubernetes.KUBE_UPGRADE_CORDON_COMPLETE
-                else:
-                    cordon_status = kubernetes.KUBE_UPGRADE_CORDON_FAILED
-            else:
-                LOG.info('Executed the cordon command %s: %s' %
-                        (cordon_cmd, stdout))
+            try:
+                kubernetes.kube_drain_node_with_options(host_name)
                 cordon_status = kubernetes.KUBE_UPGRADE_CORDON_COMPLETE
-
-            # Update the upgrade state
-            kube_upgrade_obj = objects.kube_upgrade.get_one(context)
-            kube_upgrade_obj.state = cordon_status
-            kube_upgrade_obj.save()
+                LOG.info("Kubernetes host cordon operation successful.")
+            except Exception as ex:
+                LOG.error("Kubernetes host cordon operation failed with error: [%s]" % (ex))
+                cordon_status = kubernetes.KUBE_UPGRADE_CORDON_FAILED
+            self._kube_upgrade_state_update(context, cordon_status)
 
     def kube_host_uncordon(self, context, host_name):
         """Uncordon the evicted pods on this host"""
 
-        kube_upgrade_obj = objects.kube_upgrade.get_one(context)
         system = self.dbapi.isystem_get_one()
 
         if system.system_mode == constants.SYSTEM_MODE_SIMPLEX:
-            uncordon_cmd = ['kubectl', '--kubeconfig=%s' % kubernetes.KUBERNETES_ADMIN_CONF,
-                            'uncordon', host_name]
-            proc = subprocess.Popen(uncordon_cmd, stdout=subprocess.PIPE,
-                                   stderr=subprocess.PIPE, universal_newlines=True)
-            stdout, stderr = proc.communicate()
-            if proc.returncode != 0:
-                LOG.error('Error in executing %s: %s' %
-                        (uncordon_cmd, stderr))
-                uncordon_status = kubernetes.KUBE_UPGRADE_UNCORDON_FAILED
-            else:
-                LOG.info('Executed the uncordon command %s: %s' %
-                        (uncordon_cmd, stdout))
+            try:
+                kubernetes.kube_uncordon_node(host_name)
                 uncordon_status = kubernetes.KUBE_UPGRADE_UNCORDON_COMPLETE
+                LOG.info("Kubernetes host uncordon operation successful.")
+            except Exception as ex:
+                LOG.error("Kubernetes host uncordon operation failed with error: [%s]" % (ex))
+                uncordon_status = kubernetes.KUBE_UPGRADE_UNCORDON_FAILED
+            self._kube_upgrade_state_update(context, uncordon_status)
 
-            # Update the upgrade state
-            kube_upgrade_obj = objects.kube_upgrade.get_one(context)
-            kube_upgrade_obj.state = uncordon_status
-            kube_upgrade_obj.save()
+    def report_kube_upgrade_control_plane_result(self, context, host_uuid,
+                                                 to_version, is_first_master, success):
+        """Handle control-plane upgrade result call from Sysinv Agent.
+
+        :param: context: request context
+        :param: host_uuid: UUID of the host reporting status
+        :param: to_version: Kube version to which control plane was being upgraded to
+        :param: is_first_master: True if this was the first master being upgraded, False otherwise
+        :param: success: True if upgrade was successful, False otherwise
+        """
+        host_obj = objects.host.get_by_uuid(context, host_uuid)
+        kube_host_upgrade_obj = objects.kube_host_upgrade.get_by_host_id(context, host_obj.id)
+        kube_upgrade_obj = objects.kube_upgrade.get_one(context)
+        host_name = host_obj.hostname
+
+        # Update hieradata to persist symlinks in case of unexpected reboot after
+        # control-plane upgrade.
+        if success:
+            try:
+                stripped_version = to_version.strip('v')
+                hieradata_file_path = os.path.join(
+                    tsc.PUPPET_PATH, 'hieradata', f"{host_name}.yaml")
+                configs_to_be_updated = {
+                    'platform::kubernetes::params::kubeadm_version': stripped_version
+                }
+                self._update_hieradata_file(hieradata_file_path, configs_to_be_updated)
+            except Exception as ex:
+                LOG.warning("Failed to update kubeadm version in hieradata with new kubernetes "
+                            "version after control-plane upgrade on host: [%s]. In case of "
+                            "unintented reboot, this will cause kubeadm and kubectl on that host "
+                            "to run with older version. To avoid this situation, perform lock and "
+                            "unlock operation on that host at earliest. Error was: [%s]"
+                            % (host_name, ex))
+
+        if success and is_first_master:
+            upgrade_state = kubernetes.KUBE_UPGRADED_FIRST_MASTER
+            host_state = None
+            LOG.info("Kubernetes control-plane components upgraded successfully to version %s on "
+                     "the first master." % (to_version))
+        elif not success and is_first_master:
+            upgrade_state = kubernetes.KUBE_UPGRADING_FIRST_MASTER_FAILED
+            host_state = kubernetes.KUBE_HOST_UPGRADING_CONTROL_PLANE_FAILED
+            LOG.error("Failed to upgrade kubernetes control-plane components to version %s on "
+                      "the first master. Check sysinv.log on that host for details and "
+                      "retry the operation." % (to_version))
+        elif success and not is_first_master:
+            upgrade_state = kubernetes.KUBE_UPGRADED_SECOND_MASTER
+            host_state = None
+            LOG.info("Kubernetes control-plane components upgraded successfully to version %s on "
+                     "the second master." % (to_version))
+            LOG.info("Kubernetes control-plane upgrade to version %s completed successfully on "
+                     "all controller nodes." % (to_version))
+        elif not success and not is_first_master:
+            upgrade_state = kubernetes.KUBE_UPGRADING_SECOND_MASTER_FAILED
+            host_state = kubernetes.KUBE_HOST_UPGRADING_CONTROL_PLANE_FAILED
+            LOG.error("Failed to upgrade kubernetes control-plane components to version %s on "
+                      "the second master. Check sysinv.log on that host for details and "
+                      "retry the operation." % (to_version))
+
+        kube_host_upgrade_obj.status = host_state
+        kube_host_upgrade_obj.save()
+        kube_upgrade_obj.state = upgrade_state
+        kube_upgrade_obj.save()
 
     def kube_upgrade_control_plane(self, context, host_uuid):
         """Upgrade the kubernetes control plane on this host"""
-
-        def manifest_apply_failed_state(context, fail_state, host_obj):
-            kube_upgrade_obj = objects.kube_upgrade.get_one(context)
-            kube_upgrade_obj.state = fail_state
-            kube_upgrade_obj.save()
-            kube_host_upgrade_obj = objects.kube_host_upgrade.get_by_host_id(
-                context, host_obj.id)
-            kube_host_upgrade_obj.status = \
-                kubernetes.KUBE_HOST_UPGRADING_CONTROL_PLANE_FAILED
-            kube_host_upgrade_obj.save()
-            return
 
         host_obj = objects.host.get_by_uuid(context, host_uuid)
         host_name = host_obj.hostname
@@ -17323,26 +18222,91 @@ class ConductorManager(service.PeriodicService):
             context, host_obj.id)
         target_version = kube_host_upgrade_obj.target_version
         kube_upgrade_obj = objects.kube_upgrade.get_one(context)
-        kube_upgrade_obj.recovery_attempts = 0
         kube_upgrade_obj.save()
         kube_operator = kubernetes.KubeOperator()
-        current_versions = kube_operator.kube_get_kubelet_versions()
-        system = self.dbapi.isystem_get_one()
+
+        if kube_upgrade_obj.state not in [kubernetes.KUBE_UPGRADING_FIRST_MASTER,
+                                          kubernetes.KUBE_UPGRADING_SECOND_MASTER]:
+            raise exception.SysinvException(_(
+                "Invalid state %s to upgrade control plane." %
+                kube_upgrade_obj.state))
+
+        cp_versions = kube_operator.kube_get_control_plane_versions()
+        cp_version = cp_versions.get(host_obj.hostname)
+        kubelet_versions = kube_operator.kube_get_kubelet_versions()
+        kubelet_version = kubelet_versions.get(host_obj.hostname)
+
+        # Infer whether this is first control-plane being upgraded
+        is_first = False
+        if all(LooseVersion(cp_version) >= LooseVersion(ver)
+                for ver in cp_versions.values()):
+            is_first = True
+
+        # Determine target control-plane version for this host
+        if cp_version == kube_upgrade_obj.to_version:
+            LOG.info("Redoing control plane upgrade for %s from state: %s"
+                % (host_name, kube_upgrade_obj.state))
+            cp_versions_next = [cp_version]
+        else:
+            cp_versions_next = kube_operator.kube_get_higher_patch_version(
+                cp_version, kube_upgrade_obj.to_version)
+        if cp_versions_next:
+            target_version = cp_versions_next[0]
+            kubeadm_version = target_version
+        else:
+            LOG.error("Cannot determine target control-plane higher patch version on %s"
+                      % (host_name))
+            self.report_kube_upgrade_control_plane_result(
+                    context, host_uuid, target_version, is_first, False)
+            return
+
+        # Enforce Kubernetes Skew Policy. This prevents unsupported advancement
+        # of control-plane if any nodes are not current enough.
+
+        # Evaluate kubelet version skew for each K8S node.
+        # Example:  If current kubelet is at 1.29, current kubeadm is at 1.32,
+        # then the minor version skew is 3 (i.e., 32 - 29). We prevent the kubeadm
+        # upgrade to 1.33 since the resulting upgrade would have skew of 4.
+        rc = 0
+        for host, kubelet_version in kubelet_versions.items():
+            kubelet_skew = kube_operator.kubelet_version_skew(kubeadm_version,
+                                                              kubelet_version)
+            if kubelet_skew > kubernetes.KUBELET_MINOR_SKEW_TOLERANCE:
+                LOG.error("Kubernetes minor version skew %d exceeds %d tolerance. "
+                          "kubelet upgrade on %s is mandatory."
+                          % (kubelet_skew, kubernetes.KUBELET_MINOR_SKEW_TOLERANCE, host))
+                rc = 1
+
+        # Evaluate control-plane version skew. Prevent kubeadm upgrade of
+        # first master unless all control-planes are the same version.
+        # The client and server will exceed minor version skew of +/- 1.
+        all_equal = len(set(cp_versions.values())) == 1
+        if is_first and not all_equal:
+            LOG.error("Kubernetes minor version skew exceeds +/-1 tolerance. "
+                      "second control-plane upgrade %s is mandatory.")
+            rc = 1
+
+        # Check that we are in appropriate state to upgrade second master,
+        # otherwise we use the wrong upgrade API.
+        if is_first and (kube_upgrade_obj.state == kubernetes.KUBE_UPGRADING_SECOND_MASTER):
+            LOG.error("Invalid state %s to upgrade control plane since this is first."
+                % (kube_upgrade_obj.state))
+            rc = 1
+
+        if rc == 1:
+            self.report_kube_upgrade_control_plane_result(
+                    context, host_uuid, target_version, is_first, False)
+            return
+
+        # Update the target control-plane version to next K8S version
+        kube_cmd_versions = objects.kube_cmd_version.get(context)
+        kube_cmd_versions.kubeadm_version = kubeadm_version.lstrip('v')
+        kube_cmd_versions.kubelet_version = kubelet_version.lstrip('v')
+        kube_cmd_versions.save()
+        kube_host_upgrade_obj.target_version = kubeadm_version
+        kube_host_upgrade_obj.save()
 
         if kube_upgrade_obj.state == kubernetes.KUBE_UPGRADING_FIRST_MASTER:
-            if system.system_mode == constants.SYSTEM_MODE_SIMPLEX:
-                next_versions = kube_operator.kube_get_higher_patch_version(current_versions.get(host_name, None),
-                                                                    kube_upgrade_obj.to_version)
-                target_version = next_versions[0]
-                kube_cmd_versions = objects.kube_cmd_version.get(context)
-                kube_cmd_versions.kubeadm_version = target_version.lstrip('v')
-                kube_cmd_versions.kubelet_version = current_versions.get(host_name, None).lstrip('v')
-                kube_cmd_versions.save()
-                kube_host_upgrade_obj.target_version = target_version
-                kube_host_upgrade_obj.save()
-
-            puppet_class = 'platform::kubernetes::upgrade_first_control_plane'
-            fail_state = kubernetes.KUBE_UPGRADING_FIRST_MASTER_FAILED
 
             # Drop any removed/unsupported feature gates before we upgrade to a
             # newer Kubernetes.  If we leave them in we can prevent K8s services
@@ -17350,29 +18314,28 @@ class ConductorManager(service.PeriodicService):
             # convert what we can.
             rc = 0
 
+            # FUTURE USE: keep framework, k8s version specific, uncomment as needed
             # The bootstrap config file is used by backup/restore.
-            if self.sanitize_feature_gates_bootstrap_config_file(target_version) == 1:
-                LOG.error("Problem sanitizing bootstrap config file.")
-                rc = 1
+            # if self.sanitize_feature_gates_bootstrap_config_file(target_version) == 1:
+            #   LOG.error("Problem sanitizing bootstrap config file.")
+            #   rc = 1
 
+            # FUTURE USE: keep framework, k8s version specific, uncomment as needed
             # The service parameters are used by backup/restore and the custom
             # K8s configuration functionality.
-            if self.sanitize_feature_gates_service_parameters(target_version) == 1:
-                LOG.error("Problem sanitizing feature gates service parameter.")
-                rc = 1
+            # if self.sanitize_feature_gates_service_parameters(target_version) == 1:
+            #    LOG.error("Problem sanitizing feature gates service parameter.")
+            #    rc = 1
 
             if self.sanitize_kubeadm_configmap(target_version) == 1:
                 LOG.error("Problem sanitizing kubeadm configmap feature gates.")
                 rc = 1
 
-            if self.sanitize_image_repository_kubeadm_configmap(target_version) == 1:
-                LOG.error("Problem updating kubeadm configmap image repository.")
-                rc = 1
-
+            # FUTURE USE: keep framework, k8s version specific, uncomment as needed
             # The kubelet configmap is used by the K8s upgrade itself.
-            if self.sanitize_feature_gates_kubelet_configmap(target_version) == 1:
-                LOG.error("Problem sanitizing kubelet configmap feature gates.")
-                rc = 1
+            # if self.sanitize_feature_gates_kubelet_configmap(target_version) == 1:
+            #    LOG.error("Problem sanitizing kubelet configmap feature gates.")
+            #    rc = 1
 
             # Work around upstream kubeadm configmap parsing issue.
             if self._kube.kubeadm_configmap_reformat(target_version) == 1:
@@ -17380,125 +18343,433 @@ class ConductorManager(service.PeriodicService):
                 rc = 1
 
             if rc == 1:
-                kube_upgrade_obj.state = fail_state
-                kube_upgrade_obj.save()
+                self.report_kube_upgrade_control_plane_result(
+                        context, host_uuid, target_version, is_first, False)
                 return
 
-        elif kube_upgrade_obj.state == kubernetes.KUBE_UPGRADING_SECOND_MASTER:
-            puppet_class = 'platform::kubernetes::upgrade_control_plane'
-            fail_state = kubernetes.KUBE_UPGRADING_SECOND_MASTER_FAILED
-        else:
-            raise exception.SysinvException(_(
-                "Invalid state %s to upgrade control plane." %
-                kube_upgrade_obj.state))
-
-        # Update the config for this host
-        personalities = [host_obj.personality]
-        config_uuid = self._config_update_hosts(context, personalities,
-            [host_uuid])
-
-        # Apply the runtime manifest to upgrade the control plane
-        config_dict = {
-            "personalities": personalities,
-            "host_uuids": [host_uuid],
-            "classes": [puppet_class],
-            puppet_common.REPORT_STATUS_CFG:
-                puppet_common.REPORT_UPGRADE_CONTROL_PLANE
-        }
         try:
-            self._config_apply_runtime_manifest(context, config_uuid, config_dict)
-        except Exception:
-            LOG.error("Manifest apply failed for host %s with config_uuid %s" %
-                      (host_name, config_uuid))
-            manifest_apply_failed_state(context, fail_state, host_obj)
+            agent_api = agent_rpcapi.AgentAPI()
+            agent_api.kube_upgrade_control_plane(
+                    context, host_uuid, target_version, is_first)
+        except Exception as ex:
+            # Handle unexpected exception
+            LOG.exception("Kubernetes control-plane upgrade for host %s failed. Error: [%s]"
+                          % (host_name, ex))
+            self.report_kube_upgrade_control_plane_result(
+                    context, host_uuid, target_version, is_first, False)
+
+    def report_kube_upgrade_kubelet_result(self, context, host_uuid, to_version, success):
+        """Handle kubelet upgrade result call from Sysinv Agent.
+
+        :param: context: request context
+        :param: host_uuid: UUID of the host reporting status
+        :param: to_version: Kube version to which control plane was being upgraded to
+        :param: success: True if upgrade was successful, False otherwise
+        """
+        host_obj = objects.host.get_by_uuid(context, host_uuid)
+        kube_host_upgrade_obj = objects.kube_host_upgrade.get_by_host_id(context, host_obj.id)
+        host_name = host_obj.hostname
+
+        if success:
+            # Update hieradata to persist symlinks in case of unexpected reboot after kubelet
+            # upgrade
+            try:
+                stripped_version = to_version.strip('v')
+                hieradata_file_path = os.path.join(
+                    tsc.PUPPET_PATH, 'hieradata', f"{host_name}.yaml")
+                configs_to_be_updated = {
+                    'platform::kubernetes::params::kubelet_version': stripped_version,
+                    'platform::kubernetes::params::version': to_version
+                }
+                # Control-plane components don't exist on worker hosts. So both the symlinks i.e.
+                # stage1 and stage2 are updated as a part of kubelet upgrade. For controllers, this
+                # is done as a part of control-plane upgrade.
+                if host_obj.personality == constants.WORKER:
+                    configs_to_be_updated.update({
+                        'platform::kubernetes::params::kubeadm_version': stripped_version
+                    })
+                self._update_hieradata_file(hieradata_file_path, configs_to_be_updated)
+            except Exception as ex:
+                LOG.warning("Failed to update kubelet and kubernetes params hieradata values with "
+                            "the new kubernetes version after kubelet upgrade on host: [%s]. In "
+                            "case of unintented reboot, this will cause kubelet on that host to "
+                            "run with older version. To avoid this situation, perform lock and "
+                            "unlock operation on that host at earliest. Error was: [%s]"
+                            % (host_name, ex))
+
+            # Double check that the kubelet on the host was upgraded successfully.
+            # On AIO-SX this ensures that the kube-apiserver is back up and running after kubelet
+            # restart.
+            starttime = datetime.now()
+            while ((datetime.now() - starttime).total_seconds() < kubernetes.POD_START_TIMEOUT):
+                try:
+                    kubelet_versions = self._kube.kube_get_kubelet_versions()
+                    if kubelet_versions.get(host_name, None) == to_version:
+                        kube_host_upgrade_obj.status = kubernetes.KUBE_HOST_UPGRADED_KUBELET
+                        LOG.info("Kubelet on the host %s upgraded successfully to version %s."
+                                % (host_name, to_version))
+                        break
+                except Exception as ex:
+                    LOG.warning("[Kubelet upgrade verify]: kubelets version check error: [%s]"
+                                % (ex))
+                LOG.debug("Waiting for kubelet restart complete on host %s" % host_name)
+                greenthread.sleep(kubernetes.STATIC_POD_START_INTERVAL)
+            else:
+                kube_host_upgrade_obj.status = kubernetes.KUBE_HOST_UPGRADING_KUBELET_FAILED
+                LOG.error("Failed to upgrade kubelet on the host %s to version %s."
+                        % (host_name, to_version))
+        else:
+            kube_host_upgrade_obj.status = kubernetes.KUBE_HOST_UPGRADING_KUBELET_FAILED
+            LOG.error("Failed to upgrade kubelet on the host %s to version %s."
+                      % (host_name, to_version))
+        kube_host_upgrade_obj.save()
 
     def kube_upgrade_kubelet(self, context, host_uuid):
         """Upgrade the kubernetes kubelet on this host"""
 
-        def manifest_apply_failed_state(context, host_obj):
-            kube_host_upgrade_obj = objects.kube_host_upgrade.get_by_host_id(
-                context, host_obj.id)
-            kube_host_upgrade_obj.status = \
-                kubernetes.KUBE_HOST_UPGRADING_KUBELET_FAILED
-            kube_host_upgrade_obj.save()
+        kube_upgrade_obj = objects.kube_upgrade.get_one(context)
+        final_kube_version = kube_upgrade_obj.to_version
 
         host_obj = objects.host.get_by_uuid(context, host_uuid)
         host_name = host_obj.hostname
         kube_host_upgrade_obj = objects.kube_host_upgrade.get_by_host_id(
             context, host_obj.id)
-        target_version = kube_host_upgrade_obj.target_version
+        to_version = kube_host_upgrade_obj.target_version
 
-        if host_obj.personality == constants.CONTROLLER:
-            puppet_class = 'platform::kubernetes::master::upgrade_kubelet'
-        elif host_obj.personality == constants.WORKER:
-            puppet_class = 'platform::kubernetes::worker::upgrade_kubelet'
+        if host_obj.personality in (constants.CONTROLLER, constants.WORKER):
+            agent_api = agent_rpcapi.AgentAPI()
+            try:
+                is_final_version = (to_version == final_kube_version)
+                agent_api.kube_upgrade_kubelet(context, host_uuid, to_version, is_final_version)
+            except Exception as ex:
+                # Handle unexpected exception
+                LOG.error("Kubelet upgrade failed on host: [%s]. Error: [%s]" % (host_name, ex))
+                self.report_kube_upgrade_kubelet_result(context, host_uuid, to_version, False)
         else:
             raise exception.SysinvException(_(
                 "Invalid personality %s to upgrade kubelet." %
                 host_obj.personality))
 
-        # Update the config for this host
-        personalities = [host_obj.personality]
-        config_uuid = self._config_update_hosts(context, personalities,
-            [host_uuid])
+    def _get_kubernetes_system_images(self, kube_version):
+        """Get kubernetes images information for a kubernetes version
 
-        # Apply the runtime manifest to upgrade the kubelet
-        config_dict = {
-            "personalities": personalities,
-            "host_uuids": [host_uuid],
-            "classes": [puppet_class]
-        }
+        Read system-images.yaml list for the specified kubernetes version and return
+        the parsed yaml
+
+        :return: dict of images
+        :raises: SysinvException is case of error/failure.
+        """
         try:
-            self._config_apply_runtime_manifest(context, config_uuid, config_dict)
+            images = {}
+            images_path = os.path.join(constants.ANSIBLE_KUBE_SYSTEM_IMAGES_PLAYBOOK_ROOT,
+                                       "vars/k8s-%s/system-images.yml" % (kube_version))
+            with open(images_path, 'r') as file:
+                images = yaml.safe_load(file)
+            if not images:
+                raise exception.SysinvException("Image list is not available.")
+        except Exception as ex:
+            raise exception.SysinvException("Failed to get image list for kubernetes version [%s]."
+                                            " Error: [%s] " % (kube_version, ex))
+        return images
+
+    def _generate_k8s_manifests_and_apply(
+            self, full_source_path, full_destination_path, is_template=False, values=None):
+        """Private method to generate k8s manifests and apply them using kubectl
+
+        This method either renders a Jinja template with specified values or
+        copies a manifest file to a specified location and kube apply the
+        copied manifest file
+
+        :param: full_source_path: Full path of either the Jinja template
+                             or the source manifest file itself
+        :param: full_destination_path: Full path to a location where source needs
+                                  to be copied or rendered
+        :param: is_template(optional): True if source_path is .j2 (jinja) template
+                                      False otherwise
+        :param: values(optional): dictionary of key:value pairs to be rendered if
+                                  is_template=True
+
+        :returns: True upon success False upon failure.
+        """
+        if not is_template:
+            try:
+                shutil.copy2(full_source_path, full_destination_path)
+            except Exception as e:
+                LOG.error("Failed to copy manifest file from [%s] to [%s] with error: [%s]"
+                          % (full_source_path, full_destination_path, e))
+                return False
+        else:
+            rendered_string = ""
+            try:
+                custom_filters = {'ipv4': netaddr.valid_ipv4, 'ipv6': netaddr.valid_ipv6}
+
+                source_file_name = os.path.basename(full_source_path)
+                source_path = os.path.dirname(full_source_path)
+
+                rendered_string = cutils.render_jinja_template_from_file(
+                    source_path, source_file_name, custom_filters=custom_filters, values=values)
+            except Exception as e:
+                LOG.error(e)
+                return False
+
+            if rendered_string != "":
+                try:
+                    with open(full_destination_path, "w") as file:
+                        file.write(rendered_string + "\n")
+                except Exception as e:
+                    LOG.error("Failed to write rendered jinja template [%s] "
+                              "to the manifest file [%s] with error: [%s]"
+                              % (rendered_string, full_destination_path, e))
+                    return False
+        try:
+            kubernetes.kubectl_apply(full_destination_path)
+        except Exception as ex:
+            LOG.error(ex)
+            return False
+        return True
+
+    def _upgrade_k8s_networking(self, kube_version):
+        """Upgrade kubernetes networking.
+
+        This method downloads network related images and apply manifests of
+        calico, multus, sriov and coredns for new version.
+
+        :kube_version: kubernetes version to be upgraded to
+        :raises: SysinvException in case of failure
+        """
+
+        CALICO_CNI_IMAGE_KEY = 'calico_cni_img'
+        CALICO_NODE_IMAGE_KEY = 'calico_node_img'
+        CALICO_KUBE_CONTROLLERS_KEY = 'calico_kube_controllers_img'
+        MULTUS_KEY = 'multus_img'
+        SRIOV_CNI_KEY = 'sriov_cni_img'
+        SRIOV_NW_DEVICE_KEY = 'sriov_network_device_img'
+
+        try:
+            images = self._get_kubernetes_system_images(kube_version)
+            networking_images = [images[CALICO_CNI_IMAGE_KEY], images[CALICO_NODE_IMAGE_KEY],
+                                 images[CALICO_KUBE_CONTROLLERS_KEY], images[MULTUS_KEY],
+                                 images[SRIOV_CNI_KEY], images[SRIOV_NW_DEVICE_KEY]]
+        except Exception as ex:
+            raise exception.SysinvException("Failed to get networking images information. "
+                                            "Error: [%s] " % (ex))
+
+        start = time.time()
+
+        try:
+            success = self.\
+                _image_downloader.download_images_from_upstream_to_local_reg_and_crictl(
+                    networking_images)
         except Exception:
-            LOG.error("Manifest apply failed for host %s with config_uuid %s" %
-                      (host_name, config_uuid))
-            return manifest_apply_failed_state(context, host_obj)
+            success = False
 
-        # Wait for the manifest to be applied
-        LOG.debug("Waiting for config apply on host %s" % host_name)
-        starttime = datetime.utcnow()
-        while ((datetime.utcnow() - starttime).total_seconds() <
-                kubernetes.MANIFEST_APPLY_TIMEOUT):
-            greenthread.sleep(kubernetes.MANIFEST_APPLY_INTERVAL)
-            try:
-                host_obj = objects.host.get_by_uuid(context, host_uuid)
-                if host_obj.config_target == host_obj.config_applied:
-                    LOG.info("Config was applied for host %s" % host_name)
-                    break
-            except Exception:
-                LOG.exception("Problem getting host info.")
-            LOG.debug("Waiting for config apply on host %s" % host_name)
+        if not success:
+            raise exception.SysinvException("Failed to download upstream k8s networking images "
+                                            "to the local registry and crictl. ")
+
+        elapsed_time = time.time() - start
+
+        LOG.info("Download of kubernetes networking images for kubernetes version [%s] "
+                 "to local registry and crictl completed successfully in [%s]."
+                 % (kube_version, elapsed_time))
+
+        overrides_file = "/tmp/upgrade_overrides.yaml"
+        try:
+            cmd = [constants.SYSINV_UTILS_PATH, constants.CREATE_HOST_OVERRIDES_COMMAND,
+                   overrides_file]
+            cutils.execute(*cmd, check_exit_code=0)
+        except exception.ProcessExecutionError as e:
+            raise exception.SysinvException("Failed to create host overrides"
+                                            " file. Details: %s" % str(e))
+
+        LOG.info("K8s network upgrade: host overrides file created successfully.")
+
+        overrides = {}
+        try:
+            if os.path.exists(overrides_file):
+                with open(overrides_file, "r") as stream:
+                    overrides = yaml.safe_load(stream)
+        except Exception as e:
+            raise exception.SysinvException("Failed to read host overrides "
+                                            "file. Details: %s" % str(e))
+
+        LOG.debug("host overrides: [%s]" % (overrides))
+
+        cluster_network_ipv4 = cluster_network_ipv6 = None
+        if "cluster_pod_subnet" in overrides:
+            cluster_pod_subnet = overrides["cluster_pod_subnet"]
+            cidrs = [cidr.strip() for cidr in cluster_pod_subnet.split(',')]
+            for cidr in cidrs:
+                ip = IPNetwork(cidr).ip
+                if ip.version == 4:
+                    cluster_network_ipv4 = cidr
+                elif ip.version == 6:
+                    cluster_network_ipv6 = cidr
+                else:
+                    raise exception.SysinvException(
+                        "Invalid value detected for cluster_pod_subnet "
+                        "in the host overrides file: [%s]" % cluster_pod_subnet
+                    )
         else:
-            LOG.warning("Manifest apply failed for host %s" % host_name)
-            return manifest_apply_failed_state(context, host_obj)
+            raise exception.SysinvException("Failed to find cluster_pod_subnet in "
+                                            "the host overrides file. ")
 
-        # Wait for the kubelet to start with the new version
-        kube_operator = kubernetes.KubeOperator()
-        LOG.debug("Waiting for kubelet update on host %s" % host_name)
-        starttime = datetime.utcnow()
-        while ((datetime.utcnow() - starttime).total_seconds() <
-                kubernetes.POD_START_TIMEOUT):
-            greenthread.sleep(kubernetes.POD_START_INTERVAL)
+        cluster_host_floating_address = None
+        cluster_floating_address_secondary = None
+        if "cluster_host_floating_address" in overrides:
+            cluster_host_floating_addresses = \
+                overrides["cluster_host_floating_address"].split(',')
+            cluster_host_floating_address = \
+                cluster_host_floating_addresses[0]
             try:
-                # If we can't talk to the Kubernetes API we still want to
-                # hit the else clause below on timeout.
-                kubelet_versions = kube_operator.kube_get_kubelet_versions()
-                if kubelet_versions.get(host_name, None) == target_version:
-                    LOG.info("Kubelet was updated for host %s" % host_name)
-                    break
+                IPAddress(cluster_host_floating_address)
             except Exception:
-                LOG.exception("Problem getting kubelet versions.")
-            LOG.debug("Waiting for kubelet update on host %s" % host_name)
-        else:
-            LOG.warning("Kubelet upgrade failed for host %s" % host_name)
-            return manifest_apply_failed_state(context, host_obj)
+                raise exception.SysinvException("Invalid value detected for "
+                                                "cluster_host_floating_address in the host "
+                                                "overrides file: [%s]"
+                                                % (cluster_host_floating_addresses))
 
-        # The kubelet update was successful
-        kube_host_upgrade_obj = objects.kube_host_upgrade.get_by_host_id(
-            context, host_obj.id)
-        kube_host_upgrade_obj.status = kubernetes.KUBE_HOST_UPGRADED_KUBELET
-        kube_host_upgrade_obj.save()
+            if len(cluster_host_floating_addresses) == 2:
+                cluster_floating_address_secondary = \
+                    cluster_host_floating_addresses[1]
+                try:
+                    IPAddress(cluster_floating_address_secondary)
+                except Exception:
+                    raise exception.SysinvException("Invalid value detected for "
+                                                    "cluster_host_floating_address in"
+                                                    "the host overrides file: [%s]"
+                                                    % (cluster_floating_address_secondary))
+        else:
+            raise exception.SysinvException("Failed to find cluster_host_floating_address "
+                                            "in the host overrides file.")
+
+        controller_0_cluster_host = None
+        controller_0_cluster_host_secondary = None
+        if cutils.is_aio_simplex_system(self.dbapi):
+            controller_0_cluster_host = cluster_host_floating_address
+            controller_0_cluster_host_secondary = cluster_floating_address_secondary
+        elif "cluster_host_node_0_address" in overrides:
+            controller_0_cluster_hosts = \
+                overrides["cluster_host_node_0_address"].split(',')
+            controller_0_cluster_host = controller_0_cluster_hosts[0]
+            try:
+                IPAddress(controller_0_cluster_host)
+            except Exception:
+                raise exception.SysinvException("Invalid value detected for "
+                                                "cluster_host_node_0_address in the host "
+                                                "overrides file: [%s]"
+                                                % (controller_0_cluster_hosts))
+            if len(controller_0_cluster_hosts) == 2:
+                controller_0_cluster_host_secondary = \
+                    controller_0_cluster_hosts[1]
+                try:
+                    IPAddress(controller_0_cluster_host_secondary)
+                except Exception:
+                    raise exception.SysinvException("Invalid value detected for "
+                                                    "cluster_host_node_0_address in the host "
+                                                    "overrides file: [%s]"
+                                                    % (controller_0_cluster_host_secondary))
+
+        else:
+            raise exception.SysinvException("Failed to find cluster_host_node_0_address "
+                                            "in the host overrides file.")
+
+        calico_cni_template_variables = {
+            'cluster_network_ipv4': cluster_network_ipv4,
+            'cluster_network_ipv6': cluster_network_ipv6,
+            'local_registry': constants.DOCKER_REGISTRY_SERVER,
+            'calico_cni_img': images[CALICO_CNI_IMAGE_KEY],
+            'calico_node_img': images[CALICO_NODE_IMAGE_KEY],
+            'controller_0_cluster_host': controller_0_cluster_host,
+            'controller_0_cluster_host_secondary': controller_0_cluster_host_secondary,
+            'kubelet_cni_bin_dir': constants.KUBELET_CNI_BIN_DIR,
+            'calico_kube_controllers_img': images[CALICO_KUBE_CONTROLLERS_KEY],
+            'calico_chain_insert_mode': constants.CALICO_CHAIN_INSERT_MODE
+        }
+
+        multus_cni_template_variables = {
+            'cluster_network_ipv4': cluster_network_ipv4,
+            'cluster_network_ipv6': cluster_network_ipv6,
+            'local_registry': constants.DOCKER_REGISTRY_SERVER,
+            'multus_img': images[MULTUS_KEY],
+            'kubelet_cni_bin_dir': constants.KUBELET_CNI_BIN_DIR
+        }
+
+        sriov_cni_template_variables = {
+            'local_registry': constants.DOCKER_REGISTRY_SERVER,
+            'sriov_cni_img': images[SRIOV_CNI_KEY],
+            'kubelet_cni_bin_dir': constants.KUBELET_CNI_BIN_DIR
+        }
+
+        sriov_plugin_template_variables = {
+            'local_registry': constants.DOCKER_REGISTRY_SERVER,
+            'sriov_network_device_img': images[SRIOV_NW_DEVICE_KEY]
+        }
+
+        full_template_path = os.path.join(constants.ANSIBLE_PLAYBOOKS_ROOT,
+                                          "roles/common/bringup-kubemaster/templates/")
+
+        version_subpath = f"k8s-{kube_version}"
+
+        dispatch_list = [['coredns.yaml.j2', 'update_coredns.yaml', False,
+                          None],
+                         [f"{version_subpath}/calico-cni.yaml.j2", 'update_calico.yaml', True,
+                          calico_cni_template_variables],
+                         [f"{version_subpath}/multus-cni.yaml.j2", 'update_multus.yaml', True,
+                          multus_cni_template_variables],
+                         [f"{version_subpath}/sriov-cni.yaml.j2", 'update_sriov-cni.yaml', True,
+                          sriov_cni_template_variables],
+                         [f"{version_subpath}/sriov-plugin.yaml.j2",
+                          'update_sriovdp-daemonset.yaml', True,
+                          sriov_plugin_template_variables]]
+
+        for data in dispatch_list:
+            source_template_path = os.path.join(full_template_path, data[0])
+            dest_manifest_path = os.path.join(kubernetes.KUBERNETES_CONF_DIR, data[1])
+            is_template = data[2]
+            values = data[3]
+            if self._generate_k8s_manifests_and_apply(source_template_path, dest_manifest_path,
+                                                      is_template=is_template, values=values):
+                LOG.info("Kubernetes networking component [%s] upgraded successfully."
+                         % (re.split('update_|\.', data[1])[1]))
+            else:
+                raise exception.SysinvException("Failed to upgrade kubernetes networking "
+                                                "component: [%s]"
+                                                % (re.split('update_|\.', data[1])[1]))
+
+        if not cluster_network_ipv4:
+            check_ipv4_pools = True
+            try:
+                cmd = ["kubectl",
+                       f"--kubeconfig={kubernetes.KUBERNETES_ADMIN_CONF}",
+                       "get",
+                       "ippool.crd.projectcalico.org/default-ipv4-ippool"]
+                cutils.execute(*cmd, attempts=5, delay_on_retry=True,
+                               check_exit_code=0)
+            except exception.ProcessExecutionError as e:
+                if "Error from server (NotFound):" in e.stderr:
+                    LOG.info("default-ipv4-ippool does not exists. Nothing to do.")
+                    check_ipv4_pools = False
+                else:
+                    raise exception.SysinvException("Failed to get "
+                                                "ippool.crd.projectcalico.org/default-ipv4-ippool "
+                                                "with error: [%s]" % (e))
+
+            if check_ipv4_pools:
+                try:
+                    cmd = ["kubectl",
+                           f"--kubeconfig={kubernetes.KUBERNETES_ADMIN_CONF}",
+                           "delete",
+                           "ippool.crd.projectcalico.org/default-ipv4-ippool"]
+                    cutils.execute(*cmd, attempts=5, delay_on_retry=True,
+                                   check_exit_code=0)
+                except exception.ProcessExecutionError as e:
+                    raise exception.SysinvException("Error deleting "
+                            "ippool.crd.projectcalico.org/default-ipv4-ippool "
+                            "object. Details: %s" % str(e))
+                LOG.info("ippool.crd.projectcalico.org/default-ipv4-ippool deleted successfully")
+
+        LOG.info("Kubernetes networking upgrade completed successfully.")
 
     def kube_upgrade_networking(self, context, kube_version):
         """Upgrade kubernetes networking for this kubernetes version"""
@@ -17511,57 +18782,111 @@ class ConductorManager(service.PeriodicService):
             # Remove any partially created backup
             self.remove_kube_control_plane_backup(context)
             # Update the upgrade state
-            kube_upgrade_obj = objects.kube_upgrade.get_one(context)
-            kube_upgrade_obj.state = \
-                kubernetes.KUBE_UPGRADING_NETWORKING_FAILED
-            kube_upgrade_obj.save()
+            self._kube_upgrade_state_update(
+                    context, kubernetes.KUBE_UPGRADING_NETWORKING_FAILED)
             return
 
-        LOG.info("executing playbook: %s for version %s" %
-                 (constants.ANSIBLE_KUBE_NETWORKING_PLAYBOOK, kube_version))
+        try:
+            self._upgrade_k8s_networking(kube_version)
+            upgrade_status = kubernetes.KUBE_UPGRADED_NETWORKING
+        except Exception as e:
+            LOG.error("Kubernetes networking upgrade failed with error: [%s]" % (e))
+            upgrade_status = kubernetes.KUBE_UPGRADING_NETWORKING_FAILED
 
-        playbook_cmd = ['ansible-playbook', '-e', 'kubernetes_version=%s' % kube_version,
-                        constants.ANSIBLE_KUBE_NETWORKING_PLAYBOOK]
-        returncode = cutils.run_playbook(playbook_cmd)
+        try:
+            overrides_file = "/tmp/upgrade_overrides.yaml"
+            if os.path.exists(overrides_file):
+                os.remove(overrides_file)
+        except Exception as ex:
+            LOG.warning("Failed to remove host overrides file at %s. Error: [%s]. "
+                        "Remove manually to save space." % (overrides_file, ex))
 
-        if returncode:
-            LOG.warning("ansible-playbook returned an error: %s" %
-                        returncode)
-            # Update the upgrade state
-            kube_upgrade_obj = objects.kube_upgrade.get_one(context)
-            kube_upgrade_obj.state = \
-                kubernetes.KUBE_UPGRADING_NETWORKING_FAILED
-            kube_upgrade_obj.save()
-            return
+        self._kube_upgrade_state_update(context, upgrade_status)
 
-        # Indicate that networking upgrade is complete
-        kube_upgrade_obj = objects.kube_upgrade.get_one(context)
-        kube_upgrade_obj.state = kubernetes.KUBE_UPGRADED_NETWORKING
-        kube_upgrade_obj.save()
+    def _upgrade_k8s_storage(self, kube_version):
+        """Upgrade kubernetes storage.
+
+        This method downloads storage related images and apply manifests of
+        volume snapshot controller and its RBAC
+
+        :kube_version: Kubernetes version to be upgraded to.
+
+        :raises: SysinvException upon failure
+        """
+
+        SNAPSHOT_CONTROLLER_IMG_KEY = 'snapshot_controller_img'
+
+        try:
+            images = self._get_kubernetes_system_images(kube_version)
+            storage_images = [images[SNAPSHOT_CONTROLLER_IMG_KEY]]
+        except Exception as ex:
+            raise exception.SysinvException("Failed to get storage images information. "
+                                            "Error: [%s] " % (ex))
+
+        start = time.time()
+
+        try:
+            success = self.\
+                _image_downloader.download_images_from_upstream_to_local_reg_and_crictl(
+                    storage_images)
+        except Exception as e:
+            LOG.error(e)
+            success = False
+
+        if not success:
+            raise exception.SysinvException("Failed to download upstream k8s storage images "
+                                            "to the local registry and crictl. ")
+
+        elapsed_time = time.time() - start
+
+        LOG.info("Download of kubernetes storage images for version [%s] to the "
+                 "local registry and crictl completed successfully in [%s] seconds."
+                 % (kube_version, elapsed_time))
+
+        snapshot_controller_template_variables = {
+            'local_registry': constants.DOCKER_REGISTRY_SERVER,
+            'snapshot_controller_img': images[SNAPSHOT_CONTROLLER_IMG_KEY]
+        }
+
+        full_template_path = os.path.join(constants.ANSIBLE_PLAYBOOKS_ROOT,
+                                          "roles/k8s-storage-backends/snapshot-controller/",
+                                          "templates/k8s-%s/volume-snapshot-controller/"
+                                          % (kube_version))
+
+        dispatch_list = [['rbac-snapshot-controller.yaml.j2',
+                          'update_rbac-volume-snapshot-controller.yaml',
+                          False,
+                          None],
+                         ['volume-snapshot-controller-deployment.yaml.j2',
+                          'update_snapshot-controller.yaml',
+                          True,
+                          snapshot_controller_template_variables]]
+
+        for data in dispatch_list:
+            source_template_path = os.path.join(full_template_path, data[0])
+            dest_manifest_path = os.path.join(kubernetes.KUBERNETES_CONF_DIR, data[1])
+            is_template = data[2]
+            values = data[3]
+            if self._generate_k8s_manifests_and_apply(source_template_path, dest_manifest_path,
+                                                      is_template=is_template, values=values):
+                LOG.info("Kubernetes storage component [%s] upgraded successfully."
+                         % (data[0].split('.')[0]))
+            else:
+                raise exception.SysinvException("Failed to upgrade kubernetes storage "
+                                                "component [%s]" % (data[0].split('.')[0]))
 
     def kube_upgrade_storage(self, context, kube_version):
         """Upgrade kubernetes storage for this kubernetes version"""
-        LOG.info("executing playbook: %s for version %s" %
-                 (constants.ANSIBLE_KUBE_STORAGE_PLAYBOOK, kube_version))
-
-        playbook_cmd = ['ansible-playbook', '-e', 'kubernetes_version=%s' % kube_version,
-                        constants.ANSIBLE_KUBE_STORAGE_PLAYBOOK]
-        returncode = cutils.run_playbook(playbook_cmd)
-
-        if returncode:
-            LOG.warning("ansible-playbook returned an error: %s" %
-                        returncode)
+        try:
+            self._upgrade_k8s_storage(kube_version)
+        except Exception as e:
+            LOG.error("Kubernetes storage upgrade failed with error: [%s]" % (e))
             # Update the upgrade state
-            kube_upgrade_obj = objects.kube_upgrade.get_one(context)
-            kube_upgrade_obj.state = \
-                kubernetes.KUBE_UPGRADING_STORAGE_FAILED
-            kube_upgrade_obj.save()
+            self._kube_upgrade_state_update(context, kubernetes.KUBE_UPGRADING_STORAGE_FAILED)
             return
-
         # Indicate that storage upgrade is complete
-        kube_upgrade_obj = objects.kube_upgrade.get_one(context)
-        kube_upgrade_obj.state = kubernetes.KUBE_UPGRADED_STORAGE
-        kube_upgrade_obj.save()
+        self._kube_upgrade_state_update(context, kubernetes.KUBE_UPGRADED_STORAGE)
+        LOG.info("Kubernetes storage upgrade completed successfully.")
 
     def kube_post_application_update(self, context, k8s_version):
         """ Update applications after Kubernetes is upgraded.
@@ -17589,6 +18914,65 @@ class ConductorManager(service.PeriodicService):
                 hook_info_delete.mode = LifecycleConstants.APP_LIFECYCLE_MODE_AUTO
                 self.perform_app_delete(context, app, hook_info_delete)
 
+    def report_kube_upgrade_abort_result(self, context, current_kube_version, back_to_kube_version,
+                                         abort, recovery):
+        """Report kube upgrade abort operation result
+
+        :param: context: context object
+        :param: current_kube_version: current kubernetes version
+        :param: back_to_kube_version: kubernetes version being aborted back to
+        :param: abort: True if abort was successful False otherwise. If this is True,
+                       recovery is False.
+        :param: recovery: True if abort recovery succeeds. If this is True, abort must be False.
+                          False if abort recovery Fails or not required to run.
+        """
+
+        kube_upgrade_obj = objects.kube_upgrade.get_one(context)
+
+        if abort:
+            # Update hieradata to persist symlinks in case of unexpected reboot after upgrade abort
+            try:
+                stripped_version = back_to_kube_version.strip('v')
+                # Abort operation is currently supported only on AIO-SX.
+                # For multi-node, host_uuid should be added as a parameter to this method,
+                # which can be used to get hostname from the database.
+                hieradata_file_path = os.path.join(
+                    tsc.PUPPET_PATH, 'hieradata', f"{constants.CONTROLLER_0_HOSTNAME}.yaml")
+                configs_to_be_updated = {
+                    'platform::kubernetes::params::kubeadm_version': stripped_version,
+                    'platform::kubernetes::params::kubelet_version': stripped_version,
+                    'platform::kubernetes::params::version': back_to_kube_version
+                }
+                self._update_hieradata_file(hieradata_file_path, configs_to_be_updated)
+            except Exception as ex:
+                LOG.warning("Failed to update hieradata with old kubernetes version after abort "
+                            "operation on host: [%s]. In case of unintented reboot, this will "
+                            "cause kubernetes on that host to run with the upgraded version. To "
+                            "avoid this situation, perform lock and unlock operation for that host "
+                            "at earliest. Error was: [%s]" % (constants.CONTROLLER_0_HOSTNAME, ex))
+
+            kube_upgrade_obj.state = kubernetes.KUBE_UPGRADE_ABORTED
+            LOG.info("Kubernetes upgrade abort operation from version %s to %s successful."
+                     % (current_kube_version, back_to_kube_version))
+        else:
+            kube_upgrade_obj.state = kubernetes.KUBE_UPGRADE_ABORTING_FAILED
+            if recovery:
+                LOG.error("Kubernetes upgrade abort operation from version %s to %s failed but "
+                          "recovery was successful." % (current_kube_version, back_to_kube_version))
+            else:
+                LOG.error("Kubernetes upgrade abort operation from version %s to %s failed. "
+                          "Abort recovery also failed."
+                          % (current_kube_version, back_to_kube_version))
+
+        kube_upgrade_obj.save()
+        # Update host upgrade status
+        controller_hosts = self.dbapi.ihost_get_by_personality(constants.CONTROLLER)
+        for host_obj in controller_hosts:
+            kube_host_upgrade_obj = objects.kube_host_upgrade.get_by_host_id(
+                    context, host_obj.id)
+            kube_host_upgrade_obj.status = None
+            kube_host_upgrade_obj.save()
+
     def kube_upgrade_abort(self, context, kube_state):
         """
         This is an abort procedure we call via 'system kube-upgrade-abort'
@@ -17613,47 +18997,30 @@ class ConductorManager(service.PeriodicService):
         - restore etcd snapshot
         - restore static pod manifests
         - unmask/start services: etcd, docker, containerd
-        - revert and update bindmount k8s binaries
+        - revert symlinks of k8s binaries to staged binaries of the original version
         - unmask/start the kubelet service
         - wait for control plane pod health
         """
 
         kube_upgrade_obj = objects.kube_upgrade.get_one(context)
-        kube_upgrade_obj.recovery_attempts = 0
         kube_upgrade_obj.save()
         controller_hosts = self.dbapi.ihost_get_by_personality(
             constants.CONTROLLER)
         system = self.dbapi.isystem_get_one()
-        puppet_class = ['platform::kubernetes::upgrade_first_control_plane']
+        abort_to_version = kube_upgrade_obj.from_version
+
         if system.system_mode == constants.SYSTEM_MODE_SIMPLEX:
-            # Terminate lingering kubeadm and puppet processes
-            # left-over from timed out operation.
+            # Terminate lingering kubeadm processes left-over from timed out operation.
             try:
                 for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
                     cmdline = proc.info.get('cmdline', [])
                     if any('kubeadm' in line for line in cmdline):
-                        kubeadm_puppet_pid = []
-                        parent_proc = proc.parent()
+                        kubeadm_pid = []
                         proc.kill()
-                        while parent_proc:
-                            parent_cmdline = parent_proc.cmdline()
-                            if any('puppet' in line for line in parent_cmdline):
-                                kubeadm_puppet_pid.append(parent_proc)
-                            else:
-                                break
-                            parent_proc = parent_proc.parent()
-                        for puppet_pid in kubeadm_puppet_pid:
+                        for puppet_pid in kubeadm_pid:
                             puppet_pid.kill()
             except Exception as e:
                 LOG.error("Error in killing process %s" % e)
-            # update runtime config report status for upgrade control plane to failed.
-            pending_runtime_config = self.dbapi.runtime_config_get_all(
-                state=constants.RUNTIME_CONFIG_STATE_PENDING)
-            for rc in pending_runtime_config:
-                config_dict = json.loads(rc.config_dict)
-                if config_dict["classes"][0] in puppet_class:
-                    rc_update_values = {"state": constants.RUNTIME_CONFIG_STATE_FAILED}
-                    self.dbapi.runtime_config_update(rc.id, rc_update_values)
 
             # check for the control plane backup path exists
             if not os.path.exists(kubernetes.KUBE_CONTROL_PLANE_ETCD_BACKUP_PATH) or \
@@ -17677,26 +19044,44 @@ class ConductorManager(service.PeriodicService):
                 return
 
             if kube_upgrade_obj.state == kubernetes.KUBE_UPGRADE_ABORTING:
-                # Update the config for this host
 
-                active_controller = utils.HostHelper.get_active_controller(self.dbapi)
-                personalities = [constants.CONTROLLER]
-                config_uuid = self._config_update_hosts(context, personalities,
-                    [active_controller.uuid])
+                abort_to_version = abort_to_version.strip('v')
+                images = kubernetes.get_k8s_images(abort_to_version)
+                target_images = [
+                    images['kube-apiserver'],
+                    images['kube-controller-manager'],
+                    images['kube-scheduler']
+                ]
 
-                # Apply the runtime manifest to revert the k8s upgrade process.
-                # This uses the sysinv REPORT_STATUS callback mechanism to wait
-                # for completion, and handle success or failure. This mechanism
-                # enables failure retry and recovery if there are problems with
-                # the abort process.
+                try:
+                    success = self._image_downloader.\
+                        download_images_from_upstream_to_local_reg_and_crictl(target_images)
+                except Exception:
+                    # handle unexpected exception
+                    success = False
 
-                config_dict = {
-                    "personalities": personalities,
-                    "classes": ['platform::kubernetes::upgrade_abort'],
-                    puppet_common.REPORT_STATUS_CFG:
-                        puppet_common.REPORT_UPGRADE_ABORT
-                }
-                self._config_apply_runtime_manifest(context, config_uuid, config_dict)
+                if not success:
+                    LOG.error("Image download operation failed. Required images for kubernetes "
+                              "abort operation not present. Abort failed.")
+                    kube_upgrade_obj.state = kubernetes.KUBE_UPGRADE_ABORTING_FAILED
+                    kube_upgrade_obj.save()
+                    return
+
+                self.pin_kubernetes_control_plane_images(context, abort_to_version)
+
+                try:
+                    # TODO(kdhokte): Add a mechanism to get current kubernetes version on the host
+                    # and replace kube_upgrade_obj.to_version in below API call with that version
+                    # so that in case of abort operation failure, cluster is recovered to the
+                    # current kubernetes version
+                    rpcapi = agent_rpcapi.AgentAPI()
+                    rpcapi.kube_upgrade_abort(
+                            context, kube_upgrade_obj.to_version, kube_upgrade_obj.from_version)
+                except Exception as ex:
+                    # Handle unexpected exception
+                    LOG.exception("Kube upgrade abort failed with error: %s" % (ex))
+                    kube_upgrade_obj.state = kubernetes.KUBE_UPGRADE_ABORTING_FAILED
+                    kube_upgrade_obj.save()
 
     def remove_kube_control_plane_backup(self, context):
         """Remove backup of k8s control plane static manifests and etcd data
@@ -17792,6 +19177,25 @@ class ConductorManager(service.PeriodicService):
                 LOG.error('Could not delete docker registry image: %s' % e)
 
         return
+
+    def pin_kubernetes_control_plane_images(self, context, version):
+        """Pin kubernetes static pod images of specified kubernetes version
+
+        Following images are pinned
+        - kube-apiserver
+        - kube-controller-manager
+        - kube-scheduler
+
+        :param: context: request context
+        :param: version: Version of images to be pinned
+        """
+        try:
+            controller_hosts = self.dbapi.ihost_get_by_personality(constants.CONTROLLER)
+            agent_api = agent_rpcapi.AgentAPI()
+            for host in controller_hosts:
+                agent_api.pin_kubernetes_control_plane_images(context, host.uuid, version)
+        except Exception as ex:
+            LOG.warning("Failed to pin kubernetes control-plane images. Error: [%s]" % (ex))
 
     def store_bitstream_file(self, context, filename):
         """Store FPGA bitstream file """
@@ -18186,11 +19590,26 @@ class ConductorManager(service.PeriodicService):
             LOG.info(message)
             return message
 
-        if cutils.is_app_applied(self.dbapi, constants.HELM_APP_ROOK_CEPH) and \
-                self._rook_ceph_recovery_is_running():
-            message = "The rook-ceph recovery is not yet complete. Try restore-complete later."
-            LOG.info(message)
-            return message
+        # Do not allow restore to complete if the rook recovery process is not completed
+        if cutils.is_app_applied(self.dbapi, constants.HELM_APP_ROOK_CEPH):
+            try:
+                if self._check_rook_ceph_recovery_configmap():
+                    status = self._get_rook_ceph_recovery_configmap_data("status")
+                    if status == constants.ROOK_CEPH_RECOVERY_COMPLETED:
+                        self._delete_rook_ceph_recovery_configmap()
+                        LOG.info("The rook-ceph recovery completed successfully.")
+                    elif status == constants.ROOK_CEPH_RECOVERY_FAILED:
+                        failure = self._get_rook_ceph_recovery_configmap_data("failure")
+                        message = f"Recovering rook-ceph failed for the following reason: {failure}"
+                        LOG.error(message)
+                        return message
+                    else:
+                        message = "The rook-ceph recovery is not yet complete. Try restore-complete later."
+                        LOG.info(message)
+                        return message
+            except Exception as e:
+                LOG.error(str(e))
+                return str(e)
 
         try:
             restore = self.dbapi.restore_get_one(
@@ -18213,6 +19632,9 @@ class ConductorManager(service.PeriodicService):
         entity_instance_id = "%s=%s" % (fm_constants.FM_ENTITY_TYPE_HOST,
                                         constants.CONTROLLER_HOSTNAME)
 
+        if os.path.isfile(tsc.SKIP_CEPH_OSD_WIPING):
+            self.delete_flag_file(context, tsc.SKIP_CEPH_OSD_WIPING)
+
         self.fm_api.clear_fault(fm_constants.FM_ALARM_ID_RESTORE_IN_PROGRESS, entity_instance_id)
 
         LOG.info("Complete the restore procedure.")
@@ -18233,14 +19655,47 @@ class ConductorManager(service.PeriodicService):
         LOG.info(output)
         return output
 
-    def _rook_ceph_recovery_is_running(self):
-        # Do not allow restore to complete if the rook recovery process is not completed
+    def _check_rook_ceph_recovery_configmap(self):
+        """Check if the rook-ceph-recovery configmap exists
+
+        :returns: True if it exists or False otherwise
+        """
         cmd = ['kubectl', '--kubeconfig=%s' % kubernetes.KUBERNETES_ADMIN_CONF,
-               '-n', 'rook-ceph', 'get', 'job', 'rook-ceph-recovery-monitor',
+               '-n', 'rook-ceph', 'get', 'configmap', 'rook-ceph-recovery',
                '--request-timeout=30s']
-        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        # Return code being "0" means the job exists and the recovery is still running
+        proc = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if proc.returncode not in [0, 1]:
+            raise Exception("Failed to check rook-ceph-recovery configmap (rc=%s)." % proc.returncode)
         return proc.returncode == 0
+
+    def _get_rook_ceph_recovery_configmap_data(self, key):
+        """Gets the value of a key (variable) from the rook-ceph-recovery configmap
+
+        This method is used to get the recovery status and/or get the failure message.
+
+        :param key: name of the configmap key (variable)
+        :returns: value of the key
+        """
+        cmd = ['kubectl', '--kubeconfig=%s' % kubernetes.KUBERNETES_ADMIN_CONF,
+               '-n', 'rook-ceph', 'get', 'configmap', 'rook-ceph-recovery',
+               '-o', 'jsonpath=\'{.data.%s}\'' % key, '--request-timeout=30s']
+        proc = subprocess.run(cmd, capture_output=True, text=True)
+        if proc.returncode != 0 or not proc.stdout:
+            raise Exception("Failed to get rook-ceph-recovery configmap data (rc=%s)." % proc.returncode)
+        return proc.stdout.replace("'", "")
+
+    def _delete_rook_ceph_recovery_configmap(self):
+        """Delete rook-ceph-recovery configmap.
+
+        This method is to delete the 'rook-ceph-recovery' configmap when
+        rook-ceph recovery has completed and restore-complete can be run.
+        """
+        cmd = ['kubectl', '--kubeconfig=%s' % kubernetes.KUBERNETES_ADMIN_CONF,
+               '-n', 'rook-ceph', 'delete', 'configmap', 'rook-ceph-recovery',
+               '--request-timeout=30s']
+        proc = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if proc.returncode != 0:
+            raise Exception("Failed to delete rook-ceph-recovery configmap (rc=%s)." % proc.returncode)
 
     def _create_kube_rootca_resources(self, certificate, key):
         """ A method to create new resources to store new kubernetes
@@ -19129,41 +20584,43 @@ class ConductorManager(service.PeriodicService):
                 del endpoints[1:]
                 LOG.info('sanitized etcd endpoints %r in Kubeadm_config.' % endpoints)
 
-            for component in ['apiServer', 'controllerManager', 'scheduler']:
-                k8s_component = kubeadm_config.get(component, {})
-                extra_args = k8s_component.get('extraArgs', {})
+            # FUTURE USE: keep framework, k8s version specific, uncomment as needed
+            # for component in ['apiServer', 'controllerManager', 'scheduler']:
+            #     k8s_component = kubeadm_config.get(component, {})
+            #     extra_args = k8s_component.get('extraArgs', {})
+            #
+            #     # Remove the deprecated pod-eviction-timeout args from the
+            #     # controller-manager for the K8s v1.27.5
+            #     if component == 'controllerManager':
+            #         pod_eviction_timeout = extra_args.get('pod-eviction-timeout', None)
+            #         if pod_eviction_timeout and target_version == 'v1.27.5':
+            #             extra_args.pop('pod-eviction-timeout')
+            #
+            #     # Parse the configmap to get the feature gates
+            #     feature_gates = extra_args.get('feature-gates', None)
+            #     if not feature_gates:
+            #         continue
+            #
+            #     try:
+            #         if target_version == 'v1.25.3':
+            #             feature_gates = sanitize_feature_gates(feature_gates,
+            #                         'TTLAfterFinished=true')
+            #         if not feature_gates:
+            #             # No feature gates left, so delete the entry
+            #             LOG.info('Deleting %s feature gates in Kubeadm_config.'
+            #                         % extra_args)
+            #             extra_args.pop('feature-gates')
+            #         else:
+            #             # Update the feature gates with the new value
+            #             LOG.info('Modifying %s feature gates in Kubeadm_config.'
+            #                         % extra_args)
+            #             extra_args['feature-gates'] = feature_gates
+            #     except Exception as ex:
+            #         LOG.error("Problem sanitizing %s feature Kubeadm_config."
+            #                     % extra_args)
+            #         LOG.error(str(ex))
+            #         raise
 
-                # Remove the deprecated pod-eviction-timeout args from the
-                # controller-manager for the K8s v1.27.5
-                if component == 'controllerManager':
-                    pod_eviction_timeout = extra_args.get('pod-eviction-timeout', None)
-                    if pod_eviction_timeout and target_version == 'v1.27.5':
-                        extra_args.pop('pod-eviction-timeout')
-
-                # Parse the configmap to get the feature gates
-                feature_gates = extra_args.get('feature-gates', None)
-                if not feature_gates:
-                    continue
-
-                try:
-                    if target_version == 'v1.25.3':
-                        feature_gates = sanitize_feature_gates(feature_gates,
-                                    'TTLAfterFinished=true')
-                    if not feature_gates:
-                        # No feature gates left, so delete the entry
-                        LOG.info('Deleting %s feature gates in Kubeadm_config.'
-                                    % extra_args)
-                        extra_args.pop('feature-gates')
-                    else:
-                        # Update the feature gates with the new value
-                        LOG.info('Modifying %s feature gates in Kubeadm_config.'
-                                    % extra_args)
-                        extra_args['feature-gates'] = feature_gates
-                except Exception as ex:
-                    LOG.error("Problem sanitizing %s feature Kubeadm_config."
-                                % extra_args)
-                    LOG.error(str(ex))
-                    raise
             outstream = StringIO()
             yaml.dump(kubeadm_config, outstream)
             configmap = {'data': {'ClusterConfiguration': outstream.getvalue()}}
@@ -19375,7 +20832,7 @@ class ConductorManager(service.PeriodicService):
                   ("apiserver-kubelet-client", constants.AUTOMATIC,
                    "/etc/kubernetes/pki/apiserver-kubelet-client.crt"),
                   ("front-proxy-client", constants.AUTOMATIC, "/etc/kubernetes/pki/front-proxy-client.crt"),
-                  ("front-proxy-ca", constants.AUTOMATIC, "/etc/kubernetes/pki/front-proxy-ca.crt")]
+                  ("front-proxy-ca", constants.MANUAL, "/etc/kubernetes/pki/front-proxy-ca.crt")]
 
         # IPsec certificate
         try:
@@ -19472,6 +20929,13 @@ class ConductorManager(service.PeriodicService):
                 server_cert = "dc-adminep-certificate"
                 ns = "dc-cert"
             elif system_dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
+                sc_inter_ca = "sc-adminep-inter-ca-certificate"
+                sc_inter_ca_obj = cutils.get_certificate_from_file(constants.ADMIN_EP_CERT_FILENAME,
+                                                                    1)
+                certs_info[sc_inter_ca] = cutils.get_cert_values(sc_inter_ca_obj)
+                certs_info[sc_inter_ca][constants.FILEPATH] = constants.ADMIN_EP_CERT_FILENAME
+                certs_info[sc_inter_ca][constants.RENEWAL] = constants.AUTOMATIC
+
                 ca_cert = "sc-adminep-root-ca-certificate"
                 server_cert = "sc-adminep-certificate"
                 ns = "sc-cert"
@@ -19512,6 +20976,60 @@ class ConductorManager(service.PeriodicService):
             secret, renewal and secret type
         """
         return cutils.get_secrets_info()
+
+    def configure_stalld(self, context, host_uuid):
+        """ Configure and restart the stalld daemon
+
+        :param context: admin context
+        :param ihost_uuid: host uuid
+        """
+        host_uuid = host_uuid.strip()
+        try:
+            host = self.dbapi.ihost_get(host_uuid)
+        except exception.ServerNotFound:
+            LOG.info(f'Host not found {host_uuid}')
+            return None
+
+        hostname = host['hostname']
+        LOG.info(f'Attempting to configure stalld for host={hostname}')
+
+        personalities = [host['personality']]
+        host_uuids = [host['uuid']]
+        config_uuid = self._config_update_hosts(
+            context=context,
+            personalities=personalities,
+            host_uuids=host_uuids,
+            reboot=False)
+        config_dict = {
+            "personalities": personalities,
+            "host_uuids": host_uuids,
+            "classes": [
+                'platform::stalld::runtime'
+            ],
+        }
+        self._config_apply_runtime_manifest(context,
+                                            config_uuid,
+                                            config_dict)
+
+    def upgrade_flux_controllers(self, context):
+        """ Upgrade Flux controllers
+
+        :param context: admin context
+        :returns: True if successful. False otherwise.
+        """
+
+        flux_deployment_manager = FluxDeploymentManager(self.dbapi)
+        return flux_deployment_manager.upgrade_controllers()
+
+    def rollback_flux_controllers(self, context):
+        """ Rollback Flux controllers
+
+        :param context: admin context
+        :returns: True if successful. False otherwise.
+        """
+
+        flux_deployment_manager = FluxDeploymentManager(self.dbapi)
+        return flux_deployment_manager.rollback_controllers()
 
 
 def device_image_state_sort_key(dev_img_state):

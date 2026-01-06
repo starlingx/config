@@ -1,4 +1,4 @@
-# Copyright (c) 2017-2024 Wind River Systems, Inc.
+# Copyright (c) 2017-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -103,6 +103,7 @@ class InterfaceTestCaseMixin(base.PuppetTestCaseMixin):
                      'sriov_numvfs': kwargs.get('sriov_numvfs', 0),
                      'sriov_vf_driver': kwargs.get('iface_sriov_vf_driver', None),
                      'max_tx_rate': kwargs.get('max_tx_rate', None),
+                     'max_rx_rate': kwargs.get('max_rx_rate', None),
                      'ipv4_mode': kwargs.get('ipv4_mode', None),
                      'ipv6_mode': kwargs.get('ipv6_mode', None),
                      'ipv4_pool': kwargs.get('ipv4_pool', None),
@@ -165,7 +166,9 @@ class InterfaceTestCaseMixin(base.PuppetTestCaseMixin):
                      'ipv4_mode': kwargs.get('ipv4_mode', None),
                      'ipv6_mode': kwargs.get('ipv6_mode', None),
                      'ipv4_pool': kwargs.get('ipv4_pool', None),
-                     'ipv6_pool': kwargs.get('ipv6_pool', None)}
+                     'ipv6_pool': kwargs.get('ipv6_pool', None),
+                     'max_tx_rate': kwargs.get('max_tx_rate', None),
+                     'max_rx_rate': kwargs.get('max_rx_rate', None)}
         lower_iface['used_by'].append(interface['ifname'])
         db_interface = dbutils.create_test_interface(**interface)
         for network in networks:
@@ -209,7 +212,9 @@ class InterfaceTestCaseMixin(base.PuppetTestCaseMixin):
                      'ipv4_mode': kwargs.get('ipv4_mode', None),
                      'ipv6_mode': kwargs.get('ipv6_mode', None),
                      'ipv4_pool': kwargs.get('ipv4_pool', None),
-                     'ipv6_pool': kwargs.get('ipv6_pool', None)}
+                     'ipv6_pool': kwargs.get('ipv6_pool', None),
+                     'max_tx_rate': kwargs.get('max_tx_rate', None),
+                     'max_rx_rate': kwargs.get('max_rx_rate', None)}
 
         aemode = kwargs.get('aemode', None)
         if aemode:
@@ -486,16 +491,10 @@ class InterfaceTestCase1(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
                           gateway='1.2.3.1', interface='eth0',
                           netmask='0.0.0.0', network='default',
                           metric=1):
-        config = {'name': name,
-                  'ensure': ensure,
-                  'gateway': gateway,
-                  'interface': interface,
-                  'netmask': netmask,
-                  'network': network,
-                  'options': 'metric ' + str(metric)}
+        config = f"{network} {netmask} {gateway} {interface} metric {metric}\n"
         return config
 
-    def test_get_route_config(self):
+    def test_get_route_config_non_default(self):
         route = {'network': '1.2.3.0',
                  'prefix': 24,
                  'gateway': '1.2.3.1',
@@ -1479,7 +1478,10 @@ class InterfaceTestCase2(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
                               '0 > /proc/sys/net/ipv6/conf/bond0/accept_ra; echo 0 > '
                               '/proc/sys/net/ipv6/conf/bond0/accept_redirects; echo 1'
                               ' > /proc/sys/net/ipv6/conf/bond0/keep_addr_on_down',
-                   'up': 'sleep 10'}
+                   'up': 'end=$((SECONDS+10)); while { [ ! -d '
+                   '/proc/sys/net/ipv6/conf/$IFACE ] || [ ! -d '
+                   '/proc/sys/net/ipv4/conf/$IFACE ]; } && [ $SECONDS -lt $end '
+                   ']; do sleep 1; done'}
         expected = self._get_static_network_config_ifupdown(
             ipaddress='192.168.204.10',
             ifname=f"{bond['ifname']}:{network.id}-{address.id}", options=options)
@@ -1515,7 +1517,10 @@ class InterfaceTestCase2(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
                              '/sys/class/net/bonding_masters || echo +bond0 > '
                              '/sys/class/net/bonding_masters; sysctl -wq '
                              'net.ipv6.conf.bond0.accept_dad=0',
-                   'up': 'sleep 10'}
+                   'up': 'end=$((SECONDS+10)); while { [ ! -d '
+                   '/proc/sys/net/ipv6/conf/$IFACE ] || [ ! -d '
+                   '/proc/sys/net/ipv4/conf/$IFACE ]; } && [ $SECONDS -lt $end '
+                   ']; do sleep 1; done'}
         expected = self._get_network_config_ifupdown(
             method='manual', ifname=f"{bond['ifname']}", options=options)
         self.assertEqual(expected, configs[0])
@@ -1534,7 +1539,10 @@ class InterfaceTestCase2(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
                               '0 > /proc/sys/net/ipv6/conf/bond0/accept_ra; echo 0 > '
                               '/proc/sys/net/ipv6/conf/bond0/accept_redirects; echo 1'
                               ' > /proc/sys/net/ipv6/conf/bond0/keep_addr_on_down',
-                   'up': 'sleep 10'}
+                   'up': 'end=$((SECONDS+10)); while { [ ! -d '
+                   '/proc/sys/net/ipv6/conf/$IFACE ] || [ ! -d '
+                   '/proc/sys/net/ipv4/conf/$IFACE ]; } && [ $SECONDS -lt $end '
+                   ']; do sleep 1; done'}
         expected = self._get_static_network_config_ifupdown(
             ipaddress='192.168.204.10',
             ifname=f"{bond['ifname']}:{network.id}-{address.id}", options=options)
@@ -1554,7 +1562,10 @@ class InterfaceTestCase2(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
                   'hwaddress': bond['imac'],
                   'mtu': '1500',
                   'post-up': '{}'.format(ipv6_conf_iface_opt),
-                  'up': 'sleep 10'}
+                  'up': 'end=$((SECONDS+10)); while { [ ! -d '
+                   '/proc/sys/net/ipv6/conf/$IFACE ] || [ ! -d '
+                   '/proc/sys/net/ipv4/conf/$IFACE ]; } && [ $SECONDS -lt $end '
+                   ']; do sleep 1; done'}
         expected = self._get_network_config_ifupdown(
             ifname=bond['ifname'], method='manual', options=options)
         self.assertEqual(expected, configs[0])
@@ -1574,7 +1585,10 @@ class InterfaceTestCase2(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
                    'hwaddress': bond['imac'],
                    'mtu': '1500',
                    'post-up': '{}'.format(ipv6_conf_iface_opt),
-                   'up': 'sleep 10'}
+                   'up': 'end=$((SECONDS+10)); while { [ ! -d '
+                   '/proc/sys/net/ipv6/conf/$IFACE ] || [ ! -d '
+                   '/proc/sys/net/ipv4/conf/$IFACE ]; } && [ $SECONDS -lt $end '
+                   ']; do sleep 1; done'}
         expected = self._get_network_config_ifupdown(
             ifname=bond['ifname'], method='manual', options=options)
         self.assertEqual(expected, configs[0])
@@ -1597,7 +1611,10 @@ class InterfaceTestCase2(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
                    'hwaddress': bond['imac'],
                    'mtu': '1500',
                    'post-up': '{}'.format(ipv6_conf_iface_opt),
-                   'up': 'sleep 10'}
+                   'up': 'end=$((SECONDS+10)); while { [ ! -d '
+                   '/proc/sys/net/ipv6/conf/$IFACE ] || [ ! -d '
+                   '/proc/sys/net/ipv4/conf/$IFACE ]; } && [ $SECONDS -lt $end '
+                   ']; do sleep 1; done'}
         expected = self._get_network_config_ifupdown(
             ifname=bond['ifname'], method='manual', options=options)
         self.assertEqual(expected, configs[0])
@@ -1623,7 +1640,10 @@ class InterfaceTestCase2(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
                    'mtu': '1500',
                    'post-up': '/usr/local/bin/tc_setup.sh bond0 mgmt 10000 > /dev/null; ' +
                               '{}'.format(ipv6_conf_iface_opt),
-                   'up': 'sleep 10'}
+                   'up': 'end=$((SECONDS+10)); while { [ ! -d '
+                   '/proc/sys/net/ipv6/conf/$IFACE ] || [ ! -d '
+                   '/proc/sys/net/ipv4/conf/$IFACE ]; } && [ $SECONDS -lt $end '
+                   ']; do sleep 1; done'}
         expected = self._get_network_config_ifupdown(
             ifname=bond['ifname'], method='manual', options=options)
         self.assertEqual(expected, configs[0])
@@ -2323,6 +2343,7 @@ class InterfaceHostTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
             hiera_data = yaml.safe_load(config_file)
 
         self.assertTrue('platform::network::interfaces::network_config' in hiera_data.keys())
+        print(f"self.exp_yaml_config={self.exp_yaml_config}")
 
         if len(self.exp_yaml_config):
             intf_cfg = hiera_data['platform::network::interfaces::network_config']
@@ -2490,7 +2511,7 @@ class InterfaceControllerEthernet(InterfaceHostTestCase):
                      'tc': False},
             "eth1": {'family': 'inet', 'method': 'manual',
                      'stx-description': f'ifname:mgmt,net:{None}', 'tc': True},
-            "eth1:1": {'family': 'inet', 'method': 'static',
+            "eth1:2": {'family': 'inet', 'method': 'static',
                        'stx-description': f'ifname:mgmt,net:{constants.NETWORK_TYPE_PXEBOOT}',
                        'tc': False},
             "eth1:2-7": {'family': 'inet', 'method': 'static',
@@ -2540,7 +2561,7 @@ class InterfaceControllerEthernetCfg2(InterfaceHostTestCase):
                      'tc': False},
             "eth1": {'family': 'inet', 'method': 'manual',
                      'stx-description': f'ifname:mgmt0,net:{None}', 'tc': True},
-            "eth1:1": {'family': 'inet', 'method': 'static',
+            "eth1:2": {'family': 'inet', 'method': 'static',
                        'stx-description': f'ifname:mgmt0,net:{constants.NETWORK_TYPE_PXEBOOT}',
                        'tc': False},
             "eth1:2-7": {'family': 'inet', 'method': 'static',
@@ -2588,7 +2609,7 @@ class InterfaceControllerEthernetCfg3(InterfaceHostTestCase):
                      'tc': False},
             "eth1": {'family': 'inet', 'method': 'manual',
                      'stx-description': f'ifname:mgmt0,net:{None}', 'tc': True},
-            "eth1:1": {'family': 'inet', 'method': 'static',
+            "eth1:2": {'family': 'inet', 'method': 'static',
                        'stx-description': f'ifname:mgmt0,net:{constants.NETWORK_TYPE_PXEBOOT}',
                        'tc': False},
             "eth1:2-7": {'family': 'inet', 'method': 'static',
@@ -2656,7 +2677,7 @@ class InterfaceControllerBond(InterfaceHostTestCase):
             "mgmt0": {'family': 'inet', 'method': 'manual',
                       'stx-description': f'ifname:mgmt0,net:{None}',
                       'bond-slaves': 'eth2 eth3 ', 'tc': True},
-            "mgmt0:1": {'family': 'inet', 'method': 'static',
+            "mgmt0:2": {'family': 'inet', 'method': 'static',
                       'stx-description': f'ifname:mgmt0,net:{constants.NETWORK_TYPE_PXEBOOT}',
                       'bond-slaves': 'eth2 eth3 ', 'tc': False},
             "mgmt0:2-7": {'family': 'inet', 'method': 'static',
@@ -2729,7 +2750,7 @@ class InterfaceControllerBondCfg2(InterfaceHostTestCase):
             "mgmt0": {'family': 'inet', 'method': 'manual', 'bond-primary': 'eth0',
                       'bond-slaves': 'eth0 eth1 ',
                       'stx-description': f'ifname:mgmt0,net:{None}', 'tc': True},
-            "mgmt0:1": {'family': 'inet', 'method': 'static', 'bond-primary': 'eth0',
+            "mgmt0:2": {'family': 'inet', 'method': 'static', 'bond-primary': 'eth0',
                         'bond-slaves': 'eth0 eth1 ',
                         'stx-description': f'ifname:mgmt0,net:{constants.NETWORK_TYPE_PXEBOOT}',
                         'tc': False},
@@ -2786,7 +2807,10 @@ class InterfaceControllerVlanOverBond(InterfaceHostTestCase):
                      'stx-description': f'ifname:eth0,net:{None}', 'tc': False},
             "eth1": {'family': 'inet', 'method': 'manual',
                      'stx-description': f'ifname:eth1,net:{None}', 'tc': False},
-            "pxeboot0": {'family': 'inet', 'method': 'static',
+            "pxeboot0": {'family': 'inet', 'method': 'manual',
+                     'stx-description': f'ifname:pxeboot0,net:{None}',
+                     'bond-slaves': 'eth0 eth1 ', 'tc': False},
+            "pxeboot0:2": {'family': 'inet', 'method': 'static',
                      'stx-description': f'ifname:pxeboot0,net:{constants.NETWORK_TYPE_PXEBOOT}',
                      'bond-slaves': 'eth0 eth1 ', 'tc': False},
             "vlan1": {'family': 'inet', 'method': 'manual',
@@ -2891,7 +2915,7 @@ class InterfaceComputeEthernet(InterfaceHostTestCase):
         self.exp_yaml_config = {
             "eth0": {'family': 'inet', 'method': 'manual',
                      'stx-description': f'ifname:mgmt,net:{None}', 'tc': True},
-            "eth0:1": {'family': 'inet', 'method': 'dhcp',
+            "eth0:2": {'family': 'inet', 'method': 'dhcp',
                      'stx-description': f'ifname:mgmt,net:{constants.NETWORK_TYPE_PXEBOOT}',
                      'tc': False},
             "eth0:2-37": {'family': 'inet', 'method': 'static',
@@ -2964,7 +2988,7 @@ class InterfaceComputeEthernetCfg2(InterfaceHostTestCase):
         self.exp_yaml_config = {
             "eth0": {'family': 'inet', 'method': 'manual',
                      'stx-description': f'ifname:mgmt,net:{None}', 'tc': True},
-            "eth0:1": {'family': 'inet', 'method': 'dhcp',
+            "eth0:2": {'family': 'inet', 'method': 'dhcp',
                      'stx-description': f'ifname:mgmt,net:{constants.NETWORK_TYPE_PXEBOOT}',
                      'tc': False},
             "eth0:2-37": {'family': 'inet', 'method': 'static',
@@ -3043,7 +3067,7 @@ class InterfaceComputeEthernetCfg3(InterfaceHostTestCase):
                      'tc': False},
             "eth1": {'family': 'inet', 'method': 'manual',
                      'stx-description': f'ifname:cluster-host,net:{None}', 'tc': False},
-            "eth1:1": {'family': 'inet', 'method': 'dhcp',
+            "eth1:2": {'family': 'inet', 'method': 'dhcp',
                      'stx-description': f'ifname:cluster-host,net:{constants.NETWORK_TYPE_PXEBOOT}',
                      'tc': False},
             "eth1:4-38": {'family': 'inet', 'method': 'static',
@@ -3091,7 +3115,10 @@ class InterfaceComputeVlanOverEthernet(InterfaceHostTestCase):
         self.expected_data_interfaces = ['eth4', 'data']
         self.expected_pci_interfaces = ['sriov', 'pthru']
         self.exp_yaml_config = {
-            "eth0": {'family': 'inet', 'method': 'dhcp',
+            "eth0": {'family': 'inet', 'method': 'manual',
+                     'stx-description': f'ifname:pxeboot,net:{None}',
+                     'tc': False},
+            "eth0:2": {'family': 'inet', 'method': 'dhcp',
                      'stx-description': f'ifname:pxeboot,net:{constants.NETWORK_TYPE_PXEBOOT}',
                      'tc': False},
             "eth1": {'family': 'inet', 'method': 'manual',
@@ -3151,7 +3178,10 @@ class InterfaceComputeVlanOverEthernetCfg2(InterfaceHostTestCase):
         self.exp_yaml_config = {
             "data": {'family': 'inet', 'method': 'manual',
                      'stx-description': f'ifname:data,net:{None}', 'tc': False},
-            "eth0": {'family': 'inet', 'method': 'dhcp',
+            "eth0": {'family': 'inet', 'method': 'manual',
+                     'stx-description': f'ifname:pxeboot,net:{None}',
+                     'tc': False},
+            "eth0:2": {'family': 'inet', 'method': 'dhcp',
                      'stx-description': f'ifname:pxeboot,net:{constants.NETWORK_TYPE_PXEBOOT}',
                      'tc': False},
             "eth1": {'family': 'inet', 'method': 'manual',
@@ -3253,7 +3283,7 @@ class InterfaceComputeBond(InterfaceHostTestCase):
             "mgmt": {'family': 'inet', 'method': 'manual',
                      'stx-description': f'ifname:mgmt,net:{None}',
                      'bond-slaves': 'eth0 eth1 ', 'tc': True},
-            "mgmt:1": {'family': 'inet', 'method': 'dhcp',
+            "mgmt:2": {'family': 'inet', 'method': 'dhcp',
                      'stx-description': f'ifname:mgmt,net:{constants.NETWORK_TYPE_PXEBOOT}',
                      'bond-slaves': 'eth0 eth1 ', 'tc': False},
             "mgmt:2-37": {'family': 'inet', 'method': 'static',
@@ -3319,7 +3349,10 @@ class InterfaceComputeVlanOverBond(InterfaceHostTestCase):
                      'stx-description': f'ifname:eth0,net:{None}', 'tc': False},
             "eth1": {'family': 'inet', 'method': 'manual',
                      'stx-description': f'ifname:eth1,net:{None}', 'tc': False},
-            "pxeboot": {'family': 'inet', 'method': 'dhcp',
+            "pxeboot": {'family': 'inet', 'method': 'manual',
+                     'stx-description': f'ifname:pxeboot,net:{None}',
+                     'bond-slaves': 'eth0 eth1 ', 'tc': False},
+            "pxeboot:2": {'family': 'inet', 'method': 'dhcp',
                      'stx-description': f'ifname:pxeboot,net:{constants.NETWORK_TYPE_PXEBOOT}',
                      'bond-slaves': 'eth0 eth1 ', 'tc': False},
             "vlan1": {'family': 'inet', 'method': 'manual',
@@ -3651,7 +3684,7 @@ PROMISC_ON = 'prmsc-on'     # Operation command to enable promiscuous mode
 UNDEPR = 'undepr'           # Operation command to undeprecate IPv6 address
 SRIOV = 'sriov'             # Operation command to setup sriov
 PTHROUGH = 'pthrough'       # Operation command to setup pass-through
-SLEEP = 'sleep'             # Operation command to sleep for 10 seconds
+BOND_CHECK = 'bond-check'   # Operation command to check bond interface directory
 BOND_SETUP = 'bond-stp'     # Operation command to setup bond
 DIS_DAD = 'disable-dad'     # Operation command to disable DAD
 MODES = 'modes'             # List of modes where this configuration is expected, all if unspecified
@@ -3917,8 +3950,16 @@ class InterfaceConfigTestMixin(InterfaceTestCaseMixin):
         sriovfs_path = self._get_sriov_numvfs_path(port)
         return ['if [ -f  {0} ]; then echo 0 > {0}; fi'.format(sriovfs_path)]
 
-    def _get_sleep_cmd(self):
-        return ['sleep 10']
+    def _get_bond_check_cmd(self):
+        cmd = (
+            "end=$((SECONDS+10)); "
+            "while { [ ! -d /proc/sys/net/ipv6/conf/$IFACE ] || "
+            "[ ! -d /proc/sys/net/ipv4/conf/$IFACE ]; } && "
+            "[ $SECONDS -lt $end ]; do "
+            "sleep 1; "
+            "done"
+        )
+        return [cmd]
 
     def _get_bonding_setup_cmd(self, kernel_name):
         return ['/sbin/modprobe bonding',
@@ -3954,8 +3995,8 @@ class InterfaceConfigTestMixin(InterfaceTestCaseMixin):
                 operation_list.extend(self._get_sriov_numvfs_cmd(kernel_name, iface.sriov_numvfs))
             elif command == PTHROUGH:
                 operation_list.extend(self._get_pci_passthrough_numvfs_cmd(kernel_name))
-            elif command == SLEEP:
-                operation_list.extend(self._get_sleep_cmd())
+            elif command == BOND_CHECK:
+                operation_list.extend(self._get_bond_check_cmd())
             elif command == BOND_SETUP:
                 operation_list.extend(self._get_bonding_setup_cmd(kernel_name))
             elif command == DIS_DAD:
@@ -4027,7 +4068,7 @@ class InterfaceConfigTestMixin(InterfaceTestCaseMixin):
             ifname = kernelname
         else:
             if network and network.type == constants.NETWORK_TYPE_PXEBOOT:
-                ifname = f"{kernelname}:{network.id if network else 0}"
+                ifname = f"{kernelname}:2"
             else:
                 ifname = f"{kernelname}:{network.id if network else 0}-{address.id if address else 0}"
 
@@ -4318,6 +4359,8 @@ class InterfaceConfigTestMixin(InterfaceTestCaseMixin):
         self._add_ethernet('none')
         expected = {
             'pxe0': [
+                {NET: None, FAMILY: INET, METHOD: MANUAL,
+                    OPTIONS: {POST_UP: [IPV6_CFG]}},
                 {NET: constants.NETWORK_TYPE_PXEBOOT, FAMILY: INET, METHOD: STATIC,
                     OPTIONS: {POST_UP: [IPV6_CFG]}}],
             'mgmt0': [
@@ -4348,11 +4391,16 @@ class InterfaceConfigTestMixin(InterfaceTestCaseMixin):
                        constants.NETWORK_TYPE_CLUSTER_HOST)
         expected = {
             'pxe0': [
+                {NET: None, FAMILY: INET, METHOD: MANUAL,
+                    OPTIONS: {'bond-lacp-rate': 'fast', 'bond-miimon': '100',
+                              'bond-mode': '802.3ad', 'bond-slaves': True,
+                              'bond-xmit-hash-policy': 'layer2', 'hwaddress': True,
+                              POST_UP: [SET_TC, IPV6_CFG], UP: [BOND_CHECK]}},
                 {NET: constants.NETWORK_TYPE_PXEBOOT, FAMILY: INET, METHOD: STATIC,
                     OPTIONS: {'bond-lacp-rate': 'fast', 'bond-miimon': '100',
                               'bond-mode': '802.3ad', 'bond-slaves': True,
                               'bond-xmit-hash-policy': 'layer2', 'hwaddress': True,
-                              POST_UP: [SET_TC, IPV6_CFG], UP: [SLEEP]}}],
+                              POST_UP: [SET_TC, IPV6_CFG], UP: [BOND_CHECK]}}],
             'eth0': [
                 {NET: None, FAMILY: INET, METHOD: MANUAL,
                     OPTIONS: {ALLOW: True, 'bond-master': True, PRE_UP: [PROMISC_ON, IPV6_CFG]}}],
@@ -4399,6 +4447,61 @@ class InterfaceConfigTestMixin(InterfaceTestCaseMixin):
                     NET: constants.NETWORK_TYPE_CLUSTER_HOST, FAMILY: INET6, METHOD: STATIC,
                     OPTIONS: {'vlan-raw-device': True, PRE_UP: [VLAN_MOD],
                               POST_UP: [SET_MTU, IPV6_CFG, UNDEPR]}}],
+        }
+        self._validate_config(expected)
+
+    def test_controller_shared_vlan_over_pxeboot(self):
+        self._create_host(constants.CONTROLLER)
+        pxe0 = self._add_bond('pxe0', constants.INTERFACE_CLASS_PLATFORM,
+                              constants.NETWORK_TYPE_PXEBOOT)
+        self._add_vlan(pxe0, 200, 'mgmt0', constants.INTERFACE_CLASS_PLATFORM,
+                       [constants.NETWORK_TYPE_MGMT, constants.NETWORK_TYPE_CLUSTER_HOST])
+        expected = {
+            'pxe0': [
+                {NET: None, FAMILY: INET, METHOD: MANUAL,
+                    OPTIONS: {'bond-lacp-rate': 'fast', 'bond-miimon': '100',
+                              'bond-mode': '802.3ad', 'bond-slaves': True,
+                              'bond-xmit-hash-policy': 'layer2', 'hwaddress': True,
+                              POST_UP: [SET_TC, IPV6_CFG], UP: [BOND_CHECK]}},
+                {NET: constants.NETWORK_TYPE_PXEBOOT, FAMILY: INET, METHOD: STATIC,
+                    OPTIONS: {'bond-lacp-rate': 'fast', 'bond-miimon': '100',
+                              'bond-mode': '802.3ad', 'bond-slaves': True,
+                              'bond-xmit-hash-policy': 'layer2', 'hwaddress': True,
+                              POST_UP: [SET_TC, IPV6_CFG], UP: [BOND_CHECK]}}],
+            'eth0': [
+                {NET: None, FAMILY: INET, METHOD: MANUAL,
+                    OPTIONS: {ALLOW: True, 'bond-master': True, PRE_UP: [PROMISC_ON, IPV6_CFG]}}],
+            'eth1': [
+                {NET: None, FAMILY: INET, METHOD: MANUAL,
+                    OPTIONS: {ALLOW: True, 'bond-master': True, PRE_UP: [PROMISC_ON, IPV6_CFG]}}],
+            'mgmt0': [
+                {NET: None, FAMILY: INET, METHOD: MANUAL,
+                    OPTIONS: {'vlan-raw-device': True, PRE_UP: [VLAN_MOD],
+                              POST_UP: [SET_TC, SET_MTU, IPV6_CFG]}},
+                {MODES: [SS_IPV4],
+                    NET: constants.NETWORK_TYPE_MGMT, FAMILY: INET, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, 'vlan-raw-device': True, PRE_UP: [VLAN_MOD],
+                              POST_UP: [SET_MTU, IPV6_CFG]}},
+                {MODES: [DS_IPV4, DS_IPV6],
+                    NET: constants.NETWORK_TYPE_MGMT, FAMILY: INET, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, 'vlan-raw-device': True, PRE_UP: [VLAN_MOD],
+                              POST_UP: [SET_MTU, IPV6_CFG]}},
+                {MODES: [SS_IPV6],
+                    NET: constants.NETWORK_TYPE_MGMT, FAMILY: INET6, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, 'vlan-raw-device': True, PRE_UP: [VLAN_MOD],
+                              POST_UP: [SET_MTU, IPV6_CFG, UNDEPR]}},
+                {MODES: [DS_IPV4, DS_IPV6],
+                    NET: constants.NETWORK_TYPE_MGMT, FAMILY: INET6, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, 'vlan-raw-device': True, PRE_UP: [VLAN_MOD],
+                              POST_UP: [SET_MTU, IPV6_CFG, UNDEPR]}},
+                {MODES: [SS_IPV4, DS_IPV4, DS_IPV6],
+                    NET: constants.NETWORK_TYPE_CLUSTER_HOST, FAMILY: INET, METHOD: STATIC,
+                    OPTIONS: {'vlan-raw-device': True, PRE_UP: [VLAN_MOD],
+                              POST_UP: [SET_MTU, IPV6_CFG]}},
+                {MODES: [SS_IPV6, DS_IPV4, DS_IPV6],
+                    NET: constants.NETWORK_TYPE_CLUSTER_HOST, FAMILY: INET6, METHOD: STATIC,
+                    OPTIONS: {'vlan-raw-device': True, PRE_UP: [VLAN_MOD],
+                              POST_UP: [SET_MTU, IPV6_CFG]}}],
         }
         self._validate_config(expected)
 
@@ -4454,6 +4557,8 @@ class InterfaceConfigTestMixin(InterfaceTestCaseMixin):
                        constants.NETWORK_TYPE_CLUSTER_HOST)
         expected = {
             'pxe0': [
+                {NET: None, FAMILY: INET, METHOD: MANUAL,
+                    OPTIONS: {POST_UP: [IPV6_CFG]}},
                 {NET: constants.NETWORK_TYPE_PXEBOOT, FAMILY: INET, METHOD: STATIC,
                     OPTIONS: {POST_UP: [IPV6_CFG]}}],
             'mgmt0': [
@@ -4462,34 +4567,34 @@ class InterfaceConfigTestMixin(InterfaceTestCaseMixin):
                               'bond-mode': '802.3ad', 'bond-slaves': True,
                               'bond-xmit-hash-policy': 'layer2', 'hwaddress': True,
                               PRE_UP: [BOND_SETUP, DIS_DAD], POST_UP: [SET_TC, IPV6_CFG],
-                              UP: [SLEEP]}},
+                              UP: [BOND_CHECK]}},
                 {MODES: [SS_IPV4],
                     NET: constants.NETWORK_TYPE_MGMT, FAMILY: INET, METHOD: STATIC,
                     OPTIONS: {GATEWAY: True, 'bond-lacp-rate': 'fast', 'bond-miimon': '100',
                               'bond-mode': '802.3ad', 'bond-slaves': True,
                               'bond-xmit-hash-policy': 'layer2', 'hwaddress': True,
                               POST_UP: [IPV6_CFG],
-                              UP: [SLEEP]}},
+                              UP: [BOND_CHECK]}},
                 {MODES: [DS_IPV4, DS_IPV6],
                     NET: constants.NETWORK_TYPE_MGMT, FAMILY: INET, METHOD: STATIC,
                     OPTIONS: {GATEWAY: True, 'bond-lacp-rate': 'fast', 'bond-miimon': '100',
                               'bond-mode': '802.3ad', 'bond-slaves': True,
                               'bond-xmit-hash-policy': 'layer2', 'hwaddress': True,
-                              POST_UP: [IPV6_CFG], UP: [SLEEP]}},
+                              POST_UP: [IPV6_CFG], UP: [BOND_CHECK]}},
                 {MODES: [SS_IPV6],
                     NET: constants.NETWORK_TYPE_MGMT, FAMILY: INET6, METHOD: STATIC,
                     OPTIONS: {GATEWAY: True, 'bond-lacp-rate': 'fast', 'bond-miimon': '100',
                               'bond-mode': '802.3ad', 'bond-slaves': True,
                               'bond-xmit-hash-policy': 'layer2', 'hwaddress': True,
                               POST_UP: [IPV6_CFG, UNDEPR],
-                              UP: [SLEEP]}},
+                              UP: [BOND_CHECK]}},
                 {MODES: [DS_IPV4, DS_IPV6],
                     NET: constants.NETWORK_TYPE_MGMT, FAMILY: INET6, METHOD: STATIC,
                     OPTIONS: {GATEWAY: True, 'bond-lacp-rate': 'fast', 'bond-miimon': '100',
                               'bond-mode': '802.3ad', 'bond-slaves': True,
                               'bond-xmit-hash-policy': 'layer2', 'hwaddress': True,
                               POST_UP: [IPV6_CFG, UNDEPR],
-                              UP: [SLEEP]}}],
+                              UP: [BOND_CHECK]}}],
             'eth1': [
                 {NET: None, FAMILY: INET, METHOD: MANUAL,
                     OPTIONS: {ALLOW: True, 'bond-master': True, PRE_UP: [PROMISC_ON, IPV6_CFG]}}],
@@ -4775,6 +4880,53 @@ class InterfaceConfigTestMixin(InterfaceTestCaseMixin):
                     OPTIONS: {POST_UP: [SET_TC, IPV6_CFG]}}],
         }
         self._validate_config(expected)
+
+    def test_get_interface_data_for_rate_limit(self):
+        self._create_host(constants.CONTROLLER)
+        oam_kwargs = {'max_tx_rate': 30, 'max_rx_rate': 30}
+        port, _ = self._create_ethernet_test('oam0', constants.INTERFACE_CLASS_PLATFORM,
+                                        constants.NETWORK_TYPE_OAM, **oam_kwargs)
+
+        # creating a pxeboot interface, mgmt interface will be created on top of it.
+        # Rate limit will not be configured for pxeboot as it has only internal traffic.
+        iface_pxeboot_kwargs = {'max_tx_rate': 30, 'max_rx_rate': 30}
+        iface_pxeboot = self._add_bond('pxeboot', constants.INTERFACE_CLASS_PLATFORM,
+                            constants.NETWORK_TYPE_PXEBOOT, **iface_pxeboot_kwargs)
+
+        iface_mgmt_kwargs = {'max_tx_rate': None, 'max_rx_rate': 0}
+        mgmt_vlan_id = 100
+        self._add_vlan(iface_pxeboot, mgmt_vlan_id, 'mgmt0',
+                            constants.INTERFACE_CLASS_PLATFORM, constants.NETWORK_TYPE_MGMT,
+                            **iface_mgmt_kwargs)
+
+        dbapi = db_api.get_instance()
+        config = {
+            interface.RATE_LIMIT_CONFIG_RESOURCE: {},
+        }
+        system_dict = self.system.as_dict()
+        mode = system_dict['system_mode']
+        address_pool = 'ipv4' if mode == SS_IPV4 else 'ipv6' if mode == SS_IPV6 else 'dual'
+        system_dict['system_mode'] = constants.SYSTEM_MODE_DUPLEX
+        system_dict['distributed_cloud_role'] = constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+        self._do_update_context()
+
+        expected_output = {
+            'vlan' + str(mgmt_vlan_id): {
+                'accept_subnet': ['mgmt'],
+                'max_tx_rate': None,
+                'max_rx_rate': 0,
+                'address_pool': address_pool
+            },
+            port['name']: {
+                'max_tx_rate': 30,
+                'max_rx_rate': 30,
+                'address_pool': address_pool
+            },
+        }
+        interface.generate_data_iface_rate_limit(self.context, config, dbapi)
+        rate_limit_config = config[interface.RATE_LIMIT_CONFIG_RESOURCE]
+        self.assertEqual(rate_limit_config, expected_output)
 
 
 class InterfaceConfigTestIPv4(InterfaceConfigTestMixin,

@@ -76,6 +76,7 @@ LABEL_DISABLE_NOHZ_FULL = 'disable-nohz-full'
 LABEL_OPENVSWITCH = 'openvswitch'
 LABEL_REMOTE_STORAGE = 'remote-storage'
 LABEL_SRIOVDP = 'sriovdp'
+LABEL_SRIOVDP_ISRDMA = 'sriovdp-isrdma'
 LABEL_SRIOVDP_VHOSTNET = 'sriovdp-vhostnet'
 
 # Label values
@@ -95,3 +96,7 @@ APP_PTH_PREFIX = 'stx_app-'
 # State helmrelease from k8s API
 HELM_RELEASE_TYPE_RECONCILING = "Reconciling"
 HELM_RELEASE_TYPE_READY = "Ready"
+
+# Interval values to wait reconciliation
+HELM_RECONCILIATION_TIMEOUT_IN_MINUTES = 1
+HELM_RECONCILIATION_CHECK_INTERVAL_IN_SECONDS = 20

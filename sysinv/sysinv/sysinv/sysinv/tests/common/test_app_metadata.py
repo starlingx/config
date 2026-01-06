@@ -483,9 +483,6 @@ class Validate_metadata_file(testtools.TestCase):
                 constants.APP_METADATA_DESIRED_STATE: 2}},
             # evaluate_reapply must be a dict
             {constants.APP_METADATA_BEHAVIOR: {constants.APP_METADATA_EVALUATE_REAPPLY: []}},
-            # after must be a list
-            {constants.APP_METADATA_BEHAVIOR: {constants.APP_METADATA_EVALUATE_REAPPLY: {
-                constants.APP_METADATA_AFTER: {}}}},
             # triggers must be a list
             {constants.APP_METADATA_BEHAVIOR: {constants.APP_METADATA_EVALUATE_REAPPLY: {
                 constants.APP_METADATA_TRIGGERS: {}}}},

@@ -664,8 +664,8 @@ def _check_capabilities(fs_name, functions):
     rook_ceph = pecan.request.dbapi.storage_backend_get_list_by_type(
                     backend_type=constants.SB_TYPE_CEPH_ROOK)
     if not rook_ceph:
-        msg = _("{} must be configured as the storage backend to add/remove "
-                "the monitor function.") % constants.SB_TYPE_CEPH_ROOK
+        msg = _("%s must be configured as the storage backend to add/remove "
+                "the monitor function." % constants.SB_TYPE_CEPH_ROOK)
         raise wsme.exc.ClientSideError(msg)
 
     for function in functions:

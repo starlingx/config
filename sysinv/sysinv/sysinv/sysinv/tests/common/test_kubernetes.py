@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2023 Wind River Systems, Inc.
+# Copyright (c) 2023-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -10,11 +10,14 @@ Tests for the kubernetes utilities.
 
 import kubernetes
 import mock
+import subprocess
 
 from sysinv.common import kubernetes as kube
 
 from sysinv.tests import base
 from sysinv.common import constants
+from sysinv.common import exception
+
 import tsconfig.tsconfig as tsc
 
 FAKE_KUBE_VERSIONS = [
@@ -665,11 +668,11 @@ class TestKubeOperator(base.TestCase):
 
         self.single_helmrepository_result = {
             'kind': 'HelmRepositoryList',
-            'apiVersion': 'source.toolkit.fluxcd.io/v1beta1',
+            'apiVersion': 'source.toolkit.fluxcd.io/v1',
             'items': [
                 {
 
-                    'apiVersion': 'source.toolkit.fluxcd.io/v1beta1',
+                    'apiVersion': 'source.toolkit.fluxcd.io/v1',
                     'kind': 'HelmRepository',
                     'spec': {
                         'url': 'http://192.168.206.1:8877/helm_charts/'
@@ -689,7 +692,7 @@ class TestKubeOperator(base.TestCase):
                         'resourceVersion': '2176218',
                         'creationTimestamp': '2022-05-31T16:59:27Z',
                         'annotations': {},  # Ommiting some stuff here too
-                        'selfLink': '/apis/source.toolkit.fluxcd.io/v1beta1/'
+                        'selfLink': '/apis/source.toolkit.fluxcd.io/v1/'
                                     'namespaces/cert-manager/helmrepositories/'
                                     'stx-platform',
                         'uid': '95989df9-b7bd-413a-bd1b-5f746c54e7c6',
@@ -700,11 +703,11 @@ class TestKubeOperator(base.TestCase):
 
         self.multiple_helmrepository_result = {
             'kind': 'HelmRepositoryList',
-            'apiVersion': 'source.toolkit.fluxcd.io/v1beta1',
+            'apiVersion': 'source.toolkit.fluxcd.io/v1',
             'items': [
                 {
 
-                    'apiVersion': 'source.toolkit.fluxcd.io/v1beta1',
+                    'apiVersion': 'source.toolkit.fluxcd.io/v1',
                     'kind': 'HelmRepository',
                     'spec': {
                         'url': 'http://192.168.206.1:8877/helm_charts/'
@@ -724,7 +727,7 @@ class TestKubeOperator(base.TestCase):
                         'resourceVersion': '2176218',
                         'creationTimestamp': '2022-05-31T16:59:27Z',
                         'annotations': {},  # Ommiting some stuff here too
-                        'selfLink': '/apis/source.toolkit.fluxcd.io/v1beta1/'
+                        'selfLink': '/apis/source.toolkit.fluxcd.io/v1/'
                                     'namespaces/cert-manager/helmrepositories/'
                                     'stx-platform',
                         'uid': '95989df9-b7bd-413a-bd1b-5f746c54e7c6',
@@ -732,7 +735,7 @@ class TestKubeOperator(base.TestCase):
                 },
                 {
 
-                    'apiVersion': 'source.toolkit.fluxcd.io/v1beta1',
+                    'apiVersion': 'source.toolkit.fluxcd.io/v1',
                     'kind': 'HelmRepository',
                     'spec': {
                         'url': 'http://192.168.206.1:8877/helm_charts/'
@@ -752,7 +755,7 @@ class TestKubeOperator(base.TestCase):
                         'resourceVersion': '2176116',
                         'creationTimestamp': '2022-05-31T16:49:21Z',
                         'annotations': {},  # Ommiting some stuff here too
-                        'selfLink': '/apis/source.toolkit.fluxcd.io/v1beta1/'
+                        'selfLink': '/apis/source.toolkit.fluxcd.io/v1/'
                                     'namespaces/kube-system/helmrepositories/'
                                     'stx-platform',
                         'uid': '2d5a9df9-b7bd-413a-bd1b-5f746cab4f',
@@ -763,7 +766,7 @@ class TestKubeOperator(base.TestCase):
 
         self.no_helmrepository_result = {
             'kind': 'HelmRepositoryList',
-            'apiVersion': 'source.toolkit.fluxcd.io/v1beta1',
+            'apiVersion': 'source.toolkit.fluxcd.io/v1',
             'items': []
         }
 
@@ -778,7 +781,7 @@ class TestKubeOperator(base.TestCase):
                 kind='ClusterRole',
                 name='test_system:test_node'
             ),
-            subjects=[kubernetes.client.V1Subject(
+            subjects=[kubernetes.client.RbacV1Subject(
                 kind='User',
                 name='test_system:test_node:test_hostname',
                 api_group='rbac.authorization.k8s.io',
@@ -850,15 +853,6 @@ class TestKubeOperator(base.TestCase):
             mock_read_namespaced_secret)
         self.mocked_read_namespaced_secret.start()
 
-        self.list_pod_security_policy_result = None
-
-        def mock_list_pod_security_policy(obj):
-            return self.list_pod_security_policy_result
-        self.mocked_list_pod_security_policy = mock.patch(
-            'kubernetes.client.PolicyV1beta1Api.list_pod_security_policy',
-            mock_list_pod_security_policy)
-        self.mocked_list_pod_security_policy.start()
-
         def mock_read_clusterrolebinding(obj, name):
             return self.read_clusterrolebinding_result
         self.mocked_read_clusterrolebinding = mock.patch(
@@ -877,7 +871,6 @@ class TestKubeOperator(base.TestCase):
         self.mocked_read_namespaced_config_map.stop()
         self.mocked_read_namespaced_service_account.stop()
         self.mocked_read_namespaced_secret.stop()
-        self.mocked_list_pod_security_policy.stop()
         self.mocked_read_clusterrolebinding.stop()
 
     def test_kube_get_image_by_pod_name(self):
@@ -1008,6 +1001,64 @@ class TestKubeOperator(base.TestCase):
         result = self.kube_operator.kube_get_kubelet_versions()
         assert result == {'test-node-1': 'v1.42.4'}
 
+    def test_kubelet_version_skew(self):
+
+        self.list_node_result = self.single_node_result
+
+        # same minor version
+        result = self.kube_operator.kubelet_version_skew('v1.42.3', 'v1.42.0')
+        assert result == 0
+
+        # control plane newer than kubelet and skew 1, i.e., 43 - 42
+        result = self.kube_operator.kubelet_version_skew('v1.43.1', 'v1.42.0')
+        assert result == 1
+
+        # kubelet newer than control plane by 1
+        result = self.kube_operator.kubelet_version_skew('v1.41.1', 'v1.42.1')
+        assert result == -1
+
+        # kubelet much newer than control plane
+        result = self.kube_operator.kubelet_version_skew('v1.0.0', 'v1.42.1')
+        assert result == -42
+
+        # no leading 'v' and skew 3, i.e., 44 - 41
+        result = self.kube_operator.kubelet_version_skew('1.44.5', '1.41.1')
+        assert result == 3
+
+        # skew of 2, i.e., 45 - 43
+        result = self.kube_operator.kubelet_version_skew('v1.45.1', 'v1.43.7')
+        assert result == 2
+
+        # major kubernetes version change
+        result = self.kube_operator.kubelet_version_skew('v2.0.0', 'v1.42.1')
+        assert result == 58
+
+        # huge skew
+        result = self.kube_operator.kubelet_version_skew('v1.42.1', 'v1.26.0')
+        assert result == 16
+
+    def test_kubelet_version_skew_invalid(self):
+
+        self.list_node_result = self.single_node_result
+
+        # missing kubeadm_version
+        try:
+            self.kube_operator.kubelet_version_skew(None, 'v1.43.1')
+        except Exception as e:
+            self.assertIn("Invalid kubelet version skew input", str(e))
+
+        # missing kubelet_version
+        try:
+            self.kube_operator.kubelet_version_skew('v1.43.1', None)
+        except Exception as e:
+            self.assertIn("Invalid kubelet version skew input", str(e))
+
+        # invalid kubeadm_version
+        try:
+            self.kube_operator.kubelet_version_skew('v1', 'v1.43.1')
+        except Exception as e:
+            self.assertIn("Invalid kubelet version skew input", str(e))
+
     def test_kube_get_higher_patch_version(self):
 
         self.list_node_result = self.single_node_result
@@ -1022,12 +1073,19 @@ class TestKubeOperator(base.TestCase):
         result = self.kube_operator.kube_get_higher_patch_version('v1.41.3', 'v1.45.1')
         assert result == ['v1.42.4', 'v1.43.1', 'v1.44.0', 'v1.45.1']
 
-    def test_kube_get_higher_patch_wrong_version(self):
+    def test_kube_get_higher_patch_version_check_same_minor(self):
+
+        self.list_node_result = self.single_node_result
+
+        result = self.kube_operator.kube_get_higher_patch_version('v1.42.0', 'v1.42.3')
+        assert result == ['v1.42.3']
+
+    def test_kube_get_higher_patch_version_check_nohigher(self):
 
         self.list_node_result = self.single_node_result
 
         result = self.kube_operator.kube_get_higher_patch_version('v1.43.1', 'v1.42.4')
-        assert result is None
+        assert result == []
 
     def test_kube_get_kubelet_versions_multi_node(self):
 
@@ -1054,7 +1112,7 @@ class TestKubeOperator(base.TestCase):
                           'v1.45.1': 'unavailable',
                           'v1.45.3': 'unavailable'}
 
-    def test_kube_get_version_states_active(self):
+    def active(self):
 
         self.list_namespaced_pod_result = self.cp_pods_result
         self.list_node_result = self.single_node_result
@@ -1067,10 +1125,10 @@ class TestKubeOperator(base.TestCase):
                           'v1.42.1': 'active',
                           'v1.42.3': 'available',
                           'v1.42.4': 'available',
-                          'v1.43.1': 'unavailable',
-                          'v1.44.0': 'unavailable',
-                          'v1.45.1': 'unavailable',
-                          'v1.45.3': 'unavailable'}
+                          'v1.43.1': 'active',
+                          'v1.44.0': 'active',
+                          'v1.45.1': 'active',
+                          'v1.45.3': 'active'}
 
     def test_kube_get_version_states_active_simplex(self):
 
@@ -1108,10 +1166,6 @@ class TestKubeOperator(base.TestCase):
                           'v1.45.3': 'unavailable'}
 
     def test_kube_get_version_states_ignore_unknown_version(self):
-        # As of today, we support multi-version k8s upgrade only on
-        # AIO-SX. So for AIO-SX, assertion may fail as all versions
-        # higher than active version can be "available". For AIO-DX
-        # assertion will not fail.
         tsc.system_mode = constants.SYSTEM_MODE_DUPLEX
         self.list_namespaced_pod_result = self.cp_pods_result
         self.cp_pods_result['kube-controller-manager-test-node-1'].items[0].\
@@ -1126,10 +1180,10 @@ class TestKubeOperator(base.TestCase):
                           'v1.42.1': 'active',
                           'v1.42.3': 'available',
                           'v1.42.4': 'available',
-                          'v1.43.1': 'unavailable',
-                          'v1.44.0': 'unavailable',
-                          'v1.45.1': 'unavailable',
-                          'v1.45.3': 'unavailable'}
+                          'v1.43.1': 'available',
+                          'v1.44.0': 'available',
+                          'v1.45.1': 'available',
+                          'v1.45.3': 'available'}
 
     def test_kube_get_kubernetes_version(self):
 
@@ -1413,6 +1467,491 @@ class TestKubeOperator(base.TestCase):
             Exception,
             self.kube_operator.kube_patch_clusterrolebinding,
         )
+
+    def test_get_all_supported_k8s_versions_success(self):
+        """Test successful execution of method get_all_supported_k8s_versions()
+        """
+        expected_versions = ['fake_version1', 'fake_version2']
+        mock_os_listdir = mock.MagicMock()
+        p = mock.patch('os.listdir', mock_os_listdir)
+        p.start().return_value = expected_versions
+        self.addCleanup(p.stop)
+
+        actual_versions = kube.get_all_supported_k8s_versions()
+
+        self.assertEqual(expected_versions, actual_versions)
+        mock_os_listdir.assert_called_once()
+
+    def test_get_all_supported_k8s_versions_failure(self):
+        """Test failure of method get_all_supported_k8s_versions()
+        """
+        mock_os_listdir = mock.MagicMock()
+        p = mock.patch('os.listdir', mock_os_listdir)
+        p.start().side_effect = Exception("Fake error")
+        self.addCleanup(p.stop)
+
+        self.assertRaises(exception.SysinvException, kube.get_all_supported_k8s_versions)
+        mock_os_listdir.assert_called_once()
+
+    def test_get_k8s_images_success(self):
+        """Test successful execution of method get_k8s_images()
+        """
+        fake_output = 'fake_registry1/fake_image1:fake_tag1\nfake_registry2/fake_image2:fake_tag2\n'
+        expected_result = {'fake_image1': 'fake_registry1/fake_image1:fake_tag1',
+                           'fake_image2': 'fake_registry2/fake_image2:fake_tag2'}
+
+        mock_utils_execute = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.execute', mock_utils_execute)
+        p.start().return_value = (fake_output, None)
+        self.addCleanup(p.stop)
+
+        actual_result = kube.get_k8s_images('fake_version')
+
+        self.assertEqual(expected_result, actual_result)
+        mock_utils_execute.assert_called_once()
+
+    def test_get_k8s_images_failure(self):
+        """Test failure of method get_k8s_images()
+        """
+        mock_utils_execute = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.execute', mock_utils_execute)
+        p.start().side_effect = Exception("Fake error")
+        self.addCleanup(p.stop)
+
+        self.assertRaises(exception.SysinvException,
+                          kube.get_k8s_images,
+                          'fake_version')
+        mock_utils_execute.assert_called_once()
+
+    def test_get_k8s_images_for_all_versions(self):
+        """Test successful execution of method get_k8s_images_for_all_versions()
+        """
+        fake_versions = ['fake_version1', 'fake_version2']
+        fake_images = {'fake_image1': 'fake_registry1/fake_image1:fake_tag1',
+                           'fake_image2': 'fake_registry2/fake_image2:fake_tag2'}
+        expected_result = {
+            'fake_version1': {'fake_image1': 'fake_registry1/fake_image1:fake_tag1',
+                              'fake_image2': 'fake_registry2/fake_image2:fake_tag2'},
+            'fake_version2': {'fake_image1': 'fake_registry1/fake_image1:fake_tag1',
+                              'fake_image2': 'fake_registry2/fake_image2:fake_tag2'},
+        }
+
+        mock_get_all_supported_k8s_versions = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.get_all_supported_k8s_versions',
+                       mock_get_all_supported_k8s_versions)
+        p.start().return_value = fake_versions
+        self.addCleanup(p.stop)
+
+        mock_get_k8s_images = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.get_k8s_images', mock_get_k8s_images)
+        p.start().return_value = fake_images
+        self.addCleanup(p.stop)
+
+        actual_result = kube.get_k8s_images_for_all_versions()
+
+        self.assertEqual(expected_result, actual_result)
+        mock_get_all_supported_k8s_versions.assert_called_once()
+        self.assertEqual(mock_get_k8s_images.call_count, 2)
+        mock_get_k8s_images.assert_called()
+
+    def test_get_k8s_images_for_all_versions_failure(self):
+        """Test failure of method get_k8s_images_for_all_versions()
+        """
+        fake_versions = ['fake_version1', 'fake_version2']
+
+        mock_get_all_supported_k8s_versions = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.get_all_supported_k8s_versions',
+                       mock_get_all_supported_k8s_versions)
+        p.start().return_value = fake_versions
+        self.addCleanup(p.stop)
+
+        mock_get_k8s_images = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.get_k8s_images', mock_get_k8s_images)
+        p.start().side_effect = Exception("Fake error")
+        self.addCleanup(p.stop)
+
+        self.assertRaises(exception.SysinvException, kube.get_k8s_images_for_all_versions)
+        mock_get_all_supported_k8s_versions.assert_called_once()
+        mock_get_k8s_images.assert_called()
+
+    def test_disable_kubelet_garbage_collection_success(self):
+        """Test successful execution of method disable_kubelet_garbage_collection()
+        """
+        expected_config_update = \
+                'KUBELET_KUBEADM_ARGS="--image-gc-high-threshold 100 --fake-flag=fake_value"\n'
+
+        mock_file_open = mock.mock_open(read_data='KUBELET_KUBEADM_ARGS="--fake-flag=fake_value"\n')
+        p = mock.patch('builtins.open', mock_file_open)
+        p.start()
+        self.addCleanup(p.stop)
+
+        kube.disable_kubelet_garbage_collection()
+
+        mock_file_open.return_value.write.assert_called_with(expected_config_update)
+        self.assertEqual(mock_file_open.call_count, 2)
+
+    def test_disable_kubelet_garbage_collection_success_with_no_prior_config(self):
+        """Test successful execution of method disable_kubelet_garbage_collection() with no prior
+           config flags
+        """
+        expected_config_update = \
+                'KUBELET_KUBEADM_ARGS="--image-gc-high-threshold 100 "\n'
+
+        mock_file_open = mock.mock_open(read_data='KUBELET_KUBEADM_ARGS=""\n')
+        p = mock.patch('builtins.open', mock_file_open)
+        p.start()
+        self.addCleanup(p.stop)
+
+        kube.disable_kubelet_garbage_collection()
+
+        mock_file_open.return_value.write.assert_called_with(expected_config_update)
+        self.assertEqual(mock_file_open.call_count, 2)
+
+    def test_disable_kubelet_garbage_collection_failure(self):
+        """Test failure of method disable_kubelet_garbage_collection()
+        """
+        mock_file_open = mock.mock_open()
+        p = mock.patch('builtins.open', mock_file_open)
+        p.start().return_value.read.side_effect = Exception("Fake error")
+        self.addCleanup(p.stop)
+
+        self.assertRaises(exception.SysinvException, kube.disable_kubelet_garbage_collection)
+        mock_file_open.return_value.write.assert_not_called()
+
+    def test_enable_kubelet_garbage_collection_success(self):
+        """Test successful execution of method enable_kubelet_garbage_collection()
+        """
+        expected_config_update = \
+                'KUBELET_KUBEADM_ARGS="--fake-flag=fake_value"\n'
+
+        mock_file_open = mock.mock_open(
+            read_data='KUBELET_KUBEADM_ARGS="--image-gc-high-threshold 100 --fake-flag=fake_value"\n')  # pylint: disable=line-too-long # noqa: E501
+        p = mock.patch('builtins.open', mock_file_open)
+        p.start()
+        self.addCleanup(p.stop)
+
+        kube.enable_kubelet_garbage_collection()
+
+        mock_file_open.return_value.write.assert_called_with(expected_config_update)
+        self.assertEqual(mock_file_open.call_count, 2)
+
+    def test_enable_kubelet_garbage_collection_failure(self):
+        """Test failure of method enable_kubelet_garbage_collection()
+        """
+        mock_file_open = mock.mock_open()
+        p = mock.patch('builtins.open', mock_file_open)
+        p.start().return_value.read.side_effect = Exception("Fake error")
+        self.addCleanup(p.stop)
+
+        self.assertRaises(exception.SysinvException, kube.enable_kubelet_garbage_collection)
+        mock_file_open.return_value.write.assert_not_called()
+
+    def test_kubectl_apply_success_integer_timeout(self):
+        """Test kubectl apply successful execution: integer timeout
+        """
+        fake_manifest = "fake manifest"
+        fake_timeout = 150
+        cmd = ["kubectl", f"--kubeconfig={kube.KUBERNETES_ADMIN_CONF}", "apply",
+               "-f", fake_manifest, f"--request-timeout={fake_timeout}s"]
+
+        mock_utils_execute = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.execute', mock_utils_execute)
+        p.start()
+        self.addCleanup(p.stop)
+
+        kube.kubectl_apply(fake_manifest, fake_timeout)
+
+        mock_utils_execute.assert_called_once_with(
+            *cmd, attempts=5, delay_on_retry=True, check_exit_code=0)
+
+    def test_kubectl_apply_success_float_timeout(self):
+        """Test kubectl apply successful execution: float timeout
+        """
+        fake_manifest = "fake manifest"
+        fake_timeout = 150.49345
+        cmd = ["kubectl", f"--kubeconfig={kube.KUBERNETES_ADMIN_CONF}", "apply",
+               "-f", fake_manifest, f"--request-timeout={fake_timeout}s"]
+
+        mock_utils_execute = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.execute', mock_utils_execute)
+        p.start()
+        self.addCleanup(p.stop)
+
+        kube.kubectl_apply(fake_manifest, fake_timeout)
+
+        mock_utils_execute.assert_called_once_with(
+            *cmd, attempts=5, delay_on_retry=True, check_exit_code=0)
+
+    def test_kubectl_apply_success_string_timeout(self):
+        """Test kubectl apply successful execution: valid string input for timeout
+        """
+        fake_manifest = "fake manifest"
+        fake_timeout = '80'
+        cmd = ["kubectl", f"--kubeconfig={kube.KUBERNETES_ADMIN_CONF}", "apply",
+               "-f", fake_manifest, f"--request-timeout={fake_timeout}s"]
+
+        mock_utils_execute = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.execute', mock_utils_execute)
+        p.start()
+        self.addCleanup(p.stop)
+
+        kube.kubectl_apply(fake_manifest, fake_timeout)
+
+        mock_utils_execute.assert_called_once_with(
+            *cmd, attempts=5, delay_on_retry=True, check_exit_code=0)
+
+    def test_kubectl_apply_success_bool_timeout(self):
+        """Test kubectl apply successful execution: bool timeout (invalid input)
+        """
+        fake_manifest = "fake manifest"
+        fake_timeout = True
+        cmd = ["kubectl", f"--kubeconfig={kube.KUBERNETES_ADMIN_CONF}", "apply",
+               "-f", fake_manifest, "--request-timeout=60s"]
+
+        mock_utils_execute = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.execute', mock_utils_execute)
+        p.start()
+        self.addCleanup(p.stop)
+
+        kube.kubectl_apply(fake_manifest, fake_timeout)
+
+        mock_utils_execute.assert_called_once_with(
+            *cmd, attempts=5, delay_on_retry=True, check_exit_code=0)
+
+    def test_kubectl_apply_success_random_invalid_string(self):
+        """Test kubectl apply successful execution: random string (invalid input)
+        """
+        fake_manifest = "fake manifest"
+        fake_timeout = "fake invalid string"
+        cmd = ["kubectl", f"--kubeconfig={kube.KUBERNETES_ADMIN_CONF}", "apply",
+               "-f", fake_manifest, "--request-timeout=60s"]
+
+        mock_utils_execute = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.execute', mock_utils_execute)
+        p.start()
+        self.addCleanup(p.stop)
+
+        kube.kubectl_apply(fake_manifest, fake_timeout)
+
+        mock_utils_execute.assert_called_once_with(
+            *cmd, attempts=5, delay_on_retry=True, check_exit_code=0)
+
+    def test_kubectl_apply_failure(self):
+        """Test kubectl apply failure
+        """
+        fake_manifest = "fake manifest"
+        fake_timeout = 150
+        cmd = ["kubectl", f"--kubeconfig={kube.KUBERNETES_ADMIN_CONF}", "apply",
+               "-f", fake_manifest, f"--request-timeout={fake_timeout}s"]
+
+        mock_utils_execute = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.execute', mock_utils_execute)
+        p.start().side_effect = Exception("fake error")
+        self.addCleanup(p.stop)
+
+        self.assertRaises(exception.SysinvException,
+                          kube.kubectl_apply,
+                          fake_manifest,
+                          fake_timeout)
+
+        mock_utils_execute.assert_called_once_with(
+            *cmd, attempts=5, delay_on_retry=True, check_exit_code=0)
+
+    def test_kubectl_apply_failure_command_timeout(self):
+        """Test kubectl apply failure
+        """
+        fake_manifest = "fake manifest"
+        fake_timeout = 150
+        cmd = ["kubectl", f"--kubeconfig={kube.KUBERNETES_ADMIN_CONF}", "apply",
+               "-f", fake_manifest, f"--request-timeout={fake_timeout}s"]
+
+        mock_utils_execute = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.execute', mock_utils_execute)
+        p.start().side_effect = subprocess.TimeoutExpired(cmd, fake_timeout)
+        self.addCleanup(p.stop)
+
+        self.assertRaises(exception.SysinvException,
+                          kube.kubectl_apply,
+                          fake_manifest,
+                          fake_timeout)
+
+        mock_utils_execute.assert_called_once_with(
+            *cmd, attempts=5, delay_on_retry=True, check_exit_code=0)
+
+    def test_kube_patch_service_account_success(self):
+        """Test successful execution of kube_patch_service_account
+        """
+        mock_patch_namespaced_service_account = mock.MagicMock()
+        p = mock.patch('kubernetes.client.CoreV1Api.patch_namespaced_service_account',
+                        mock_patch_namespaced_service_account)
+        p.start()
+        self.addCleanup(p.stop)
+
+        fake_service_account_name = "fake_name"
+        fake_namespace_name = "fake_namespace"
+        fake_body = {"fake_key": "fake_value"}
+
+        self.kube_operator.kube_patch_service_account(fake_service_account_name,
+                                                      fake_namespace_name,
+                                                      fake_body)
+        mock_patch_namespaced_service_account.assert_called_once_with(fake_service_account_name,
+                                                                      fake_namespace_name,
+                                                                      fake_body)
+
+    def test_kube_patch_service_account_exception(self):
+        """Test failed execution of kube_patch_service_account
+        """
+        mock_patch_namespaced_service_account = mock.MagicMock()
+        p = mock.patch('kubernetes.client.CoreV1Api.patch_namespaced_service_account',
+                        mock_patch_namespaced_service_account)
+        p.start().side_effect = Exception("Fake error")
+        self.addCleanup(p.stop)
+
+        fake_service_account_name = "fake_name"
+        fake_namespace_name = "fake_namespace"
+        fake_body = {"fake_key": "fake_value"}
+
+        self.assertRaises(Exception,  # noqa: H202
+                          self.kube_operator.kube_patch_service_account,
+                          fake_service_account_name,
+                          fake_namespace_name,
+                          fake_body)
+        mock_patch_namespaced_service_account.assert_called_once_with(fake_service_account_name,
+                                                                      fake_namespace_name,
+                                                                      fake_body)
+
+    def test_kube_patch_deployment_success(self):
+        """Test successful execution of kube_patch_deployment
+        """
+        mock_patch_namespaced_deployment = mock.MagicMock()
+        p = mock.patch('kubernetes.client.AppsV1Api.patch_namespaced_deployment',
+                        mock_patch_namespaced_deployment)
+        p.start()
+        self.addCleanup(p.stop)
+
+        fake_deployment_name = "fake_name"
+        fake_namespace_name = "fake_namespace"
+        fake_body = {"fake_key": "fake_value"}
+
+        self.kube_operator.kube_patch_deployment(fake_deployment_name,
+                                                 fake_namespace_name,
+                                                 fake_body)
+        mock_patch_namespaced_deployment.assert_called_once_with(fake_deployment_name,
+                                                                 fake_namespace_name,
+                                                                 fake_body)
+
+    def test_kube_patch_deployment_exception(self):
+        """Test failed execution of kube_patch_service_account
+        """
+        mock_patch_namespaced_deployment = mock.MagicMock()
+        p = mock.patch('kubernetes.client.AppsV1Api.patch_namespaced_deployment',
+                        mock_patch_namespaced_deployment)
+        p.start().side_effect = Exception("Fake error")
+        self.addCleanup(p.stop)
+
+        fake_deployment_name = "fake_name"
+        fake_namespace_name = "fake_namespace"
+        fake_body = {"fake_key": "fake_value"}
+
+        self.assertRaises(Exception,  # noqa: H202
+                          self.kube_operator.kube_patch_deployment,
+                          fake_deployment_name,
+                          fake_namespace_name,
+                          fake_body)
+        mock_patch_namespaced_deployment.assert_called_once_with(fake_deployment_name,
+                                                                      fake_namespace_name,
+                                                                      fake_body)
+
+    def test_kube_patch_daemonset_success(self):
+        """Test successful execution of kube_patch_daemonset
+        """
+        mock_patch_namespaced_daemonset = mock.MagicMock()
+        p = mock.patch('kubernetes.client.AppsV1Api.patch_namespaced_daemon_set',
+                        mock_patch_namespaced_daemonset)
+        p.start()
+        self.addCleanup(p.stop)
+
+        fake_deployment_name = "fake_name"
+        fake_namespace_name = "fake_namespace"
+        fake_body = {"fake_key": "fake_value"}
+
+        self.kube_operator.kube_patch_daemonset(fake_deployment_name,
+                                                fake_namespace_name,
+                                                fake_body)
+        mock_patch_namespaced_daemonset.assert_called_once_with(fake_deployment_name,
+                                                                fake_namespace_name,
+                                                                fake_body)
+
+    def test_kube_patch_daemonset_exception(self):
+        """Test failed execution of kube_patch_daemonset
+        """
+        mock_patch_namespaced_daemonset = mock.MagicMock()
+        p = mock.patch('kubernetes.client.AppsV1Api.patch_namespaced_daemon_set',
+                        mock_patch_namespaced_daemonset)
+        p.start().side_effect = Exception("Fake error")
+        self.addCleanup(p.stop)
+
+        fake_deployment_name = "fake_name"
+        fake_namespace_name = "fake_namespace"
+        fake_body = {"fake_key": "fake_value"}
+
+        self.assertRaises(Exception,  # noqa: H202
+                          self.kube_operator.kube_patch_daemonset,
+                          fake_deployment_name,
+                          fake_namespace_name,
+                          fake_body)
+        mock_patch_namespaced_daemonset.assert_called_once_with(fake_deployment_name,
+                                                                fake_namespace_name,
+                                                                fake_body)
+
+    def test_kube_get_all_configmaps_success(self):
+        """Test successful execution of kube_get_all_configmaps
+        """
+        configmap1 = kubernetes.client.V1ConfigMap(
+                        kind="ConfigMap",
+                        metadata=kubernetes.client.V1ObjectMeta(
+                            name='fake_name',
+                            namespace='fake_namespace',
+                            resource_version='1614'
+                        ),
+                    )
+
+        configmap2 = kubernetes.client.V1ConfigMap(
+                        kind="ConfigMap",
+                        metadata=kubernetes.client.V1ObjectMeta(
+                            name='fake_name2',
+                            namespace='fake_namespace',
+                            resource_version='1614'
+                        ),
+                    )
+
+        all_configmaps = kubernetes.client.V1ConfigMapList(kind='ConfigMapList',
+                                                           api_version='v1',
+                                                           metadata=kubernetes.client.V1ObjectMeta(
+                                                                resource_version='1614'),
+                                                           items=[configmap1, configmap2])
+
+        mock_list_config_map_for_all_namespaces = mock.MagicMock()
+        p = mock.patch('kubernetes.client.CoreV1Api.list_config_map_for_all_namespaces',
+                        mock_list_config_map_for_all_namespaces)
+        p.start().return_value = all_configmaps
+        self.addCleanup(p.stop)
+
+        result = self.kube_operator.kube_get_all_configmaps()
+        self.assertEqual(all_configmaps.items, result)
+        mock_list_config_map_for_all_namespaces.assert_called_once()
+
+    def test_kube_get_all_configmaps_exception(self):
+        """Test failed execution of kube_get_all_configmaps
+        """
+        mock_list_config_map_for_all_namespaces = mock.MagicMock()
+        p = mock.patch('kubernetes.client.CoreV1Api.list_config_map_for_all_namespaces',
+                        mock_list_config_map_for_all_namespaces)
+        p.start().side_effect = Exception("Fake error")
+        self.addCleanup(p.stop)
+
+        self.assertRaises(Exception, self.kube_operator.kube_get_all_configmaps)  # noqa: H202
+        mock_list_config_map_for_all_namespaces.assert_called_once()
 
 
 class TestKubernetesUtilities(base.TestCase):

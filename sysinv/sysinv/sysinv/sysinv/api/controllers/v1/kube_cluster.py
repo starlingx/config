@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2021-2024 Wind River Systems, Inc.
+# Copyright (c) 2021-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -97,14 +97,20 @@ class KubeClusterController(rest.RestController):
 
         # Retrieve the default kubernetes cluster configuration
         cluster_config = self._kube_operator.kube_get_kubernetes_config()
-        cluster_ca_cert = utils.get_file_content(cluster_config.ssl_ca_cert)
         admin_client_cert = utils.get_file_content(cluster_config.cert_file)
         admin_client_key = utils.get_file_content(cluster_config.key_file)
+
+        # External requests go through haproxy, which uses REST API/GUI cert.
+        # cluster_ca_cert then needs to be the RCA certificate that anchors it.
+        _, _, cluster_ca_cert = utils.\
+            get_certificate_from_secret(constants.RESTAPI_CERT_SECRET_NAME,
+                                        constants.CERT_NAMESPACE_PLATFORM_CERTS)
 
         # Build public endpoint from private endpoint
         endpoint_parsed = urlparse(cluster_config.host)
         endpoint_host = utils.format_url_address(self._get_oam_address())
-        endpoint_netloc = "{}:{}".format(endpoint_host, endpoint_parsed.port)
+        endpoint_netloc = "{}:{}".format(endpoint_host,
+                                         constants.KUBE_APISERVER_EXTERNAL_PORT)
         cluster_api_endpoint = endpoint_parsed._replace(
             netloc=endpoint_netloc).geturl()
 

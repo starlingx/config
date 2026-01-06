@@ -1,4 +1,4 @@
-# Copyright (c) 2021-2022 Wind River Systems, Inc.
+# Copyright (c) 2021-2022, 2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -91,6 +91,11 @@ class TestCreatePtpInstance(BasePtpInstanceTestCase):
             status_code=http_client.CONFLICT,
             error_message=error_message)
 
+    def test_create_ptp_instance_gnss_monitor_ok(self):
+        self._create_ptp_instance_success(
+            "fake-instance-gnss-monitor", constants.PTP_INSTANCE_TYPE_GNSS_MONITOR
+        )
+
 
 class TestHostPtpInstance(BasePtpInstanceTestCase):
     def setUp(self):
@@ -140,6 +145,57 @@ class TestHostPtpInstance(BasePtpInstanceTestCase):
         self.assertEqual(response.content_type, 'application/json')
         self.assertEqual(response.status_code, http_client.OK)
 
+    def _assign_host_ptp_instance_gnss_monitor_success(self):
+        ptp_instance = dbutils.create_test_ptp_instance(
+            name="test-instance", service=constants.PTP_INSTANCE_TYPE_GNSS_MONITOR
+        )
+        ptp_instance_id = ptp_instance["id"]
+        response = self.patch_json(
+            self.get_host_url(self.controller.uuid),
+            [
+                {
+                    "path": constants.PTP_INSTANCE_ARRAY_PATH,
+                    "value": ptp_instance_id,
+                    "op": constants.PTP_PATCH_OPERATION_ADD
+                }
+            ],
+            headers=self.API_HEADERS,
+        )
+        self.assertEqual(response.content_type, "application/json")
+        self.assertEqual(response.status_code, http_client.OK)
+
+        return ptp_instance_id
+
+    def test_host_ptp_instance_gnss_monitor_assign_ok(self):
+        self._assign_host_ptp_instance_gnss_monitor_success()
+
+    def test_host_second_ptp_instance_gnss_monitor_assign_failed(self):
+        self._assign_host_ptp_instance_gnss_monitor_success()
+
+        ptp_instance = dbutils.create_test_ptp_instance(
+            name="test-instance2", service=constants.PTP_INSTANCE_TYPE_GNSS_MONITOR
+        )
+        ptp_instance_id = ptp_instance["id"]
+        response = self.patch_json(
+            self.get_host_url(self.controller.uuid),
+            [
+                {
+                    "path": constants.PTP_INSTANCE_ARRAY_PATH,
+                    "value": ptp_instance_id,
+                    "op": constants.PTP_PATCH_OPERATION_ADD
+                }
+            ],
+            headers=self.API_HEADERS,
+            expect_errors=True,
+        )
+
+        self.assertEqual("application/json", response.content_type)
+        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+        self.assertIn(
+            "gnss-monitor ptp instance already exists on host",
+            response.json["error_message"]
+        )
+
 
 class TestGetPtpInstance(BasePtpInstanceTestCase):
     def setUp(self):
@@ -172,7 +228,8 @@ class TestListPtpInstance(BasePtpInstanceTestCase):
         services = [constants.PTP_INSTANCE_TYPE_PTP4L,
                     constants.PTP_INSTANCE_TYPE_PHC2SYS,
                     constants.PTP_INSTANCE_TYPE_SYNCE4L,
-                    constants.PTP_INSTANCE_TYPE_TS2PHC]
+                    constants.PTP_INSTANCE_TYPE_TS2PHC,
+                    constants.PTP_INSTANCE_TYPE_GNSS_MONITOR]
         for service in services:
             name = '%s-%s' % (name_prefix, service)
             instance = dbutils.create_test_ptp_instance(name=name,
@@ -248,24 +305,25 @@ class TestDeletePtpInstance(BasePtpInstanceTestCase):
         self.assertIn('still associated with host',
                       response.json['error_message'])
 
-    def test_delete_ptp_instance_with_parameters_failed(self):
+    def test_delete_ptp_instance_with_parameters_ok(self):
         response = self.patch_json(
             self.get_single_url(self.uuid),
             [{'path': constants.PTP_PARAMETER_ARRAY_PATH,
               'value': 'param0=value0',
               'op': constants.PTP_PATCH_OPERATION_ADD}],
             headers=self.API_HEADERS)
-        self.assertEqual(response.content_type, 'application/json')
         self.assertEqual(response.status_code, http_client.OK)
 
         response = self.delete(self.get_single_url(self.uuid),
-                               headers=self.API_HEADERS, expect_errors=True)
-        self.assertEqual('application/json', response.content_type)
-        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
-        self.assertIn('still associated with PTP parameter',
-                      response.json['error_message'])
+                               headers=self.API_HEADERS, expect_errors=False)
+        self.assertEqual(response.status_code, http_client.NO_CONTENT)
+        # Verify instance was removed
+        response = self.get_json(self.get_single_url(self.uuid), expect_errors=True)
+        error_message = 'No PTP instance with id %s found' % self.uuid
+        self.assertEqual(response.status_code, http_client.NOT_FOUND)
+        self.assertIn(error_message, response.json['error_message'])
 
-    def test_delete_ptp_instance_with_interfaces_failed(self):
+    def test_delete_ptp_instance_with_interfaces_ok(self):
         ptp_interface = dbutils.create_test_ptp_interface(
             name='test',
             ptp_instance_id=self.ptp_instance['id'],
@@ -274,8 +332,10 @@ class TestDeletePtpInstance(BasePtpInstanceTestCase):
                          ptp_interface['ptp_instance_id'])
 
         response = self.delete(self.get_single_url(self.uuid),
-                               headers=self.API_HEADERS, expect_errors=True)
-        self.assertEqual('application/json', response.content_type)
-        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
-        self.assertIn('still associated with PTP interface',
-                      response.json['error_message'])
+                               headers=self.API_HEADERS, expect_errors=False)
+        self.assertEqual(response.status_code, http_client.NO_CONTENT)
+        # Verify instance was removed
+        response = self.get_json(self.get_single_url(self.uuid), expect_errors=True)
+        error_message = 'No PTP instance with id %s found' % self.uuid
+        self.assertEqual(response.status_code, http_client.NOT_FOUND)
+        self.assertIn(error_message, response.json['error_message'])

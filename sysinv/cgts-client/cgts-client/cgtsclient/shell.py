@@ -10,7 +10,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2023 Wind River Systems, Inc.
+# Copyright (c) 2013-2025 Wind River Systems, Inc.
 #
 
 
@@ -28,15 +28,21 @@ import cgtsclient
 from cgtsclient import client as cgclient
 from cgtsclient.common import utils
 from cgtsclient import exc
+from datetime import datetime
+from datetime import timedelta
 
 import os
 
 
 class CgtsShell(object):
 
+    # Key name for store cache data
+    CACHE_KEY = 'cgtsclient:session'
+
     def __init__(self):
         self.subcommands = None
         self.parser = None
+        self.keyring = False
 
     def get_base_parser(self):
         parser = argparse.ArgumentParser(
@@ -206,6 +212,16 @@ class CgtsShell(object):
                             default=utils.env('OS_PROJECT_DOMAIN_NAME'),
                             help='Defaults to env[OS_PROJECT_DOMAIN_NAME].')
 
+        parser.add_argument('--refresh-cache',
+                            action='store_true',
+                            default=False,
+                            help='Forces the update of the cached settings')
+
+        parser.add_argument('--no-cache',
+                            action='store_true',
+                            default=utils.env('CGTSCLIENT_NO_CACHE', default=False),
+                            help='Disables cache feature (Env: CGTSCLIENT_NO_CACHE)')
+
         return parser
 
     def get_subcommand_parser(self, version):
@@ -267,42 +283,85 @@ class CgtsShell(object):
             return 0
 
         if not (args.os_auth_token and args.system_url):
-            if not args.os_username:
-                raise exc.CommandError("You must provide a username via "
-                                       "either --os-username or via "
-                                       "env[OS_USERNAME]")
 
-            if not args.os_password:
-                # priviledge check (only allow Keyring retrieval if we are root)
-                if os.geteuid() == 0:
-                    import keyring
-                    args.os_password = keyring.get_password('CGCS', args.os_username)
-                else:
-                    raise exc.CommandError("You must provide a password via "
-                                           "either --os-password or via "
-                                           "env[OS_PASSWORD]")
+            os_auth_token = None
+            system_url = None
 
-            if not (args.os_project_id or args.os_project_name):
-                raise exc.CommandError("You must provide a project name via "
-                                       "either --os-project-name or via "
-                                       "env[OS_PROJECT_NAME]")
+            if not (args.refresh_cache or args.no_cache):
+                os_auth_token, system_url = utils.load_auth_session_keyring_by_name(
+                    self._cache_key(args.os_username))
 
-            if not args.os_auth_url:
-                raise exc.CommandError("You must provide an auth url via "
-                                       "either --os-auth-url or via "
-                                       "env[OS_AUTH_URL]")
+                if os_auth_token and system_url:
+                    self.keyring = True
 
-            if not args.os_region_name:
-                raise exc.CommandError("You must provide an region name via "
-                                       "either --os-region-name or via "
-                                       "env[OS_REGION_NAME]")
+            # Reuses the last authorization token and service endpoint obtained from
+            # keystone when available in the cache (keyring)
+            if os_auth_token and system_url:
+                args.os_auth_token = os_auth_token
+                args.system_url = system_url
+
+            else:
+                if not args.os_username:
+                    raise exc.CommandError("You must provide a username via "
+                                           "either --os-username or via "
+                                           "env[OS_USERNAME]")
+
+                if not args.os_password:
+                    # priviledge check (only allow Keyring retrieval if we are root)
+                    if os.geteuid() == 0:
+                        import keyring
+                        args.os_password = keyring.get_password('CGCS', args.os_username)
+                    else:
+                        raise exc.CommandError("You must provide a password via "
+                                               "either --os-password or via "
+                                               "env[OS_PASSWORD]")
+
+                if not (args.os_project_id or args.os_project_name):
+                    raise exc.CommandError("You must provide a project name via "
+                                           "either --os-project-name or via "
+                                           "env[OS_PROJECT_NAME]")
+
+                if not args.os_auth_url:
+                    raise exc.CommandError("You must provide an auth url via "
+                                           "either --os-auth-url or via "
+                                           "env[OS_AUTH_URL]")
+
+                if not args.os_region_name:
+                    raise exc.CommandError("You must provide an region name via "
+                                           "either --os-region-name or via "
+                                           "env[OS_REGION_NAME]")
 
         client = cgclient.get_client(api_version, **(args.__dict__))
+
+        if not args.no_cache and isinstance(client.http_client,
+                                            cgtsclient.common.http.SessionClient) \
+           and client.http_client.session.auth.auth_ref:
+
+            # Set the key timeout based on the token validity (in seconds)
+            expires_at = client.http_client.session.auth.auth_ref.expires
+            now = datetime.now().astimezone() + timedelta(seconds=10)
+            timeout = str(int((expires_at - now).total_seconds()))
+
+            utils.persist_auth_session_keyring(
+                self._cache_key(args.os_username),
+                client.http_client.session.get_token(),
+                client.http_client.endpoint_override,
+                timeout)
 
         try:
             args.func(client, args)
         except exc.Unauthorized:
-            raise exc.CommandError("Invalid Identity credentials.")
+            if not self.keyring:
+                raise exc.CommandError("Invalid Identity credentials.")
+            args.os_auth_token = None
+            args.system_url = None
+            self.keyring = False
+            utils.revoke_keyring_by_name(self._cache_key(args.os_username))
+            client = cgclient.get_client(api_version, **(args.__dict__))
+            try:
+                args.func(client, args)
+            except (exc.Unauthorized, exc.HTTPForbidden) as e:
+                raise e
         except exc.HTTPForbidden:
             raise exc.CommandError("Error: Forbidden")
 
@@ -331,6 +390,10 @@ class CgtsShell(object):
                                        args.command)
         else:
             self.parser.print_help()
+
+    def _cache_key(self, username: str) -> str:
+        """Define the name of the key used to store user credentials in the cache."""
+        return self.CACHE_KEY if not username else self.CACHE_KEY + ':' + username
 
 
 class HelpFormatter(argparse.HelpFormatter):

@@ -2,7 +2,7 @@
 # -*- encoding: utf-8 -*-
 #
 #
-# Copyright (c) 2013-2023 Wind River Systems, Inc.
+# Copyright (c) 2013-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -10,7 +10,7 @@
 """
 Tests for the API /ihosts/ methods.
 """
-
+import datetime
 import mock
 import requests
 import webtest.app
@@ -271,18 +271,6 @@ class TestPostFirstController(TestHost):
                           self.post_json, '/ihosts', ndict,
                           headers={'User-Agent': 'sysinv-test'})
 
-    def test_create_host_invalid_bm_password_length(self):
-        # Test creation of host with bm_password > 20 characters
-        longpassword = "this_is_a_really_long_paaaasssword"
-        ndict = dbutils.post_get_test_ihost(hostname='controller-0',
-                                            bm_ip='10.10.10.100',
-                                            bm_type=constants.HOST_BM_TYPE_IPMI,
-                                            bm_username="root")
-        ndict['bm_password'] = longpassword
-        self.assertRaises(webtest.app.AppError,
-                          self.post_json, '/ihosts', ndict,
-                          headers={'User-Agent': 'sysinv-test'})
-
     def test_create_host_invalid_bm_password_whitespace(self):
         # Test creation of host with bm_password with whitespace
         codeinjection = "password; reboot&"
@@ -353,6 +341,10 @@ class TestPostControllerMixin(object):
             availability=constants.AVAILABILITY_ONLINE)
 
         self._create_test_host_platform_interface(c1)
+
+        dbutils.create_test_pv(lvm_vg_name='cgts-vg',
+                               forihostid=c1.id,
+                               pv_state='provisioned')
 
         # Unlock
         _ = self._patch_host(c1['hostname'],
@@ -594,6 +586,44 @@ class TestPostKubeUpgrades(TestHost):
         self.assertEqual(result['state'],
                          kubernetes.KUBE_UPGRADING_FIRST_MASTER)
 
+    def test_kube_upgrade_control_plane_controller_0_skew_fail(self):
+        # Test upgrading kubernetes control plane on controller-0
+
+        # Create controller-0
+        self._create_controller_0(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Create the upgrade
+        dbutils.create_test_kube_upgrade(
+            from_version='v1.42.1',
+            to_version='v1.42.2',
+            state=kubernetes.KUBE_UPGRADED_STORAGE,
+        )
+
+        # Make the control plane upgrade fail, one node has large kubelet skew,
+        # e.g., 42 - 38 = 4 (>3 tolerance)
+        self.kube_get_kubelet_versions_result = {
+            'controller-0': 'v1.42.1',
+            'controller-1': 'v1.42.1',
+            'worker-0': 'v1.38.5'}
+
+        # Upgrade the control plane
+        body = {}
+        result = self.post_json(
+            '/ihosts/controller-0/kube_upgrade_control_plane',
+            body, headers={'User-Agent': 'sysinv-test'},
+            expect_errors=True)
+
+        # Verify the failure
+        self.assertEqual(result.content_type, 'application/json')
+        self.assertEqual(http_client.BAD_REQUEST, result.status_int)
+        self.assertTrue(result.json['error_message'])
+        self.assertRegex(result.json['error_message'],
+            r"Update kubelet on.*before updating control plane again")
+
     def test_kube_upgrade_control_plane_controller_0_after_failure(self):
         # Test upgrading kubernetes control plane on controller-0 after a
         # failure
@@ -709,6 +739,15 @@ class TestPostKubeUpgrades(TestHost):
             state=kubernetes.KUBE_UPGRADED_FIRST_MASTER,
         )
 
+        # Differentiate 'first' from 'second' controller by their
+        # versions. 'second' must have older version since we upgrade
+        # 'first' first. This is further complicated by K8S version skew
+        # policy since we can update controllers multiple times before
+        # updating kubelet.
+        self.kube_get_control_plane_versions_result = {
+            'controller-0': 'v1.42.2',
+            'controller-1': 'v1.42.1'}
+
         # Mark the first kube host upgrade as OK
         values = {'target_version': 'v1.42.2'}
         self.dbapi.kube_host_upgrade_update(1, values)
@@ -760,6 +799,16 @@ class TestPostKubeUpgrades(TestHost):
             state=kubernetes.KUBE_UPGRADING_SECOND_MASTER_FAILED,
         )
 
+        # Differentiate 'first' from 'second' controller by their
+        # versions. 'second' must have older version since we upgrade
+        # 'first' first. This is further complicated by K8S version skew
+        # policy since we can update controllers multiple times before
+        # updating kubelet.
+        self.kube_get_control_plane_versions_result = {
+            'controller-0': 'v1.42.2',
+            'controller-1': 'v1.42.1',
+            'worker-0': 'v1.42.1'}
+
         # Mark the first kube host upgrade as OK
         values = {'target_version': 'v1.42.2'}
         self.dbapi.kube_host_upgrade_update(1, values)
@@ -793,47 +842,6 @@ class TestPostKubeUpgrades(TestHost):
         self.assertEqual(result['state'],
                          kubernetes.KUBE_UPGRADING_SECOND_MASTER)
 
-    def test_kube_upgrade_control_plane_wrong_controller_after_failure(self):
-        # Test upgrading kubernetes control plane on the wrong controller
-        # after a failure
-
-        # Create controllers
-        self._create_controller_0(
-            invprovision=constants.PROVISIONED,
-            administrative=constants.ADMIN_UNLOCKED,
-            operational=constants.OPERATIONAL_ENABLED,
-            availability=constants.AVAILABILITY_ONLINE)
-        self._create_controller_1(
-            invprovision=constants.PROVISIONED,
-            administrative=constants.ADMIN_UNLOCKED,
-            operational=constants.OPERATIONAL_ENABLED,
-            availability=constants.AVAILABILITY_ONLINE)
-
-        # Create the upgrade
-        dbutils.create_test_kube_upgrade(
-            from_version='v1.42.1',
-            to_version='v1.42.2',
-            state=kubernetes.KUBE_UPGRADING_FIRST_MASTER_FAILED,
-        )
-
-        # Mark the first kube host upgrade as failed
-        values = {'target_version': 'v1.42.2',
-                  'status': kubernetes.KUBE_HOST_UPGRADING_CONTROL_PLANE_FAILED}
-        self.dbapi.kube_host_upgrade_update(1, values)
-
-        # Upgrade the second control plane
-        result = self.post_json(
-            '/ihosts/controller-1/kube_upgrade_control_plane',
-            {}, headers={'User-Agent': 'sysinv-test'},
-            expect_errors=True)
-
-        # Verify the failure
-        self.assertEqual(result.content_type, 'application/json')
-        self.assertEqual(http_client.BAD_REQUEST, result.status_int)
-        self.assertTrue(result.json['error_message'])
-        self.assertIn("The first control plane upgrade must be completed",
-                      result.json['error_message'])
-
     def test_kube_upgrade_control_plane_no_upgrade(self):
         # Test upgrading kubernetes control plane with no upgrade
 
@@ -857,7 +865,7 @@ class TestPostKubeUpgrades(TestHost):
         self.assertIn("upgrade is not in progress",
                       result.json['error_message'])
 
-    def test_kube_upgrade_control_plane_wrong_upgrade_state(self):
+    def test_kube_upgrade_control_plane_upgrade_not_required(self):
         # Test upgrading kubernetes control plane with wrong upgrade state
 
         # Create controller-0
@@ -874,7 +882,15 @@ class TestPostKubeUpgrades(TestHost):
             state=kubernetes.KUBE_UPGRADING_KUBELETS,
         )
 
+        # controller-0 version already at the target_version,
+        # and it has highest version so it was 'first'
+        self.kube_get_control_plane_versions_result = {
+            'controller-0': 'v1.42.2',
+            'controller-1': 'v1.42.1',
+            'worker-0': 'v1.42.1'}
+
         # Upgrade the control plane
+        # update second control-plane before updating first control plane again
         result = self.post_json(
             '/ihosts/controller-0/kube_upgrade_control_plane',
             {}, headers={'User-Agent': 'sysinv-test'},
@@ -884,7 +900,48 @@ class TestPostKubeUpgrades(TestHost):
         self.assertEqual(result.content_type, 'application/json')
         self.assertEqual(http_client.BAD_REQUEST, result.status_int)
         self.assertTrue(result.json['error_message'])
-        self.assertIn("The kubernetes upgrade is not in a valid state",
+        self.assertIn("The control plane is already running the target version",
+                      result.json['error_message'])
+
+    def test_kube_upgrade_control_plane_correct_order(self):
+        # Test upgrading kubernetes control planes in correct order
+
+        # Create controller-0
+        self._create_controller_0(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Create the upgrade
+        dbutils.create_test_kube_upgrade(
+            from_version='v1.42.1',
+            to_version='v1.42.2',
+            state=kubernetes.KUBE_UPGRADING_KUBELETS,
+        )
+
+        # Differentiate 'first' from 'second' controller by their
+        # versions. 'second' must have older version since we upgrade
+        # 'first' first. This is further complicated by K8S version skew
+        # policy since we can update controllers multiple times before
+        # updating kubelet.
+        self.kube_get_control_plane_versions_result = {
+            'controller-0': 'v1.41.2',
+            'controller-1': 'v1.41.1',
+            'worker-0': 'v1.41.1'}
+
+        # Upgrade the control plane
+        # update second control-plane before updating first control plane again
+        result = self.post_json(
+            '/ihosts/controller-0/kube_upgrade_control_plane',
+            {}, headers={'User-Agent': 'sysinv-test'},
+            expect_errors=True)
+
+        # Verify the failure
+        self.assertEqual(result.content_type, 'application/json')
+        self.assertEqual(http_client.BAD_REQUEST, result.status_int)
+        self.assertTrue(result.json['error_message'])
+        self.assertIn("Update second control-plane before updating first",
                       result.json['error_message'])
 
     def test_kube_upgrade_control_plane_wrong_personality(self):
@@ -1055,7 +1112,7 @@ class TestPostKubeUpgrades(TestHost):
         self.assertEqual(result.content_type, 'application/json')
         self.assertEqual(http_client.BAD_REQUEST, result.status_int)
         self.assertTrue(result.json['error_message'])
-        self.assertIn("The first control plane was already upgraded",
+        self.assertIn("The control plane was already upgraded",
                       result.json['error_message'])
 
     def test_kube_upgrade_kubelet_controller_0(self):
@@ -1170,6 +1227,11 @@ class TestPostKubeUpgrades(TestHost):
             to_version='v1.42.2',
             state=kubernetes.KUBE_UPGRADING_KUBELETS,
         )
+
+        # Indicate control-planes have been upgraded
+        self.kube_get_control_plane_versions_result = {
+            'controller-0': 'v1.42.2',
+            'controller-1': 'v1.42.2'}
 
         # Indicate kubelets on controllers have been upgraded
         self.kube_get_kubelet_versions_result = {
@@ -1402,6 +1464,11 @@ class TestPostKubeUpgrades(TestHost):
             state=kubernetes.KUBE_UPGRADING_KUBELETS,
         )
 
+        # Indicate control-planes have been upgraded
+        self.kube_get_control_plane_versions_result = {
+            'controller-0': 'v1.42.2',
+            'controller-1': 'v1.42.2'}
+
         # Indicate kubelets on controllers have not been upgraded
         self.kube_get_kubelet_versions_result = {
             'controller-0': 'v1.42.1',
@@ -1626,6 +1693,10 @@ class TestSimplexPostKubeUpgrades(TestHost):
             administrative=constants.ADMIN_UNLOCKED,
             operational=constants.OPERATIONAL_ENABLED,
             availability=constants.AVAILABILITY_DEGRADED)
+
+        dbutils.create_test_pv(lvm_vg_name='cgts-vg',
+                               forihostid=c0.id,
+                               pv_state='provisioned')
 
         # Create the upgrade
         kube_upgrade = dbutils.create_test_kube_upgrade(
@@ -2216,49 +2287,6 @@ class TestPatch(TestHost):
                           patch,
                           headers={'User-Agent': 'sysinv-test'})
 
-    def test_update_host_invalid_bm_password_length(self):
-        # Test updating a host with bm_password > 20 characters
-
-        c0_host = self._create_controller_0(
-            invprovision=constants.PROVISIONED,
-            administrative=constants.ADMIN_UNLOCKED,
-            operational=constants.OPERATIONAL_DISABLED,
-            availability=constants.AVAILABILITY_OFFLINE)
-        self._create_test_host_platform_interface(c0_host)
-
-        bm_ip = '10.10.10.100'
-        bm_username = "root"
-        bm_password = 'this_is_a_really_long_paaaasssword'
-        bm_type = constants.HOST_BM_TYPE_IPMI
-        patch = ([
-            {
-                'path': '/bm_type',
-                'value': bm_type,
-                'op': 'replace'
-            },
-            {
-                'path': '/bm_ip',
-                'value': bm_ip,
-                'op': 'replace'
-            },
-            {
-                'path': '/bm_username',
-                'value': bm_username,
-                'op': 'replace'
-            },
-            {
-                'path': '/bm_password',
-                'value': bm_password,
-                'op': 'replace'
-            }
-        ])
-        # Verify that the action was rejected
-        self.assertRaises(webtest.app.AppError,
-                          self.patch_json,
-                          f"/ihosts/{c0_host['hostname']}",
-                          patch,
-                          headers={'User-Agent': 'sysinv-test'})
-
     def test_update_host_invalid_bm_password_whitespace(self):
         # Test updating a host with bm_password with whitespace
 
@@ -2409,6 +2437,10 @@ class TestPatch(TestHost):
             availability=constants.AVAILABILITY_ONLINE)
         self._create_test_host_platform_interface(c0_host)
 
+        dbutils.create_test_pv(lvm_vg_name='cgts-vg',
+                               forihostid=c0_host.id,
+                               pv_state='provisioned')
+
         is_host_mock = mock.patch('sysinv.common.usm_service.is_host_next_to_be_deployed')
         is_host = is_host_mock.start()
         is_host.return_value = False
@@ -2452,6 +2484,10 @@ class TestPatch(TestHost):
             availability=constants.AVAILABILITY_OFFLINE)
         self._create_test_host_platform_interface(c0_host)
 
+        dbutils.create_test_pv(lvm_vg_name='cgts-vg',
+                               forihostid=c0_host.id,
+                               pv_state='provisioned')
+
         # Force unlock host
         response = self._patch_host_action(c0_host['hostname'],
                                            constants.FORCE_UNLOCK_ACTION,
@@ -2487,6 +2523,10 @@ class TestPatch(TestHost):
             availability=constants.AVAILABILITY_ONLINE)
         self._create_test_host_platform_interface(c0_host)
 
+        dbutils.create_test_pv(lvm_vg_name='cgts-vg',
+                               forihostid=c0_host.id,
+                               pv_state='provisioned')
+
         # Mock the is_host_next_to_be_deployed method
         is_host_mock = mock.patch('sysinv.common.usm_service.is_host_next_to_be_deployed')
         is_host = is_host_mock.start()
@@ -2515,6 +2555,10 @@ class TestPatch(TestHost):
             operational=constants.OPERATIONAL_ENABLED,
             availability=constants.AVAILABILITY_ONLINE,
             inv_state=None, clock_synchronization=constants.NTP)
+
+        dbutils.create_test_pv(lvm_vg_name='cgts-vg',
+                               forihostid=c0_host.id,
+                               pv_state='provisioned')
 
         # Unlock host
         response = self._patch_host_action(c0_host['hostname'],
@@ -2755,6 +2799,10 @@ class TestPatch(TestHost):
             availability=constants.AVAILABILITY_ONLINE)
         self._create_test_host_platform_interface(c0_host)
 
+        dbutils.create_test_pv(lvm_vg_name='cgts-vg',
+                               forihostid=c0_host.id,
+                               pv_state='provisioned')
+
         # Create a kube upgrade
         dbutils.create_test_kube_upgrade(
             from_version='v1.42.1',
@@ -2784,6 +2832,10 @@ class TestPatch(TestHost):
             operational=constants.OPERATIONAL_ENABLED,
             availability=constants.AVAILABILITY_ONLINE)
         self._create_test_host_platform_interface(c0_host)
+
+        dbutils.create_test_pv(lvm_vg_name='cgts-vg',
+                               forihostid=c0_host.id,
+                               pv_state='provisioned')
 
         # Create a kube upgrade
         dbutils.create_test_kube_upgrade(
@@ -2829,6 +2881,10 @@ class TestPatch(TestHost):
         self._create_test_host_platform_interface(w0_host)
         self._create_test_host_cpus(w0_host, platform=1, vswitch=2, application=12)
         self._create_test_host_addresses(w0_host.hostname)
+
+        dbutils.create_test_pv(lvm_vg_name='cgts-vg',
+                               forihostid=w0_host.id,
+                               pv_state='provisioned')
 
         is_host_mock = mock.patch('sysinv.common.usm_service.is_host_next_to_be_deployed')
         is_host = is_host_mock.start()
@@ -3033,17 +3089,24 @@ class TestPatch(TestHost):
             availability=constants.AVAILABILITY_ONLINE)
 
         # Create worker-0
+        kernel_config_time = datetime.datetime.now()
+        kernel_config_time_str = \
+            kernel_config_time.strftime(constants.KERNEL_CONFIG_STATUS_FORMAT)
         w0_host = self._create_worker(
             mgmt_ip='192.168.204.5',
             invprovision=constants.PROVISIONED,
             administrative=constants.ADMIN_LOCKED,
             operational=constants.OPERATIONAL_ENABLED,
             availability=constants.AVAILABILITY_ONLINE,
-            kernel_config_status=constants.KERNEL_CONFIG_STATUS_PENDING)
+            kernel_config_status=kernel_config_time_str)
 
         self._create_test_host_platform_interface(w0_host)
         self._create_test_host_cpus(w0_host, platform=1, vswitch=2, application=12)
         self._create_test_host_addresses(w0_host.hostname)
+
+        dbutils.create_test_pv(lvm_vg_name='cgts-vg',
+                               forihostid=w0_host.id,
+                               pv_state='provisioned')
 
         w0_hostname = w0_host['hostname']
 
@@ -3071,7 +3134,183 @@ class TestPatch(TestHost):
                       "kernel configuration in progress",
                       response.json['error_message'])
 
+    def test_worker_unlock_after_kernel_configuration_expired(self):
+        # Create controller-0
+        self._create_controller_0(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Create controller-1
+        self._create_controller_1(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Create worker-0
+        kernel_config_time = \
+            datetime.datetime.now() + constants.KERNEL_CONFIG_STATUS_EXPIRY
+        kernel_config_time_str = \
+            kernel_config_time.strftime(constants.KERNEL_CONFIG_STATUS_FORMAT)
+        w0_host = self._create_worker(
+            mgmt_ip='192.168.204.5',
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_LOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            kernel_config_status=kernel_config_time_str)
+
+        self._create_test_host_platform_interface(w0_host)
+        self._create_test_host_cpus(w0_host, platform=1, vswitch=2, application=12)
+        self._create_test_host_addresses(w0_host.hostname)
+
+        dbutils.create_test_pv(lvm_vg_name='cgts-vg',
+                               forihostid=w0_host.id,
+                               pv_state='provisioned')
+
+        w0_hostname = w0_host['hostname']
+
+        is_host_mock = mock.patch('sysinv.common.usm_service.is_host_next_to_be_deployed')
+        is_host = is_host_mock.start()
+        is_host.return_value = False
+        p = mock.patch('sysinv.common.usm_service.get_host_deploy')
+        get_host_deploy = p.start()
+        get_host_deploy.return_value = None
+        self.addCleanup(p.stop)
+
+        response = self._patch_host_action(
+            w0_hostname, constants.UNLOCK_ACTION,
+            'sysinv-test', expect_errors=True)
+
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
+
     def test_worker_force_unlock_during_kernel_configuration(self):
+        # Create controller-0
+        self._create_controller_0(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Create controller-1
+        self._create_controller_1(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Create worker-0
+        kernel_config_time = datetime.datetime.now()
+        kernel_config_time_str = \
+            kernel_config_time.strftime(constants.KERNEL_CONFIG_STATUS_FORMAT)
+        w0_host = self._create_worker(
+            mgmt_ip='192.168.204.5',
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_LOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            kernel_config_status=kernel_config_time_str)
+
+        dbutils.create_test_pv(lvm_vg_name='cgts-vg',
+                               forihostid=w0_host.id,
+                               pv_state='provisioned')
+
+        self._create_test_host_platform_interface(w0_host)
+        self._create_test_host_cpus(w0_host, platform=1, vswitch=2, application=12)
+        self._create_test_host_addresses(w0_host.hostname)
+
+        w0_hostname = w0_host['hostname']
+        response = self._patch_host_action(
+            w0_hostname, constants.FORCE_UNLOCK_ACTION,
+            'sysinv-test')
+
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
+
+    def test_worker_unlock_during_kernel_configuration_invalid_string(self):
+        """
+        Test that kernel_config_status won't block host-unlock if the string
+        is not in the correct datetime format
+        """
+        # Create controller-0
+        self._create_controller_0(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Create controller-1
+        self._create_controller_1(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Create worker-0
+        kernel_config_str = 'config_pending'
+        w0_host = self._create_worker(
+            mgmt_ip='192.168.204.5',
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_LOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            kernel_config_status=kernel_config_str)
+
+        dbutils.create_test_pv(lvm_vg_name='cgts-vg',
+                               forihostid=w0_host.id,
+                               pv_state='provisioned')
+
+        self._create_test_host_platform_interface(w0_host)
+        self._create_test_host_cpus(w0_host, platform=1, vswitch=2, application=12)
+        self._create_test_host_addresses(w0_host.hostname)
+
+        w0_hostname = w0_host['hostname']
+        response = self._patch_host_action(
+            w0_hostname, constants.UNLOCK_ACTION,
+            'sysinv-test')
+
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
+
+    def test_controller_unlock_while_grub_update_pending(self):
+        """
+        Test that a pending grub runtime manifest will block host-unlock
+        """
+        # Create controller-0
+        c0_host = self._create_controller_0(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_LOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+        self._create_test_host_platform_interface(c0_host)
+
+        dbutils.create_test_pv(lvm_vg_name='cgts-vg',
+                               forihostid=c0_host.id,
+                               pv_state='provisioned')
+
+        personalities = [constants.CONTROLLER]
+        classes = ['platform::compute::grub::runtime']
+        dbutils.create_test_runtime_config(personalities=personalities,
+                                           classes=classes,
+                                           host_uuids=[c0_host.uuid],
+                                           host_id=c0_host.id)
+
+        # Unlock host
+        response = self._patch_host_action(c0_host['hostname'],
+                                           constants.UNLOCK_ACTION,
+                                           'sysinv-test',
+                                           expect_errors=True)
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+        self.assertTrue(response.json['error_message'])
+
+    def test_worker_unlock_while_grub_update_pending(self):
+        """
+        Test that a pending grub runtime manifest will block host-unlock
+        """
         # Create controller-0
         self._create_controller_0(
             invprovision=constants.PROVISIONED,
@@ -3092,20 +3331,132 @@ class TestPatch(TestHost):
             invprovision=constants.PROVISIONED,
             administrative=constants.ADMIN_LOCKED,
             operational=constants.OPERATIONAL_ENABLED,
-            availability=constants.AVAILABILITY_ONLINE,
-            kernel_config_status=constants.KERNEL_CONFIG_STATUS_PENDING)
+            availability=constants.AVAILABILITY_ONLINE)
+
+        dbutils.create_test_pv(lvm_vg_name='cgts-vg',
+                               forihostid=w0_host.id,
+                               pv_state='provisioned')
+
+        self._create_test_host_platform_interface(w0_host)
+        self._create_test_host_addresses(w0_host.hostname)
+
+        personalities = [constants.WORKER]
+        classes = ['platform::compute::grub::runtime']
+        dbutils.create_test_runtime_config(personalities=personalities,
+                                           classes=classes,
+                                           host_uuids=[w0_host.uuid],
+                                           host_id=w0_host.id)
+
+        # Unlock host
+        response = self._patch_host_action(w0_host['hostname'],
+                                           constants.UNLOCK_ACTION,
+                                           'sysinv-test',
+                                           expect_errors=True)
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+        self.assertTrue(response.json['error_message'])
+
+    def test_storage_unlock_while_grub_update_pending(self):
+        # Note: Can't do storage host testcases yet because additional code
+        # is required to populate the storage (OSDs) for the host.
+        self.skipTest("Not yet implemented")
+
+    def test_controller_unlock_while_grub_update_pending_expires(self):
+        """
+        Test that a grub runtime manifest will not block host-unlock
+        if it has been applied already
+        """
+        # Create controller-0
+        c0_host = self._create_controller_0(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_LOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+        self._create_test_host_platform_interface(c0_host)
+
+        dbutils.create_test_pv(lvm_vg_name='cgts-vg',
+                               forihostid=c0_host.id,
+                               pv_state='provisioned')
+
+        personalities = [constants.CONTROLLER]
+        classes = ['platform::compute::grub::runtime']
+        rc = dbutils.create_test_runtime_config(personalities=personalities,
+                                                classes=classes,
+                                                host_uuids=[c0_host.uuid],
+                                                host_id=c0_host.id)
+
+        # update runtime config - simulates config applied
+        config_uuid = rc.get('config_uuid')
+        runtime_state = constants.RUNTIME_CONFIG_STATE_APPLIED
+        dbutils.update_test_runtime_config(config_uuid=config_uuid,
+                                           state=runtime_state,
+                                           host_id=c0_host.id)
+
+        response = self._patch_host_action(c0_host['hostname'],
+                                            constants.UNLOCK_ACTION,
+                                            'sysinv-test')
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
+
+    def test_worker_unlock_while_grub_update_pending_expires(self):
+        """
+        Test that a grub runtime manifest will not block host-unlock
+        if it has been applied already
+        """
+        # Create controller-0
+        self._create_controller_0(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Create controller-1
+        self._create_controller_1(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Create worker-0
+        w0_host = self._create_worker(
+            mgmt_ip='192.168.204.5',
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_LOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        dbutils.create_test_pv(lvm_vg_name='cgts-vg',
+                               forihostid=w0_host.id,
+                               pv_state='provisioned')
 
         self._create_test_host_platform_interface(w0_host)
         self._create_test_host_cpus(w0_host, platform=1, vswitch=2, application=12)
         self._create_test_host_addresses(w0_host.hostname)
 
-        w0_hostname = w0_host['hostname']
-        response = self._patch_host_action(
-            w0_hostname, constants.FORCE_UNLOCK_ACTION,
-            'sysinv-test')
+        personalities = [constants.WORKER]
+        classes = ['platform::compute::grub::runtime']
+        rc = dbutils.create_test_runtime_config(personalities=personalities,
+                                                classes=classes,
+                                                host_uuids=[w0_host.uuid],
+                                                host_id=w0_host.id)
 
+        # update runtime config - simulates config applied
+        config_uuid = rc.get('config_uuid')
+        runtime_state = constants.RUNTIME_CONFIG_STATE_APPLIED
+        dbutils.update_test_runtime_config(config_uuid=config_uuid,
+                                           state=runtime_state,
+                                           host_id=w0_host.id)
+        # Unlock host
+        response = self._patch_host_action(w0_host['hostname'],
+                                           constants.UNLOCK_ACTION,
+                                           'sysinv-test')
         self.assertEqual(response.content_type, 'application/json')
         self.assertEqual(response.status_code, http_client.OK)
+
+    def test_storage_unlock_while_grub_update_pending_expires(self):
+        # Note: Can't do storage host testcases yet because additional code
+        # is required to populate the storage (OSDs) for the host.
+        self.skipTest("Not yet implemented")
 
 
 class TestPatchStdDuplexControllerAction(TestHost):
@@ -3881,6 +4232,10 @@ class TestHostPTPValidation(TestHost):
         self._create_test_host_cpus(w0_host, platform=1, vswitch=2, application=12)
         self._create_test_host_addresses(w0_host.hostname)
 
+        dbutils.create_test_pv(lvm_vg_name='cgts-vg',
+                               forihostid=w0_host.id,
+                               pv_state='provisioned')
+
         # Host with PTP must have at least one ptp interface
         interface = {
             'forihostid': w0_host['id'],
@@ -3943,6 +4298,10 @@ class TestHostPTPValidation(TestHost):
         self._create_test_host_platform_interface(w0_host)
         self._create_test_host_cpus(w0_host, platform=1, vswitch=2, application=12)
         self._create_test_host_addresses(w0_host.hostname)
+
+        dbutils.create_test_pv(lvm_vg_name='cgts-vg',
+                               forihostid=w0_host.id,
+                               pv_state='provisioned')
 
         # Host with PTP must have at least one ptp interface
         response = self._patch_host_action(

@@ -1,4 +1,4 @@
-# Copyright (c) 2020-2024 Wind River Systems, Inc.
+# Copyright (c) 2020-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -10,15 +10,12 @@ import filecmp
 import json
 import mock
 import os.path
-import time
 
 from oslo_serialization import base64
 
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.cert_mon import service as cert_mon
-from sysinv.cert_mon import certificate_mon_manager as cert_mon_manager
-from sysinv.cert_mon import subcloud_audit_queue
 from sysinv.cert_mon import utils as cert_mon_utils
 from sysinv.cert_mon import watcher as cert_mon_watcher
 from sysinv.openstack.common.keystone_objects import Token
@@ -84,26 +81,6 @@ class CertMonTestCase(base.DbTestCase):
         region_name = 'RegionOne'
         return Token(token_json, token_id, region_name)
 
-    def test_get_isystems_uuid(self):
-        isystems_file = self.get_data_file_path("isystems")
-        with open(isystems_file, 'r') as ifile:
-            self.rest_api_request_result = json.load(ifile)
-
-        token = self.keystone_token
-        ret = cert_mon_utils.get_isystems_uuid(token)
-        assert ret == 'fdc60cf3-3330-4438-859d-b0da19e9663d'
-
-    def test_enable_https(self):
-        isystems_file = self.get_data_file_path("isystems")
-        with open(isystems_file, 'r') as ifile:
-            isystems_json = json.load(ifile)
-
-        # The PATCH api response doesn't include the 'isystems[]' json list section
-        self.rest_api_request_result = isystems_json['isystems'][0]
-        token = self.keystone_token
-        ret = cert_mon_utils.enable_https(token, 'fdc60cf3-3330-4438-859d-b0da19e9663d')
-        assert ret is True
-
     def test_list_platform_certificates(self):
         patcher = mock.patch('sysinv.cert_mon.utils.rest_api_request')
         mocked_rest_api_get = patcher.start()
@@ -123,33 +100,6 @@ class CertMonTestCase(base.DbTestCase):
         mocked_rest_api_get.return_value = mock_certificates
         actual_certificates = cert_mon_utils.list_platform_certificates(self.keystone_token)
         self.assertEqual(actual_certificates, mock_certificates)
-
-    def test_uninstall_ca_certificate(self):
-        patcher = mock.patch('sysinv.cert_mon.utils.rest_api_request')
-        mocked_rest_api_req = patcher.start()
-        self.addCleanup(patcher.stop)
-
-        mock_uuid = '12345678-9abc-defg-hijk-lmnopqrstuvw'
-        cert_type = constants.CERT_MODE_SSL_CA
-        method = 'DELETE'
-
-        class AnyStringContaining(str):
-            def __eq__(self, string):
-                return self in string
-
-        cert_mon_utils.uninstall_ca_certificate(self.keystone_token, mock_uuid, cert_type)
-        mocked_rest_api_req.assert_called_once_with(self.keystone_token, method, AnyStringContaining(mock_uuid))
-
-    def test_uninstall_ca_certificate_not_allowed_type(self):
-        patcher = mock.patch('sysinv.cert_mon.utils.rest_api_request')
-        mocked_rest_api_req = patcher.start()
-        self.addCleanup(patcher.stop)
-
-        mock_uuid = '12345678-9abc-defg-hijk-lmnopqrstuvw'
-        cert_type = 'invalid'
-
-        cert_mon_utils.uninstall_ca_certificate(self.keystone_token, mock_uuid, cert_type)
-        mocked_rest_api_req.assert_not_called()
 
     def get_registry_watcher(self):
         class FakeContext(object):
@@ -554,88 +504,6 @@ class CertMonTestCase(base.DbTestCase):
             }
         }
 
-    def test_audit_sc_cert_task_shallow(self):
-        """Test the audit_sc_cert_task basic queuing functionality.
-        Mocks beginning at do_subcloud_audit"""
-        with mock.patch.object(cert_mon_manager.CertificateMonManager,
-                               "do_subcloud_audit") as mock_do_subcloud_audit:
-            mock_do_subcloud_audit.return_value = None
-
-            cmgr = cert_mon_manager.CertificateMonManager()
-            cmgr.use_sc_audit_pool = False  # easier for testing in serial
-
-            cmgr.sc_audit_queue.enqueue(
-                subcloud_audit_queue.SubcloudAuditData("test1"), delay_secs=1)
-            cmgr.sc_audit_queue.enqueue(
-                subcloud_audit_queue.SubcloudAuditData("test2"), delay_secs=2)
-
-            self.assertEqual(cmgr.sc_audit_queue.qsize(), 2)
-            # Run audit immediately, it should not have picked up anything
-            cmgr.audit_sc_cert_task(None)
-            mock_do_subcloud_audit.assert_not_called()
-            self.assertEqual(cmgr.sc_audit_queue.qsize(), 2)
-
-            time.sleep(3)
-            cmgr.audit_sc_cert_task(None)
-            # It should now be drained:
-            mock_do_subcloud_audit.assert_called()
-            self.assertEqual(cmgr.sc_audit_queue.qsize(), 0)
-
-            mock_do_subcloud_audit.reset_mock()
-            cmgr.audit_sc_cert_task(None)
-            mock_do_subcloud_audit.assert_not_called()
-
-    def test_audit_sc_cert_task_deep(self):
-
-        """Test the audit_sc_cert_task basic queuing functionality"""
-        with mock.patch.multiple("sysinv.cert_mon.utils",
-                                 SubcloudSysinvEndpointCache=mock.DEFAULT,
-                                 get_endpoint_certificate=mock.DEFAULT,
-                                 get_sc_intermediate_ca_secret=mock.DEFAULT,
-                                 is_subcloud_online=mock.DEFAULT,
-                                 get_token=mock.DEFAULT,
-                                 get_dc_token=mock.DEFAULT,
-                                 update_subcloud_status=mock.DEFAULT,
-                                 update_subcloud_ca_cert=mock.DEFAULT) \
-                as utils_mock:
-            # returns an SSL cert in PEM-encoded string
-            utils_mock["SubcloudSysinvEndpointCache"].get_endpoint.return_value \
-                = "https://example.com"
-            utils_mock["get_endpoint_certificate"].return_value \
-                = self._get_valid_certificate_pem()
-            utils_mock["get_sc_intermediate_ca_secret"].return_value \
-                = self._get_sc_intermediate_ca_secret()
-            utils_mock["is_subcloud_online"].return_value = True
-            utils_mock["get_dc_token"].return_value = None  # don"t care
-            utils_mock["update_subcloud_status"].return_value = None
-            utils_mock["update_subcloud_ca_cert"].return_value = None
-
-            # also need to mock the TokenCache
-            with mock.patch.multiple("sysinv.cert_mon.utils.TokenCache",
-                                     get_token=mock.DEFAULT) \
-                    as token_cache_mock:
-                token_cache_mock["get_token"].return_value = None  # don"t care
-
-                cmgr = cert_mon_manager.CertificateMonManager()
-                cmgr.use_sc_audit_pool = False  # easier for testing in serial
-
-                cmgr.sc_audit_queue.enqueue(
-                    subcloud_audit_queue.SubcloudAuditData("test1"),
-                    delay_secs=1)
-                cmgr.sc_audit_queue.enqueue(
-                    subcloud_audit_queue.SubcloudAuditData("test2"),
-                    delay_secs=2)
-                self.assertEqual(cmgr.sc_audit_queue.qsize(), 2)
-
-                # Run audit immediately, it should not have picked up anything
-                cmgr.audit_sc_cert_task(None)
-                self.assertEqual(cmgr.sc_audit_queue.qsize(), 2)
-
-                time.sleep(3)
-                cmgr.audit_sc_cert_task(None)
-                # It should now be drained:
-                self.assertEqual(cmgr.sc_audit_queue.qsize(), 0)
-
     def test_token_cache(self):
         """Basic test case for TokenCache"""
 
@@ -651,7 +519,7 @@ class CertMonTestCase(base.DbTestCase):
         token_cache = cert_mon_utils.TokenCache('internal')
 
         # override the cache getter function for our test:
-        token_cache._getter_func = get_cache_test_token
+        cert_mon_utils.get_token = get_cache_test_token
 
         token = token_cache.get_token()
         self.assertEqual(token.get_id(), "token1")

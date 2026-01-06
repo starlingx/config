@@ -103,9 +103,6 @@ class RPCAPITestCase(base.DbTestCase):
     def test_update_ldap_nat_config(self):
         self._test_rpcapi('update_ldap_nat_config', 'call')
 
-    def test_update_dnsmasq_config(self):
-        self._test_rpcapi('update_dnsmasq_config', 'call')
-
     def test_kernel_runtime_manifests(self):
         self._test_rpcapi('kernel_runtime_manifests',
                           'call',
@@ -116,3 +113,8 @@ class RPCAPITestCase(base.DbTestCase):
                           'cast',
                           ihost_uuid=self.fake_ihost['uuid'],
                           kernel_running=constants.KERNEL_LOWLATENCY)
+
+    def test_configure_stalld(self):
+        self._test_rpcapi('configure_stalld',
+                          'call',
+                          host_uuid=self.fake_ihost['uuid'])

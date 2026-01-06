@@ -20,6 +20,7 @@ import tempfile
 import random
 import string
 import threading
+import yaml as pyaml
 import zlib
 
 from eventlet.green import subprocess
@@ -341,14 +342,14 @@ def index_repo(repo_path):
         timer.start()
         _, err = process.communicate()
 
-        if process.returncode == 0 and err:
+        if process.returncode is None or (process.returncode < 0 and not err):
+            err_msg = "Timeout while indexing repository {}".format(repo_path)
+            raise exception.HelmFailure(reason=err_msg)
+        elif process.returncode == 0 and err:
             LOG.warning("Command: %s; %s" % (' '.join(helm_cmd), err))
         elif err:
             LOG.error("Failed to index repository {}".format(repo_path))
             raise exception.HelmFailure(reason=err)
-        else:
-            err_msg = "Timeout while indexing repository {}".format(repo_path)
-            raise exception.HelmFailure(reason=err_msg)
     except Exception as e:
         err_msg = "Failed to execute Helm command: {}".format(e)
         LOG.error(err_msg)
@@ -434,3 +435,118 @@ def call_fluxcd_reconciliation(helmrelease, namespace):
     except Exception as e:
         raise exception.SysinvException(f"Error trying to force reconciliation via \
                                         {cmd}, reason: {e}")
+
+
+@retry(retry_on_exception=lambda x: isinstance(x, exception.SysinvException),
+       stop_max_attempt_number=3)
+def call_fluxcd_repository_reconciliation(helm_repos):
+    """ Force Flux's repository reconciliation
+
+    The purpose of this function is to force a reconciliation of FluxCD's internal
+    repositories. The HelmRepository object is annotated to trigger the reconciliation
+    outside the specified interval window.
+
+    param: helm_repos: list of yaml formatted HelmRepository objects
+    """
+
+    timestamp = int(time.time())
+    env = os.environ.copy()
+    env['KUBECONFIG'] = kubernetes.KUBERNETES_ADMIN_CONF
+
+    for helmrepo in helm_repos:
+        name = helmrepo['metadata']['name']
+        try:
+            namespace = helmrepo['metadata']['namespace']
+        except KeyError:
+            namespace = "default"
+
+        cmd = [
+            "kubectl",
+            "annotate",
+            "--field-manager=flux-client-side-apply",
+            "-n", f"{namespace}",
+            "--overwrite",
+            f"helmrepository/{name}",
+            f"reconcile.fluxcd.io/requestedAt=\"{timestamp}\"",
+            "--request-timeout=5s"
+        ]
+
+        LOG.info(f"Requesting reconciliation for {namespace}/{name} repository")
+        try:
+            process = subprocess.Popen(cmd, env=env, stdout=subprocess.PIPE,
+                                    stderr=subprocess.PIPE, universal_newlines=True)
+            _, stderr = process.communicate()
+
+            if process.returncode != 0:
+                raise exception.SysinvException(f"Error executing kubectl annotate: {stderr}")
+
+        except Exception as e:
+            raise exception.SysinvException(f"Error trying to force repository reconciliation \
+                                            via {cmd}, reason: {e}")
+
+
+def get_chart_version(tgz_path):
+    """ Retrieve the version from a chart tarball
+
+    Args:
+        tgz_path (path): path to the chart tarball
+
+    Returns:
+        string: chart version.
+    """
+
+    try:
+        result = subprocess.run(
+            ["helm", "show", "chart", tgz_path],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        chart_yaml = pyaml.safe_load(result.stdout)
+        return chart_yaml.get("version")
+    except subprocess.CalledProcessError as e:
+        print(f"Error while retrieving chart version: {e.stderr}")
+    except Exception as e:
+        raise exception.SysinvException(f"Cannot retrieve chart version: {e}")
+
+    return None
+
+
+def get_history(release_name, release_namespace, kubeconfig=None):
+    """ Retrieve the Helm history for a given release
+
+    Args:
+        release_name (str): name of the Helm release.
+        release_namespace (str): namespace of the Helm release.
+        kubeconfig (path): path to the Kubernetes config file.
+
+    Returns:
+        list: Records of each revision of the given Helm release.
+    """
+
+    command = ["helm",
+               "history", release_name,
+               "-n", release_namespace,
+               "--output", "json"]
+
+    if kubeconfig:
+        command.extend(["--kubeconfig", kubeconfig])
+
+    try:
+        result = subprocess.run(
+            command,
+            check=True,
+            capture_output=True,
+            text=True
+        )
+
+        history = json.loads(result.stdout)
+        return history
+    except subprocess.CalledProcessError as e:
+        if 'not found' in e.stderr:
+            LOG.warning(f"Helm release {release_name} not found in {release_namespace} namespace")
+            return []
+        raise exception.SysinvException("Error while attempting to retrieve Helm "
+                                        f"release history: {e.stderr}")
+    except Exception as e:
+        raise exception.SysinvException(f"Cannot retrieve Helm release history: {e}")

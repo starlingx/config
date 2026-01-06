@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2023-2024 Wind River Systems, Inc.
+# Copyright (c) 2023-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -7,6 +7,8 @@
 # All Rights Reserved.
 #
 
+from collections import defaultdict
+from collections import deque
 import io
 import glob
 import os
@@ -111,9 +113,6 @@ def validate_metadata_file(path, metadata_file, upgrade_from_release=None):
         desired_state: <uploaded/applied> - optional: state the app should
         reach
         evaluate_reapply: - optional: describe the reapply evaluation behaviour
-            TODO(dbarbosa): Once the implementation of key dependent apps is
-            complete the key after should be removed.
-            after: - optional: list of apps that should be evaluated before
             the current one
               - <app_name.1>
               - <app_name.2>
@@ -140,10 +139,16 @@ def validate_metadata_file(path, metadata_file, upgrade_from_release=None):
                               to trigger[filter_field] sub-dictionary instead
                               of the root trigger dictionary.
 
+    class: <critical/storage/discovery/optional/reporting> - optional
+
     dependent_apps: - optional: list of dependent apps.
         - name: <app_name>
-          version: <version>
+          version: <regular expression (full match)> e.g: 25\.09-\d+
           action: <ignore|warn|error|apply>
+
+    dependent_parent_exceptions: exceptions for parent apps dependencies.
+        - name: <app_name>
+          version: <regular expression (full match)> e.g: 25\.09-1
     """
 
     # Type-level validations:
@@ -369,39 +374,23 @@ def validate_metadata_file(path, metadata_file, upgrade_from_release=None):
                 "corresponding k8s_upgrade:auto_update field was found. Please "
                 "add an 'auto_update' field to the 'k8s_upgrade' section."))
 
-    def validate_dependent_apps_version(parent, key):
-        """ Validate a metadata version string field
+    def validate_regex_field(parent, key):
+        """ Validate a regular expression field
 
-        :param parent: parent section that contains the version string field
-                    to be verified
-        :param key: field name to be validated
-
-        TODO(dbarbosa): support checks if the installed app version should
-        be > or < than the given version string. Exemple: "> 1.0.0" or "< 1.0.0"
+        :param parent: parent section that contains the regular expression field to be verified.
+        :param key: field name to be validated.
         """
 
-        value = None
-
-        error_message = _("Invalid {}: {} should be a valid version string."
-                           .format(metadata_file, key))
-
         try:
-            value = parent[key]
-            if not re.fullmatch(r'^[0-9.-]+$', value):
-                raise exception.SysinvException(
-                    _(error_message)
-                )
-
-            try:
-                LooseVersion(value)
-            except ValueError:
-                raise exception.SysinvException(
-                    _(error_message)
-                )
+            re.compile(parent[key])
+        except re.error:
+            error_message = _("Invalid {}: {} should be a valid regular expression."
+                              .format(metadata_file, key))
+            raise exception.SysinvException(_(error_message))
         except KeyError:
-            pass
-
-        return value
+            error_message = _("Invalid {}: {} is a required regular expression field."
+                              .format(metadata_file, key))
+            raise exception.SysinvException(_(error_message))
 
     def validate_dependent_apps_action(action):
         """ Validate the dependent apps action field
@@ -428,6 +417,21 @@ def validate_metadata_file(path, metadata_file, upgrade_from_release=None):
                 .format(metadata_file,
                         constants.APP_METADATA_CLASS,
                         constants.APP_METADATA_CLASS_TYPES)))
+
+    def validate_dependent_app(dependent_app):
+        """Validate a single dependent app entry (dict)"""
+        validate_dict(dependent_app)
+        validate_string_field(
+            dependent_app,
+            constants.APP_METADATA_DEPENDENT_APPS_NAME)
+        validate_regex_field(
+            dependent_app,
+            constants.APP_METADATA_DEPENDENT_APPS_VERSION)
+        validate_string_field(
+            dependent_app,
+            constants.APP_METADATA_DEPENDENT_APPS_ACTION)
+        validate_dependent_apps_action(
+            dependent_app.get(constants.APP_METADATA_DEPENDENT_APPS_ACTION))
 
     app_name = ''
     app_version = ''
@@ -469,11 +473,6 @@ def validate_metadata_file(path, metadata_file, upgrade_from_release=None):
                         constants.APP_METADATA_EVALUATE_REAPPLY)
 
                 if evaluate_reapply:
-                    # TODO(dbarbosa): Once the implementation of key dependent apps is
-                    # complete the key after should be removed.
-                    validate_list_field(
-                        evaluate_reapply,
-                        constants.APP_METADATA_AFTER)
                     triggers = validate_list_field(
                         evaluate_reapply,
                         constants.APP_METADATA_TRIGGERS)
@@ -574,25 +573,36 @@ def validate_metadata_file(path, metadata_file, upgrade_from_release=None):
         dependent_apps = validate_list_field(doc, constants.APP_METADATA_DEPENDENT_APPS)
         if dependent_apps:
             for dependence in dependent_apps:
-                validate_dict(dependence)
-                validate_string_field(
-                    dependence,
-                    constants.APP_METADATA_DEPENDENT_APPS_NAME)
-                validate_string_field(
-                    dependence,
-                    constants.APP_METADATA_DEPENDENT_APPS_VERSION)
-                validate_dependent_apps_version(
-                    dependence,
-                    constants.APP_METADATA_DEPENDENT_APPS_VERSION)
-                validate_string_field(
-                    dependence,
-                    constants.APP_METADATA_DEPENDENT_APPS_ACTION)
-                validate_dependent_apps_action(
-                    dependence.get(constants.APP_METADATA_DEPENDENT_APPS_ACTION))
+                if isinstance(dependence, dict):
+                    validate_dependent_app(dependence)
+                elif isinstance(dependence, list):
+                    # If istead of a dict, it is a list of apps that are mutually
+                    # exclusive, then validate each app in the list.
+                    if len(dependence) < 2:
+                        raise exception.SysinvException(_(
+                            "Invalid dependent_apps entry: "
+                            "must contain at least two mutually exclusive apps."))
+                    for mutually_exclusive_dependence in dependence:
+                        validate_dependent_app(mutually_exclusive_dependence)
+                else:
+                    raise exception.SysinvException(
+                        _("Invalid dependent_apps entry: must be dict or list."))
 
         app_class = validate_string_field(doc, constants.APP_METADATA_CLASS)
         if app_class:
             validate_class_types(app_class)
+
+        dependent_parent_exceptions = \
+            validate_list_field(doc, constants.APP_METADATA_DEPENDENT_PARENT_EXCEPTIONS)
+        if dependent_parent_exceptions:
+            for parent_exception in dependent_parent_exceptions:
+                validate_dict(parent_exception)
+                validate_string_field(
+                    parent_exception,
+                    constants.APP_METADATA_DEPENDENT_APPS_NAME)
+                validate_regex_field(
+                    parent_exception,
+                    constants.APP_METADATA_DEPENDENT_APPS_VERSION)
 
     return app_name, app_version, patches
 
@@ -811,11 +821,13 @@ def extract_bundle_metadata(file_path):
         LOG.exception(e)
 
 
-def load_metadata_of_apps(apps_metadata):
+def load_metadata_of_apps(apps_metadata, is_platform_rollback=False):
     """ Extracts the tarball and loads the metadata of the
     loaded/applied applications.
 
     :param apps_metadata: metadata dictionary of the applications
+    :param is_platform_rollback (bool): If True, the app order calculation is performed using
+        the ostree folder containing old versions of the tarballs (used during platform rollback).
     """
 
     dbapi = api.get_instance()
@@ -834,7 +846,12 @@ def load_metadata_of_apps(apps_metadata):
     for app in db_apps:
         loaded_apps.append(app.name)
 
-    for app_bundle in os.listdir(constants.HELM_APP_ISO_INSTALL_PATH):
+    # Determine the applications path based on whether this is a rollback process
+    apps_path = (f'{constants.ROLLBACK_OSTREE_PATH}{constants.HELM_APP_ISO_INSTALL_PATH}'
+                 if is_platform_rollback
+                 else constants.HELM_APP_ISO_INSTALL_PATH)
+
+    for app_bundle in os.listdir(apps_path):
         # Get the app name from the tarball name
         app_name = None
         pattern = re.compile("^(.*)-([0-9]+\.[0-9]+-[0-9]+)")
@@ -847,7 +864,7 @@ def load_metadata_of_apps(apps_metadata):
         if app_name in loaded_apps:
             # Proceed with extracting the tarball
             tarball_name = '{}/{}'.format(
-                constants.HELM_APP_ISO_INSTALL_PATH, app_bundle)
+                apps_path, app_bundle)
 
             with utils.TempDirectory() as app_path:
                 if not utils.extract_tarfile(app_path, tarball_name):
@@ -887,22 +904,131 @@ def load_metadata_of_apps(apps_metadata):
                         apps_metadata, name, metadata)
 
 
-def get_reorder_apps():
+def order_dependencies_by_topological_sorting(dependencies: dict):
+    """
+    Performs topological sorting on a dependency graph.
+    Given a dictionary where keys are nodes (e.g., app names) and values are lists
+    of dependencies, returns the nodes sorted in an order that satisfies all dependencies.
+    Also detects and returns any nodes involved in cyclic dependencies.
+
+    :params dependencies (dict): dictionary representing the dependency graph. Each key is a node,
+                                 and its value is a list of other nodes it depends on.
+    :return (tuple):
+            - sorted_deps (list): list of nodes in topologically sorted order.
+            - cyclic_dependencies (list): list of nodes that are part of a cycle and
+                                          couldn't be sorted.
+    """
+
+    # Initialize data structures:
+    # - sorted_deps will hold the final sorted order.
+    # - graph represents the reversed dependency graph.
+    # - in_degree keeps count of how many dependencies each node has.
+    sorted_deps = []
+    graph = defaultdict(list)
+    in_degree = defaultdict(int)
+
+    for node in dependencies:
+        in_degree[node] = 0
+
+    # Build the graph and calculate in-degree for each node. We are not taking in count,
+    # dependencies that it's not listed in the dependencies dict.
+    for node, deps in dependencies.items():
+        for dependency in deps:
+            if dependency in dependencies:
+                graph[dependency].append(node)
+                in_degree[node] += 1
+
+    # Identify nodes with no dependencies. These will be the starting points for topological
+    # sorting.
+    queue = deque([root for root in dependencies if in_degree[root] == 0])
+    found = set()
+
+    # Perform topological sort using Kahn's algorithm. Repeatedly remove nodes with in-degree 0
+    # and update neighbors.
+    while queue:
+        current = queue.popleft()
+        sorted_deps.append(current)
+        found.add(current)
+
+        # For each node that depends on the current node, reduce its in-degree and add to queue if
+        # it has no more dependencies
+        for neighbor in graph[current]:
+            in_degree[neighbor] -= 1
+            if in_degree[neighbor] == 0:
+                queue.append(neighbor)
+
+    # After sorting, any node not in 'found' must be part of a cycle. These could not be sorted
+    # and are considered cyclic dependencies.
+    cyclic_dependencies = [node for node in dependencies if node not in found]
+
+    return sorted_deps, cyclic_dependencies
+
+
+def get_apps_dependency_map(apps: list, apps_metadata: dict) -> dict:
+    """
+    Builds a mapping of apps to their declared dependencies.
+    Iterates through the list of apps and extracts their dependencies from the corresponding
+    metadata.
+    :param apps (list): list of apps with declared dependencies.
+    :param apps_metadata (dict): dictionary containing metadata for each app.
+    :return (dict): dictionary where keys are app names and values are lists of dependent app names.
+    """
+    dependent_apps = {}
+    for app in apps:
+        metadata = apps_metadata[app]
+        dependencies_metadata = metadata.get(constants.APP_METADATA_DEPENDENT_APPS, [])
+
+        dependencies = []
+        for metadata in dependencies_metadata:
+            # The app may have a dependency structure using OR logic. In this case, the
+            # metadata variable is not a dictionary, but a yaml seq.
+            if not isinstance(metadata, dict):
+                for dep_metadata in metadata:
+                    dep_name = dep_metadata.get('name')
+                    if dep_name:
+                        dependencies.append(dep_name)
+                continue
+
+            dep_name = metadata.get('name')
+            if dep_name:
+                dependencies.append(dep_name)
+
+        dependent_apps[app] = dependencies
+    return dependent_apps
+
+
+def get_reorder_apps(is_platform_rollback=False):
     """Reorders apps based on the metadata.yaml presenting the application tarball
 
     The purpose of this function is to print the updated apps
     order based on the metadata.yaml of the tarballs.
 
+    Args:
+        isPlatformRollback (bool): If True, the app order calculation is performed using
+        the ostree folder containing old versions of the tarballs (used during platform rollback).
+
     Returns:
         Array: String array representing the mandatory installation order
         of applications
     """
-    apps_metadata = {constants.APP_METADATA_APPS: {},
-                     constants.APP_METADATA_PLATFORM_MANAGED_APPS: {},
-                     constants.APP_METADATA_DESIRED_STATES: {},
-                     constants.APP_METADATA_ORDERED_APPS: []}
+    apps_metadata = {
+        constants.APP_METADATA_APPS: {},
+        constants.APP_METADATA_PLATFORM_MANAGED_APPS: {},
+        constants.APP_METADATA_DESIRED_STATES: {},
+        constants.APP_METADATA_ORDERED_APPS: {},
+        constants.APP_METADATA_PLATFORM_UNMANAGED_APPS: set(),
+        constants.APP_METADATA_CYCLIC_DEPENDENCIES: []
+    }
 
-    load_metadata_of_apps(apps_metadata)
+    load_metadata_of_apps(apps_metadata, is_platform_rollback)
+
+    if isinstance(apps_metadata[constants.APP_METADATA_ORDERED_APPS], dict):
+        apps_metadata[constants.APP_METADATA_ORDERED_APPS]['unmanaged_apps'] = \
+            apps_metadata[constants.APP_METADATA_PLATFORM_UNMANAGED_APPS]
+
+        apps_metadata[constants.APP_METADATA_ORDERED_APPS][
+            constants.APP_METADATA_CYCLIC_DEPENDENCIES] = \
+                apps_metadata[constants.APP_METADATA_CYCLIC_DEPENDENCIES]
 
     return apps_metadata[constants.APP_METADATA_ORDERED_APPS]
 

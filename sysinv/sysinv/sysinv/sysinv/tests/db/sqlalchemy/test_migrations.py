@@ -1,4 +1,4 @@
-# Copyright (c) 2016-2020 Wind River Systems, Inc.
+# Copyright (c) 2016-2025 Wind River Systems, Inc.
 # Copyright 2010-2011 OpenStack Foundation
 # Copyright 2012-2013 IBM Corp.
 # All Rights Reserved.
@@ -2090,4 +2090,38 @@ class TestMigrations(BaseMigrationTestCase, WalkVersionsMixin):
         for column, column_type in ptp_interface_map_columns.items():
             self.assertTrue(
                 isinstance(ptp_interface_maps.c[column].type,
+                getattr(sqlalchemy.types, column_type)))
+
+    def _check_143(self, engine, data):
+        # 143_interface_max_tx_rate_and_max_rx_rate.py
+        # Assert data types for new columns in table "interfaces"
+        interfaces = db_utils.get_table(engine, 'interfaces')
+        interfaces_col = {
+            'max_tx_rate': 'Integer',
+            'max_rx_rate': 'Integer',
+        }
+        for col, coltype in interfaces_col.items():
+            self.assertTrue(isinstance(interfaces.c[col].type,
+                            getattr(sqlalchemy.types, coltype)))
+
+    def _check_144(self, engine, data):
+        # Assert data types for new column in table "i_user"
+        users = db_utils.get_table(engine, 'i_user')
+        user_cols = {
+            'passwd_last_change': 'Integer',
+        }
+        for col, coltype in user_cols.items():
+            self.assertTrue(isinstance(users.c[col].type,
+                                       getattr(sqlalchemy.types, coltype)))
+
+    def _check_145(self, engine, data):
+        # 145_ptp_parameters_add_column_section.py
+        # Assert data types for new column in table "ptp_parameters"
+        ptp_parameters = db_utils.get_table(engine, 'ptp_parameters')
+        ptp_parameters_columns = {
+            'section': 'String'
+        }
+        for column, column_type in ptp_parameters_columns.items():
+            self.assertTrue(
+                isinstance(ptp_parameters.c[column].type,
                 getattr(sqlalchemy.types, column_type)))

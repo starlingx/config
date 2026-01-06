@@ -2176,12 +2176,53 @@ class Connection(object):
         """
 
     @abc.abstractmethod
-    def ptp_parameter_get_by_namevalue(self, name, value):
-        """Returns the PTP parameter entry that matches the pair name-value.
+    def ptp_parameter_get_by_namevalue(self, name, value, section="global"):
+        """Returns the PTP parameter entry that matches the
+            pair name-value on section.
 
         :param name: Name of a PTP parameter.
         :param value: Value of a PTP parameter.
+        :param section: Section of a PTP parameter
         :returns: A PTP parameter.
+        """
+
+    @abc.abstractmethod
+    def ptp_parameter_get_by_name(
+        self, name, section="global", limit=None, marker=None,
+        sort_key=None, sort_dir=None
+    ):
+        """Returns a list of PTP parameters that matches the
+            name on section.
+
+        :param name: Name of a PTP parameter.
+        :param section: Section of a PTP parameter
+        :param limit: Maximum number of PTP parameters to return.
+        :param marker: The last item of the previous page; we return the next
+                       result set.
+        :param sort_key: Attribute by which results should be sorted.
+        :param sort_dir: direction in which results should be sorted.
+                         (asc, desc)
+        :returns: A list of PTP parameters.
+        """
+
+    @abc.abstractmethod
+    def ptp_parameter_get_by_namevalue_anysection(
+        self, name, value,
+        limit=None, marker=None, sort_key=None, sort_dir=None
+    ):
+        """Returns a list of PTP parameters that matches the
+            pair name-value on any section.
+
+        :param name: Name of a PTP parameter.
+        :param value: Value of a PTP parameter.
+        :param limit: Maximum number of PTP parameters to return.
+        :param marker: The last item of the previous page; we return the next
+                       result set.
+        :param sort_key: Attribute by which results should be sorted.
+        :param sort_dir: direction in which results should be sorted.
+                         (asc, desc)
+
+        :returns: A list of PTP parameters.
         """
 
     @abc.abstractmethod
@@ -4915,14 +4956,16 @@ class Connection(object):
 
     @abc.abstractmethod
     def runtime_config_get_all(
-        self, config_uuid=None, state=None, older_than=None, forihostid=None
+        self, config_uuid=None, state=None,
+        older_than=None, younger_than=None, forihostid=None
     ):
         """Returns a list of runtime_config entries with a given filter
 
         :param config_uuid: runtime_config uuid
         :param state: runtime_config state
         :param older_than: date to filter entries older than it
-        :parm forihostid: runtime_config host id
+        :param younger_than: date to filter entries younger than it
+        :param forihostid: runtime_config host id
         """
 
     @abc.abstractmethod
@@ -4969,6 +5012,21 @@ class Connection(object):
         :param sort_dir: Direction in which results should be sorted.
                          (asc, desc)
         :returns: A list of kube_app_bundle entries with the given name.
+        """
+
+    @abc.abstractmethod
+    def kube_app_bundle_get_by_version_regex(self,
+                                             name,
+                                             version_regex,
+                                             k8s_version):
+        """Return the highest version app bundle compatible with the given
+        version regular expression and the Kubernetes version.
+
+        :param name: Application name.
+        :param version_regex: Application version regular expression.
+        :param current_k8s_version: Kubernetes version to check against.
+        :returns: record that matches the version regular expression
+                  and is compatible with the requested Kubernetes version.
         """
 
     @abc.abstractmethod

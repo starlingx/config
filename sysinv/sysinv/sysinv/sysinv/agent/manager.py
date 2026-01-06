@@ -35,8 +35,11 @@ Commands (from conductors) are received via RPC calls.
 
 from __future__ import print_function
 from eventlet.green import subprocess
+from eventlet import greenthread
 import fileinput
+import inspect
 import os
+import pickle  # nosec B403
 import retrying
 import six
 import shutil
@@ -56,17 +59,19 @@ from oslo_log import log
 from oslo_service import periodic_task
 from oslo_utils import timeutils
 from sysinv.agent import disk
+from sysinv.agent import fpga
+from sysinv.agent import kube_host
 from sysinv.agent import partition
 from sysinv.agent import pv
 from sysinv.agent import lvg
 from sysinv.agent import lv
 from sysinv.agent import pci
 from sysinv.agent import node
-from sysinv.agent import fpga
 from sysinv.agent.lldp import plugin as lldp_plugin
 from sysinv.common import fpga_constants
 from sysinv.common import constants
 from sysinv.common import exception
+from sysinv.common import kubernetes
 from sysinv.common import service
 from sysinv.common import utils
 from sysinv.puppet import common as puppet
@@ -112,6 +117,7 @@ MAXSLEEP = 600  # 10 minutes
 SYSINV_READY_FLAG = os.path.join(tsc.VOLATILE_PATH, ".sysinv_ready")
 
 CONFIG_APPLIED_FILE = os.path.join(tsc.PLATFORM_CONF_PATH, ".config_applied")
+CONFIG_APPLIED_REBOOT_FILE = os.path.join(tsc.PLATFORM_CONF_PATH, ".config_applied_reboot")
 CONFIG_APPLIED_DEFAULT = "install"
 
 FIRST_BOOT_FLAG = constants.FIRST_BOOT_FLAG
@@ -120,6 +126,9 @@ PUPPET_HIERADATA_PATH = os.path.join(tsc.PUPPET_PATH, 'hieradata')
 PUPPET_HIERADATA_CACHE_PATH = '/etc/puppet/cache/hieradata'
 
 LOCK_AGENT_ACTION = 'agent-exclusive-action'
+
+K8S_UPGRADE_IN_PROGRESS_FILE_PATH = os.path.join(
+    tsc.PLATFORM_CONF_PATH, '.sysinv_agent_k8s_upgrade_in_progress.pkl')
 
 
 class FakeGlobalSectionHead(object):
@@ -181,6 +190,7 @@ class AgentManager(service.PeriodicService):
         self._report_to_conductor_iplatform_avail_flag = False
         self._report_to_conductor_fpga_info = True
         self._report_to_conductor_cstate_info = True
+        self._containerd_operator = kube_host.ContainerdOperator()
         self._ipci_operator = pci.PCIOperator()
         self._inode_operator = node.NodeOperator()
         self._idisk_operator = disk.DiskOperator()
@@ -191,6 +201,7 @@ class AgentManager(service.PeriodicService):
         self._ilvg_operator = lvg.LVGOperator()
         self._lldp_operator = lldp_plugin.SysinvLldpPlugin()
         self._iconfig_read_config_reported = None
+        self._last_reported_reboot = None
         self._ihost_min_cpu_mhz_allowed = 0
         self._ihost_max_cpu_mhz_allowed = 0
         self._ihost_cstates_available = None
@@ -205,6 +216,8 @@ class AgentManager(service.PeriodicService):
         self._prev_lvg = None
         self._prev_pv = None
         self._prev_fs = None
+        self._prev_memory = None
+        self._prev_imsg_dict = None
         self._subfunctions = None
         self._subfunctions_configured = False
         self._first_grub_update = False
@@ -228,6 +241,8 @@ class AgentManager(service.PeriodicService):
 
         if tsc.system_mode == constants.SYSTEM_MODE_SIMPLEX:
             utils.touch(SYSINV_READY_FLAG)
+
+        greenthread.spawn(self._unfinished_kube_upgrade_check)
 
     def stop(self, graceful=False):
         if self._zmq_rpc_service:
@@ -260,6 +275,77 @@ class AgentManager(service.PeriodicService):
         utils.touch(SYSINV_READY_FLAG)
         time.sleep(1)  # give time for conductor to process
         self._report_to_conductor_iplatform_avail_flag = True
+
+    def _unfinished_kube_upgrade_check(self):
+        """Initial unfinished kubernetes upgrade check upon service startup
+
+        This method checks for unfinished kubernetes upgrade action on this host by looking
+        for a file containing kube upgrade method with argument values and re-runs the incomplete
+        upgrade procedure. It reports to sysinv-conductor if it is unable to do so.
+        """
+        # If the k8s_upgrade_in_progress file not found, we assume k8s upgrade agent code was not
+        # running. There is only a remote chance of the file getting deleted accidentally as it is
+        # hidden and at a safe location. We can safely ignore the possibility of it happening here.
+        if not os.path.exists(K8S_UPGRADE_IN_PROGRESS_FILE_PATH):
+            LOG.info("No unfinished kubernetes upgrade process found in sysinv-agent ...")
+            return
+
+        # Following block waits for the service to be completely up
+        tries = 120
+        while not self._ihost_uuid and tries:
+            time.sleep(5)
+            tries -= 1
+        if not self._ihost_uuid:
+            # Although host_uuid is available in the pickled data, operation like pull images
+            # require it for the validation with self._ihost_uuid.
+            # So unfinished k8s upgrade cannot be completed before self.ihost_uuid is set.
+            # Without self._ihost_uuid set, do nothing. Neither continue, nor report the unfinished
+            # k8s upgrade. Practically, this condition will never occur.
+            LOG.error("Host uuid not set after 10 minutes wait, cannot report unfinished "
+                      "kubernetes upgrade.")
+            return
+
+        try:
+            context = mycontext.get_admin_context()
+            k8s_upgrade_data = None
+            with open(K8S_UPGRADE_IN_PROGRESS_FILE_PATH, 'rb') as file:
+                k8s_upgrade_data = pickle.load(file)  # nosec B403
+            if k8s_upgrade_data:
+                method_name = k8s_upgrade_data.get('method_name', None)
+                if not method_name:
+                    LOG.error("Kubernetes upgrade: cannot determine which kubernetes upgrade "
+                              "stage was running from the available data. Reporting unfinished "
+                              "kubernetes upgrade to the conductor...")
+                    rpcapi = conductor_rpcapi.ConductorAPI(topic=conductor_rpcapi.MANAGER_TOPIC)
+                    rpcapi.report_unfinished_kube_upgrade_from_agent(context, self._ihost_uuid)
+                else:
+                    method_object = getattr(self, method_name, None)
+                    k8s_upgrade_data.pop('method_name')
+                    # k8s_upgrade_data now only has the parameters for the method to call.
+                    if method_object:
+                        LOG.info("Unfinished kubernetes upgrade found. "
+                                 "Attempting to re-run: [%s] ..." % (method_name))
+                        method_object(**k8s_upgrade_data)
+                    else:
+                        LOG.error("Incorrect kubernetes upgrade procedure found in the unfinshed "
+                                  "kubernetes upgrade data: [%s]. Cannot continue the upgrade. "
+                                  "Reporting unfinished upgrade to the conductor..." % method_name)
+                        rpcapi = conductor_rpcapi.ConductorAPI(topic=conductor_rpcapi.MANAGER_TOPIC)
+                        rpcapi.report_unfinished_kube_upgrade_from_agent(context, self._ihost_uuid)
+            else:
+                LOG.error("Unfinished kubernetes upgrade data is either corrupted or not available."
+                          " Cannot continue the upgrade. Reporting unfinished upgrade to the "
+                          "conductor...")
+                rpcapi = conductor_rpcapi.ConductorAPI(topic=conductor_rpcapi.MANAGER_TOPIC)
+                rpcapi.report_unfinished_kube_upgrade_from_agent(context, self._ihost_uuid)
+            self._cleanup_kube_upgrade_method_details()
+        except Exception as ex:
+            LOG.error("Unfinished kubernetes upgrade check failed with error: %s" % (ex))
+            # Not sure what stage caused the exception
+            if os.path.exists(K8S_UPGRADE_IN_PROGRESS_FILE_PATH):
+                rpcapi = conductor_rpcapi.ConductorAPI(topic=conductor_rpcapi.MANAGER_TOPIC)
+                rpcapi.report_unfinished_kube_upgrade_from_agent(context, self._ihost_uuid)
+                self._cleanup_kube_upgrade_method_details()
 
     @staticmethod
     def _update_interface_irq_affinity(self, interface_list):
@@ -403,6 +489,27 @@ class AgentManager(service.PeriodicService):
 
         return config_uuid
 
+    def iconfig_read_reboot_applied(self):
+        """Read and return contents from the CONFIG_APPLIED_REBOOT_FILE"""
+
+        # Only check reboot completion if system recently rebooted
+        if not os.path.isfile(CONFIG_APPLIED_REBOOT_FILE):
+            return None
+
+        ini_str = '[DEFAULT]\n' + open(CONFIG_APPLIED_REBOOT_FILE, 'r').read()
+        ini_fp = StringIO(ini_str)
+
+        config_reboot = configparser.RawConfigParser()
+        config_reboot.optionxform = str
+        config_reboot.readfp(ini_fp)
+
+        if config_reboot.has_option('DEFAULT', 'CONFIG_UUID'):
+            config_uuid = config_reboot.get('DEFAULT', 'CONFIG_UUID')
+        else:
+            config_uuid = None
+
+        return config_uuid
+
     def host_lldp_get_and_report(self, context, rpcapi, host_uuid):
         neighbour_dict_array = []
         agent_dict_array = []
@@ -539,6 +646,24 @@ class AgentManager(service.PeriodicService):
                 subprocess.call(['ip', 'link', 'set', interface, 'down'])  # pylint: disable=not-callable
                 LOG.info('interface %s disabled after querying LLDP neighbors' % interface)
 
+    def get_ilvg_data(self, cinder_device=None):
+        try:
+            ilvg = self._ilvg_operator.ilvg_get(cinder_device)
+        except Exception as ex:
+            if not self._inventoried_initial:
+                raise exception.SysinvException("Sysinv Agent exception getting ilvg: %s" % ex)
+            pass
+        return ilvg
+
+    def get_ipv_data(self, cinder_device=None):
+        try:
+            ipv = self._ipv_operator.ipv_get(cinder_device)
+        except Exception as ex:
+            if not self._inventoried_initial:
+                raise exception.SysinvException("Sysinv Agent exception getting ipv: %s" % ex)
+            pass
+        return ipv
+
     def platform_update_by_host(self, rpcapi, context, host_uuid, msg_dict):
         """ Update host platform information.
             If this is the first boot (kickstart), then also update the Host
@@ -559,9 +684,12 @@ class AgentManager(service.PeriodicService):
                          not os.path.exists(constants.SYSINV_FIRST_REPORT_FLAG)})
 
         try:
-            rpcapi.iplatform_update_by_ihost(context,
-                                             host_uuid,
-                                             msg_dict)
+            if msg_dict and ((self._prev_imsg_dict is None) or
+                             (self._prev_imsg_dict != msg_dict) or
+                             (self._iconfig_read_config_reported is None)):
+                rpcapi.iplatform_update_by_ihost(context, host_uuid, msg_dict)
+                self._prev_imsg_dict = msg_dict
+
             if os.path.exists(FIRST_BOOT_FLAG):
                 # Create volatile first_boot file, that will be checked by agent manager
                 # when it get crashed and restarted, so that it will know this boot is still
@@ -577,7 +705,7 @@ class AgentManager(service.PeriodicService):
             # For compatibility with 15.12
             LOG.warn("platform_update_by_host exception host_uuid=%s msg_dict=%s." %
                      (host_uuid, msg_dict))
-            pass
+            self._prev_imsg_dict = None
 
         LOG.info("Sysinv Agent platform update by host: %s" % msg_dict)
 
@@ -1033,15 +1161,18 @@ class AgentManager(service.PeriodicService):
         self._update_disk_partitions(rpcapi, icontext,
                                      ihost['uuid'], force_update=True, first_report=True)
 
-        ipv = self._ipv_operator.ipv_get()
-        try:
-            rpcapi.ipv_update_by_ihost(icontext,
-                                       ihost['uuid'],
-                                       ipv)
-            self._inventory_reported.add(self.PV)
-        except exception.SysinvException:
-            LOG.exception("Sysinv Agent exception updating ipv conductor.")
-            pass
+        ipv = self.get_ipv_data()
+        if ipv:
+            try:
+                rpcapi.ipv_update_by_ihost(icontext,
+                                           ihost['uuid'],
+                                           ipv)
+                self._inventory_reported.add(self.PV)
+            except Exception as ex:
+                LOG.exception("Sysinv Agent exception updating ipv conductor: %s" % ex)
+                pass
+        else:
+            LOG.info("ihost_inv_get_and_report - ipv data is empty.")
 
         host_fs = self._host_fs_operator.ilv_get_supported_hostfs()
         try:
@@ -1063,15 +1194,18 @@ class AgentManager(service.PeriodicService):
             LOG.exception("Sysinv Agent exception updating host_fs conductor.")
             pass
 
-        ilvg = self._ilvg_operator.ilvg_get()
-        try:
-            rpcapi.ilvg_update_by_ihost(icontext,
-                                        ihost['uuid'],
-                                        ilvg)
-            self._inventory_reported.add(self.LVG)
-        except exception.SysinvException:
-            LOG.exception("Sysinv Agent exception updating ilvg conductor.")
-            pass
+        ilvg = self.get_ilvg_data()
+        if ilvg:
+            try:
+                rpcapi.ilvg_update_by_ihost(icontext,
+                                            ihost['uuid'],
+                                            ilvg)
+                self._inventory_reported.add(self.LVG)
+            except Exception as ex:
+                LOG.exception("Sysinv Agent exception updating ilvg conductor: %s" % ex)
+                pass
+        else:
+            LOG.info("ihost_inv_get_and_report - ilvg data is empty.")
 
         kernel_running = self._get_kernel_running()
         try:
@@ -1179,13 +1313,15 @@ class AgentManager(service.PeriodicService):
                                                self._ihost_uuid)
             self._inventoried_initial = True
 
-    def _report_config_applied(self, context, config_dict=None, status=None, error=None):
+    def _report_config_applied(self, context, config_dict=None, status=None, error=None,
+                               config_uuid=None):
         """Report the latest configuration applied for this host to the
         conductor.
         :param context: an admin context
         :param config_dict: configuration applied
         :param status: config status
         :param error: config error
+        :param config_uuid: config uuid to report
         """
         if not context:
             # If context is None, it could indicate a rare issue where context
@@ -1202,20 +1338,50 @@ class AgentManager(service.PeriodicService):
         rpcapi = conductor_rpcapi.ConductorAPI(
             topic=conductor_rpcapi.MANAGER_TOPIC)
 
-        config_uuid = self.iconfig_read_config_applied()
+        if config_uuid is None:
+            config_uuid = self.iconfig_read_config_applied()
+
         if config_uuid != self._iconfig_read_config_reported:
-            LOG.info("Agent config applied  %s" % config_uuid)
+            # Check if this is a reboot-required config
+            if not utils.config_is_reboot_required(config_uuid):
+                LOG.info("Agent config applied iconfig_uuid=%s" % config_uuid)
 
-            imsg_dict = {'config_applied': config_uuid}
-            if config_dict:
-                imsg_dict.update({'config_dict': config_dict,
-                                  'status': status,
-                                  'error': error})
-            rpcapi.iconfig_update_by_ihost(context,
-                                           self._ihost_uuid,
-                                           imsg_dict)
+                imsg_dict = {'config_applied': config_uuid}
+                if config_dict:
+                    imsg_dict.update({'config_dict': config_dict,
+                                      'status': status,
+                                      'error': error,
+                                      'puppet_path': config_dict.get('puppet_path')})
+                rpcapi.iconfig_update_by_ihost(context,
+                                               self._ihost_uuid,
+                                               imsg_dict)
 
-            self._iconfig_read_config_reported = config_uuid
+                self._iconfig_read_config_reported = config_uuid
+
+    def _report_reboot_completion(self, context):
+        """Report reboot configuration applied for this host to the
+        conductor.
+        :param context: an admin context
+        """
+        if not context:
+            context = mycontext.get_admin_context()
+
+        reboot_config_uuid = self.iconfig_read_reboot_applied()
+
+        if reboot_config_uuid and reboot_config_uuid != self._last_reported_reboot:
+            LOG.info("Agent reboot config applied iconfig_uuid=%s" % reboot_config_uuid)
+            try:
+                rpcapi = conductor_rpcapi.ConductorAPI(topic=conductor_rpcapi.MANAGER_TOPIC)
+                imsg_dict = {
+                    'config_applied': reboot_config_uuid,
+                    'reboot_completed': True
+                }
+
+                rpcapi.iconfig_update_by_ihost(context, self._ihost_uuid, imsg_dict)
+                self._last_reported_reboot = reboot_config_uuid
+            except Exception as e:
+                LOG.error("Failed to report reboot completion: %s" % e)
+                self._last_reported_reboot = None
 
     @staticmethod
     def _update_config_applied(config_uuid):
@@ -1541,6 +1707,127 @@ class AgentManager(service.PeriodicService):
         else:
             LOG.debug("No divergence found within 'sysadmin' user configuration.")
 
+    def host_memory_update(self, icontext, rpcapi):
+        imemory = self._inode_operator.inodes_get_imemory()
+        if (self._prev_memory is None) or (self._prev_memory != imemory) or \
+           (self.MEMORY not in self._inventory_reported):
+            try:
+                rpcapi.imemory_update_by_ihost(icontext,
+                                               self._ihost_uuid,
+                                               imemory)
+                self._inventory_reported.add(self.MEMORY)
+                self._prev_memory = imemory
+            except exception.SysinvException:
+                LOG.exception("Sysinv Agent exception updating imemory conductor.")
+                self._prev_memory = None
+
+    def host_disk_update(self, icontext, rpcapi):
+        idisk = self._idisk_operator.idisk_get()
+        if (self._prev_disk is None) or (self._prev_disk != idisk) or \
+           (self.DISK not in self._inventory_reported):
+            try:
+                rpcapi.idisk_update_by_ihost(icontext, self._ihost_uuid, idisk)
+                self._inventory_reported.add(self.DISK)
+                self._prev_disk = idisk
+            except exception.SysinvException:
+                LOG.exception("Sysinv Agent exception updating idisk conductor.")
+                self._prev_disk = None
+
+    def host_lvg_update(self, icontext, rpcapi, cinder_device=None):
+        ilvg = self.get_ilvg_data(cinder_device=cinder_device)
+        if not ilvg:
+            LOG.info("agent_audit - ilvg data is empty.")
+        elif (self._prev_lvg is None) or (self._prev_lvg != ilvg) or \
+           (self.LVG not in self._inventory_reported):
+            try:
+                rpcapi.ilvg_update_by_ihost(icontext, self._ihost_uuid, ilvg)
+                self._inventory_reported.add(self.LVG)
+                self._prev_lvg = ilvg
+            except Exception as ex:
+                LOG.exception("Sysinv Agent exception updating ilvg "
+                              "conductor: %s" % ex)
+                self._prev_lvg = None
+
+    def host_pv_update(self, icontext, rpcapi, cinder_device=None):
+        ipv = self.get_ipv_data(cinder_device=cinder_device)
+        if not ipv:
+            LOG.info("agent_audit - ipv data is empty.")
+        elif (self._prev_pv is None) or (self._prev_pv != ipv) or \
+           (self.PV not in self._inventory_reported):
+            try:
+                rpcapi.ipv_update_by_ihost(icontext,
+                                           self._ihost_uuid,
+                                           ipv)
+                self._inventory_reported.add(self.PV)
+                self._prev_pv = ipv
+            except Exception as ex:
+                LOG.exception("Sysinv Agent exception updating ipv "
+                              "conductor: %s" % ex)
+                self._prev_pv = None
+
+    def host_filesystem_update(self, icontext, rpcapi):
+        host_fs = self._host_fs_operator.ilv_get_supported_hostfs()
+        if (self._prev_fs is None) or (self._prev_fs != host_fs) or \
+           (self.HOST_FILESYSTEMS not in self._inventory_reported):
+            try:
+                rpcapi.hostfs_update_by_ihost(icontext,
+                                              self._ihost_uuid,
+                                              host_fs)
+                self._inventory_reported.add(self.HOST_FILESYSTEMS)
+                self._prev_fs = host_fs
+            except RemoteError as e:
+                # ignore because active controller is not yet upgraded,
+                # so it's current load may not implement this RPC call
+                if "NameError" in str(e):
+                    LOG.warn("Skip report host filesystems. "
+                             "Upgrade in progress.")
+                    self._inventory_reported.add(self.HOST_FILESYSTEMS)
+                else:
+                    LOG.exception(f"Failed to report host filesystems update: {e}")
+            except exception.SysinvException:
+                LOG.exception("Sysinv Agent exception updating host_fs conductor.")
+                self._prev_fs = None
+
+    def host_pci_update(self, icontext, rpcapi):
+        if os.path.exists(fpga_constants.N3000_RESET_FLAG) and \
+                self._report_to_conductor_fpga_info:
+            LOG.info("Found n3000 reset flag, Updating N3000 PCI info.")
+            pci_device_list = self._ifpga_operator.get_n3000_pci_info()
+            try:
+                if pci_device_list:
+                    LOG.info("reporting N3000 PCI devices for host %s: %s" %
+                             (self._ihost_uuid, pci_device_list))
+
+                    # Don't ask conductor to cleanup stale entries while worker
+                    # manifest is not complete. For N3000 device, it could get rid
+                    # of a valid entry with a different PCI address but restored
+                    # from previous database backup
+                    cleanup_stale = \
+                        os.path.exists(tsc.VOLATILE_WORKER_CONFIG_COMPLETE)
+                    rpcapi.pci_device_update_by_host(icontext,
+                                                     self._ihost_uuid,
+                                                     pci_device_list,
+                                                     cleanup_stale)
+            except Exception:
+                LOG.exception("Exception updating n3000 PCI devices, "
+                              "this will likely cause problems.")
+
+    def host_fpga_update(self, icontext, rpcapi):
+
+        if os.path.exists(fpga_constants.N3000_RESET_FLAG) and \
+                self._report_to_conductor_fpga_info:
+            # Collect FPGA data for this host.
+            fpgainfo_list = self._ifpga_operator.get_fpga_info()
+            LOG.info("reporting FPGA inventory for host %s: %s" %
+                     (self._ihost_uuid, fpgainfo_list))
+            try:
+                rpcapi.fpga_device_update_by_host(icontext,
+                                                  self._ihost_uuid,
+                                                  fpgainfo_list)
+                self._report_to_conductor_fpga_info = False
+            except exception.SysinvException:
+                LOG.exception("Exception updating fpga devices.")
+
     @utils.synchronized(LOCK_AGENT_ACTION, external=False)
     def agent_audit(self, context, host_uuid, force_updates, cinder_device=None):
         # perform inventory audit
@@ -1554,20 +1841,26 @@ class AgentManager(service.PeriodicService):
         if self._ihost_uuid:
             if os.path.isfile(tsc.INITIAL_CONFIG_COMPLETE_FLAG):
                 self._report_config_applied(icontext)
-
         if self._report_to_conductor():
             LOG.info("Sysinv Agent audit running inv_get_and_report.")
-            self.ihost_inv_get_and_report(icontext)
-
-        if self._ihost_uuid:
             try:
-                nova_lvgs = rpcapi.ilvg_get_nova_ilvg_by_ihost(icontext, self._ihost_uuid)
-            except Timeout:
-                LOG.info("ilvg_get_nova_ilvg_by_ihost() Timeout.")
-                nova_lvgs = None
+                self.ihost_inv_get_and_report(icontext)
+            except Exception as ex:
+                LOG.exception("Audit skipped by exception: %s" % ex)
+                return
 
-        if self._ihost_uuid and \
-           os.path.isfile(tsc.INITIAL_CONFIG_COMPLETE_FLAG):
+        if not self._ihost_uuid:
+            return
+
+        try:
+            nova_lvgs = rpcapi.ilvg_get_nova_ilvg_by_ihost(
+                icontext,
+                self._ihost_uuid)
+        except Timeout:
+            LOG.info("ilvg_get_nova_ilvg_by_ihost() Timeout.")
+            nova_lvgs = None
+
+        if os.path.isfile(tsc.INITIAL_CONFIG_COMPLETE_FLAG):
             imsg_dict = {}
             if not self._report_to_conductor_iplatform_avail_flag and \
                not self._wait_for_nova_lvg(icontext, rpcapi, self._ihost_uuid, nova_lvgs):
@@ -1577,16 +1870,7 @@ class AgentManager(service.PeriodicService):
                 imsg_dict.update({'config_applied': config_uuid})
 
                 if self._ihost_personality == constants.CONTROLLER:
-                    idisk = self._idisk_operator.idisk_get()
-                    try:
-                        rpcapi.idisk_update_by_ihost(icontext,
-                                                     self._ihost_uuid,
-                                                     idisk)
-                        self._inventory_reported.add(self.DISK)
-                    except exception.SysinvException:
-                        LOG.exception("Sysinv Agent exception updating idisk "
-                                      "conductor.")
-                        pass
+                    self.host_disk_update(icontext, rpcapi)
 
                 self._report_to_conductor_iplatform_avail()
                 self._iconfig_read_config_reported = config_uuid
@@ -1602,202 +1886,100 @@ class AgentManager(service.PeriodicService):
             if nvme_host_nqn is not None:
                 imsg_dict.update({'nvme_host_nqn': nvme_host_nqn})
 
-            self.platform_update_by_host(rpcapi,
-                                         icontext,
+            self.platform_update_by_host(rpcapi, icontext,
                                          self._ihost_uuid,
                                          imsg_dict)
 
-        if self._ihost_uuid:
-            LOG.debug("SysInv Agent Inventory Audit running.")
+        LOG.debug("SysInv Agent Inventory Audit running.")
 
-            if force_updates:
-                LOG.info("SysInv Agent Inventory Audit force updates: (%s)" %
-                         (', '.join(force_updates)))
+        if force_updates:
+            LOG.info("SysInv Agent Inventory Audit force updates: (%s)" %
+                     (', '.join(force_updates)))
 
-            imemory = self._inode_operator.inodes_get_imemory()
-            rpcapi.imemory_update_by_ihost(icontext,
-                                           self._ihost_uuid,
-                                           imemory)
-            self._inventory_reported.add(self.MEMORY)
+        # if this audit is requested by conductor, clear previous states
+        # for disk, lvg, pv, partition, fs and memory to force an update
+        if force_updates:
+            if constants.DISK_AUDIT_REQUEST in force_updates:
+                self._prev_disk = None
+            if constants.LVG_AUDIT_REQUEST in force_updates:
+                self._prev_lvg = None
+            if constants.PV_AUDIT_REQUEST in force_updates:
+                self._prev_pv = None
+            if constants.PARTITION_AUDIT_REQUEST in force_updates:
+                self._prev_partition = None
+            if constants.FILESYSTEM_AUDIT_REQUEST in force_updates:
+                self._prev_fs = None
+            if constants.MEMORY_AUDIT_REQUEST in force_updates:
+                self._prev_memory = None
 
-            # if this audit is requested by conductor, clear
-            # previous states for disk, lvg, pv and fs to force an update
-            if force_updates:
-                if constants.DISK_AUDIT_REQUEST in force_updates:
-                    self._prev_disk = None
-                if constants.LVG_AUDIT_REQUEST in force_updates:
-                    self._prev_lvg = None
-                if constants.PV_AUDIT_REQUEST in force_updates:
-                    self._prev_pv = None
-                if constants.PARTITION_AUDIT_REQUEST in force_updates:
-                    self._prev_partition = None
-                if constants.FILESYSTEM_AUDIT_REQUEST in force_updates:
-                    self._prev_fs = None
+        # Update memory
+        self.host_memory_update(icontext, rpcapi)
+        # Update disks
+        self.host_disk_update(icontext, rpcapi)
+        # Update disk partitions
+        if self._ihost_personality != constants.STORAGE:
+            self._update_disk_partitions(rpcapi, icontext, self._ihost_uuid)
+        # Update local volume groups
+        self.host_lvg_update(icontext, rpcapi, cinder_device)
+        # Update physical volumes
+        self.host_pv_update(icontext, rpcapi, cinder_device)
+        # Update host filesystems
+        self._create_host_filesystems(rpcapi, icontext)
+        self.host_filesystem_update(icontext, rpcapi)
 
-            # Update disks
-            idisk = self._idisk_operator.idisk_get()
-            if ((self._prev_disk is None) or
-                    (self._prev_disk != idisk)):
-                self._prev_disk = idisk
-                try:
-                    rpcapi.idisk_update_by_ihost(icontext,
-                                                 self._ihost_uuid,
-                                                 idisk)
-                    self._inventory_reported.add(self.DISK)
-                except exception.SysinvException:
-                    LOG.exception("Sysinv Agent exception updating idisk"
-                                  "conductor.")
-                    self._prev_disk = None
+        # Collect FPGA PCI data for this host.
+        # We know that the PCI address of the N3000 can change the first time
+        # We reset it after boot, so we need to gather the new PCI device
+        # information and send it to sysinv-conductor.
+        # This needs to exactly mirror what sysinv-agent does as far as PCI
+        # updates.  We could potentially modify sysinv-agent to do the PCI
+        # updates when triggered by an RPC cast, but we don't need to rescan
+        # all PCI devices, just the N3000 devices.
+        self.host_pci_update(icontext, rpcapi)
+        self.host_fpga_update(icontext, rpcapi)
 
-            # Update disk partitions
-            if self._ihost_personality != constants.STORAGE:
-                self._update_disk_partitions(rpcapi, icontext, self._ihost_uuid)
-
-            # Update local volume groups
-            ilvg = self._ilvg_operator.ilvg_get(cinder_device=cinder_device)
-            if ((self._prev_lvg is None) or
-                    (self._prev_lvg != ilvg)):
-                self._prev_lvg = ilvg
-                try:
-                    rpcapi.ilvg_update_by_ihost(icontext,
-                                                self._ihost_uuid,
-                                                ilvg)
-                    self._inventory_reported.add(self.LVG)
-                except exception.SysinvException:
-                    LOG.exception("Sysinv Agent exception updating ilvg"
-                                  "conductor.")
-                    self._prev_lvg = None
-                    pass
-
-            # Update physical volumes
-            ipv = self._ipv_operator.ipv_get(cinder_device=cinder_device)
-            if ((self._prev_pv is None) or
-                    (self._prev_pv != ipv)):
-                self._prev_pv = ipv
-                try:
-                    rpcapi.ipv_update_by_ihost(icontext,
-                                               self._ihost_uuid,
-                                               ipv)
-                    self._inventory_reported.add(self.PV)
-                except exception.SysinvException:
-                    LOG.exception("Sysinv Agent exception updating ipv"
-                                  "conductor.")
-                    self._prev_pv = None
-                    pass
-
-            self._create_host_filesystems(rpcapi, icontext)
-
-            # Update host filesystems
-            host_fs = self._host_fs_operator.ilv_get_supported_hostfs()
-            if ((self._prev_fs is None) or
-                    (self._prev_fs != host_fs)):
-                self._prev_fs = host_fs
+        if self._report_to_conductor_cstate_info:
             try:
-                rpcapi.hostfs_update_by_ihost(icontext,
-                                              self._ihost_uuid,
-                                              host_fs)
-                self._inventory_reported.add(self.HOST_FILESYSTEMS)
+                self._report_cstates_and_frequency_update(icontext, rpcapi)
+                self._report_to_conductor_cstate_info = False
             except RemoteError as e:
                 # ignore because active controller is not yet upgraded,
                 # so it's current load may not implement this RPC call
-                if "NameError" in str(e):
-                    LOG.warn("Skip report host filesystems. "
-                                "Upgrade in progress.")
-                    self._inventory_reported.add(self.HOST_FILESYSTEMS)
+                if "AttributeError" in str(e):
+                    LOG.warn("Skip report cstates and frequency update. "
+                             "Upgrade in progress.")
                 else:
-                    LOG.exception(f"Failed to report host filesystems update: {e}")
-                pass
-            except exception.SysinvException:
-                LOG.exception("Sysinv Agent exception updating host_fs"
-                                " conductor.")
-                self._prev_fs = None
-                pass
+                    LOG.exception(f"Failed to report cstates and frequency update: {e}")
+            except exception.SysinvException as ex:
+                LOG.exception("Sysinv Agent exception "
+                              f"reporting cstates and frequency update: "
+                              f"{ex}")
 
-            # Collect FPGA PCI data for this host.
-            # We know that the PCI address of the N3000 can change the first time
-            # We reset it after boot, so we need to gather the new PCI device
-            # information and send it to sysinv-conductor.
-            # This needs to exactly mirror what sysinv-agent does as far as PCI
-            # updates.  We could potentially modify sysinv-agent to do the PCI
-            # updates when triggered by an RPC cast, but we don't need to rescan
-            # all PCI devices, just the N3000 devices.
-            if os.path.exists(fpga_constants.N3000_RESET_FLAG) and \
-                    self._report_to_conductor_fpga_info:
-                LOG.info("Found n3000 reset flag, continuing.")
-                LOG.info("Updating N3000 PCI info.")
-                pci_device_list = self._ifpga_operator.get_n3000_pci_info()
-                try:
-                    if pci_device_list:
-                        LOG.info("reporting N3000 PCI devices for host %s: %s" %
-                                (self._ihost_uuid, pci_device_list))
+        # if the platform firewall failed to be applied (by not having kube-api available
+        # during AIO manifest execution or lack of config in the host yaml file) ask for
+        # conductor to reapply
+        if os.path.isfile(constants.PLATFORM_FIREWALL_CONFIG_REQUIRED):
+            try:
+                LOG.info("platform firewall config requested")
+                rpcapi.request_firewall_runtime_update(icontext, self._ihost_uuid)
+            except Exception:
+                LOG.exception("Exception when requesting platform firewall config")
 
-                        # Don't ask conductor to cleanup stale entries while worker
-                        # manifest is not complete. For N3000 device, it could get rid
-                        # of a valid entry with a different PCI address but restored
-                        # from previous database backup
-                        cleanup_stale = \
-                            os.path.exists(tsc.VOLATILE_WORKER_CONFIG_COMPLETE)
-                        rpcapi.pci_device_update_by_host(icontext,
-                                                        self._ihost_uuid,
-                                                        pci_device_list,
-                                                        cleanup_stale)
-                except Exception:
-                    LOG.exception("Exception updating n3000 PCI devices, "
-                                "this will likely cause problems.")
-                    pass
+        # Notify conductor of inventory completion after necessary
+        # inventory reports have been sent to conductor.
+        # This is as defined by _conditions_for_inventory_complete_met().
+        self.notify_initial_inventory_completed(icontext)
 
-                # Collect FPGA data for this host.
-                fpgainfo_list = self._ifpga_operator.get_fpga_info()
-                LOG.info("reporting FPGA inventory for host %s: %s" %
-                        (self._ihost_uuid, fpgainfo_list))
-                try:
-                    rpcapi.fpga_device_update_by_host(icontext, self._ihost_uuid, fpgainfo_list)
-                    self._report_to_conductor_fpga_info = False
-                except exception.SysinvException:
-                    LOG.exception("Exception updating fpga devices.")
-                    pass
+        self._report_config_applied(icontext)
+        if not self._last_reported_reboot:
+            self._report_reboot_completion(icontext)
 
-            if self._report_to_conductor_cstate_info:
-                try:
-                    self._report_cstates_and_frequency_update(icontext, rpcapi)
-                    self._report_to_conductor_cstate_info = False
-                except RemoteError as e:
-                    # ignore because active controller is not yet upgraded,
-                    # so it's current load may not implement this RPC call
-                    if "AttributeError" in str(e):
-                        LOG.warn("Skip report cstates and frequency update. "
-                                 "Upgrade in progress.")
-                    else:
-                        LOG.exception(f"Failed to report cstates and frequency update: {e}")
-                except exception.SysinvException as ex:
-                    LOG.exception("Sysinv Agent exception "
-                                  f"reporting cstates and frequency update: "
-                                  f"{ex}")
-
-            # if the platform firewall failed to be applied (by not having kube-api available
-            # during AIO manifest execution or lack of config in the host yaml file) ask for
-            # conductor to reapply
-            if os.path.isfile(constants.PLATFORM_FIREWALL_CONFIG_REQUIRED):
-                try:
-                    LOG.info("platform firewall config requested")
-                    rpcapi.request_firewall_runtime_update(icontext, self._ihost_uuid)
-                except Exception:
-                    LOG.exception("Exception when requesting platform firewall config")
-                    pass
-
-            # Notify conductor of inventory completion after necessary
-            # inventory reports have been sent to conductor.
-            # This is as defined by _conditions_for_inventory_complete_met().
-            self.notify_initial_inventory_completed(icontext)
-
-            self._report_config_applied(icontext)
-
-            if os.path.isfile(tsc.PLATFORM_CONF_FILE):
-                # read the platform config file and check for UUID
-                if 'UUID' not in open(tsc.PLATFORM_CONF_FILE).read():
-                    # the UUID is not in found, append it
-                    with open(tsc.PLATFORM_CONF_FILE, "a") as fd:
-                        fd.write("UUID=" + self._ihost_uuid)
+        if os.path.isfile(tsc.PLATFORM_CONF_FILE):
+            # read the platform config file and check for UUID
+            if 'UUID' not in open(tsc.PLATFORM_CONF_FILE).read():
+                # the UUID is not in found, append it
+                with open(tsc.PLATFORM_CONF_FILE, "a") as fd:
+                    fd.write("UUID=" + self._ihost_uuid)
 
     def configure_lldp_systemname(self, context, systemname):
         """Configure the systemname into the lldp agent with the supplied data.
@@ -1861,6 +2043,7 @@ class AgentManager(service.PeriodicService):
         :          }
         :returns: none
         """
+        LOG.info("AgentManager.iconfig_update_file: received request iconfig_uuid=%s", iconfig_uuid)
         LOG.debug("AgentManager.iconfig_update_file: updating iconfig"
                   " %s %s %s" % (iconfig_uuid, iconfig_dict,
                                  self._ihost_personality))
@@ -1875,22 +2058,17 @@ class AgentManager(service.PeriodicService):
                 config_uuid=iconfig_uuid, config_dict=iconfig_dict,
                 host_personality=self._ihost_personality)
 
-        if self._ihost_personality in iconfig_dict['personalities']:
+        if self._ihost_personality not in iconfig_dict['personalities']:
+            LOG.info("AgentManager.iconfig_update_file: does not target this host personality")
+        else:
             file_content = iconfig_dict['file_content']
-
-            if not file_content:
-                LOG.info("AgentManager: no file_content %s %s %s" %
-                         (iconfig_uuid, iconfig_dict,
-                          self._ihost_personality))
 
             file_names = iconfig_dict['file_names']
             for file_name in file_names:
                 file_name_sysinv = file_name + ".sysinv"
 
-                LOG.debug("AgentManager.iconfig_update_file: updating file %s "
-                          "with content: %s"
-                          % (file_name,
-                             iconfig_dict['file_content']))
+                LOG.info("AgentManager.iconfig_update_file: updating file %s",
+                         file_name)
 
                 if os.path.isfile(file_name):
                     if not nobackup:
@@ -1902,7 +2080,10 @@ class AgentManager(service.PeriodicService):
                 else:
                     f_content = file_content
 
-                if f_content is not None:
+                if f_content is None:
+                    LOG.info("AgentManager.iconfig_update_file: no content %s",
+                             file_name)
+                else:
                     # create a temporary file to hold the runtime configuration values
                     dirname = os.path.dirname(file_name)
                     basename = os.path.basename(file_name)
@@ -1943,7 +2124,14 @@ class AgentManager(service.PeriodicService):
             if os.path.isdir(cache_dir_temp):
                 shutil.rmtree(cache_dir_temp)
             shutil.copytree(hieradata_path, cache_dir_temp)
-            subprocess.check_call(['sync'])  # pylint: disable=not-callable
+            try:
+                subprocess.check_call(    # pylint: disable=not-callable
+                    ['sync', '-f', cache_dir_temp],
+                    timeout=30
+                )
+            except subprocess.TimeoutExpired:
+                LOG.warning("Sync operation timed out after 30 seconds")
+                raise
 
             if os.path.isdir(cache_dir):
                 shutil.rmtree(cache_dir)
@@ -2014,25 +2202,25 @@ class AgentManager(service.PeriodicService):
         LOG.info("config_apply_runtime_manifest: %s %s %s" % (
             config_uuid, config_dict, self._ihost_personality))
         try:
-
+            # mount /var/run/platform
+            LOG.info("mount /var/run/platform")
+            local_dir = os.path.join(tsc.VOLATILE_PATH, 'platform')
+            if not os.path.exists(local_dir):
+                LOG.info("create local dir '%s'" % local_dir)
+                os.makedirs(local_dir)
+            temp_puppet_path = tempfile.mkdtemp(dir=local_dir, prefix="tmp_puppet_")
+            hieradata_path = os.path.join(temp_puppet_path, 'hieradata')
             if not os.path.exists(tsc.PUPPET_PATH):
-                # we must be controller-standby or storage, mount /var/run/platform
-                LOG.info("controller-standby or storage, mount /var/run/platform")
-                remote_dir = "controller-platform-nfs:" + tsc.PLATFORM_PATH
-                local_dir = os.path.join(tsc.VOLATILE_PATH, 'platform')
-                # JK - could also consider mkstemp for atomicity
-                if not os.path.exists(local_dir):
-                    LOG.info("create local dir '%s'" % local_dir)
-                    os.makedirs(local_dir)
-                hieradata_path = os.path.join(
-                    tsc.PUPPET_PATH.replace(
-                        tsc.PLATFORM_PATH, local_dir),
-                    'hieradata')
-                with utils.mounted(remote_dir, local_dir):
+                # We must be controller-standby or storage, pull hieradata from active controller
+                LOG.info("controller-standby or storage")
+                remote_puppet_path = "controller-platform-nfs:" + config_dict.get('puppet_path')
+                with utils.mounted(remote_puppet_path, temp_puppet_path):
                     self._apply_runtime_manifest(config_dict, hieradata_path=hieradata_path)
             else:
                 LOG.info("controller-active")
-                self._apply_runtime_manifest(config_dict)
+                local_puppet_path = config_dict.get('puppet_path')
+                shutil.copytree(local_puppet_path, temp_puppet_path, dirs_exist_ok=True)
+                self._apply_runtime_manifest(config_dict, hieradata_path=hieradata_path)
         except OSError:
             # race condition on the mount
             if not os.path.exists(local_dir):
@@ -2053,6 +2241,10 @@ class AgentManager(service.PeriodicService):
                                             status=puppet.REPORT_FAILURE,
                                             error=error)
             raise
+        finally:
+            if temp_puppet_path and os.path.exists(temp_puppet_path):
+                LOG.info("Removing volatile puppet directory %s" % temp_puppet_path)
+                shutil.rmtree(temp_puppet_path, ignore_errors=True)
 
         if config_dict.get(puppet.REPORT_INVENTORY_UPDATE):
             self._report_inventory(context, config_dict)
@@ -2066,9 +2258,10 @@ class AgentManager(service.PeriodicService):
             LOG.debug("config runtime details: %s." % config_dict)
 
             self._report_config_applied(
-                context, config_dict, status=puppet.REPORT_SUCCESS, error=None)
+                context, config_dict, status=puppet.REPORT_SUCCESS, error=None,
+                config_uuid=config_uuid)
         else:
-            self._report_config_applied(context)
+            self._report_config_applied(context, config_uuid=config_uuid)
 
     def _apply_runtime_manifest(self, config_dict, hieradata_path=PUPPET_HIERADATA_PATH):
 
@@ -2284,26 +2477,153 @@ class AgentManager(service.PeriodicService):
                               "ipartition conductor.")
 
             # Update local volume groups
-            ilvg = self._ilvg_operator.ilvg_get()
-            try:
-                rpcapi.ilvg_update_by_ihost(context,
-                                            self._ihost_uuid,
-                                            ilvg)
-                self._inventory_reported.add(self.LVG)
-            except exception.SysinvException:
-                LOG.exception("Sysinv Agent exception updating ilvg"
-                              "conductor.")
+            ilvg = self.get_ilvg_data()
+            if ilvg:
+                try:
+                    rpcapi.ilvg_update_by_ihost(context,
+                                                self._ihost_uuid,
+                                                ilvg)
+                    self._inventory_reported.add(self.LVG)
+                except Exception as ex:
+                    LOG.exception("Sysinv Agent exception updating ilvg "
+                                  "conductor: %s" % ex)
+            else:
+                LOG.info("update_host_lvm - ilvg data is empty.")
 
             # Update physical volumes
-            ipv = self._ipv_operator.ipv_get()
+            ipv = self.get_ipv_data()
+            if ipv:
+                try:
+                    rpcapi.ipv_update_by_ihost(context,
+                                               self._ihost_uuid,
+                                               ipv)
+                    self._inventory_reported.add(self.PV)
+                except Exception as ex:
+                    LOG.exception("Sysinv Agent exception updating ipv "
+                                  "conductor: %s" % ex)
+            else:
+                LOG.info("update_host_lvm - ipv data is empty.")
+
+    def _save_kube_upgrade_method_details(self, frame):
+        """Save kubernetes upgrade method name and arguments with values
+
+        This method saves kubernetes upgrade method name and arguments with their values
+
+        :param: frame: Frame object containing kube upgrade method name and arguments with values
+        :raises: SysinvException in case of saving error
+        """
+        if not frame:
+            raise exception.SysinvException("Cannot save kubernetes upgrade method name and "
+                                            "arguments. Details not available.")
+
+        if not inspect.isframe(frame):
+            raise exception.SysinvException("Input to save kubernetes method details is not a valid"
+                                            " frame of the procedure running.: %s" % (type(frame)))
+
+        try:
+            arg_info = inspect.getargvalues(frame)
+            if not arg_info:
+                raise exception.SysinvException("Kubernetes upgrade call method argument details "
+                                                "not found.")
+
+            data_to_save = arg_info.locals
+            if not data_to_save:
+                raise exception.SysinvException("Kubernetes upgrade call method argument details "
+                                                "not found.")
+
+            # data_to_save now look like this
+            #
+            # {'self': <sysinv.agent.manager.AgentManager object at 0x77cd02f7a970>,
+            # 'context': <oslo_context.context.RequestContext object at 0x77cd027260a0>,
+            # 'host_uuid': '<host_uuid>',
+            # 'to_kube_version': '<kube_version>',
+            # 'is_final_version': True,
+            # 'frame': <frame at 0x2dee6360, file '/usr/lib/python3/dist-packages/sysinv/sysinv/
+            #          sysinv/sysinv/agent/manager.py', line 2466, code kube_upgrade_kubelet>}
+
+            # 'frame' object and 'self' are not picklable. Neither they are required to be saved.
+            # Just extract the method name from 'frame' which will be required when the data is
+            # unpickeled
+
+            if 'frame' not in data_to_save:
+                raise exception.SysinvException("Kubernetes upgrade method name details not found.")
+
+            method_name = data_to_save['frame'].f_code.co_name
+            if not method_name:
+                raise exception.SysinvException("Kubernetes upgrade method name not found.")
+
+            data_to_save.update({'method_name': method_name})
+            data_to_save.pop('frame')
+            data_to_save.pop('self')
+
+            with open(K8S_UPGRADE_IN_PROGRESS_FILE_PATH, 'wb') as file:
+                pickle.dump(data_to_save, file)
+
+        except Exception as ex:
+            raise exception.SysinvException("Failed to save kubernetes upgrade method "
+                                            "name and arguments. Error: [%s]" % (ex))
+
+    def _cleanup_kube_upgrade_method_details(self):
+        """Deletes file containing unfinished kubernetes upgrade method and its arguments
+        """
+        try:
+            if os.path.exists(K8S_UPGRADE_IN_PROGRESS_FILE_PATH):
+                os.remove(K8S_UPGRADE_IN_PROGRESS_FILE_PATH)
+                LOG.debug("Successfully removed k8s upgrade data file [%s]."
+                            % (K8S_UPGRADE_IN_PROGRESS_FILE_PATH))
+        except Exception as ex:
+            LOG.warning("Failed to cleanup k8s upgrade data file [%s] with error: [%s]. "
+                        % (K8S_UPGRADE_IN_PROGRESS_FILE_PATH, ex))
+
+    def kube_upgrade_kubelet(self, context, host_uuid, to_kube_version, is_final_version):
+        """Upgrade the kubernetes kubelet on this host
+
+        Upgrade kubelet on controller or worker host.
+
+        :param: context: context object
+        :param: host_uuid: A host UUID string.
+        :param: to_kube_version: kubernetes version being upgraded to
+        :param: is_final_version: True if to_kube_version is the final version in the
+                                  current kubernetes upgrade attempt else False
+        """
+        if self._ihost_personality in (constants.WORKER, constants.CONTROLLER):
+
             try:
-                rpcapi.ipv_update_by_ihost(context,
-                                           self._ihost_uuid,
-                                           ipv)
-                self._inventory_reported.add(self.PV)
-            except exception.SysinvException:
-                LOG.exception("Sysinv Agent exception updating ipv"
-                              "conductor.")
+                frame = inspect.currentframe()
+                self._save_kube_upgrade_method_details(frame)
+            except Exception as ex:
+                LOG.warning("Failed to save kubelet upgrade method details with error: [%s]. "
+                            "Continuing... " % (ex))
+
+            try:
+                current_link = os.readlink(kubernetes.KUBERNETES_SYMLINKS_STAGE_2)
+
+                from_kube_version = 'v' + current_link.split('/')[4]
+
+                LOG.info("Kubelet upgrade from version %s to %s started on this host."
+                         % (from_kube_version, to_kube_version))
+
+                if self._ihost_personality == constants.CONTROLLER:
+                    operator = kube_host.KubeControllerOperator(context, host_uuid, self._hostname)
+                else:
+                    operator = kube_host.KubeWorkerOperator(context, host_uuid, self._hostname)
+
+                operator.upgrade_kubelet(from_kube_version, to_kube_version, is_final_version)
+
+                LOG.info("Kubelet upgrade successful from version %s to %s on this host."
+                         % (from_kube_version, to_kube_version))
+
+                success = True
+
+            except Exception as ex:
+                LOG.error("Failed to upgrade Kubelet from version %s to %s on this host. Error: "
+                          "[%s]. Please retry." % (from_kube_version, to_kube_version, ex))
+                success = False
+
+            conductor_api = conductor_rpcapi.ConductorAPI()
+            conductor_api.report_kube_upgrade_kubelet_result(context, host_uuid,
+                                                             to_kube_version, success)
+            self._cleanup_kube_upgrade_method_details()
 
     def report_initial_inventory(self, context, host_uuid):
         # conductor requests re-report initial inventory
@@ -2312,3 +2632,157 @@ class AgentManager(service.PeriodicService):
             self._prev_fs = None
             self._inventoried_initial = False
             self._inventory_reported = set()
+
+    def pull_kubernetes_images(self, context, host_uuid, images, crictl_auth):
+        """ Pull kubernetes control plane images to crictl
+
+        :param: context: context object.
+        :param: host_uuid: A host UUID string.
+        :param: images: List of images to be downloaded.
+        :param: crictl_auth: Auth string to pull kubernetes images
+
+        :returns: True if image download succeeds False otherwise
+        """
+        if self._ihost_uuid and self._ihost_uuid == host_uuid:
+
+            try:
+                frame = inspect.currentframe()
+                self._save_kube_upgrade_method_details(frame)
+            except Exception as ex:
+                LOG.warning("Failed to save kubernetes image pull method details with error: [%s]."
+                            " Continuing... " % (ex))
+
+            start = time.time()
+            try:
+                # To avoid undesirable removal of pulled images by GC before
+                # they are actually used during control-plane and kubelet upgrade,
+                # GC needs to be temporarily disabled. It is enabled back during
+                # kubelet upgrade. Kubelet needs to be restarted for configuration
+                # change to take effect.
+                kubernetes.disable_kubelet_garbage_collection()
+                utils.pmon_restart_service(kubernetes.KUBELET_SYSTEMD_SERVICE_NAME)
+            except exception.SysinvException as ex:
+                LOG.warning("Failed to disable garbage collection in kubelet with error: [%s] "
+                            "continuing anyway." % (ex))
+
+            result = self._containerd_operator.pull_images(images, crictl_auth)
+            if result:
+                LOG.info("All required kubernetes images downloaded successfully in %s seconds"
+                         % (time.time() - start))
+            else:
+                LOG.error("Image download operation failed.")
+
+            rpcapi = conductor_rpcapi.ConductorAPI(topic=conductor_rpcapi.MANAGER_TOPIC)
+            rpcapi.report_download_images_result(context, result)
+            self._cleanup_kube_upgrade_method_details()
+
+    def kube_upgrade_abort(self, context, current_kube_version, back_to_kube_version):
+        """Abort a kubernetes upgrade
+
+        Kubernetes upgrade abort on controller hosts.
+
+        :param: context: context object
+        :param: current_kube_version: current kubernetes version
+        :param: back_to_kube_version: kubernetes version to roll back to
+        """
+        if self._ihost_personality == constants.CONTROLLER:
+
+            try:
+                frame = inspect.currentframe()
+                self._save_kube_upgrade_method_details(frame)
+            except Exception as ex:
+                LOG.warning("Failed to save kube upgrade abort data with error: [%s]. "
+                            "Continuing... " % (ex))
+
+            LOG.info("Starting kubernetes upgrade abort from version %s to %s"
+                     % (current_kube_version, back_to_kube_version))
+            try:
+                operator = kube_host.KubeControllerOperator(
+                        context, self._ihost_uuid, self._hostname)
+                abort, recovery = operator.upgrade_abort(current_kube_version, back_to_kube_version)
+            except Exception as ex:
+                LOG.exception(ex)
+                abort = False
+                recovery = False
+            if abort:
+                LOG.info("Kubernetes upgrade abort successful on this host.")
+            else:
+                if recovery:
+                    LOG.error("Kubernetes upgrade abort failed on this host but successfully "
+                              "recovered.")
+                else:
+                    LOG.error("Kubernetes upgrade abort and its recovery both failed on this host.")
+
+            rpcapi = conductor_rpcapi.ConductorAPI(topic=conductor_rpcapi.MANAGER_TOPIC)
+            rpcapi.report_kube_upgrade_abort_result(
+                context, current_kube_version, back_to_kube_version, abort, recovery)
+            self._cleanup_kube_upgrade_method_details()
+
+    def kube_upgrade_control_plane(self, context, host_uuid, to_kube_version, is_first_master):
+        """Upgrade kubernetes control plane on this host
+
+        Upgrade control plane on controller host.
+
+        :param: context: context object
+        :param: host_uuid: uuid of this host
+        :param: to_kube_version: kubernetes version being upgraded to
+        :param: is_first_master: True if this is the first control plane host being upgraded
+                                 else False
+        """
+        if self._ihost_personality == constants.CONTROLLER:
+
+            try:
+                frame = inspect.currentframe()
+                self._save_kube_upgrade_method_details(frame)
+            except Exception as ex:
+                LOG.warning("Failed to save kube control plane upgrade method details with "
+                            "error: [%s]. Continuing... " % (ex))
+
+            operator = kube_host.KubeControllerOperator(context, host_uuid, self._hostname)
+            attempt = 1
+            while attempt <= constants.CONTROL_PLANE_RETRY_COUNT:
+                try:
+                    current_link = os.readlink(kubernetes.KUBERNETES_SYMLINKS_STAGE_1)
+                    from_kube_version = 'v' + current_link.split('/')[4]
+
+                    LOG.info("Kubernetes control-plane upgrade to version %s started on this "
+                            "host. Attempt: %s" % (to_kube_version, attempt))
+                    operator.upgrade_control_plane(
+                        from_kube_version, to_kube_version, is_first_master)
+                    LOG.info("Kubernetes control-plane upgrade to version %s successful on this "
+                             "host." % (to_kube_version))
+                    success = True
+                    break
+                except Exception as ex:
+                    LOG.error("Attempt %s to upgrade kubernetes control-plane to version %s failed "
+                              "on this host. Error: [%s]" % (attempt, to_kube_version, ex))
+                    attempt += 1
+                    success = False
+
+            if not success:
+                LOG.error("Kubernetes control-plane upgrade to version %s failed on this host."
+                          % (to_kube_version))
+
+            rpcapi = conductor_rpcapi.ConductorAPI(topic=conductor_rpcapi.MANAGER_TOPIC)
+            rpcapi.report_kube_upgrade_control_plane_result(context, host_uuid, to_kube_version,
+                                                            is_first_master, success)
+            self._cleanup_kube_upgrade_method_details()
+
+    def pin_kubernetes_control_plane_images(self, context, host_uuid, version):
+        """Pin kubernetes static pod images
+
+        Following images of specified kubernetes version are pinned
+        - kube-apiserver
+        - kube-controller-manager
+        - kube-scheduler
+
+        :param: context: request context
+        :param: host_uuid: the host uuid
+        :param: version: Version of images to be pinned
+        """
+        if self._ihost_uuid and self._ihost_uuid == host_uuid:
+            try:
+                operator = kube_host.KubeControllerOperator(context, host_uuid, self._hostname)
+                operator._pin_unpin_control_plane_images(pin_images_version=version)
+            except Exception as ex:
+                LOG.warning("Failed to pin kubernetes control-plane images. Error: [%s]" % (ex))

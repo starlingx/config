@@ -25,13 +25,14 @@ import argparse
 from collections import OrderedDict
 import copy
 import dateutil
+import json
 import math
 import os
 import prettytable
 import re
 import signal
 import six
-import subprocess
+import subprocess  # nosec
 import sys
 import textwrap
 import uuid
@@ -52,6 +53,8 @@ from cgtsclient.common import wrapping_formatters
 from six.moves import input
 from six.moves import map
 from six.moves import zip
+
+CONFIRMATION_YES = "yes"
 
 
 class HelpFormatter(argparse.HelpFormatter):
@@ -876,13 +879,15 @@ def prompt_cli_confirmation(func, timeout=10):
             return func(*args, **kwargs)
 
         confirmation = input_with_timeout(
-            f"{BOLD}{YELLOW}WARNING: This is a high-risk operation that may cause a service interruption or remove critical resources {RESET}\n"
-            f"{BOLD}{YELLOW}Do you want to continue? (yes/No): {RESET}", timeout
+            f"{BOLD}{YELLOW}WARNING: This is a high-risk operation that may cause a "
+            f"service interruption or remove critical resources {RESET}\n"
+            f"{BOLD}{YELLOW}Do you want to continue? ({CONFIRMATION_YES}/No): {RESET}",
+            timeout,
         )
         if confirmation is None:
             print("\nError: No response received within the time limit.")
             return
-        elif confirmation.lower() != 'yes':
+        elif confirmation.lower() != CONFIRMATION_YES:
             print("Operation cancelled by the user.")
             sys.exit(1)
         return func(*args, **kwargs)
@@ -903,44 +908,130 @@ def _is_service_impacting_command(command):
         "host-upgraded",
         "kube-host-cordon",
         "kube-host-upgrade",
-        "kube-rootca-host-update"
+        "kube-rootca-host-update",
+        "ca-certificate-install",
+        "ca-certificate-uninstall"
     ]
 
-    return command in service_impacting_system_commands or 'delete' in command or 'remove' in command
+    return (
+        command in service_impacting_system_commands or
+        'delete' in command or
+        'remove' in command
+    )
 
 
 def _is_cliconfirmation_param_enabled():
+    return env("CLI_CONFIRMATIONS", default="disabled") == "enabled"
+
+
+def persist_auth_session_keyring(name: str,
+                                 token: str,
+                                 endpoint: str = None,
+                                 timeout: int = None) -> int:
+    """Stores the authentication data into keyring.
+    Authentication data can be retrieved later and reused, avoiding unnecessary calls
+    to identity services. Only the current user's session has access to the stored data.
+    Once the user ends the session the data is lost. It is also possible to set a
+    timeout to automaticaly expire the record.
+
+    :param name: Key name
+    :param token: Authentication token
+    :param endpoint: Endpoint URL
+    :param timeout: Timeout interval in seconds to expire the key. Default: never expires.
+    """
+
     try:
-        # Fetch only the relevant row using grep
-        cmd = "source /etc/platform/openrc && system service-parameter-list | grep cli_confirmations"
+        session = {'token': token}
 
-        svc_param_list = subprocess.check_output(
-            ["bash", "-c", cmd],
-            stderr=subprocess.PIPE,
-            universal_newlines=True
-        ).strip()
+        if endpoint is not None:
+            session['endpoint'] = endpoint
 
-        parts = [p.strip() for p in svc_param_list.split("|")]
+        # Persist the key
+        stdout = subprocess.run(['/usr/bin/keyctl', 'add', 'user', name, json.dumps(session), '@s'],  # nosec
+                                check=True,
+                                capture_output=True).stdout
 
-        if len(parts) < 2:
-            print(f"[ERROR] Unexpected command output format: {svc_param_list}")
-            return False
+        keyring_entry_id = stdout.decode('utf-8').strip('\n')
 
-        if "cli_confirmations" in parts:
-            index = parts.index("cli_confirmations")
+        # Set key timeout
+        if timeout is not None:
+            subprocess.run(['/usr/bin/keyctl', 'timeout', keyring_entry_id, timeout],  # nosec
+                           check=True)
 
-            if index + 1 < len(parts):
-                return parts[index + 1] == "enabled"
-        return False
+        return keyring_entry_id
 
-    except subprocess.CalledProcessError as e:
-        if e.returncode == 1:
-            # grep exits with 1 when it finds nothing; we treat it as "not enabled"
-            print("[INFO] 'cli_confirmations' not found in service parameters, treating as disabled.")
-            return False
-        print(f"[ERROR] {e.__class__.__name__}: Command failed with exit code {e.returncode}")
-        print(e.stderr.strip())
-        return False
-    except Exception as e:
-        print(f"[ERROR] {e.__class__.__name__}: {e}")
-        return False
+    except subprocess.CalledProcessError:
+        pass
+
+
+def load_auth_session_keyring_by_name(key_name: str):
+    """Retrieves the authentication data from keyring using the key name.
+
+    :param key_name: Key name
+    """
+
+    try:
+        # Search for the key
+        stdout = subprocess.run(['/usr/bin/keyctl', 'search', '@s', 'user', key_name],  # nosec
+                                check=True,
+                                capture_output=True).stdout
+
+        keyring_entry_id = stdout.decode('utf-8').strip('\n')
+
+        # Retrieve session data
+        return load_auth_session_keyring_by_id(keyring_entry_id)
+
+    except subprocess.CalledProcessError:
+        return (None, None)
+
+
+def load_auth_session_keyring_by_id(key_id: int):
+    """Retrieves the authentication data from keyring using the key identifier.
+
+    :param key_id: Key Identifier
+    """
+
+    try:
+        # Retrieve session data
+        stdout = subprocess.run(['/usr/bin/keyctl', 'print', key_id],  # nosec
+                                check=True,
+                                capture_output=True).stdout
+
+        session = json.loads(stdout.decode('utf-8').strip('\n'))
+
+        return (session.get('token'), session.get('endpoint'))
+
+    except subprocess.CalledProcessError:
+        return (None, None)
+
+
+def revoke_keyring_by_name(key_name: str):
+    """Deletes a key from keyring using the key name.
+
+    :param key_name: Key name
+    """
+    try:
+        # Search for the key
+        stdout = subprocess.run(['/usr/bin/keyctl', 'search', '@s', 'user', key_name],  # nosec
+                                check=True,
+                                capture_output=True).stdout
+
+        keyring_entry_id = stdout.decode('utf-8').strip('\n')
+        revoke_keyring_by_id(keyring_entry_id)
+
+    except subprocess.CalledProcessError:
+        pass
+
+
+def revoke_keyring_by_id(key_id: int):
+    """Deletes a key from keyring using the key identifier.
+
+    :param key_id: Key Identifier
+    """
+    try:
+        subprocess.run(['/usr/bin/keyctl', 'revoke', key_id],  # nosec
+                       check=True,
+                       capture_output=True).stdout
+
+    except subprocess.CalledProcessError:
+        pass

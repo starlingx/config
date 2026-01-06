@@ -15,7 +15,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2023 Wind River Systems, Inc.
+# Copyright (c) 2013-2023,2025 Wind River Systems, Inc.
 #
 
 
@@ -61,6 +61,7 @@ KERNEL = {'ihost_uuid': IHOST['uuid'],
 UPDATED_KERNEL = copy.deepcopy(KERNEL)
 NEW_KERNEL = 'lowlatency'
 UPDATED_KERNEL['kernel_provisioned'] = NEW_KERNEL
+VIM_HOST_AUDIT_RESPONSE = {"vim_event": "host-audit"}
 
 fixtures = {
     '/v1/ihosts':
@@ -105,6 +106,13 @@ fixtures = {
         'PATCH': (
             {},
             UPDATED_KERNEL,
+        ),
+    },
+    '/v1/ihosts/%s/vim' % IHOST['uuid']:
+    {
+        'POST': (
+            {},
+            VIM_HOST_AUDIT_RESPONSE,
         ),
     },
 }
@@ -182,3 +190,11 @@ class HostManagerTest(testtools.TestCase):
         self.assertEqual(self.api.calls, expect)
         self.assertEqual(kernel.kernel_provisioned, 'standard')
         self.assertEqual(kernel.kernel_running, 'standard')
+
+    def test_vim_host_audit(self):
+        self.mgr.vim_host_audit(hostid=IHOST['uuid'])
+        response = {"vim_event": "host-audit"}
+        expect = [
+            ('POST', f'/v1/ihosts/{IHOST["uuid"]}/vim', {}, response),
+        ]
+        self.assertEqual(expect, self.api.calls)

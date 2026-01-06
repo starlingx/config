@@ -1,67 +1,69 @@
 #!/usr/bin/python
 #
-# Copyright (c) 2018-2023 Wind River Systems, Inc.
+# Copyright (c) 2018-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
 
 import sys
-import json
-import subprocess
 from argparse import ArgumentParser
 
+from sysinv.common import query_pci_id
 
-def main():
-    ''' The goal of this script is to discover if the supplied PCI device is
-    supported by the vswitch as an accelerated NIC.'''
 
+def main() -> int:
+    """Parses the command-line arguments, inspects the primary *ELF* binary
+    (usually *ovs-vswitchd*) using PMD extraction, and if necessary falls
+    back to individual PMD shared libraries to determine support for the
+    supplied PCI Vendor/Device IDs.
+    """
     parser = ArgumentParser(description="Query vswitch NIC support")
 
-    parser.add_argument("-v", "--vendor", dest="vid",
-                        help="Vendor ID",
-                        type=lambda x: hex(int(x, 0)),
-                        action='store', metavar="HEX",
-                        required=True)
-    parser.add_argument("-d", "--device", dest="did",
-                        help="Device ID",
-                        type=lambda x: hex(int(x, 0)),
-                        action='store', metavar="HEX",
-                        required=True)
-    parser.add_argument("-p", "--pmdinfo", dest="pmdinfo",
-                        help="Path to target dpdk-pmdinfo script",
-                        default="/usr/bin/dpdk-pmdinfo.py",
-                        type=str, action='store')
-    parser.add_argument("-e", "--elfbinary", dest="elf",
-                        help="Path to target ELF file",
-                        default="/usr/sbin/ovs-vswitchd",
-                        type=str, action='store')
+    parser.add_argument(
+        "-v",
+        "--vendor",
+        dest="vid",
+        help="Vendor ID",
+        type=lambda x: hex(int(x, 0)),
+        action="store",
+        metavar="HEX",
+        required=True,
+    )
+    parser.add_argument(
+        "-d",
+        "--device",
+        dest="did",
+        help="Device ID",
+        type=lambda x: hex(int(x, 0)),
+        action="store",
+        metavar="HEX",
+        required=True,
+    )
+    parser.add_argument(
+        "-p",
+        "--pmdinfo",
+        dest="pmdinfo",
+        help="Path to target dpdk-pmdinfo script",
+        default="/usr/bin/dpdk-pmdinfo.py",
+        type=str,
+        action="store",
+    )
+    parser.add_argument(
+        "-e",
+        "--elfbinary",
+        dest="elf",
+        help="Path to target ELF file",
+        default="/usr/sbin/ovs-vswitchd",
+        type=str,
+        action="store",
+    )
     args = parser.parse_args()
 
-    cmd = "python {} -r {}".format(args.pmdinfo, args.elf)
-    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, shell=True,
-            universal_newlines=True)
-    out, err = p.communicate()
-    result = out.split('\n')
-
-    for line in result:
-        if not line:
-            continue
-
-        pmd_info = json.loads(line)
-        supported_devices = pmd_info['pci_ids']
-
-        for supported_device in supported_devices:
-            vid = hex(supported_device[0])
-            did = hex(supported_device[1])
-
-            if vid == args.vid and did == args.did:
-                print("Vendor ID: %s Device ID: %s is supported" %
-                     (args.vid, args.did))
-                return 0
-
-    print("Vendor ID: %s Device ID: %s is not supported" %
-         (args.vid, args.did))
-    return 1
+    result, msg = query_pci_id.call_query_pci_id(
+        args.vid, args.did, pmdinfo=args.pmdinfo, elf=args.elf
+    )
+    print(msg)
+    return 0 if result else 1
 
 
 if __name__ == "__main__":

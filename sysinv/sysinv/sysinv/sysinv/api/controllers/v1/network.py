@@ -244,9 +244,6 @@ class NetworkController(rest.RestController):
                 pecan.request.context)
             pecan.request.rpcapi.update_ldap_nat_config(
                 pecan.request.context)
-        elif type == constants.NETWORK_TYPE_SYSTEM_CONTROLLER_OAM:
-            pecan.request.rpcapi.update_dnsmasq_config(
-                pecan.request.context)
 
     @wsme_pecan.wsexpose(NetworkCollection,
                          types.uuid, int, wtypes.text, wtypes.text)

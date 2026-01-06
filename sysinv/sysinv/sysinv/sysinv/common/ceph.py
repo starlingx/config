@@ -1,7 +1,7 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 
 #
-# Copyright (c) 2016-2022 Wind River Systems, Inc.
+# Copyright (c) 2016-2023, 2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -12,7 +12,6 @@
 
 from __future__ import absolute_import
 
-from eventlet import Timeout
 from eventlet.green import subprocess
 import os
 import pecan
@@ -550,15 +549,12 @@ class CephApiOperator(object):
         rc = True
 
         try:
-            with Timeout(timeout + 5,
-                         exception=exception.CephApiFailure(
-                             reason="Ceph Status timeout")):
-                response, body = self._ceph_api.status(body='json',
-                                                       timeout=timeout)
-                ceph_status = body['output']['health']['status']
-                if ceph_status != constants.CEPH_HEALTH_OK:
-                    LOG.warn("ceph status=%s " % ceph_status)
-                    rc = False
+            response, body = self._ceph_api.status(body='json',
+                                                   timeout=timeout)
+            ceph_status = body['output']['health']['status']
+            if ceph_status != constants.CEPH_HEALTH_OK:
+                LOG.warn("ceph status=%s " % ceph_status)
+                rc = False
         except Exception as e:
             rc = False
             LOG.warn("ceph status exception: %s " % e)

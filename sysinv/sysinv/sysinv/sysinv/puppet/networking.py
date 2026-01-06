@@ -6,6 +6,7 @@
 
 import netaddr
 import glob
+import ipaddress
 
 from oslo_log import log
 
@@ -37,6 +38,7 @@ class NetworkingPuppet(base.BasePuppet):
 
         config.update(self._get_cluster_pod_config())
         config.update(self._get_cluster_service_config())
+        config.update(self._get_blackhole_address())
         return config
 
     def get_host_config(self, host):
@@ -184,6 +186,18 @@ class NetworkingPuppet(base.BasePuppet):
                 controller0_address = None
             configdata[family_name].update({'controller0_address': controller0_address})
 
+            if (
+                utils.is_aio_simplex_system(self.dbapi)
+                and networktype in (
+                        constants.NETWORK_TYPE_ADMIN,
+                        constants.NETWORK_TYPE_MGMT,
+                        constants.NETWORK_TYPE_CLUSTER_HOST,
+                        constants.NETWORK_TYPE_STORAGE,
+                        constants.NETWORK_TYPE_PXEBOOT,
+                )
+            ):
+                configdata[family_name].update({'controller0_address': controller_address})
+
             try:
                 controller1_address = self._get_address_by_name_and_family(
                     constants.CONTROLLER_1_HOSTNAME, address_pool.family, networktype).address
@@ -323,8 +337,84 @@ class NetworkingPuppet(base.BasePuppet):
 
         return config
 
-    def _set_ptp_instance_global_parameters(self, ptp_instances, ptp_parameters_instance):
+    def _get_blackhole_address(self):
+        """ returm the address to be added as a blackhole route to be used when an address
+            needs to be provided to the configuration but it is not used and traffic to be discarded
+        """
+        config = dict()
 
+        # RFC6666
+        config.update({'platform::network::blackhole::ipv6_subnet': "100::/64"})
+        config.update({'platform::network::blackhole::ipv6_host': "100::1"})
+
+        # there is no specification for IPv4, selecting a single host address, as more is not needed
+        # creating a list of possible candidates:
+        ipv4_blackhole_list = ["169.254.254.254/32",  # preferred option, non-routable address
+                               "169.254.127.254/32",  # non-routable address
+                               "169.254.64.254/32",   # non-routable address
+                               "192.168.254.254/32",  # address in the private network range
+                               "192.168.127.254/32",  # address in the private network range
+                               "192.168.64.254/32",  # address in the private network range
+                               "10.254.254.254/32",   # address in the private network range
+                               "10.254.127.254/32",   # address in the private network range
+                               "10.254.64.254/32",   # address in the private network range
+                               "172.16.254.254/32",   # address in the private network range
+                               "172.16.127.254/32",   # address in the private network range
+                               "172.16.64.254/32"]   # address in the private network range
+        addr_pool_list = self.dbapi.address_pools_get_all()
+        for subnet in ipv4_blackhole_list:
+            overlap = False
+            for pool in addr_pool_list:
+                try:
+                    blackhole_net = ipaddress.ip_network(subnet, strict=False)
+                    pool_net = ipaddress.ip_network(f"{pool.network}/{pool.prefix}", strict=False)
+                    if blackhole_net.overlaps(pool_net):
+                        overlap = True
+                except ValueError as e:
+                    LOG.info(f"Error: Invalid network address provided: {e}")
+                    overlap = False
+            if not overlap:
+                config.update({'platform::network::blackhole::ipv4_subnet': subnet})
+                config.update({'platform::network::blackhole::ipv4_host': subnet.split('/')[0]})
+                break
+
+        if 'platform::network::blackhole::ipv4_host' not in config.keys():
+            LOG.error("cannot select an IPv4 address from the blackhole candidate list")
+
+        return config
+
+    def _set_ptp_instance_gnss_monitor_global_parameters(
+        self, instance, ptp_parameters_instance
+    ):
+        default_global_parameters = {
+            "satellite_count": constants.PTP_GNSS_MONITOR_SATELLITE_COUNT,
+            "signal_quality_db": constants.PTP_GNSS_MONITOR_SIGNAL_QUALITY_DB_VALUE,
+        }
+        default_cmdline_opts = ""
+
+        # Add default global parameters the instance
+        instance["global_parameters"] = default_global_parameters
+        instance["cmdline_opts"] = default_cmdline_opts
+
+        for global_param in ptp_parameters_instance:
+            # Add the supplied instance parameters to global_parameters
+            if instance["uuid"] in global_param["owners"]:
+                instance["global_parameters"][global_param["name"]] = global_param[
+                    "value"
+                ]
+            if "cmdline_opts" in instance["global_parameters"]:
+                cmdline = instance["global_parameters"].pop("cmdline_opts")
+                quotes = {"'", "\\'", '"', '\\"'}
+                for quote in quotes:
+                    cmdline = cmdline.strip(quote)
+                instance["cmdline_opts"] = cmdline
+
+        allowed_instance_fields = ["global_parameters", "cmdline_opts"]
+        monitoring_config = {r: instance[r] for r in allowed_instance_fields}
+
+        return monitoring_config
+
+    def _set_ptp_instance_global_parameters(self, ptp_instances, ptp_parameters_instance):
         default_global_parameters = {
             # Default ptp4l parameters were determined during the original integration of PTP.
             # These defaults maintain the same PTP behaviour as single instance implementation.
@@ -381,14 +471,22 @@ class NetworkingPuppet(base.BasePuppet):
             'eec_invalid_value': constants.PTP_SYNCE_EEC_INVALID_VALUE
         }
 
-        allowed_instance_fields = ['global_parameters', 'interfaces', 'name', 'service',
-                                   'cmdline_opts', 'id', 'pmc_gm_settings', 'device_parameters',
-                                   'gnss_uart_disable', 'external_source']
         ptp_config = {}
 
         for instance in ptp_instances:
             # Add default global parameters the instance
             instance['global_parameters'] = {}
+
+            # instance["section_parameters"] format:
+            # {'sectionA': [
+            #    {'paramA': valueA},
+            #    {'paramA': valueA1}, <---repetitive paramA
+            #    {'paramB': valueB}
+            #   ],
+            #  'sectionB':[..],
+            #  ..
+            # }
+            instance["section_parameters"] = {}
             instance['cmdline_opts'] = ""
             instance['global_parameters'].update(default_global_parameters[instance['service']])
             instance['cmdline_opts'] = default_cmdline_opts[instance['service']]
@@ -397,6 +495,7 @@ class NetworkingPuppet(base.BasePuppet):
             instance['device_parameters'] = {}
             instance['gnss_uart_disable'] = True
             instance['external_source'] = {}
+            instance['monitoring_parameters'] = {}
 
             # Additional defaults for ptp4l instances
             if instance['service'] == constants.PTP_INSTANCE_TYPE_PTP4L:
@@ -426,8 +525,9 @@ class NetworkingPuppet(base.BasePuppet):
                 })
 
             for global_param in ptp_parameters_instance:
+                is_instance_param = instance["uuid"] in global_param["owners"]
                 # Add the supplied instance parameters to global_parameters
-                if instance['uuid'] in global_param['owners']:
+                if is_instance_param and global_param["section"] == "global":
                     if instance['service'] != constants.PTP_INSTANCE_TYPE_SYNCE4L:
                         instance['global_parameters'][global_param['name']] = global_param['value']
                     else:
@@ -437,6 +537,16 @@ class NetworkingPuppet(base.BasePuppet):
                             instance['global_parameters'][global_param['name']] = global_param['value']
                         else:
                             instance['device_parameters'][global_param['name']] = global_param['value']
+                # Add the supplied instance parameters other than global section to section_parameters
+                elif is_instance_param:
+                    # section parameters except global
+                    # To avoid peer_address: ::1 or UDPv6: ::1 on yaml dump, forcing quote for value
+                    key_value = {global_param["name"]: self.quoted_str(global_param["value"])}
+                    if global_param["section"] not in instance["section_parameters"]:
+                        instance["section_parameters"][global_param["section"]] = [key_value]
+                    else:
+                        instance["section_parameters"][global_param["section"]].append(key_value)
+
                 if 'cmdline_opts' in instance['global_parameters']:
                     cmdline = instance['global_parameters'].pop('cmdline_opts')
                     quotes = {"'", "\\'", '"', '\\"'}
@@ -472,13 +582,22 @@ class NetworkingPuppet(base.BasePuppet):
                     instance['global_parameters'][constants.PTP_PARAMETER_BC_JBOD] = (
                         constants.PTP_BOUNDARY_CLOCK_JBOD_1)
 
-            # Prune fields and add the instance to the config
-            # Change 'name' key to '_name' because it is unusable in puppet
+        # Convert list to dict and return
+        for instance in ptp_instances:
+            ptp_config[instance['name']] = instance
+        return ptp_config
+
+    def _prune_ptp_config_fields(self, ptp_instances):
+        allowed_instance_fields = ['global_parameters', 'interfaces', 'name', 'service',
+                                   'cmdline_opts', 'id', 'pmc_gm_settings', 'device_parameters',
+                                   'gnss_uart_disable', 'external_source', 'monitoring_parameters',
+                                   'section_parameters']
+        for instance_name in ptp_instances:
+            instance = ptp_instances[instance_name]
             pruned_instance = {r: instance[r] for r in allowed_instance_fields}
             pruned_instance['_name'] = pruned_instance.pop('name')
-            ptp_config[pruned_instance['_name']] = pruned_instance
-
-        return ptp_config
+            ptp_instances[instance_name] = pruned_instance
+        return ptp_instances
 
     def _set_ptp_instance_interfaces(self, host, ptp_instances, ptp_interfaces):
         allowed_interface_fields = ['ifname',
@@ -497,8 +616,10 @@ class NetworkingPuppet(base.BasePuppet):
                         temp_host = hostinterface.split('/')[0]
                         temp_interface = hostinterface.split('/')[1]
                         if host.hostname == temp_host:
-                            iinterface = self.dbapi.iinterface_get(
-                                temp_interface, host.uuid)
+                            iinterface = self.context['interfaces'].get(temp_interface)
+                            if (iinterface is None or iinterface.ihost_uuid != host.uuid):
+                                iinterface = self.dbapi.iinterface_get(
+                                    temp_interface, host.uuid)
                             if iinterface['iftype'] == constants.INTERFACE_TYPE_AE:
                                 if_devices = [temp_interface]
                             elif iinterface['iftype'] == constants.INTERFACE_TYPE_VLAN:
@@ -573,6 +694,60 @@ class NetworkingPuppet(base.BasePuppet):
                 for param in ptp_parameters_interface:
                     if iface['uuid'] in param['owners']:
                         iface['parameters'][param['name']] = param['value']
+
+        return ptp_instances
+
+    def _set_ptp_instance_monitoring_parameters(self, ptp_instances, ptp_parameters_monitoring):
+        """Set PTP monitoring parameters for each PTP instance.
+
+        The monitoring parameters are added to the puppet hieradata and written to a
+        instance-monitoring.conf file. This file can be consumed by collectd and ptp-notification
+        to set instance specific monitoring thresholds.
+        """
+
+        # Default parameter values
+        default_monitoring_parameters = {
+            'ptp4l': {
+                'holdover_seconds': constants.PTP_MONITORING_HOLDOVER_SECONDS,
+                'offset_threshold_minor_nsec': constants.PTP_MONITORING_OFFSET_THRESHOLD_MINOR_NSEC,
+                'offset_threshold_major_nsec': constants.PTP_MONITORING_OFFSET_THRESHOLD_MAJOR_NSEC
+            },
+            'phc2sys': {
+                'holdover_seconds': constants.PTP_MONITORING_HOLDOVER_SECONDS,
+                'offset_threshold_minor_nsec': constants.PTP_MONITORING_OFFSET_THRESHOLD_MINOR_NSEC,
+                'offset_threshold_major_nsec': constants.PTP_MONITORING_OFFSET_THRESHOLD_MAJOR_NSEC
+            },
+            'ts2phc': {
+                'holdover_seconds': constants.PTP_MONITORING_HOLDOVER_SECONDS,
+                'locked_to_holdover_threshold_seconds': constants.PTP_MONITORING_LOCKED_TO_HOLDOVER_THRESHOLD_SECONDS
+            },
+            'clock': {
+                'holdover_seconds': constants.PTP_MONITORING_HOLDOVER_SECONDS,
+                'locked_to_holdover_threshold_seconds': constants.PTP_MONITORING_LOCKED_TO_HOLDOVER_THRESHOLD_SECONDS
+            },
+            'synce4l': {},  # No default monitoring parameters for synce4l
+        }
+        for instance_name in ptp_instances:
+            instance = ptp_instances[instance_name]
+            if 'monitoring_parameters' not in instance:
+                instance['monitoring_parameters'] = {}
+
+            # Add default monitoring parameters to the instance
+            instance['monitoring_parameters'].update(
+                default_monitoring_parameters[instance['service']]
+            )
+
+            # Add supplied monitoring parameters to the instance and remove them
+            # from section_parameters if present
+            # Will override default values if the same parameter is supplied
+            for param in ptp_parameters_monitoring:
+                if param['section'] == 'monitoring' and instance['uuid'] in param['owners']:
+                    instance['monitoring_parameters'][param['name']] = param['value']
+            if (
+                'section_parameters' in instance and
+                instance['section_parameters'].get('monitoring')
+            ):
+                instance['section_parameters'].pop('monitoring')
 
         return ptp_instances
 
@@ -709,18 +884,23 @@ class NetworkingPuppet(base.BasePuppet):
 
         nic_clocks = {}
         nic_clock_config = {}
+        nic_clock_config_extended = {}
+
         nic_clock_enabled = False
         ptp_instance_configs = []
+        monitoring_instance_configs = []
 
         for index, instance in enumerate(ptp_instances):
-            if ptp_instances[index]['service'] == constants.PTP_INSTANCE_TYPE_CLOCK:
-                clock_instance = ptp_instances[index]
-                nic_clocks[instance['name']] = clock_instance.as_dict()
-                nic_clocks[instance['name']]['interfaces'] = []
+            instance_dict = instance.as_dict()
+            if instance_dict['service'] == constants.PTP_INSTANCE_TYPE_CLOCK:
+                nic_clocks[instance_dict['name']] = instance_dict
+                nic_clocks[instance_dict['name']]['interfaces'] = []
+            elif instance_dict["service"] == constants.PTP_INSTANCE_TYPE_GNSS_MONITOR:
+                instance_dict["interfaces"] = []
+                monitoring_instance_configs.append(instance_dict)
             else:
-                ptp_instances[index][instance['name']] = instance.as_dict()
-                ptp_instances[index][instance['name']]['interfaces'] = []
-                ptp_instance_configs.append(ptp_instances[index])
+                instance_dict['interfaces'] = []
+                ptp_instance_configs.append(instance_dict)
         for index, iface in enumerate(ptp_interfaces):
             ptp_interfaces[index] = iface.as_dict()
         for index, param in enumerate(ptp_parameters_instance):
@@ -738,6 +918,18 @@ class NetworkingPuppet(base.BasePuppet):
             nic_clock_config = self._generate_clock_port_dict(host, nic_clock_config,
                                                               host_port_list)
 
+            # 'clock' is used instead of clock_name, as single clock instance of 'clock' name
+            # is assumed in collectd ptp extension
+            nic_clock_config_extended = {
+                'clock': {
+                    'uuid': nic_clocks[clock_name]['uuid'],
+                    'service': 'clock',
+                } for clock_name in nic_clocks
+            }
+            nic_clock_config_extended = self._set_ptp_instance_monitoring_parameters(
+                nic_clock_config_extended, ptp_parameters_instance
+            )
+
         # Generate the ptp instance config if ptp is enabled
         if ptpinstance_enabled:
             ptp_config = self._set_ptp_instance_global_parameters(ptp_instance_configs,
@@ -746,17 +938,41 @@ class NetworkingPuppet(base.BasePuppet):
                                                            ptp_interfaces)
             ptp_config = self._set_ptp_instance_interface_parameters(host, ptp_config,
                                                                      ptp_parameters_interface)
+            ptp_config = self._set_ptp_instance_monitoring_parameters(ptp_config,
+                                                                      ptp_parameters_instance)
+            ptp_config = self._prune_ptp_config_fields(ptp_config)
         else:
             ptp_config = {}
+        LOG.info(f"PTP Config for host id {host.id}: {ptp_config}")
+        # Generate the gnss-monitor config
+        monitoring_enabled = False
+        monitoring_config = {}
+        len_monitoring_instance_configs = len(monitoring_instance_configs)
 
-        return {'platform::ptpinstance::config': ptp_config,
-                'platform::ptpinstance::enabled': ptpinstance_enabled,
-                'platform::ptpinstance::nic_clock::nic_clock_config': nic_clock_config,
-                'platform::ptpinstance::nic_clock::nic_clock_enabled': nic_clock_enabled}
+        if ptpinstance_enabled and len_monitoring_instance_configs > 0:
+            # Only single gnss-monitor instance per host is allowed.
+            if len_monitoring_instance_configs == 1:
+                monitoring_enabled = True
+                monitoring_config = self._set_ptp_instance_gnss_monitor_global_parameters(
+                    monitoring_instance_configs[0], ptp_parameters_instance
+                )
+            else:
+                LOG.warning(
+                    f"PTP gnss-monitor instances are {len_monitoring_instance_configs > 1} on host id {host.id}."
+                )
+
+        return {
+            'platform::ptpinstance::config': ptp_config,
+            'platform::ptpinstance::enabled': ptpinstance_enabled,
+            'platform::ptpinstance::gnss_monitor::monitoring_config': monitoring_config,
+            'platform::ptpinstance::gnss_monitor::monitoring_enabled': monitoring_enabled,
+            'platform::ptpinstance::nic_clock::nic_clock_config': nic_clock_config,
+            'platform::ptpinstance::nic_clock::nic_clock_config_extended': nic_clock_config_extended,
+            'platform::ptpinstance::nic_clock::nic_clock_enabled': nic_clock_enabled,
+        }
 
     def _get_interface_config(self, networktype):
         config = {}
-
         network_interface = interface.find_interface_by_type(
             self.context, networktype)
 
