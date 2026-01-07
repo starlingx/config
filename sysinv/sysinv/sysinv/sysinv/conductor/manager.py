@@ -19611,6 +19611,13 @@ class ConductorManager(service.PeriodicService):
                 LOG.error(str(e))
                 return str(e)
 
+        if not os.path.exists(constants.SYSINV_REPORTED):
+            message = "Cannot complete the restore procedure. System " \
+                      "is not ready to apply runtime config. Try " \
+                      "'system restore-complete' later."
+            LOG.info(message)
+            return message
+
         try:
             restore = self.dbapi.restore_get_one(
                 filters={'state': constants.RESTORE_STATE_IN_PROGRESS})
