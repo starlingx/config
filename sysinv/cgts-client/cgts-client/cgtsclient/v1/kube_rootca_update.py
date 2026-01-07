@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2021-2023 Wind River Systems, Inc.
+# Copyright (c) 2021-2023,2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -53,15 +53,6 @@ class KubeRootCAUpdateManager(base.Manager):
             msg = ("Failed to find the current Kubernetes root CA certificate "
                    "from file system")
             return dict(cert_id="", error=msg)
-
-    def rootCA_upload(self, pem_content):
-        """Retrieve the details of a given kubernetes rootca update.
-
-        :param pem_content: the content of the PEM file to be uploaded
-        """
-
-        path = self._path('upload_cert')
-        return self._upload(path, pem_content)
 
     def rootCA_generate(self, expiry_date=None, subject=None):
         """Generate a root CA to be applied during

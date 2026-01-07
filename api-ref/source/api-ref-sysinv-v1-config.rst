@@ -13044,47 +13044,6 @@ forbidden (403), badMethod (405), overLimit (413)
 
 This operation does not accept a request body.
 
-******************************
-Upload new kubernetes root ca
-******************************
-
-.. rest_method:: POST /v1/kube_rootca_update/upload_cert
-
-Accepts a PEM file containing the X509 certificate and the corresponding private key.
-
-**Normal response codes**
-
-204
-
-**Error response codes**
-
-serviceUnavailable (503), badRequest (400), unauthorized (401),
-forbidden (403), badMethod (405), overLimit (413)
-
-**Request parameters**
-
-.. csv-table::
-   :header: "Parameter", "Style", "Type", "Description"
-   :widths: 20, 20, 20, 60
-
-   "Content-Type multipart/form-data", "plain", "xsd:string", "The content of a file. e.g. if using curl, this would be specified as: curl -F name=@full_path_of_filename <div class=""example""><pre>file=@/home/sysadmin/server-with-key.pem </pre></div>"
-
-**Response parameters**
-
-.. csv-table::
-   :header: "Parameter", "Style", "Type", "Description"
-   :widths: 20, 20, 20, 60
-
-   "success", "plain", "xsd:string", "Certificate identifier composed by a combination of <issuer_hash>-<serial_number>"
-   "error", "plain", "xsd:string", "The error message in case something wrong happen on the API execution"
-
-::
-
-   {
-      "success": "d70efa2daaee06f8-314121337707572303468615715651317888841",
-      "error": ""
-   }
-
 ****************************************************
 Update host for kubernetes root ca update procedure
 ****************************************************

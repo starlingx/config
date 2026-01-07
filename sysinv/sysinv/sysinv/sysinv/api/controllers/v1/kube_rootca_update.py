@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2021-2023 Wind River Systems, Inc.
+# Copyright (c) 2021-2023,2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -17,7 +17,6 @@ import wsmeext.pecan as wsme_pecan
 from fm_api import fm_api
 from fm_api import constants as fm_constants
 from oslo_log import log
-from pecan import expose
 from pecan import rest
 from sysinv import objects
 from sysinv.api.controllers.v1 import base
@@ -115,36 +114,6 @@ class KubeRootCAGenerateController(rest.RestController):
         subject_params = self.get_subject(subject)
         output = pecan.request.rpcapi.generate_kubernetes_rootca_cert(
             pecan.request.context, subject_params, duration)
-        return output
-
-
-class KubeRootCAUploadController(rest.RestController):
-    """ API representation of a Kubernetes Upload Root CA Certificate"""
-
-    @cutils.synchronized(LOCK_KUBE_ROOTCA_CONTROLLER)
-    @expose('json')
-    def post(self):
-        fileitem = pecan.request.POST['file']
-
-        if not fileitem.filename:
-            raise wsme.exc.ClientSideError(_("Error: No file uploaded"))
-
-        try:
-            fileitem.file.seek(0, os.SEEK_SET)
-            pem_contents = fileitem.file.read()
-        except Exception:
-            return dict(
-                success="",
-                error=("No kube rootca certificate have been added, invalid PEM document"))
-
-        try:
-            output = pecan.request.rpcapi.save_kubernetes_rootca_cert(
-                pecan.request.context,
-                pem_contents
-            )
-        except Exception:
-            msg = "Conductor call for new kube rootca upload failed"
-            return dict(success="", error=msg)
         return output
 
 
@@ -398,9 +367,6 @@ class KubeRootCACetCertIDController(rest.RestController):
 class KubeRootCAUpdateController(rest.RestController):
     """REST controller for kubernetes rootCA updates."""
 
-    # Controller for /kube_rootca_update/upload_cert, upload new root CA
-    # certificate.
-    upload_cert = KubeRootCAUploadController()
     # Controller for /kube_rootca_update/generate_cert, generates a new root CA
     generate_cert = KubeRootCAGenerateController()
     # Controller for /kube_rootca_update/pods, update pods certificates.
@@ -747,9 +713,7 @@ class KubeRootCAHostUpdateController(rest.RestController):
 
         if len(host_updates) == 0:
             # No hosts start update yet
-            if cluster_update.state not in \
-                    [kubernetes.KUBE_ROOTCA_UPDATE_CERT_UPLOADED,
-                     kubernetes.KUBE_ROOTCA_UPDATE_CERT_GENERATED]:
+            if cluster_update.state != kubernetes.KUBE_ROOTCA_UPDATE_CERT_GENERATED:
                 raise wsme.exc.ClientSideError(_(
                     "kube-rootca-host-update phase trust-both-cas rejected: "
                     "No new certificate available."))
