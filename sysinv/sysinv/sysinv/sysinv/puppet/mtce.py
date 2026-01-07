@@ -54,7 +54,7 @@ class MtcePuppet(openstack.OpenstackBasePuppet):
             'platform::mtce::params::auth_region':
                 self._keystone_region_name(),
 
-            'platform::mtce::params::keyring_directory': KEYRING_PATH,
+            'platform::params::keyring_directory': KEYRING_PATH,
             'platform::mtce::params::mtce_multicast':
                 multicast_address.address,
         }
