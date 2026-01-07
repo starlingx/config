@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2025 Wind River Systems, Inc.
+# Copyright (c) 2013-2026 Wind River Systems, Inc.
 #
 
 """
@@ -1874,7 +1874,8 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.call(context,
                          self.make_msg('perform_app_delete',
                                        rpc_app=rpc_app,
-                                       lifecycle_hook_info_app_delete=lifecycle_hook_info))
+                                       lifecycle_hook_info_app_delete=lifecycle_hook_info),
+                         timeout=RPC_TIMEOUT)
 
     def perform_update_in_all_apps(self, context):
         """

@@ -1,6 +1,6 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 #
-# Copyright (c) 2018-2025 Wind River Systems, Inc.
+# Copyright (c) 2018-2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -30,6 +30,7 @@ import threading
 import time
 
 from collections import namedtuple
+from concurrent.futures import ThreadPoolExecutor
 from distutils.util import strtobool
 from distutils.version import LooseVersion
 from eventlet import greenpool
@@ -579,13 +580,24 @@ class AppOperator(object):
                                       have their charts included
         """
 
-        charts_in_use = []
-        for db_app in self._dbapi.kube_app_get_all():
+        def get_filtered_result(db_app):
             app = AppOperator.Application(db_app)
             if excluded_apps_id_list is None or \
-                    (excluded_apps_id_list is not None and db_app.id
-                     not in excluded_apps_id_list):
-                charts_in_use = charts_in_use + self._get_list_of_charts(app)
+                    (excluded_apps_id_list is not None and app.id not in excluded_apps_id_list):
+                return self._get_list_of_charts(app)
+            else:
+                return []
+
+        # Get the number of platform CPU cores
+        core_count = cutils.get_platform_core_count(self._dbapi)
+
+        db_apps = self._dbapi.kube_app_get_all()
+        with ThreadPoolExecutor(max_workers=core_count) as executor:
+            charts_lists = executor.map(get_filtered_result, db_apps)
+
+            charts_in_use = []
+            for charts_list in charts_lists:
+                charts_in_use.extend(charts_list)
 
         return charts_in_use
 
