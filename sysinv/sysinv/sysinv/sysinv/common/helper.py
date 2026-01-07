@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2025 Wind River Systems, Inc.
+# Copyright (c) 2025,2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -20,8 +20,21 @@ performance_opts = [
                 help='Enable performance logging'
                 )
 ]
+
+runtime_manifest_opts = [
+    cfg.ListOpt('pending_manifests',
+                default=[
+                    'platform::compute::grub::runtime',
+                    'platform::kubernetes::master::change_apiserver_parameters'
+                ],
+                help='List of runtime manifest classes that will delay host '
+                     'unlock until they are applied successfully.'
+                )
+]
+
 CONF = cfg.CONF
 CONF.register_opts(performance_opts)
+CONF.register_opts(runtime_manifest_opts)
 
 
 def ttl_cache(cache_expiry: int = 10):
@@ -93,3 +106,12 @@ def measure_performance(threshold_in_seconds: int = 0):
 
         return wrapper
     return _decorator
+
+
+def get_blocking_runtime_manifest_list() -> typing.List[str]:
+    """Get the list of runtime manifest classes that will delay host unlock.
+
+    Returns:
+        List of runtime manifests that should complete before host-unlock.
+    """
+    return CONF.pending_manifests

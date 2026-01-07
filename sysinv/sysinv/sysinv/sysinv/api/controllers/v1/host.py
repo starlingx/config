@@ -15,7 +15,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2025 Wind River Systems, Inc.
+# Copyright (c) 2013-2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -96,6 +96,7 @@ from sysinv.common import ceph
 from sysinv.common import constants
 from sysinv.common import device
 from sysinv.common import exception
+from sysinv.common import helper
 from sysinv.common import kubernetes
 from sysinv.common import policy
 from sysinv.common import usm_service as usm_service
@@ -5426,11 +5427,8 @@ class HostController(rest.RestController):
         self.check_unlock_kernel_config_status(hostupdate, force_unlock)
         self.check_unlock_apparmor_config_status(hostupdate, force_unlock)
 
-        # Check if grub related runtime manifests are still pending
-        runtime_manifests = \
-            [
-                'platform::compute::grub::runtime'
-            ]
+        # Check if certain runtime manifests are still pending
+        runtime_manifests = helper.get_blocking_runtime_manifest_list()
         self.check_unlock_runtime_manifests(hostupdate,
                                             force_unlock,
                                             runtime_manifests)
