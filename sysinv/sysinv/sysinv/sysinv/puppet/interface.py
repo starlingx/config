@@ -1635,6 +1635,18 @@ def process_interface_labels(config, context):
             label_map[base_interface].update({
                 net_cfg_key: config[NETWORK_CONFIG_RESOURCE][net_cfg_key]})
 
+    # get the list of unassigned interfaces (not connected to a platform network)
+    # if the interface have static addresses configured, add to the list
+    unassigned_interfaces = list()
+    for ifname in context['interface_networks']:
+        intf_net = context['interface_networks'].get(ifname)
+        for net_id in intf_net:
+            if net_id is None:
+                network = context['interface_networks'][ifname][None].get('network')
+                addresses = context['interface_networks'][ifname][None].get('addresses')
+                if (not network) and addresses:
+                    unassigned_interfaces.append(ifname)
+
     for intf in label_map.keys():
         if intf == 'lo':
             # no need to change the loopback
@@ -1662,6 +1674,11 @@ def process_interface_labels(config, context):
                         intf_data['options'], IFACE_POST_UP_OP, undeprecate)
                     break
                 else:
+                    if ifname in unassigned_interfaces:
+                        # static IPv6 addresses configured in unassigned interfaces can be
+                        # undeprecated
+                        fill_interface_config_option_operation(
+                            intf_data['options'], IFACE_POST_UP_OP, undeprecate)
                     continue
 
         if len(label_map[intf]) == 1:

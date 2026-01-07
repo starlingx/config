@@ -4829,7 +4829,7 @@ class InterfaceConfigTestMixin(InterfaceTestCaseMixin):
                     OPTIONS: {POST_UP: [IPV6_CFG]}},
                 {MODES: [SS_IPV6, DS_IPV4, DS_IPV6],
                     NET: None, FAMILY: INET6, METHOD: STATIC,
-                    OPTIONS: {POST_UP: [IPV6_CFG]}}],
+                    OPTIONS: {POST_UP: [IPV6_CFG, UNDEPR]}}],
             'data4': [
                 {NET: None, FAMILY: INET, METHOD: MANUAL,
                     OPTIONS: {POST_UP: [IPV6_CFG]}},
@@ -4841,10 +4841,10 @@ class InterfaceConfigTestMixin(InterfaceTestCaseMixin):
                     OPTIONS: {POST_UP: [IPV6_CFG]}},
                 {MODES: [SS_IPV6, DS_IPV4, DS_IPV6],
                     NET: None, FAMILY: INET6, METHOD: STATIC,
-                    OPTIONS: {POST_UP: [IPV6_CFG]}},
+                    OPTIONS: {POST_UP: [IPV6_CFG, UNDEPR]}},
                 {MODES: [SS_IPV6, DS_IPV4, DS_IPV6],
                     NET: None, FAMILY: INET6, METHOD: STATIC,
-                    OPTIONS: {POST_UP: [IPV6_CFG]}}],
+                    OPTIONS: {POST_UP: [IPV6_CFG, UNDEPR]}}],
         }
         self._validate_config(expected)
 
@@ -4877,7 +4877,7 @@ class InterfaceConfigTestMixin(InterfaceTestCaseMixin):
                     OPTIONS: {POST_UP: [IPV6_CFG]}},
                 {MODES: [SS_IPV6, DS_IPV4, DS_IPV6],
                     NET: None, FAMILY: INET6, METHOD: STATIC,
-                    OPTIONS: {POST_UP: [SET_TC, IPV6_CFG]}}],
+                    OPTIONS: {POST_UP: [SET_TC, IPV6_CFG, UNDEPR]}}],
         }
         self._validate_config(expected)
 
