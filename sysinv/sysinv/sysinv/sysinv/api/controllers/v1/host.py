@@ -15,7 +15,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2025 Wind River Systems, Inc.
+# Copyright (c) 2013-2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -4392,7 +4392,8 @@ class HostController(rest.RestController):
             if bk['backend'] == constants.SB_TYPE_CEPH_ROOK:
                 continue
 
-            if bk['state'] != constants.SB_STATE_CONFIGURED:
+            if (bk['state'] not in {constants.SB_STATE_CONFIGURED,
+                                    constants.SB_STATE_CONFIGURING_ON_UNLOCK}):
                 # TODO(oponcea): Remove once sm supports in-service configuration
                 if (bk['backend'] != constants.SB_TYPE_CEPH or
                         bk['task'] != constants.SB_TASK_PROVISION_STORAGE or

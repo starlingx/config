@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2025 Wind River Systems, Inc.
+# Copyright (c) 2013-2026 Wind River Systems, Inc.
 #
 
 """Conduct all activity related system inventory.
@@ -474,6 +474,8 @@ class ConductorManager(service.PeriodicService):
 
         self._handle_restore_in_progress()
 
+        self._check_ceph_backend_state()
+
         self._sx_to_dx_post_migration_actions(system)
 
         self._clear_partition_config_flags()
@@ -761,6 +763,19 @@ class ConductorManager(service.PeriodicService):
         files = constants.PARTITION_CONFIG_FLAG % ("*")
         for fname in glob.glob(files):
             cutils.remove(fname)
+
+    def _check_ceph_backend_state(self):
+        ceph_backend = StorageBackendConfig.get_backend(
+            self.dbapi,
+            constants.SB_TYPE_CEPH
+        )
+        if ceph_backend:
+            if (ceph_backend.state != constants.SB_STATE_CONFIGURED and
+                    os.path.isfile(constants.SB_TYPE_CEPH_CONFIGURED_FLAG)):
+                values = {'state': constants.SB_STATE_CONFIGURED}
+                self.dbapi.storage_backend_update(ceph_backend.uuid, values)
+                LOG.info("State of ceph backend: '%s' to '%s'." %
+                        (ceph_backend.state, constants.SB_STATE_CONFIGURED))
 
     def _init_controller_for_upgrade(self, upgrade):
         # Raise alarm to show an upgrade is in progress
@@ -2390,6 +2405,8 @@ class ConductorManager(service.PeriodicService):
         :param context: request context
         :param host: host object
         """
+        self._ceph_mon_create(host)
+
         if self.host_load_matches_sw_version(host):
             # update the config if the host is running the same version as
             # the active controller.
@@ -2422,7 +2439,6 @@ class ConductorManager(service.PeriodicService):
         self._allocate_addresses_for_host(context, host)
         # Set up the PXE config file for this host so it can run the installer
         self._update_pxe_config(host)
-        self._ceph_mon_create(host)
 
         if (os.path.isfile(constants.ANSIBLE_BOOTSTRAP_FLAG) and
                 host.availability == constants.AVAILABILITY_ONLINE):
@@ -2470,6 +2486,11 @@ class ConductorManager(service.PeriodicService):
         ceph_mon = self.dbapi.ceph_mon_get_by_ihost(host.uuid)
 
         if not ceph_mon:
+            if host.administrative == constants.ADMIN_LOCKED:
+                state = constants.SB_STATE_CONFIGURING_ON_UNLOCK
+            else:
+                state = constants.SB_STATE_CONFIGURING
+
             system = self.dbapi.isystem_get_one()
             ceph_mon_gib = constants.SB_CEPH_MON_GIB
             ceph_mons = self.dbapi.ceph_mon_get_list()
@@ -2480,7 +2501,7 @@ class ConductorManager(service.PeriodicService):
                       'forihostid': host.id,
                       'device_path': host.rootfs_device,
                       'ceph_mon_gib': ceph_mon_gib,
-                      'state': constants.SB_STATE_CONFIGURED,
+                      'state': state,
                       'task': constants.SB_TASK_NONE}
             LOG.info("creating ceph_mon for host %s with ceph_mon_gib=%s."
                      % (host.hostname, ceph_mon_gib))
@@ -11493,6 +11514,9 @@ class ConductorManager(service.PeriodicService):
                     else:
                         values = {'task': str(tasks)}
             self.dbapi.storage_backend_update(ceph_conf.uuid, values)
+
+            # Ensures that ceph mon will have its state updated to configured
+            self._clear_ceph_mon_state(host_uuid)
 
             # The VIM needs to know when a cinder backend was added.
             services = utils.SBApiHelper.getListFromServices(ceph_conf.as_dict())

@@ -493,6 +493,9 @@ SB_DEFAULT_NAMES = {
     SB_TYPE_EXTERNAL: 'shared_services'
 }
 
+# Flag indicating that the ceph backend is configured
+SB_TYPE_CEPH_CONFIGURED_FLAG = os.path.join(tsc.PLATFORM_CONF_PATH, ".node_ceph_configured")
+
 # Service names
 SERVICE_NAME_NOVA = 'nova'
 SERVICE_NAME_NEUTRON = 'neutron'

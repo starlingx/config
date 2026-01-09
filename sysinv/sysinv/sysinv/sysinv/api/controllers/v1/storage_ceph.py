@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2021,2024 Wind River Systems, Inc.
+# Copyright (c) 2013-2021,2024,2026 Wind River Systems, Inc.
 #
 
 import copy
@@ -899,6 +899,11 @@ def _create(storage_ceph):
                                                      constants.AVAILABILITY_DEGRADED]]
     if valid_controller_hosts:
         _apply_backend_changes(constants.SB_API_OP_CREATE, storage_backend_obj)
+    else:
+        # Update initial task states
+        values = {'state': constants.SB_STATE_CONFIGURING_ON_UNLOCK,
+                  'task': constants.SB_TASK_NONE}
+        pecan.request.dbapi.storage_ceph_update(storage_backend_obj.uuid, values)
 
     return storage_ceph_obj
 

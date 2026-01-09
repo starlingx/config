@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2025 Wind River Systems, Inc.
+# Copyright (c) 2013-2026 Wind River Systems, Inc.
 #
 
 from eventlet.green import subprocess
@@ -743,22 +743,23 @@ class SBApiHelper(object):
                         msg = _("Only one backend between %s is supported." % ", ".join(exclusive_ceph_backend_list))
                         raise wsme.exc.ClientSideError(msg)
 
-        # Deny operations with a single, unlocked, controller.
-        # TODO(oponcea): Remove this once sm supports in-service config reload
-        ctrls = pecan.request.dbapi.ihost_get_by_personality(constants.CONTROLLER)
-        if len(ctrls) == 1:
-            if (ctrls[0].administrative == constants.ADMIN_UNLOCKED and
-                    get_system_mode() == constants.SYSTEM_MODE_DUPLEX):
-                msg = _("Storage backend operations require both controllers "
-                        "to be enabled and available.")
-                raise wsme.exc.ClientSideError(msg)
-        else:
-            for ctrl in ctrls:
-                if ctrl.availability not in [constants.AVAILABILITY_AVAILABLE,
-                                             constants.AVAILABILITY_DEGRADED]:
+        if backend_type == constants.SB_TYPE_CEPH:
+            # Deny operations with a single, unlocked, controller.
+            # TODO(oponcea): Remove this once sm supports in-service config reload
+            ctrls = pecan.request.dbapi.ihost_get_by_personality(constants.CONTROLLER)
+            if len(ctrls) == 1:
+                if (ctrls[0].administrative == constants.ADMIN_UNLOCKED and
+                        get_system_mode() == constants.SYSTEM_MODE_DUPLEX):
                     msg = _("Storage backend operations require both controllers "
-                            "to be enabled and available/degraded.")
+                            "to be enabled and available.")
                     raise wsme.exc.ClientSideError(msg)
+            else:
+                for ctrl in ctrls:
+                    if ctrl.availability not in [constants.AVAILABILITY_AVAILABLE,
+                                                 constants.AVAILABILITY_DEGRADED]:
+                        msg = _("Storage backend operations require both controllers "
+                                "to be enabled and available/degraded.")
+                        raise wsme.exc.ClientSideError(msg)
 
         if existing_backend and operation == constants.SB_API_OP_CREATE:
             if (existing_backend.state == constants.SB_STATE_CONFIGURED or
