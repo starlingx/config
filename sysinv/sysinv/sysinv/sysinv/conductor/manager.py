@@ -241,7 +241,6 @@ KEYSTONE_USER_PASSWORD_UPDATE = {
     "barbican": "openstack::keystone::barbican::password::runtime",
     "fm": "openstack::keystone::fm::password::runtime",
     "mtce": "platform::mtce::runtime",
-    "patching": "openstack::keystone::patching::password::runtime",
     "usm": "openstack::keystone::usm::password::runtime",
     "vim": "openstack::keystone::nfv::password::runtime"
 }

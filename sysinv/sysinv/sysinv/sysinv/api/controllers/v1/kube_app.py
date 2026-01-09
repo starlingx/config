@@ -20,7 +20,6 @@ from sysinv._i18n import _
 from sysinv import objects
 from sysinv.api.controllers.v1 import base
 from sysinv.api.controllers.v1 import collection
-from sysinv.api.controllers.v1 import patch_api
 from sysinv.api.controllers.v1 import types
 from sysinv.common import app_metadata
 from sysinv.common import constants
@@ -711,24 +710,6 @@ class KubeAppHelper(object):
 
         success = not missing_patches
         return success, missing_patches
-
-    def _patch_report_app_dependencies(self, name, patches=None):
-        if patches is None:
-            patches = []
-        try:
-            system = self._dbapi.isystem_get_one()
-            patch_api.patch_report_app_dependencies(
-                token=None,
-                timeout=constants.PATCH_DEFAULT_TIMEOUT_IN_SECS,
-                region_name=system.region_name,
-                patches=patches,
-                app_name=name
-            )
-        except Exception as e:
-            LOG.error(e)
-            raise exception.SysinvException(
-                "Error while reporting the patch dependencies "
-                "to patch-controller.")
 
     def _check_app_compatibility(self, app_name, app_version, target_kube_version=None):
         """Checks whether the application is compatible

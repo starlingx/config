@@ -9595,7 +9595,6 @@ class ManagerTestCase(base.DbTestCase):
             "barbican": "openstack::keystone::barbican::password::runtime",
             "fm": "openstack::keystone::fm::password::runtime",
             "mtce": "platform::mtce::runtime",
-            "patching": "openstack::keystone::patching::password::runtime",
             "vim": "openstack::keystone::nfv::password::runtime"
         }
 
@@ -9670,10 +9669,6 @@ class ManagerTestCase(base.DbTestCase):
             'context': getContext,
             'function': self.service._update_keystone_password,
             'user': 'mtce'
-        }, {
-            'context': getContext,
-            'function': self.service._update_keystone_password,
-            'user': 'patching'
         }, {
             'context': getContext,
             'function': self.service._update_keystone_password,

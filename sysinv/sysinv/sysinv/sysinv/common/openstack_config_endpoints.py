@@ -27,7 +27,6 @@ RC_FILE_PATH = '/etc/platform/openrc'
 # reconfiguration are listed here
 BASE_USERS = [
     'fm',
-    'patching',
     'usm',
     'vim',
     'smapi',
@@ -73,11 +72,6 @@ BASE_SERVICES = [
         'name': 'fm',
         'description': 'Fault Management Service',
         'type': 'faultmanagement',
-    },
-    {
-        'name': 'patching',
-        'description': 'Patching Service',
-        'type': 'patching',
     },
     {
         'name': 'usm',
@@ -139,7 +133,6 @@ SERVICES_WITH_ENDPOINTS = [
     'sysinv',
     'fm',
     'barbican',
-    'patching',
     'usm',
     'vim',
     'smapi'
@@ -149,7 +142,6 @@ SERVICES_WITH_ENDPOINTS = [
 SERVICES_WITH_ADITIONAL_SYSTEMCONTROLLER_ENDPOINTS = [
     'keystone',
     'sysinv',
-    'patching',
     'usm',
     'vim',
     'dcmanager'
@@ -176,7 +168,6 @@ ENDPOINTS_INTERFACES = ['admin', 'internal', 'public']
 SERVICES_PORTS_PATHS_MAP = {
     'keystone': {'port': 'IDENTITY_SERVICE_PORT', 'path': 'IDENTITY_SERVICE_PATH'},
     'sysinv': {'port': 'PLATFORM_SERVICE_PORT', 'path': 'PLATFORM_SERVICE_PATH'},
-    'patching': {'port': 'PATCHING_SERVICE_PORT', 'path': 'PATCHING_SERVICE_PATH'},
     'usm': {'port': 'USM_SERVICE_PORT', 'path': 'USM_SERVICE_PATH'},
     'vim': {'port': 'NFV_SERVICE_PORT', 'path': 'NFV_SERVICE_PATH'},
 }
