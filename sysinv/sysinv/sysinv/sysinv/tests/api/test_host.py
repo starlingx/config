@@ -2,7 +2,7 @@
 # -*- encoding: utf-8 -*-
 #
 #
-# Copyright (c) 2013-2025 Wind River Systems, Inc.
+# Copyright (c) 2013-2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -19,6 +19,7 @@ from six.moves import http_client
 from oslo_utils import uuidutils
 from sysinv.common import constants
 from sysinv.common import device
+from sysinv.common import helper
 from sysinv.common import kubernetes
 from sysinv.common.usm_service import UsmUpgrade
 
@@ -3222,7 +3223,7 @@ class TestPatch(TestHost):
         self.assertEqual(response.content_type, 'application/json')
         self.assertEqual(response.status_code, http_client.OK)
 
-    def test_controller_unlock_while_grub_update_pending(self):
+    def test_controller_unlock_while_runtime_manifest_pending(self):
         """
         Test that a pending grub runtime manifest will block host-unlock
         """
@@ -3239,7 +3240,7 @@ class TestPatch(TestHost):
                                pv_state='provisioned')
 
         personalities = [constants.CONTROLLER]
-        classes = ['platform::compute::grub::runtime']
+        classes = helper.get_blocking_runtime_manifest_list()
         dbutils.create_test_runtime_config(personalities=personalities,
                                            classes=classes,
                                            host_uuids=[c0_host.uuid],
@@ -3254,7 +3255,7 @@ class TestPatch(TestHost):
         self.assertEqual(http_client.BAD_REQUEST, response.status_int)
         self.assertTrue(response.json['error_message'])
 
-    def test_worker_unlock_while_grub_update_pending(self):
+    def test_worker_unlock_while_runtime_manifest_pending(self):
         """
         Test that a pending grub runtime manifest will block host-unlock
         """
@@ -3288,7 +3289,7 @@ class TestPatch(TestHost):
         self._create_test_host_addresses(w0_host.hostname)
 
         personalities = [constants.WORKER]
-        classes = ['platform::compute::grub::runtime']
+        classes = helper.get_blocking_runtime_manifest_list()
         dbutils.create_test_runtime_config(personalities=personalities,
                                            classes=classes,
                                            host_uuids=[w0_host.uuid],
@@ -3303,12 +3304,12 @@ class TestPatch(TestHost):
         self.assertEqual(http_client.BAD_REQUEST, response.status_int)
         self.assertTrue(response.json['error_message'])
 
-    def test_storage_unlock_while_grub_update_pending(self):
+    def test_storage_unlock_while_runtime_manifest_pending(self):
         # Note: Can't do storage host testcases yet because additional code
         # is required to populate the storage (OSDs) for the host.
         self.skipTest("Not yet implemented")
 
-    def test_controller_unlock_while_grub_update_pending_expires(self):
+    def test_controller_unlock_while_runtime_manifest_pending_expires(self):
         """
         Test that a grub runtime manifest will not block host-unlock
         if it has been applied already
@@ -3326,7 +3327,7 @@ class TestPatch(TestHost):
                                pv_state='provisioned')
 
         personalities = [constants.CONTROLLER]
-        classes = ['platform::compute::grub::runtime']
+        classes = helper.get_blocking_runtime_manifest_list()
         rc = dbutils.create_test_runtime_config(personalities=personalities,
                                                 classes=classes,
                                                 host_uuids=[c0_host.uuid],
@@ -3345,7 +3346,7 @@ class TestPatch(TestHost):
         self.assertEqual(response.content_type, 'application/json')
         self.assertEqual(response.status_code, http_client.OK)
 
-    def test_worker_unlock_while_grub_update_pending_expires(self):
+    def test_worker_unlock_while_runtime_manifest_pending_expires(self):
         """
         Test that a grub runtime manifest will not block host-unlock
         if it has been applied already
@@ -3381,7 +3382,7 @@ class TestPatch(TestHost):
         self._create_test_host_addresses(w0_host.hostname)
 
         personalities = [constants.WORKER]
-        classes = ['platform::compute::grub::runtime']
+        classes = helper.get_blocking_runtime_manifest_list()
         rc = dbutils.create_test_runtime_config(personalities=personalities,
                                                 classes=classes,
                                                 host_uuids=[w0_host.uuid],
@@ -3400,7 +3401,7 @@ class TestPatch(TestHost):
         self.assertEqual(response.content_type, 'application/json')
         self.assertEqual(response.status_code, http_client.OK)
 
-    def test_storage_unlock_while_grub_update_pending_expires(self):
+    def test_storage_unlock_while_runtime_manifest_pending_expires(self):
         # Note: Can't do storage host testcases yet because additional code
         # is required to populate the storage (OSDs) for the host.
         self.skipTest("Not yet implemented")
