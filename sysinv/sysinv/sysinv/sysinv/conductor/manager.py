@@ -4823,6 +4823,38 @@ class ConductorManager(service.PeriodicService):
 
             return False
 
+        def does_logical_disk_part_of_multipath(current_disk, idisk_dict_array):
+            """Check if a logical disk is part of a multipath device.
+
+            :param current_disk: current disk object to be evaluated
+            :param idisk_dict_array: list of disk objects
+            :returns: True if disk is part of multipath, False otherwise
+            """
+            current_disk_device_path = current_disk.get('device_path', '') or ''
+
+            # Check logical disk's only by filtering multipath disks
+            if "/by-id/" in current_disk_device_path:
+                return False
+
+            # Get device_wwn from logical disk
+            current_disk_device_wwn = current_disk.get('device_wwn', '') or ''
+            if not current_disk_device_wwn:
+                return False
+
+            for idisk in idisk_dict_array:
+                idisk_device_path = idisk.get('device_path', '') or ''
+                idisk_device_wwn = idisk.get('device_wwn', '') or ''
+
+                # Skip logical disks, filter multipath disks only
+                if "/by-path/" in idisk_device_path:
+                    continue
+
+                # Current logical disk is part of a multipath disk
+                if current_disk_device_wwn == idisk_device_wwn:
+                    return True
+
+            return False
+
         ihost_uuid.strip()
         try:
             ihost = self.dbapi.ihost_get(ihost_uuid)
@@ -4854,6 +4886,13 @@ class ConductorManager(service.PeriodicService):
         LOG.debug(f"Disks received from agent: {str(idisk_dict_array)}")
 
         for i in idisk_dict_array:
+            # When multipath is enabled, skip logical disks that are part of
+            # multipath devices to avoid duplicate entries at idisk table.
+            if does_logical_disk_part_of_multipath(i, idisk_dict_array):
+                LOG.debug("Skipping logical disk %s as it's part of multipath device" %
+                          i.get('device_path'))
+                continue
+
             disk_dict = {'forihostid': forihostid}
             # this could overwrite capabilities - do not overwrite device_function?
             # if not in dictionary and device_function already in capabilities
