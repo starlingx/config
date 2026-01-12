@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (c) 2017 Wind River Systems, Inc.
+# Copyright (c) 2017,2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -16,27 +16,32 @@ from oslo_config import cfg
 
 from sysinv.common import service
 from sysinv.db import api
+from sysinv.helm import helm
 from sysinv.puppet import puppet
 
 CONF = cfg.CONF
 
 
 def create_static_config_action(path):
-    operator = puppet.PuppetOperator(path=path)
+    dbapi = api.get_instance()
+    helm_op = helm.HelmOperator(dbapi)
+    operator = puppet.PuppetOperator(path=path, helm_operator=helm_op)
     operator.create_static_config()
     operator.create_secure_config()
 
 
 def create_system_config_action(path):
     dbapi = api.get_instance()
-    operator = puppet.PuppetOperator(dbapi=dbapi, path=path)
+    helm_op = helm.HelmOperator(dbapi)
+    operator = puppet.PuppetOperator(dbapi=dbapi, path=path, helm_operator=helm_op)
     operator.update_system_config()
     operator.update_secure_system_config()
 
 
 def create_host_config_action(path, hostname=None):
     dbapi = api.get_instance()
-    operator = puppet.PuppetOperator(dbapi=dbapi, path=path)
+    helm_op = helm.HelmOperator(dbapi)
+    operator = puppet.PuppetOperator(dbapi=dbapi, path=path, helm_operator=helm_op)
 
     if hostname:
         host = dbapi.ihost_get_by_hostname(hostname)
