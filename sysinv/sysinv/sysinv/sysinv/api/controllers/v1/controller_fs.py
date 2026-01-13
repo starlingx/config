@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2020,2024 Wind River Systems, Inc.
+# Copyright (c) 2013-2020,2024-2026 Wind River Systems, Inc.
 #
 
 
@@ -26,6 +26,8 @@ from pecan import rest
 import wsme
 from wsme import types as wtypes
 import wsmeext.pecan as wsme_pecan
+
+from kubernetes.client.rest import ApiException
 
 from oslo_log import log
 from oslo_serialization import jsonutils
@@ -38,6 +40,7 @@ from sysinv.api.controllers.v1 import types
 from sysinv.api.controllers.v1 import utils
 from sysinv.common import constants
 from sysinv.common import exception
+from sysinv.common import kubernetes
 from sysinv.common import utils as cutils
 from sysinv import objects
 
@@ -450,6 +453,28 @@ def _check_controller_multi_fs_data(context, controller_fs_list_new):
     return cgtsvg_growth_gib
 
 
+def _floating_monitor_is_installed(operation, controller_fs):
+    _kube_operator = kubernetes.KubeOperator()
+    kube_v1_api = _kube_operator._get_kubernetesclient_apps_v1_api()
+    deployment_name = "rook-ceph-mon-float"
+    float_is_installed = False
+    try:
+        deployment = kube_v1_api.read_namespaced_deployment(
+            namespace="rook-ceph",
+            name=deployment_name
+        )
+        if deployment is not None:
+            float_is_installed = True
+    except ApiException as e:
+        if e.status != 404:
+            msg = _("Failed to {} controller filesystem {}: failed to get "
+                    "the {} deployment." .format(operation,
+                                                   controller_fs['name'],
+                                                   deployment_name))
+            raise wsme.exc.ClientSideError(msg)
+    return float_is_installed
+
+
 def _check_optional_controller_fs(controller_fs, operation):
     """Check controllerfs limitations"""
 
@@ -482,6 +507,19 @@ def _check_optional_controller_fs(controller_fs, operation):
                 "as storage backend.".format(
                     operation, controller_fs['name'], constants.SB_TYPE_CEPH_ROOK))
         raise wsme.exc.ClientSideError(msg)
+
+    # If the operation is delete, and have monitor in the
+    # functions, the controllerfs cannot be deleted.
+    # This check is only for ceph-float and the above check
+    # ensure it.
+    if (operation == "delete" and
+        any(function in constants.HOSTFS_CEPH_FUNCTIONS_SUPPORTED
+                for function in controller_fs['capabilities']['functions'])):
+            float_is_installed = _floating_monitor_is_installed(operation, controller_fs)
+            if float_is_installed:
+                msg = _("Failed to {} controller filesystem {}: operation not allowed"
+                        "when has monitor function.".format(operation, controller_fs['name']))
+                raise wsme.exc.ClientSideError(msg)
 
     if not cutils.is_aio_duplex_system(pecan.request.dbapi):
         msg = _("Failed to {} controller filesystem {}: command only allowed for "
@@ -936,8 +974,7 @@ class ControllerFsController(rest.RestController):
                 pecan.request.context, controller_fs_uuid).as_dict()
             _delete(controller_fs)
         except exception.SysinvException:
-            LOG.exception()
-            raise wsme.exc.ClientSideError(_("Unable to delete controllerfs"))
+            raise wsme.exc.ClientSideError(_("Failed to delete: controllerfs"))
 
     @cutils.synchronized(LOCK_NAME)
     @wsme_pecan.wsexpose(ControllerFs, body=ControllerFs)

@@ -11316,7 +11316,7 @@ class ConductorManager(service.PeriodicService):
             if host.uuid == host_uuid:
                 break
         else:
-            LOG.error("Host %(host) is not in the required state!" % host_uuid)
+            LOG.error("Host %s is not in the required state!" % host_uuid)
             host = self.dbapi.ihost_get(host_uuid)
             if not host:
                 LOG.error("Host %s is invalid!" % host_uuid)
@@ -11753,7 +11753,7 @@ class ConductorManager(service.PeriodicService):
             if host.uuid == host_uuid:
                 break
         else:
-            LOG.error("Host %(host) is not in the required state!" % host_uuid)
+            LOG.error("Host %s is not in the required state!" % host_uuid)
             host = self.dbapi.ihost_get(host_uuid)
             if not host:
                 LOG.error("Host %s is invalid!" % host_uuid)
