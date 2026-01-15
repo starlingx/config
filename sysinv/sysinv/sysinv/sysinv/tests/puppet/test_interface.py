@@ -4899,6 +4899,12 @@ class InterfaceConfigTestMixin(InterfaceTestCaseMixin):
                             constants.INTERFACE_CLASS_PLATFORM, constants.NETWORK_TYPE_MGMT,
                             **iface_mgmt_kwargs)
 
+        # Update addrpool name to a value without ipv4/ipv6 suffix
+        addrpools = self.dbapi.address_pools_get_by_network_type(
+            constants.NETWORK_TYPE_MGMT
+        )
+        self.dbapi.address_pool_update(addrpools[0].id, {'name': 'management'})
+
         dbapi = db_api.get_instance()
         config = {
             interface.RATE_LIMIT_CONFIG_RESOURCE: {},

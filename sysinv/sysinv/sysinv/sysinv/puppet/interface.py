@@ -2050,18 +2050,23 @@ def _get_ip_pool(context, db_api, ip_pool):
         network_addrpools = db_api.network_addrpool_get_all()
         for network_addrpool in network_addrpools:
             network_type = network_addrpool.get('network_type')
-            pool_name = network_addrpool.get('address_pool_name')
-            if not network_type or not pool_name:
-                LOG.info(f"Skipping network_type: {network_type}, pool_name: {pool_name}")
+            addrpool_id = network_addrpool.get('address_pool_id')
+            if not network_type or not addrpool_id:
+                LOG.info(f"Skipping network_type: {network_type}, "
+                         f"addrpool_id: {addrpool_id}")
                 continue
+
+            addrpool = db_api.address_pool_get(addrpool_id)
+            family = addrpool.get('family')
+
             if network_type == constants.NETWORK_TYPE_PXEBOOT:
                 ip_pool[network_type] = constants.IPV4
-            elif constants.IPV4 in pool_name:
+            elif family == constants.IPV4_FAMILY:
                 if network_type not in ip_pool:
                     ip_pool[network_type] = constants.IPV4
                 else:
                     ip_pool[network_type] = constants.DUAL
-            elif constants.IPV6 in pool_name:
+            elif family == constants.IPV6_FAMILY:
                 if network_type not in ip_pool:
                     ip_pool[network_type] = constants.IPV6
                 else:
