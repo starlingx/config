@@ -50,6 +50,7 @@ OAM_COMMON = {
             constants.PLATFORM_FM_PARAMS_API_PORT,  # noqa: E501 docu: Fault Management, platform,,Not used,Allowed (service public endpoint) on controllers and subclouds.,,,y,y,n,n
             constants.PLATFORM_FIREWALL_HTTP_PORT,  # noqa: E501 docu: Web access, platform,,Not used,Allowed (service public endpoint) on controllers and subclouds.,,,y,y,n,n
             constants.PLATFORM_CEPH_PARAMS_RGW_PORT,  # noqa: E501 docu: CEPH parameters, platform,,Not used,Allowed (service public endpoint) on controllers and subclouds.,,,y,y,n,n
+            constants.PLATFORM_KUBE_LOGIN_PORT,  # noqa: E501 docu: Kubectl oidc-login redirect port, platform, oam, Bidirectional, Both, Allowed (service public endpoint) on controllers and subclouds.,n,y,y,n,n
         },
     "udp":
         {
