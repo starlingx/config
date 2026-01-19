@@ -959,58 +959,6 @@ def get_k8s_configmap_name(parameter):
     return parameter['section'].replace('_', '-') + '---' + parameter['name']
 
 
-def get_service_parameter(dbapi, service, section, name):
-    """
-    Retrieve the value of a service parameter.
-
-    Args:
-        dbapi: Database API object.
-        service: Service type.
-        section: Parameter section.
-        name: Parameter name.
-    Returns:
-        str: The value of the service parameter value.
-    """
-    try:
-        service_parameter = dbapi.service_parameter_get_one(
-            service,
-            section,
-            name)
-        LOG.debug(f"{name} service parameter found with value: {service_parameter.value}")
-        return service_parameter.value
-    except Exception as e:
-        LOG.error(f"Failed to retrieve {name} service parameter: {e}")
-        raise
-
-
-def get_service_parameter_autoreapply_after_apply_runtime_manifest(dbapi):
-    service_parameter = get_service_parameter(
-        dbapi,
-        constants.SERVICE_TYPE_PLATFORM,
-        constants.SERVICE_PARAM_SECTION_KUBERNETES_CONFIG,
-        constants.SERVICE_PARAM_NAME_AUTOREAPPLY_APPS_AFTER_APPLY_RUNTIME_MANIFEST
-    )
-    return (
-        service_parameter
-        if service_parameter == constants.SERVICE_PARAM_ENABLED
-        else constants.SERVICE_PARAM_DISABLED
-    )
-
-
-def get_service_parameter_k8s_application_audit(dbapi):
-    service_parameter = get_service_parameter(
-        dbapi,
-        constants.SERVICE_TYPE_PLATFORM,
-        constants.SERVICE_PARAM_SECTION_KUBERNETES_CONFIG,
-        constants.SERVICE_PARAM_NAME_K8S_APPLICATION_AUDIT,
-    )
-    return (
-        service_parameter
-        if service_parameter == constants.SERVICE_PARAM_ENABLED
-        else constants.SERVICE_PARAM_DISABLED
-    )
-
-
 def create_service_parameter(dbapi, params):
     """
     Creates service parameter in the database.
@@ -1032,6 +980,113 @@ def create_service_parameter(dbapi, params):
     except Exception as e:
         LOG.error(f"Failed to create k8s application audit service parameter: {e}")
         raise
+
+
+def get_service_parameter(dbapi, service, section, name):
+    """
+    Retrieve the value of a service parameter.
+
+    Args:
+        dbapi: Database API object.
+        service: Service type.
+        section: Parameter section.
+        name: Parameter name.
+    Returns:
+        str: The value of the service parameter value.
+    """
+    try:
+        service_parameter = dbapi.service_parameter_get_one(
+            service,
+            section,
+            name)
+        LOG.debug(f"{name} service parameter found with value: {service_parameter.value}")
+        return service_parameter.value
+    except exception.NotFound:
+        raise
+    except Exception as e:
+        LOG.error(f"Failed to retrieve {name} service parameter: {e}")
+        raise
+
+
+def get_service_parameter_autoreapply_after_apply_runtime_manifest(dbapi):
+    """
+    Retrieve the status of the 'autoreapply_apps_after_apply_runtime_manifest' service parameter.
+    This function attempts to fetch the value of the 'autoreapply_apps_after_apply_runtime_manifest'
+    parameter from the database. If the parameter is not found, it creates the parameter
+    with a default value of 'enabled' and returns 'enabled'.
+
+    Args:
+        dbapi: Database API object.
+    Returns:
+        str: The status of the 'autoreapply_apps_after_apply_runtime_manifest' parameter,
+             either 'enabled' or 'disabled'.
+    """
+    try:
+        service_parameter = get_service_parameter(
+            dbapi,
+            constants.SERVICE_TYPE_PLATFORM,
+            constants.SERVICE_PARAM_SECTION_KUBERNETES_CONFIG,
+            constants.SERVICE_PARAM_NAME_AUTOREAPPLY_APPS_AFTER_APPLY_RUNTIME_MANIFEST
+        )
+        return (
+            service_parameter
+            if service_parameter == constants.SERVICE_PARAM_ENABLED
+            else constants.SERVICE_PARAM_DISABLED
+        )
+    except exception.NotFound:
+        LOG.info("'autoreapply_apps_after_apply_runtime_manifestservice' parameter not found. "
+                 "Creating with default 'enabled' value.")
+        params = {
+            "service_param": constants.SERVICE_TYPE_PLATFORM,
+            "param_section": constants.SERVICE_PARAM_SECTION_KUBERNETES_CONFIG,
+            "param_name":
+            constants.SERVICE_PARAM_NAME_AUTOREAPPLY_APPS_AFTER_APPLY_RUNTIME_MANIFEST,
+            "value": constants.SERVICE_PARAM_ENABLED,
+        }
+        create_service_parameter(
+            dbapi, params
+        )
+        return constants.SERVICE_PARAM_ENABLED
+
+
+def get_service_parameter_k8s_application_audit(dbapi):
+    """
+    Retrieve the status of the 'k8s_application_audit' service parameter. This function
+    attempts to fetch the value of the 'k8s_application_audit' parameter from the database.
+    If the parameter is not found, it creates the parameter with a default value of
+    'enabled' and returns 'enabled'.
+
+    Args:
+        dbapi: Database API object.
+    Returns:
+        str: The status of the 'k8s_application_audit' parameter,
+             either 'enabled' or 'disabled'.
+    """
+    try:
+        service_parameter = get_service_parameter(
+            dbapi,
+            constants.SERVICE_TYPE_PLATFORM,
+            constants.SERVICE_PARAM_SECTION_KUBERNETES_CONFIG,
+            constants.SERVICE_PARAM_NAME_K8S_APPLICATION_AUDIT,
+        )
+        return (
+            service_parameter
+            if service_parameter == constants.SERVICE_PARAM_ENABLED
+            else constants.SERVICE_PARAM_DISABLED
+        )
+    except exception.NotFound:
+        LOG.info("'k8s_application_audit' parameter not found. "
+                 "Creating with default 'enabled' value.")
+        params = {
+            "service_param": constants.SERVICE_TYPE_PLATFORM,
+            "param_section": constants.SERVICE_PARAM_SECTION_KUBERNETES_CONFIG,
+            "param_name": constants.SERVICE_PARAM_NAME_K8S_APPLICATION_AUDIT,
+            "value": constants.SERVICE_PARAM_ENABLED,
+        }
+        create_service_parameter(
+            dbapi, params
+        )
+        return constants.SERVICE_PARAM_ENABLED
 
 
 PLATFORM_CONFIG_PARAMETER_OPTIONAL = [
