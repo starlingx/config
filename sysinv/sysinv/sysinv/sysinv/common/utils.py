@@ -4937,4 +4937,10 @@ def config_is_reboot_required(config_uuid):
     :param config_uuid UUID object or UUID string
     :return True if reboot is required, False otherwise
     """
-    return int(uuid.UUID(config_uuid)) & constants.CONFIG_REBOOT_REQUIRED
+    if not config_uuid:
+        return False
+    try:
+        return int(uuid.UUID(config_uuid)) & constants.CONFIG_REBOOT_REQUIRED
+    except (ValueError, TypeError):
+        # Invalid UUID format (e.g., "install" string)
+        return False
