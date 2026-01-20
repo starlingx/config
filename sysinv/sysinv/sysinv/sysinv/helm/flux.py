@@ -21,6 +21,7 @@ CONF_FILE = os.path.join(CONFIG_DIR, 'vars', 'main.yml')
 TEMPLATE_PATH = os.path.join(CONFIG_DIR, 'templates')
 TEMPLATE_FILENAME = 'values.yaml.j2'
 OCI_REPO_CRD = "ocirepositories.source.toolkit.fluxcd.io"
+HELM_RELEASE_CRD = "helmreleases.helm.toolkit.fluxcd.io"
 
 # Log and config
 LOG = logging.getLogger(__name__)
@@ -35,6 +36,40 @@ class FluxDeploymentManager(object):
 
         with open(CONF_FILE) as f:
             self.conf_dict = yaml.safe_load(f)
+
+    def delete_crd(self, crd_name):
+        """Delete a custom resource definition by name using KubeOperator.
+
+        Args:
+            crd_name (str): Name of the CRD to delete.
+
+        Returns:
+            bool: True if deletion was successful, False otherwise.
+        """
+
+        kubernetes_operator = kubernetes.KubeOperator()
+        LOG.info(f"Deleting CRD {crd_name}")
+
+        success = False
+        try:
+            kubernetes_operator.delete_custom_resource_definition(crd_name)
+            success = True
+        except Exception as e:
+            LOG.error(f"Error deleting CRD {crd_name}: {e}.")
+
+        LOG.info("Finished CRD deletion")
+
+        return success
+
+    def delete_helm_release_crd(self):
+        """Delete the Helm Release CRD."""
+        return self.delete_crd(HELM_RELEASE_CRD)
+
+    def delete_oci_repository_crd(self):
+        """ Delete ocirepositories.source.toolkit.fluxcd.io CRD as manifests from
+        versions 2.15 and 2.17 do not support straightforward rollback.
+        """
+        return self.delete_crd(OCI_REPO_CRD)
 
     def get_image_list(self):
         """ Retrieve list of required images for controllers
@@ -108,6 +143,9 @@ class FluxDeploymentManager(object):
         """
 
         LOG.info("Starting Flux release upgrade")
+
+        if not self.delete_helm_release_crd():
+            return False
 
         success = False
         if self.download_images():
@@ -204,26 +242,6 @@ class FluxDeploymentManager(object):
             LOG.warning(f"Error waiting for helm-controller pod to be Ready: {e}")
         else:
             LOG.info("helm-controller pod is Ready. Proceeding.")
-
-    def delete_oci_repository_crd(self):
-        """ Delete ocirepositories.source.toolkit.fluxcd.io CRD as manifests from
-        versions 2.15 and 2.17 do not support straightforward rollback.
-        """
-
-        kubernetes_operator = kubernetes.KubeOperator()
-
-        LOG.info("Deleting incompatible CRD %s", OCI_REPO_CRD)
-
-        success = False
-        try:
-            kubernetes_operator.delete_custom_resource_definition(OCI_REPO_CRD)
-            success = True
-        except Exception as e:
-            LOG.error(f"Error deleting CRD {OCI_REPO_CRD}: {e}.")
-
-        LOG.info("Finished CRD deletion")
-
-        return success
 
     def rollback_controllers(self):
         """ Rollback Flux controllers to the previous version """
