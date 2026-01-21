@@ -5,6 +5,7 @@
 #
 from keystoneauth1 import loading
 from oslo_utils import importutils
+from six.moves.urllib.parse import urlparse
 
 from cgtsclient._i18n import _
 from cgtsclient import exc
@@ -12,6 +13,19 @@ from cgtsclient import exc
 
 SERVICE_NAME = 'sysinv'
 SERVICE_TYPE = 'platform'
+
+PLATFORM_CONF_FILE = '/etc/platform/platform.conf'
+
+# TODO(jvazhapp): Modify for dynamic lookup of the endpoints from a service
+# rather than hard coding interfaces & ports
+SYSINV_PORT_MAP = {
+    'SystemController': {'admin': '26386', 'internal': '26385', 'public': '26385'},
+    'RegionOne': {'admin': '6386', 'internal': '6385', 'public': '6385'},
+    'Default': {'admin': '6385', 'internal': '6385', 'public': '6385'},
+}
+
+# Cache for distributed cloud role to avoid repeated file reads
+_dc_role_cache = None
 
 
 def _make_session(**kwargs):
@@ -98,6 +112,13 @@ def get_client(api_version, session=None, service_type=SERVICE_TYPE, **kwargs):
 
     endpoint = kwargs.get('system_url')
 
+    if kwargs.get('stx_auth_type') == 'oidc':
+        _validate_oidc_params(**kwargs)
+        endpoint = _build_oidc_endpoint(api_version, **kwargs)
+        cli_kwargs = _build_oidc_cli_kwargs(**kwargs)
+        session = None
+        return Client(api_version, endpoint, session, **cli_kwargs)
+
     if endpoint:
         api_version_str = 'v' + api_version
         if api_version_str not in endpoint.split('/'):
@@ -160,6 +181,97 @@ def get_client(api_version, session=None, service_type=SERVICE_TYPE, **kwargs):
             'auth_url': kwargs.get('os_auth_url'),
         }
     return Client(api_version, endpoint, session, **cli_kwargs)
+
+
+def _build_oidc_endpoint(api_version, **kwargs):
+    """Build OIDC endpoint URL from configuration."""
+    interface = _normalize_interface(kwargs.get('os_endpoint_type'))
+    protocol = _get_protocol(interface)
+
+    auth_url = kwargs.get('os_auth_url')
+    if not auth_url:
+        raise exc.InvalidEndpoint(_('os_auth_url is required'))
+
+    addr_parts = urlparse(auth_url)
+    hostname = addr_parts.hostname
+    if not hostname:
+        raise exc.InvalidEndpoint(_('Invalid os_auth_url: missing hostname'))
+    if ':' in hostname and not hostname.startswith('['):
+        hostname = f"[{hostname}]"
+
+    region_name = kwargs.get('os_region_name', 'Default')
+    port_map = kwargs.get('port_map', SYSINV_PORT_MAP)
+    region_ports = port_map.get(region_name, port_map.get('Default', {}))
+    port = region_ports.get(interface)
+
+    if not port:
+        raise exc.InvalidEndpoint(_('No port for region %s interface %s') % (region_name, interface))
+
+    return f"{protocol}://{hostname}:{port}/v{api_version}"
+
+
+def _normalize_interface(interface):
+    """Normalize interface type to standard values."""
+    interface_map = {
+        'publicURL': 'public',
+        'internalURL': 'internal',
+        'adminURL': 'admin'
+    }
+    normalized = interface_map.get(interface, interface)
+    return normalized if normalized in ('public', 'internal', 'admin') else 'public'
+
+
+def _get_dc_role():
+    """Get distributed cloud role with caching."""
+    global _dc_role_cache
+    if _dc_role_cache is None:
+        try:
+            with open(PLATFORM_CONF_FILE, 'r') as f:
+                for line in f:
+                    if line.startswith('distributed_cloud_role='):
+                        role = line.split('=')[1].strip()
+                        _dc_role_cache = role in ['subcloud', 'systemcontroller']
+                        return _dc_role_cache
+        except FileNotFoundError:
+            pass  # Non-DC systems may not have distributed_cloud_role
+        except Exception as e:
+            print("Error reading %s: %s", PLATFORM_CONF_FILE, e)
+
+        _dc_role_cache = False
+    return _dc_role_cache
+
+
+def _get_protocol(interface):
+    is_dc = _get_dc_role()
+    if not is_dc:
+        protocol = 'https' if interface == 'public' else 'http'
+    else:
+        protocol = 'https' if interface in ('public', 'admin') else 'http'
+    return protocol
+
+
+def _validate_oidc_params(**kwargs):
+    """Validate required OIDC parameters."""
+    required_params = ['os_auth_url', 'os_username']
+    missing = [p for p in required_params if not kwargs.get(p)]
+    if missing:
+        raise exc.InvalidEndpoint(_('Missing required OIDC parameters: %s') % ', '.join(missing))
+
+
+def _build_oidc_cli_kwargs(**kwargs):
+    """Build CLI kwargs for OIDC authentication."""
+    return {
+        'insecure': kwargs.get('insecure'),
+        'cacert': kwargs.get('cacert'),
+        'timeout': kwargs.get('timeout'),
+        'ca_file': kwargs.get('ca_file'),
+        'cert_file': kwargs.get('cert_file'),
+        'key_file': kwargs.get('key_file'),
+        'auth_ref': None,
+        'auth_url': kwargs.get('os_auth_url'),
+        'oidc_auth': bool(kwargs.get('stx_auth_type') == 'oidc'),
+        'oidc_username': kwargs.get('os_username'),
+    }
 
 
 def Client(version, *args, **kwargs):

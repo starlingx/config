@@ -6,3 +6,5 @@ six>=1.10.0 # MIT
 prettytable<0.8,>=0.7.2 # BSD
 requests-toolbelt
 python-dateutil
+oic
+pyjwkest

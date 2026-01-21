@@ -222,6 +222,11 @@ class CgtsShell(object):
                             default=utils.env('CGTSCLIENT_NO_CACHE', default=False),
                             help='Disables cache feature (Env: CGTSCLIENT_NO_CACHE)')
 
+        parser.add_argument('--stx-auth-type',
+                            default=utils.env('STX_AUTH_TYPE', default='keystone'),
+                            action='store',
+                            choices=["keystone", "oidc"],
+                            help='Set Authentication type: keystone or oidc (Env: STX_AUTH_TYPE)')
         return parser
 
     def get_subcommand_parser(self, version):
