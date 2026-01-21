@@ -1971,8 +1971,7 @@ class AgentManager(service.PeriodicService):
         self.notify_initial_inventory_completed(icontext)
 
         self._report_config_applied(icontext)
-        if not self._last_reported_reboot:
-            self._report_reboot_completion(icontext)
+        self._report_reboot_completion(icontext)
 
         if os.path.isfile(tsc.PLATFORM_CONF_FILE):
             # read the platform config file and check for UUID
