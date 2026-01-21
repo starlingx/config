@@ -799,7 +799,8 @@ class WRPrettyTable(prettytable.PrettyTable):
 def extract_keypairs(args):
     attributes = {}
     for parms in args.attributes:
-        for parm in parms:
+        for p in parms:
+            parm = p.strip()
             # Check that there is a '='
             if parm.find('=') > -1:
                 (key, value) = parm.split('=', 1)
