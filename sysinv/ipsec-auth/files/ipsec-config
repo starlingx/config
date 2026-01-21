@@ -116,6 +116,16 @@ ipsec_config_validate() {
     return ${OCF_SUCCESS}
 }
 
+config_err_handling() {
+    local action="$1"
+
+    if [ ${action} = "start" ]; then
+        ln -sf ${SWANCTL_STANDBY_CONF_FILE} ${SWANCTL_CONF_FILE}
+    else
+        ln -sf ${SWANCTL_ACTIVE_CONF_FILE} ${SWANCTL_CONF_FILE}
+    fi
+}
+
 update_ipsec_config() {
     local action="$1"
 
@@ -137,27 +147,34 @@ update_ipsec_config() {
     /usr/sbin/swanctl --load-conns
     if [ $? -ne 0 ] ; then
         ocf_log err "Failed to load IPsec swanctl configuration"
-
-        if [ ${action} = "start" ]; then
-            ln -sf ${SWANCTL_STANDBY_CONF_FILE} ${SWANCTL_CONF_FILE}
-        else
-            ln -sf ${SWANCTL_ACTIVE_CONF_FILE} ${SWANCTL_CONF_FILE}
-        fi
-
+        config_err_handling ${action}
         return ${OCF_ERR_CONFIGURED}
     fi
 
-    /usr/sbin/swanctl --terminate --ike system-nodes --force
-    if [ $? -ne 0 ] ; then
-        ocf_log warn "Failed to terminate existing IPsec connections"
-
-        if [ ${action} = "start" ]; then
-            ln -sf ${SWANCTL_STANDBY_CONF_FILE} ${SWANCTL_CONF_FILE}
-        else
-            ln -sf ${SWANCTL_ACTIVE_CONF_FILE} ${SWANCTL_CONF_FILE}
-        fi
-
+    # Get controller floating IP
+    floating_ip=$(grep -w controller-platform-nfs /etc/hosts | awk '{print $1}')
+    ocf_log info "Controller floating_ip:$floating_ip"
+    if [ -z "${floating_ip:-}" ]; then
+        ocf_log err "Failed to get controller floating IP address."
+        config_err_handling ${action}
         return ${OCF_ERR_CONFIGURED}
+    fi
+
+    # Get the IDs of the SAs associated with floating IP
+    SAs=$(/usr/sbin/swanctl --list-sa | awk -v ip="${floating_ip}" '/^system-nodes:/{h=$0;f=0} index($0,ip){f=1} f&&h~/ESTABLISHED/{match(h,/#([0-9]+)/,a);print a[1];h="";f=0}')
+    ocf_log info "SAs associated with controller floating IP: $SAs"
+
+    # Terminate only SAs associated with floating IP
+    if [ ! -z "${SAs:-}" ]; then
+        while IFS= read -r SA; do
+            ocf_log info "Terminating SA: $SA"
+            /usr/sbin/swanctl --terminate --ike-id ${SA} --force
+            if [ $? -ne 0 ] ; then
+                ocf_log warn "Failed to terminate existing IPsec SA: ${SA}"
+            fi
+        done <<EOF
+${SAs}
+EOF
     fi
 
     return ${OCF_SUCCESS}
