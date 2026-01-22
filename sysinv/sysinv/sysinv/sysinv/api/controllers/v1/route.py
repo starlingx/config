@@ -15,7 +15,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2015-2024 Wind River Systems, Inc.
+# Copyright (c) 2015-2024, 2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -114,7 +114,7 @@ class Route(base.APIBase):
         if not expand:
             route.unset_fields_except(['uuid', 'network', 'prefix', 'gateway',
                                        'metric',
-                                       'inteface_uuid', 'ifname',
+                                       'interface_uuid', 'ifname',
                                        'forihostid'])
         return route
 
@@ -360,7 +360,6 @@ class RouteController(rest.RestController):
         self._check_duplicate_route(host_id, route)
         self._check_duplicate_subnet(host_id, route)
 
-    @cutils.synchronized(LOCK_NAME)
     def _create_route_atomic(self, host_id, interface_id, route):
         self._check_route_conflicts(host_id, route)
         # Attempt to create the new route record
@@ -381,8 +380,11 @@ class RouteController(rest.RestController):
         self._check_local_gateway(host_id, route)
         self._check_reachable_gateway(interface_id, route)
 
-        result = self._create_route_atomic(host_id, interface_id, route)
+        @cutils.synchronized(f"{LOCK_NAME}_{host_id}")
+        def _do_create():
+            return self._create_route_atomic(host_id, interface_id, route)
 
+        result = _do_create()
         return Route.convert_with_links(result)
 
     def _get_one(self, route_uuid):
@@ -411,7 +413,6 @@ class RouteController(rest.RestController):
             raise exception.DeployMajorReleaseInProgress(state=upgrade.state)
         return self._create_route(route)
 
-    @cutils.synchronized(LOCK_NAME)
     @wsme_pecan.wsexpose(None, types.uuid, status_code=204)
     def delete(self, route_uuid):
         """Delete an IP route."""
@@ -424,5 +425,13 @@ class RouteController(rest.RestController):
             route = objects.route.get_by_uuid(pecan.request.context, route_uuid)
         except exception.RouteNotFound:
             raise
-        pecan.request.dbapi.route_destroy(route_uuid)
-        pecan.request.rpcapi.update_route_config(pecan.request.context, route.forihostid)
+
+        @cutils.synchronized(f"{LOCK_NAME}_{route.forihostid}")
+        def _do_delete():
+            try:
+                pecan.request.dbapi.route_destroy(route_uuid)
+                pecan.request.rpcapi.update_route_config(
+                    pecan.request.context, route.forihostid)
+            except exception.RouteNotFound:
+                pass
+        _do_delete()
