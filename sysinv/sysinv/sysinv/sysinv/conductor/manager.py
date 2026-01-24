@@ -101,6 +101,7 @@ from sysinv.api.controllers.v1 import utils
 from sysinv.api.controllers.v1 import vim_api
 from sysinv.common import app_dependents
 from sysinv.common import app_metadata
+from sysinv.common import app_operations_audit
 from sysinv.common import app_update_manager
 from sysinv.common import barbican_config
 from sysinv.common import fpga_constants
@@ -7869,7 +7870,7 @@ class ConductorManager(service.PeriodicService):
                     A new upload attempt will be made on the next audit iteration.")
             return False
 
-    def _auto_apply_managed_app(self, context, app_name):
+    def _auto_apply_managed_app(self, context, app_name, async_apply=True):
         try:
             app = kubeapp_obj.get_by_name(context, app_name)
         except exception.KubeAppNotFound as e:
@@ -7903,7 +7904,8 @@ class ConductorManager(service.PeriodicService):
         self._inner_sync_auto_apply_with_lock(
             context,
             app_name,
-            status_constraints=(constants.APP_UPLOAD_SUCCESS,)
+            status_constraints=(constants.APP_UPLOAD_SUCCESS, constants.APP_APPLY_SUCCESS,),
+            async_apply=async_apply
         )
 
     def update_apps_based_on_k8s_version(self, context, k8s_version, k8s_upgrade_timing):
@@ -8387,7 +8389,7 @@ class ConductorManager(service.PeriodicService):
                         "Preventing managed application actions.".format(e))
         return True
 
-    def _auto_recover_managed_app(self, context, app_name):
+    def _auto_recover_managed_app(self, context, app_name, async_recover=True):
         try:
             app = kubeapp_obj.get_by_name(context, app_name)
         except exception.KubeAppNotFound as e:
@@ -8413,7 +8415,7 @@ class ConductorManager(service.PeriodicService):
                 app_name, app.status)
         app.recovery_attempts += 1
         app.save()
-        self._auto_apply_managed_app(context, app_name)
+        self._auto_apply_managed_app(context, app_name, async_apply=async_recover)
 
     def _load_metadata_of_missing_apps(self):
         """ Load metadata of apps from the directory containing
@@ -8833,96 +8835,22 @@ class ConductorManager(service.PeriodicService):
         # Detect swact
         self._detect_swact_once(context)
 
-        # cache a database query
-        app_statuses = {}
+        # Initialize app operations audit helper
+        operations_audit = app_operations_audit.AppOperationsAudit(
+            self.dbapi,
+            context,
+            self._app,
+            self.apps_metadata,
+            self.perform_automatic_operation_in_parallel,
+            self.execute_automatic_operation_sync
+        )
 
-        # Upload missing system apps
-        for app_name in self.apps_metadata[constants.APP_METADATA_PLATFORM_MANAGED_APPS].keys():
-            # Handle initial loading states
-            try:
-                app = kubeapp_obj.get_by_name(context, app_name)
-                app_statuses[app_name] = app.status
-            except exception.KubeAppNotFound:
-                app_statuses[app_name] = constants.APP_NOT_PRESENT
-
-            if app_statuses[app_name] in [constants.APP_NOT_PRESENT, constants.APP_UPLOAD_FAILURE]:
-                if app_name in self.apps_metadata[constants.APP_METADATA_DESIRED_STATES].keys() and \
-                        self.apps_metadata[constants.APP_METADATA_DESIRED_STATES][
-                            app_name] in [constants.APP_UPLOAD_SUCCESS, constants.APP_APPLY_SUCCESS]:
-                    self._auto_upload_managed_app(context, app_name)
-
-        apps = []
-        apps = self.determine_apps_reapply_order(name_only=True,
-                                                     filter_active=False)
-
-        # Check the application state and take the appropriate action
-        # App applies need to be done in a specific order
-        operation_apps_map = {
-            constants.APP_APPLY_OP: [],
-            constants.APP_UPDATE_OP: []
-        }
-        # TODO(dbarbosa): Add apps_to_reaply list and perform the reapply
-        # call using the perform_automatic_operation_in_parallel function.
-        # This way the platform cores will be taken into account to process
-        # the reapply of apps in parallel.
-        for app_name in apps:
-            if app_name not in self.apps_metadata[constants.APP_METADATA_PLATFORM_MANAGED_APPS].keys():
-                continue
-
-            status = app_statuses[app_name]
-            LOG.debug("Platform managed application %s: %s" % (app_name, status))
-
-            if status == constants.APP_UPLOAD_IN_PROGRESS:
-                # Action: do nothing
-                pass
-            elif status == constants.APP_UPLOAD_FAILURE:
-                # Action: Raise alarm?
-                pass
-            elif status == constants.APP_UPLOAD_SUCCESS:
-                if app_name in self.apps_metadata[constants.APP_METADATA_DESIRED_STATES].keys() and \
-                        self.apps_metadata[constants.APP_METADATA_DESIRED_STATES][
-                            app_name] == constants.APP_APPLY_SUCCESS:
-                    operation_apps_map[constants.APP_APPLY_OP].append(app_name)
-            elif status == constants.APP_APPLY_IN_PROGRESS:
-                # Action: do nothing
-                pass
-            elif status == constants.APP_APPLY_FAILURE:
-                self._auto_recover_managed_app(context, app_name)
-            elif status == constants.APP_APPLY_SUCCESS:
-                self.check_pending_app_reapply(context)
-                operation_apps_map[constants.APP_UPDATE_OP].append(app_name)
-
-        # Special case, we want to apply some logic to non-managed applications
-        for app_name in self.apps_metadata[constants.APP_METADATA_APPS].keys():
-            if app_name in self.apps_metadata[constants.APP_METADATA_PLATFORM_MANAGED_APPS].keys():
-                continue
-
-            # Handle initial loading states
-            status = constants.APP_NOT_PRESENT
-            try:
-                app = kubeapp_obj.get_by_name(context, app_name)
-                status = app.status
-            except exception.KubeAppNotFound:
-                pass
-
-            LOG.debug("Platform non-managed application %s: %s" % (app_name, status))
-
-            # Automatically update non-managed applications
-            if status == constants.APP_APPLY_SUCCESS:
-                self.check_pending_app_reapply(context)
-                operation_apps_map[constants.APP_UPDATE_OP].append(app_name)
-
-        for operation in operation_apps_map:
-            result, _, _ = self.perform_automatic_operation_in_parallel(
-                context,
-                operation_apps_map[operation],
-                operation
-            )
-            if result is None:
-                LOG.warning(f"Auto-{operation} skipped for one or more apps")
-            elif result is False:
-                action = 'updating' if operation == constants.APP_UPDATE_OP else f'{operation}ing'
-                LOG.error(f"Error while auto {action} one or more apps")
+        # Run application operations audit:
+        #   - Upload missing apps
+        #   - Apply missing apps
+        #   - Reapply the apps that need
+        #   - Update apps if a new tarball version is available
+        operations_audit.trigger_automatic_operations()
 
         # Run alarm audit every 5 iterations (5 minutes)
         self._app_alarm_audit_counter += 1
@@ -8982,7 +8910,8 @@ class ConductorManager(service.PeriodicService):
             constants.APP_REAPPLY_OP: self._auto_apply_managed_app,
             constants.APP_UPDATE_OP: self._auto_update_app,
             constants.APP_UPLOAD_OP: self._auto_upload_managed_app,
-            constants.APP_RECOVER_UPDATE_OP: self.recover_and_update_apply_failed_app
+            constants.APP_RECOVER_UPDATE_OP: self.recover_and_update_apply_failed_app,
+            constants.APP_RECOVER_OP: self._auto_recover_managed_app
         }
 
         result = True
@@ -9073,8 +9002,11 @@ class ConductorManager(service.PeriodicService):
                                          context,
                                          app_name,
                                          status_constraints=None,
+                                         async_apply=True,
                                          is_reapply=False):
-        self._inner_sync_auto_apply(context, app_name, status_constraints, is_reapply=is_reapply)
+        self._inner_sync_auto_apply(
+            context, app_name, status_constraints, async_apply, is_reapply=is_reapply
+        )
 
     def _inner_sync_auto_apply(self,
                                context,
@@ -17131,7 +17063,7 @@ class ConductorManager(service.PeriodicService):
                 break
             app_name = dependent_app['name']
             app_version = dependent_app['version']
-            LOG.info(f"Starting upload process for dependent app: "
+            LOG.info(f"Starting apply process for dependent app: "
                      f"{app_name}, version: {app_version}")
             try:
                 app = kubeapp_obj.get_by_name(context, app_name)
@@ -17701,7 +17633,8 @@ class ConductorManager(service.PeriodicService):
             constants.APP_REAPPLY_OP: self._auto_apply_managed_app,
             constants.APP_UPDATE_OP: self._auto_update_app,
             constants.APP_UPLOAD_OP: self._auto_upload_managed_app,
-            constants.APP_RECOVER_UPDATE_OP: self.recover_and_update_apply_failed_app
+            constants.APP_RECOVER_UPDATE_OP: self.recover_and_update_apply_failed_app,
+            constants.APP_RECOVER_OP: self._auto_recover_managed_app
         }
 
         result = True
