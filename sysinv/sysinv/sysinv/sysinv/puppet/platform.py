@@ -92,8 +92,12 @@ class PlatformPuppet(base.BasePuppet):
 
     def _get_static_etcd_version_config(self):
         """Get the etcd_version configuration"""
-
         config = {}
+
+        # Prevent obtaining etcd_version during bootstrap config
+        if not utils.is_initial_config_complete():
+            return config
+
         etcd_version = None
 
         # Get the symlinked etcd version
