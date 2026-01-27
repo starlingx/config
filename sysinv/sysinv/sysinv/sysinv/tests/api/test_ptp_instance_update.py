@@ -89,7 +89,10 @@ class TestUpdatePtpInstance(BasePtpInstanceTestCase):
             ["param1=value1", "param2=value2"].sort()
         )
 
-    def _patch_section_parameters(self, op, section, section_parameters, expect_errors=False):
+    def _patch_section_parameters(self, op, section, section_parameters, expect_errors=False, instance_uuid=None):
+        if instance_uuid is None:
+            instance_uuid = self.uuid
+
         patch_list = []
         for parameter in section_parameters:
             patch_list.append(
@@ -101,7 +104,7 @@ class TestUpdatePtpInstance(BasePtpInstanceTestCase):
                 }
             )
         response = self.patch_json(
-            self.get_single_url(self.uuid),
+            self.get_single_url(instance_uuid),
             patch_list,
             headers=self.API_HEADERS, expect_errors=expect_errors)
         return response
@@ -142,6 +145,130 @@ class TestUpdatePtpInstance(BasePtpInstanceTestCase):
         self.assertEqual(len(data["parameters"]), len(umt_parameters))
         for section, section_parameters in umt_parameters:
             self.assertEqual(data["parameters"][section].sort(), section_parameters.sort())
+
+    def test_update_ptp_instance_add_unicast_master_table_same_section_ok(self):
+        ptp_instance2 = dbutils.create_test_ptp_instance(
+            name='test-instance-2',
+            service=constants.PTP_INSTANCE_TYPE_PTP4L)
+        uuid2 = ptp_instance2['uuid']
+
+        umt_parameters = [
+            (
+                self.uuid,
+                'unicast_master_table_1',
+                [
+                    "table_id=1",
+                    "logQueryInterval=0",
+                    "peer_address=1.2.3.4",
+                    "L2=00:00:00:00:00:01",
+                    "L2=00:00:00:00:00:02"
+                ]
+            ),
+            (
+                uuid2,
+                'unicast_master_table_1',
+                [
+                    "table_id=1",
+                    "logQueryInterval=1",
+                    "peer_address=::1",
+                    "UDPv4=1.2.3.4",
+                    "UDPv4=1.2.3.5"
+                ]
+            ),
+        ]
+        for instance_uuid, section, section_parameters in umt_parameters:
+            response = self._patch_section_parameters(
+                constants.PTP_PATCH_OPERATION_ADD,
+                section, section_parameters, instance_uuid=instance_uuid
+            )
+            self.assertEqual(response.content_type, 'application/json')
+            self.assertEqual(response.status_code, http_client.OK)
+
+    def test_update_ptp_instance_add_unicast_master_table_different_sections_same_table_id_ok(self):
+        ptp_instance2 = dbutils.create_test_ptp_instance(
+            name='test-instance-2',
+            service=constants.PTP_INSTANCE_TYPE_PTP4L)
+        uuid2 = ptp_instance2['uuid']
+
+        umt_parameters = [
+            (
+                self.uuid,
+                'unicast_master_table_A',
+                [
+                    "table_id=1",
+                    "logQueryInterval=0",
+                    "peer_address=1.2.3.4"
+                ]
+            ),
+            (
+                uuid2,
+                'unicast_master_table_B',
+                [
+                    "table_id=1",
+                    "logQueryInterval=1",
+                    "peer_address=::1"
+                ]
+            ),
+        ]
+        for instance_uuid, section, section_parameters in umt_parameters:
+            response = self._patch_section_parameters(
+                constants.PTP_PATCH_OPERATION_ADD,
+                section, section_parameters, instance_uuid=instance_uuid
+            )
+            self.assertEqual(response.content_type, 'application/json')
+            self.assertEqual(response.status_code, http_client.OK)
+
+    def test_update_ptp_instance_add_unicast_master_table_table_id_non_unique_fail(self):
+        ptp_instance2 = dbutils.create_test_ptp_instance(
+            name='test-instance-2',
+            service=constants.PTP_INSTANCE_TYPE_PTP4L)
+        uuid2 = ptp_instance2['uuid']
+
+        umt_parameters = [
+            (
+                self.uuid,
+                'unicast_master_table_1',
+                [
+                    "table_id=1"
+                ]
+            ),
+            (
+                uuid2,
+                'unicast_master_table_inst2_1',
+                [
+                    "table_id=1",
+                ]
+            ),
+        ]
+        for instance_uuid, section, section_parameters in umt_parameters:
+            response = self._patch_section_parameters(
+                constants.PTP_PATCH_OPERATION_ADD,
+                section, section_parameters, instance_uuid=instance_uuid
+            )
+            self.assertEqual(response.content_type, 'application/json')
+            self.assertEqual(response.status_code, http_client.OK)
+
+        umt_parameters_2 = [
+            (
+                uuid2,
+                'unicast_master_table_1',
+                [
+                    "table_id=1",
+                ]
+            ),
+        ]
+
+        # Adding new section with duplicate table_id value should fail
+        error_message = f"table_id=1 is not unique, already exist in {umt_parameters[1][1]}"
+        for instance_uuid, section, section_parameters in umt_parameters_2:
+            response = self._patch_section_parameters(
+                constants.PTP_PATCH_OPERATION_ADD,
+                section, section_parameters, instance_uuid=instance_uuid,
+                expect_errors=True
+            )
+            self.assertEqual(response.content_type, 'application/json')
+            self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+            self.assertIn(error_message, response.json['error_message'])
 
     def test_update_ptp_instance_add_unicast_master_table_parameters_failed(self):
         section_a = 'unicast_master_table_A'
@@ -262,7 +389,7 @@ class TestUpdatePtpInstance(BasePtpInstanceTestCase):
 
         # Add UDPv4, should fail
         error_message = (
-            f"L2 or UPPv4 or UDPv6, these parameters can not be mixed, "
+            f"L2 or UDPv4 or UDPv6, these parameters can not be mixed, "
             f"section: {section_a}, new parameter:UDPv4 vs existing parameter:L2"
         )
         response = self._patch_section_parameters(
@@ -275,7 +402,7 @@ class TestUpdatePtpInstance(BasePtpInstanceTestCase):
 
         # Add UDPv6, should fail
         error_message = (
-            f"L2 or UPPv4 or UDPv6, these parameters can not be mixed, "
+            f"L2 or UDPv4 or UDPv6, these parameters can not be mixed, "
             f"section: {section_a}, new parameter:UDPv6 vs existing parameter:L2"
         )
         response = self._patch_section_parameters(
