@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2025 Wind River Systems, Inc.
+# Copyright (c) 2025-2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -10,9 +10,11 @@
 """ System Inventory Etcd Utilities and helper functions."""
 
 import os
+import re
 import ruamel.yaml as yaml
 import subprocess
 
+from distutils.version import LooseVersion
 from oslo_log import log
 from ruamel.yaml.compat import StringIO
 
@@ -33,6 +35,11 @@ ETCD_CONFIG_CA_FILE = 'caFile'
 ETCD_CONFIG_CERT_FILE = 'certFile'
 ETCD_CONFIG_KEY_FILE = 'keyFile'
 ETCD_CONFIG_ENDPOINTS = 'endpoints'
+
+# etcd versioned directories and symlinks paths
+ETCD_VERSIONED_BINARIES_ROOT = '/usr/local/etcd/'
+ETCD_SYMLINKS_ROOT = '/var/lib/etcd/'
+ETCD_SYMLINKS_STAGE_0 = os.path.join(ETCD_SYMLINKS_ROOT, 'stage0')
 
 
 def get_cluster_information():
@@ -77,6 +84,57 @@ def get_cluster_information():
             raise exception.SysinvException("Error retrieving etcd cluster details from the etcd "
                                             "config file: %s" % (ex))
     return etcd_config
+
+
+def get_etcd_version_from_symlink():
+    """Retrieve current etcd version based on the stage symlink.
+
+    Expecting the following symlink, e.g., for version 3.4.37
+    /var/lib/etcd/stage0 -> /usr/local/etcd/3.4.37/stage0
+
+    :returns: etcd_version string
+    """
+    # Read the etcd stage0 symlink
+    try:
+        target = os.readlink(ETCD_SYMLINKS_STAGE_0)
+    except OSError as ex:
+        raise exception.SysinvException(
+                "Failed to read symlink %s. Error: %s"
+                % (ETCD_SYMLINKS_STAGE_0, ex))
+
+    # Parse the etcd_version from the symlink target
+    pattern = r"/usr/local/etcd/(.*)/stage0"
+    match = re.search(pattern, target)
+    if match is None:
+        LOG.error("Unable to find etcd version in symlink target %s" %
+                  target)
+        return None
+    else:
+        return match.group(1)
+
+
+def get_min_etcd_version():
+    """Retrieve minimum installed etcd version.
+
+    Determine the minumum version of installed etcd packages under the
+    directory: /usr/local/etcd/<version>
+
+    :returns: etcd_version string
+    """
+
+    path = ETCD_VERSIONED_BINARIES_ROOT
+    directories = []
+    try:
+        if os.path.isdir(path):
+            for entry in os.listdir(path):
+                full_path = os.path.join(path, entry)
+                if os.path.isdir(full_path):
+                    directories.append(entry)
+    except Exception as e:
+        LOG.error("Failed to get etcd version from: %s, %s." % (path, e))
+
+    etcd_version = min(directories, key=LooseVersion, default=None)
+    return etcd_version
 
 
 def snapshot_etcd(snapshot_file):

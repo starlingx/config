@@ -1,4 +1,4 @@
-# Copyright (c) 2017-2025 Wind River Systems, Inc.
+# Copyright (c) 2017-2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -16,6 +16,7 @@ from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils
 from ruamel.yaml.compat import StringIO
+from sysinv.common import etcd
 from sysinv.common import kubernetes
 
 from tsconfig import tsconfig
@@ -34,6 +35,7 @@ class PlatformPuppet(base.BasePuppet):
     def get_static_config(self):
         config = {}
         config.update(self._get_static_software_config())
+        config.update(self._get_static_etcd_version_config())
         return config
 
     def get_secure_static_config(self):
@@ -86,6 +88,34 @@ class PlatformPuppet(base.BasePuppet):
     def get_host_config_upgrade(self, host):
         config = {}
         config.update(self._get_host_platform_config_upgrade(host, self.config_uuid))
+        return config
+
+    def _get_static_etcd_version_config(self):
+        """Get the etcd_version configuration"""
+
+        config = {}
+        etcd_version = None
+
+        # Get the symlinked etcd version
+        try:
+            etcd_version = etcd.get_etcd_version_from_symlink()
+        except Exception:
+            LOG.warning("Unable to retrieve etcd version from symlink")
+
+        # Get the minimum installed etcd binary version. When this is
+        # called during USM upgrade, this will be the to_side.
+        if etcd_version is None:
+            try:
+                etcd_version = etcd.get_min_etcd_version()
+            except Exception:
+                LOG.warning("Unable to retrieve minimum etcd version")
+                return config
+
+        if etcd_version is not None:
+            config.update({
+                'platform::etcd::params::etcd_version': etcd_version,
+            })
+
         return config
 
     def _get_static_software_config(self):
