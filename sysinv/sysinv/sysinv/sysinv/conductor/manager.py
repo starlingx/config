@@ -4508,21 +4508,19 @@ class ConductorManager(service.PeriodicService):
                                     reference='current (CHANGED)',
                                     sockets=cs, cores=cc, threads=ct)
 
-            # During HW replacement, topology can change for identical CPU models.
+            # During HW replacement (and randomly during normal operation),
+            # topology can change for identical CPU models.
             # An example, CPU #1 has core 2 disabled in HW, but CPU #2 has core 3 disabled.
             # This will cause a divergence in the core ID enumeration posted by firmware.
             # Even though technically the CPUs are functionally equivalent.
             if (
-                # Only AIO-SX supports HW replacement
-                utils.is_host_simplex_controller(host=ihost)
-                and os.path.isfile(tsc.RESTORE_IN_PROGRESS_FLAG)
-                and ps == cs
+                ps == cs
                 and pt == ct
                 and pc != cc
             ):
                 # NOTE: We only support fixing core id.
                 # We will use the CPU ID to fix the core ID.
-                LOG.info('Detected core_id divergence during restore')
+                LOG.info('Detected core_id divergence during startup')
                 for cpu_id, previous_core_id in pc.items():
                     cpu_uuid = pu[cpu_id]
                     current_core_id = cc[cpu_id]
@@ -4539,16 +4537,14 @@ class ConductorManager(service.PeriodicService):
                 self.update_grub_config(context, ihost_uuid, True)
                 return
 
-            else:
-                # there has been an update.  Delete db entries and replace.
-                if os.path.isfile(tsc.RESTORE_IN_PROGRESS_FLAG):
-                    LOG.error(
-                        'Unable to restore the CPU configuration. '
-                        'CPU configuration will be reset.'
-                    )
+            # there has been an update.  Delete db entries and replace.
+            LOG.error(
+                'Unable to restore the CPU configuration. '
+                'CPU configuration will be reset.'
+            )
 
-                for icpu in icpus:
-                    self.dbapi.icpu_destroy(icpu.uuid)
+            for icpu in icpus:
+                self.dbapi.icpu_destroy(icpu.uuid)
 
         # sort the list of cpus by socket and coreid
         cpu_list = sorted(icpu_dict_array, key=self._sort_by_socket_and_coreid)
