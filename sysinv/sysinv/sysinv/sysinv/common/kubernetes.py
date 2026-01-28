@@ -1258,6 +1258,15 @@ class KubeOperator(object):
                       "%s" % (name, namespace, e))
             raise
 
+    def kube_patch_pod(self, name, namespace, body):
+        c = self._get_kubernetesclient_core()
+        try:
+            c.patch_namespaced_pod(name, namespace, body)
+        except Exception as e:
+            LOG.error("Failed to patch Pod %s under Namespace %s: "
+                      "%s" % (name, namespace, e))
+            raise
+
     def kube_create_config_map(self, namespace, body):
         c = self._get_kubernetesclient_core()
         try:
