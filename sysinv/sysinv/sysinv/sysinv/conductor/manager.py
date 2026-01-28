@@ -16613,9 +16613,10 @@ class ConductorManager(service.PeriodicService):
 
                 try:
                     hook_info = LifecycleHookInfo()
-                    hook_info.mode = LifecycleConstants.APP_LIFECYCLE_MODE_AUTO
-                    hook_info.operation = constants.APP_EVALUATE_REAPPLY_OP
-                    hook_info.lifecycle_type = LifecycleConstants.APP_LIFECYCLE_TYPE_SEMANTIC_CHECK
+                    hook_info.init(LifecycleConstants.APP_LIFECYCLE_MODE_AUTO,
+                                   LifecycleConstants.APP_LIFECYCLE_TYPE_SEMANTIC_CHECK,
+                                   None,
+                                   constants.APP_EVALUATE_REAPPLY_OP)
                     hook_info.extra[LifecycleConstants.EVALUATE_REAPPLY_TRIGGER] = trigger
                     self.app_lifecycle_actions(context=context, rpc_app=app, hook_info=hook_info)
                 except exception.LifecycleSemanticCheckException as e:
