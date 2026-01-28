@@ -1,4 +1,4 @@
-# Copyright (c) 2017-2025 Wind River Systems, Inc.
+# Copyright (c) 2017-2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -8,7 +8,6 @@
 #
 
 import difflib
-import functools
 import json
 import netaddr
 import os
@@ -17,8 +16,10 @@ import re
 import stat
 import wsme
 
+from oslo_config import cfg
 from oslo_log import log
 from oslo_utils import uuidutils
+from pathlib import Path
 from urllib.parse import urlparse
 from sysinv._i18n import _
 from sysinv.common import constants
@@ -36,42 +37,74 @@ SERVICE_PARAMETER_DATA_FORMAT_SKIP = 'skip'
 IDENTITY_CONFIG_TOKEN_EXPIRATION_MIN = 3600
 IDENTITY_CONFIG_TOKEN_EXPIRATION_MAX = 14400
 
+# Kubelet will manage these kernel parameters and override any changes
+# See.
+protected_kernel_parameters_opts = [
+    cfg.ListOpt('protected_kernel_parameters',
+                default=[
+                    'vm.panic_on_oom',
+                    'vm.overcommit_memory',
+                    'kernel.panic',
+                    'kernel.panic_on_oops',
+                    'kernel.keys.root_maxkeys',
+                    'kernel.keys.root_maxbytes',
+                ],
+                help='List of kernel parameters that cannot be modified by '
+                     'the system configuration service. Kubelet will override '
+                     'these parameters if they are set.'
+                )
+]
 
-@functools.lru_cache(maxsize=1)
-def _get_supported_kernel_runtime_parameters() -> tuple[list[str], list[str]]:
-    """
-    Traverse the '/proc/sys' folder
-    and get the list supported kernel runtime parameters
-    """
-    supported_parameters, readonly_parameters = [], []
-    prefix = '/proc/sys/'
-    for root, directories, files in os.walk(f'{prefix}'):
-        for f in files:
-            fullpath = f"{root}/{f}"
-            path = fullpath[len(prefix):]
-            param = path.replace('/', '.')
-            current_permissions = os.stat(fullpath).st_mode
-            if (current_permissions & stat.S_IWUSR):
-                supported_parameters.append(param)
-            else:
-                readonly_parameters.append(param)
-    return supported_parameters, readonly_parameters
+CONF = cfg.CONF
+CONF.register_opts(protected_kernel_parameters_opts)
 
 
 def _validate_sysctl_kernel_parameter(name, value):
-    supported_list, readonly_list = _get_supported_kernel_runtime_parameters()
-    if name in readonly_list:
-        msg = f"Parameter '{name}={value}' cannot be modified. It is readonly."
+    file_name = f'/proc/sys/{name}'.replace('.', '/')
+    file_path = Path(file_name)
+
+    list_of_kubelet_managed_params = CONF.protected_kernel_parameters
+    if name in list_of_kubelet_managed_params:
+        msg = f"Parameter '{name}={value}' cannot be modified."
+        msg += " It will be overridden by Kubelet."
         LOG.error(_(msg))
         raise wsme.exc.ClientSideError(_(msg))
 
-    if name not in supported_list:
+    if not file_path.is_file():
+        # File not found, suggest similar parameters ( if any exist )
         msg = f"Parameter '{name}={value}' is not supported. "
-        matches = difflib.get_close_matches(name, supported_list)
-        if matches:
-            msg += f"Did you mean '{matches[0]}'?"
+        dir_path = file_path.parent
+        if dir_path.is_dir():
+            similar_list = [str(f) for f in dir_path.iterdir() if f.is_file()]
+            matches = difflib.get_close_matches(name,
+                                                similar_list,
+                                                cutoff=0.2)
+            if matches:
+                match_str = matches[0]
+                relative_path = \
+                    dir_path.joinpath(match_str).relative_to('/proc/sys')
+                close_match = str(relative_path).replace('/', '.')
+                msg += f"Did you mean '{close_match}'?"
         LOG.error(_(msg))
         raise wsme.exc.ClientSideError(_(msg))
+    else:
+        # Check file permissions
+        file_stats = os.stat(file_path)
+        mode = file_stats.st_mode
+        have_read_permissions = bool(mode & stat.S_IRUSR)
+        have_write_permissions = bool(mode & stat.S_IWUSR)
+
+        if not have_read_permissions:
+            msg = f"Parameter '{name}={value}' cannot be read."
+            msg += " It is write-only."
+            LOG.error(_(msg))
+            raise wsme.exc.ClientSideError(_(msg))
+
+        if not have_write_permissions:
+            msg = f"Parameter '{name}={value}' cannot be modified."
+            msg += " It is read-only."
+            LOG.error(_(msg))
+            raise wsme.exc.ClientSideError(_(msg))
 
 
 def _validate_boolean(name, value):

@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2019-2025 Wind River Systems, Inc.
+# Copyright (c) 2019-2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -1360,6 +1360,28 @@ class ApiServiceParameterPostTestSuiteMixin(ApiServiceParameterTestCaseMixin):
             response = self.post(service_parameter)
             self.validate_data(service_parameter, response)
 
+    def test_platform_kernel_sysctl_protected_kubelet(self):
+        """Parameters that will get reset by Kubelet during bootup
+           Ensure user cannot modify them to prevent conflict.
+        """
+        sysctl_kernel_parameters = {
+            "vm.panic_on_oom": "1",
+            "vm.overcommit_memory": "0",
+            "kernel.panic": "0",
+            "kernel.panic_on_oops": "1",
+            "kernel.keys.root_maxkeys": "100",
+            "kernel.keys.root_maxbytes": "2048",
+        }
+        for parm, value in sysctl_kernel_parameters.items():
+            service_parameter = \
+                {
+                    'service': constants.SERVICE_TYPE_PLATFORM,
+                    'section': constants.SERVICE_PARAM_SECTION_PLATFORM_SYSCTL,
+                    'name': parm,
+                    'value': value
+                }
+            self.post(service_parameter, expect_errors=True)
+
     def test_platform_kernel_sysctl_readonly(self):
         sysctl_kernel_parameters = {
             "dev.cdrom.info": "CD-ROM information, Id: cdrom.c 3.20 2003/12/17",
@@ -1367,6 +1389,23 @@ class ApiServiceParameterPostTestSuiteMixin(ApiServiceParameterTestCaseMixin):
             "kernel.osrelease": "6.12.0-1-amd64",
             "kernel.ostype": "Linux",
             "kernel.version": "#1 SMP PREEMPT_DYNAMIC StarlingX Debian",
+        }
+        for parm, value in sysctl_kernel_parameters.items():
+            service_parameter = \
+                {
+                    'service': constants.SERVICE_TYPE_PLATFORM,
+                    'section': constants.SERVICE_PARAM_SECTION_PLATFORM_SYSCTL,
+                    'name': parm,
+                    'value': value
+                }
+            self.post(service_parameter, expect_errors=True)
+
+    def test_platform_kernel_sysctl_writeonly(self):
+        """Parameters that trigger actions but do not persists values
+        """
+        sysctl_kernel_parameters = {
+            "vm.drop_caches": "3",
+            "vm.compact_memory": "1",
         }
         for parm, value in sysctl_kernel_parameters.items():
             service_parameter = \
