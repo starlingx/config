@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2025 Wind River Systems, Inc.
+# Copyright (c) 2025-2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -246,7 +246,22 @@ class FluxDeploymentManager(object):
     def rollback_controllers(self):
         """ Rollback Flux controllers to the previous version """
 
-        if not self.delete_oci_repository_crd():
+        if not os.path.isfile(self.conf_dict['flux_legacy_charts_path']):
+
+            # Check if previous and target charts are the same. Covers the scenario where
+            # rollback is being executed but Flux hasn't been upversioned.
+            previous_chart_path = os.path.dirname(self.conf_dict['flux_legacy_charts_path'])
+            current_chart_filename = os.path.basename(self.conf_dict['flux_charts_path'])
+            chart_path = os.path.join(previous_chart_path, current_chart_filename)
+
+            if os.path.isfile(chart_path):
+                LOG.info(f"Previous and target chart versions are the same: {chart_path}. "
+                         "Skipping rollback.")
+                return True
+            else:
+                LOG.info("Previous chart version not available at "
+                         f"{self.conf_dict['flux_legacy_charts_path']}")
+
             return False
 
         success = False
@@ -258,32 +273,36 @@ class FluxDeploymentManager(object):
                                              KUBECONFIG)
 
             # Rollback only if not already in the target version
-            if not self.is_target_version_installed(history, previous_version):
-                target_revision = self.get_target_revision(history, previous_version)
+            if self.is_target_version_installed(history, previous_version):
+                LOG.info("Skipping Flux rollback since the target version is already installed")
+                success = True
+            else:
+                if self.delete_oci_repository_crd():
+                    target_revision = self.get_target_revision(history, previous_version)
 
-                if target_revision:
-                    self.wait_helm_controller_pod_ready()
+                    if target_revision:
+                        self.wait_helm_controller_pod_ready()
 
-                    LOG.info(f"Rolling back Flux release to revision {target_revision}")
+                        LOG.info(f"Rolling back Flux release to revision {target_revision}")
 
-                    subprocess.run(
-                        ["helm", "rollback",
-                         self.conf_dict['flux_helm_release_name'],
-                         str(target_revision),
-                         "-n", self.conf_dict['fluxcd_namespace'],
-                         "--kubeconfig", KUBECONFIG,
-                         "--wait",
-                         "--wait-for-jobs"],
-                        check=True,
-                        capture_output=True
-                    )
+                        subprocess.run(
+                            ["helm", "rollback",
+                            self.conf_dict['flux_helm_release_name'],
+                            str(target_revision),
+                            "-n", self.conf_dict['fluxcd_namespace'],
+                            "--kubeconfig", KUBECONFIG,
+                            "--wait",
+                            "--wait-for-jobs"],
+                            check=True,
+                            capture_output=True
+                        )
 
-                    success = True
-                    LOG.info("Flux release successfully rolled back")
-                else:
-                    LOG.warning(f"Flux chart version {previous_version} is not available in "
-                                "revision history. Skipping rollback.")
-                    success = True
+                        success = True
+                        LOG.info("Flux release successfully rolled back")
+                    else:
+                        LOG.warning(f"Flux chart version {previous_version} is not available in "
+                                    "revision history. Skipping rollback.")
+                        success = True
 
         except subprocess.CalledProcessError as e:
             LOG.error(f"Error while rolling back flux controllers: {e.stderr}")
