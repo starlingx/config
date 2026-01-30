@@ -27,7 +27,6 @@ from sysinv.api import acl
 from sysinv.db import api as dbapi
 from sysinv.tests import base
 from sysinv.common import context as sysinv_context
-from sysinv.common import utils as cutils
 
 
 PATH_PREFIX = '/v1'
@@ -50,9 +49,13 @@ class FunctionalTest(base.TestCase):
         self.app = self._make_app()
         self.dbapi = dbapi.get_instance()
         self.context = sysinv_context.RequestContext(is_admin=True)
-        p = mock.patch.object(cutils, 'synchronized')
-        p.start()
-        self.addCleanup(p.stop)
+        # p = mock.patch.object(cutils, 'synchronized')
+        # p.start()
+        # self.addCleanup(p.stop)
+        patcher = mock.patch('sysinv.common.utils.synchronized',
+                             side_effect=lambda a: lambda f: lambda *args: f(*args))
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def _make_app(self, enable_acl=False):
         # Determine where we are so we can set up paths in the config

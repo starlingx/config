@@ -7356,6 +7356,12 @@ class ConductorManager(service.PeriodicService):
                     LOG.info("config type %s filter_mapping %s False (check) host_uuids %s" %
                              (CONFIG_APPLY_RUNTIME_MANIFEST, filter_class, host_uuids))
                     check_wait = True
+                else:
+                    # This is the first route operation - add to tracking immediately
+                    self._add_runtime_class_apply_in_progress(
+                        [self.PUPPET_RUNTIME_CLASS_ROUTES], host_uuids)
+                    LOG.info("First route operation - added to in-progress tracking: %s" % host_uuids)
+
             if filter_class == self.PUPPET_RUNTIME_CLASS_DOCKERDISTRIBUTION:
                 if self.check_restoring_apps_in_progress():
                     LOG.info("config type %s filter_mapping %s False (wait), host_uuids %s" %
@@ -14168,6 +14174,15 @@ class ConductorManager(service.PeriodicService):
             host_uuids = [host_uuids] if isinstance(host_uuids, str) else host_uuids
 
         for c, h in self._runtime_class_apply_in_progress:
+            # this is enforced only for route operations to prevent
+            # lags when parallel route configs are processed.
+            # Other operations use host-specific which is sufficient
+            if c == self.PUPPET_RUNTIME_CLASS_ROUTES and self.PUPPET_RUNTIME_CLASS_ROUTES in classes_list:
+                LOG.info(
+                        f"config runtime route operation already in progress"
+                        f" ({c}, {h}) - blocking all routes")
+                return True
+
             if c in classes_list:
                 if not host_uuids or next((host for host in host_uuids if host in h), None):
                     LOG.info("config runtime in progress (%s, %s)" % (c, h))
