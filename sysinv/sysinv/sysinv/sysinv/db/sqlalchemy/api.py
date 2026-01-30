@@ -14,7 +14,7 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 #
-# Copyright (c) 2013-2025 Wind River Systems, Inc.
+# Copyright (c) 2013-2026 Wind River Systems, Inc.
 #
 
 """SQLAlchemy storage backend."""
@@ -6148,7 +6148,7 @@ class Connection(api.Connection):
         query = query.filter(models.Networks.type == network_type)
         query = query.order_by(
             case(
-                [(models.AddressPools.id == models.Networks.address_pool_id, 0)],
+                (models.AddressPools.id == models.Networks.address_pool_id, 0),
                 else_=1
             ).asc()
         )
