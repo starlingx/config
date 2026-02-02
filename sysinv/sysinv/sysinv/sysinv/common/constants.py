@@ -2451,6 +2451,8 @@ ANSIBLE_RESTORE_ROOK_FLAG = os.path.join(tsc.VOLATILE_PATH, ".ansible_restore_ro
 ANSIBLE_PLAYBOOKS_ROOT = "/usr/share/ansible/stx-ansible/playbooks"
 ANSIBLE_PLATFORM_BACKUP_PLAYBOOK = \
     '/usr/share/ansible/stx-ansible/playbooks/backup.yml'
+RECOVER_CEPHFS_SCRIPT = \
+    '/usr/share/ansible/stx-ansible/playbooks/roles/recover-ceph-data/files/recover_cephfs.sh'
 
 # Playbooks path to versioned system-images.yml
 ANSIBLE_KUBE_SYSTEM_IMAGES_PLAYBOOK_ROOT = \
