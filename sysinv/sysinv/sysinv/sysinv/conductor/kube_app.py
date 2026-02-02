@@ -55,6 +55,7 @@ from sysinv.helm import common
 from sysinv.helm import utils as helm_utils
 from sysinv.helm.lifecycle_constants import LifecycleConstants
 from sysinv.helm.lifecycle_hook import LifecycleHookInfo
+from sysinv.objects import kube_app as kubeapp_obj
 
 CONF = cfg.CONF
 
@@ -2366,10 +2367,15 @@ class AppOperator(object):
             validate_function = self._fluxcd.make_fluxcd_operation
 
             # Copy the manifest and metadata file to the drbd
-            if os.path.isdir(app.inst_mfile):
-                shutil.copytree(app.inst_mfile, manifest_sync_path)
-            else:
-                shutil.copy(app.inst_mfile, manifest_sync_path)
+            manifest_parent = os.path.dirname(manifest_sync_path)
+            with tempfile.TemporaryDirectory(dir=manifest_parent) as temp_dir:
+                temp_manifest = os.path.join(temp_dir, 'manifest')
+                if os.path.isdir(app.inst_mfile):
+                    shutil.copytree(app.inst_mfile, temp_manifest)
+                else:
+                    os.makedirs(temp_manifest)
+                    shutil.copy(app.inst_mfile, temp_manifest)
+                shutil.move(temp_manifest, manifest_sync_path)
             inst_metadata_file = os.path.join(
                 app.inst_path, constants.APP_METADATA_FILE)
             if os.path.exists(inst_metadata_file):
@@ -2727,13 +2733,18 @@ class AppOperator(object):
         metadata = {}
 
         # Load metadata as a dictionary from a column in the database
-        db_app = self._dbapi.kube_app_get(app.name)
-        if db_app.app_metadata:
-            metadata = db_app.app_metadata or {}
-
-        AppOperator.update_and_process_app_metadata(self._apps_metadata,
-                                                    app.name,
-                                                    metadata)
+        kube_app = kubeapp_obj.get_by_name(self._dbapi, app.name)
+        if kube_app.app_metadata:
+            metadata = kube_app.app_metadata
+            AppOperator.update_and_process_app_metadata(self._apps_metadata,
+                                                        app.name,
+                                                        metadata)
+        else:
+            # If metadata is empty, load from file again in case it was loaded
+            # during database backup.
+            LOG.info(f"No metadata found in database for {app.name}, "
+                     "attempting to re-loading from file")
+            self.load_application_metadata_from_file(kube_app)
 
     @staticmethod
     def retrieve_application_metadata_from_file(sync_metadata_file):
