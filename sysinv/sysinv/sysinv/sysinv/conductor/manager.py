@@ -16356,7 +16356,51 @@ class ConductorManager(service.PeriodicService):
         :returns: dict of charts and supported namespaces that associated
                   overrides may be provided.
         """
-        return self._helm.get_helm_application_namespaces(app_name)
+        app = kubeapp_obj.get_by_name(context, app_name)
+
+        # If an app is in one of the statuses below, no data should be returned, as the app still
+        # has not been uploaded and therefore no overrides should exist.
+        status_to_message = {
+            constants.APP_UPLOAD_FAILURE:
+                'Try deleting the app and uploading again before '
+                'running the override commands.',
+            constants.APP_UPLOAD_IN_PROGRESS:
+                'Wait until the upload process finishes.',
+        }
+        if app.status in status_to_message:
+            raise exception.HelmOverrideNotAvailable(
+                status=app.status,
+                error_msg=status_to_message[app.status]
+            )
+
+        # If an app is in one of the statuses below, there is a high probability that the
+        # plugin is deactivated, which could return empty namespaces in the charts. The logic
+        # below handles these cases by activating the app plugins before calling the function
+        # and then deactivating them again.
+        if app.status not in [
+            constants.APP_NOT_PRESENT,
+            constants.APP_UPLOAD_IN_PROGRESS,
+            constants.APP_UPLOAD_SUCCESS,
+            constants.APP_UPLOAD_FAILURE
+        ]:
+            return self._helm.get_helm_application_namespaces(app_name)
+
+        app = self._app.Application(app)
+        self._helm.plugins.activate_plugins(
+            app_name=app.name,
+            app_version=app.version,
+            has_plugin_path=app.system_app,
+            sync_plugins_dir=app.sync_plugins_dir,
+            args=(self._helm,)
+        )
+        charts_namespaces = self._helm.get_helm_application_namespaces(app_name)
+        self._helm.plugins.deactivate_plugins(
+            app_name=app.name,
+            app_version=app.version,
+            has_plugin_path=app.system_app,
+            sync_plugins_dir=app.sync_plugins_dir,
+        )
+        return charts_namespaces
 
     def get_helm_application_overrides(self, context, app_name, cnamespace):
         """Get the overrides for a supported set of charts.

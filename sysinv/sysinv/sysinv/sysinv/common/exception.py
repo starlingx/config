@@ -1594,6 +1594,11 @@ class HelmOverrideNotFound(NotFound):
                 "%(namespace)s")
 
 
+class HelmOverrideNotAvailable(SysinvException):
+    message = _("It's not possible list or update the overrides right now. "
+        "The app is currently in %(status)s state. %(error_msg)s")
+
+
 class HelmOverrideAlreadyExists(Conflict):
     message = _("A HelmOverride with name %(name)s and namespace "
                 "%(namespace)s already exists.")

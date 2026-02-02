@@ -33,6 +33,8 @@ class HelmChartsController(rest.RestController):
             namespaces = pecan.request.rpcapi.get_helm_application_namespaces(
                 pecan.request.context, app_name)
         except Exception as e:
+            if hasattr(e, "exc_type") and e.exc_type == 'HelmOverrideNotAvailable':
+                raise wsme.exc.ClientSideError(str(e.value))
             raise wsme.exc.ClientSideError(_("Unable to get the helm charts for "
                                              "application %s: %s" % (app_name, str(e))))
 
