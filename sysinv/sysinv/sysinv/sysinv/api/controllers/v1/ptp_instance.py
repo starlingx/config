@@ -203,53 +203,85 @@ class PtpInstanceController(rest.RestController):
         return PtpInstance.convert_with_links(
             pecan.request.dbapi.ptp_instance_create(ptp_instance_dict))
 
-    def _check_umt_compliance(self, param_section, param_name, param_value):
-        # 1. no repetition of parameters: table_id, peer_address and logQueryInterval,
-        #    if already present in a unicast_master_table in DB
-        # 2. L2, UDPv4 and UDPv6 can not be mixed, check if already present in a
-        #    unicast_master_table in DB.
-        # 3. no duplication of table_id value among unicast_master_table sections in DB
+    def _check_umt_table_id_uniqueness(
+        self, instance_uuid, param_section, param_name, param_value
+    ):
+        # no duplication of table_id value among unicast_master_table sections
+        #  in DB within the same instance
+        err_msg = None
+        if param_name == "table_id":
+            # Check for table_id uniqueness only within the same instance
+            instance_parameters = \
+                pecan.request.dbapi.ptp_parameters_get_list(
+                    ptp_instance=instance_uuid)
+            for instance_param in instance_parameters:
+                if (
+                    instance_param.name == param_name and
+                    instance_param.value == param_value and
+                    instance_param.section.startswith("unicast_master_table")
+                    and instance_param.section != param_section
+                ):
+                    err_msg = (
+                        f"{param_name}={param_value} is not unique, "
+                        f"already exist in {instance_param.section}"
+                    )
+                    return err_msg
+        return err_msg
+
+    def _check_umt_compliance(
+        self, instance_uuid, param_section, param_name, param_value
+    ):
+        # 1. no repetition of parameters: table_id, peer_address and
+        #    logQueryInterval, if already present in a unicast_master_table
+        #    in DB within same instance
+        # 2. L2, UDPv4 and UDPv6 can not be mixed, check if already present in
+        #    a unicast_master_table in DB within same instance.
+        # 3. no duplication of table_id value among unicast_master_table
+        #    sections in DB within the same instance
         err_msg = None
         if param_name in ["table_id", "peer_address", "logQueryInterval"]:
-            # Check PTP parameter name exists
-            ptp_parameters = \
-                pecan.request.dbapi.ptp_parameter_get_by_name(
-                    param_name, section=param_section)
-            if len(ptp_parameters) > 0:
-                err_msg = (
-                    f"Parameter already exists: section:{param_section} parameter:{param_name} "
-                    f"new value:{param_value} vs existing value:{ptp_parameters[0].value}"
-                )
-                return err_msg
+            # Check PTP parameter name exists within the same instance and
+            # section
+            instance_parameters = \
+                pecan.request.dbapi.ptp_parameters_get_list(
+                    ptp_instance=instance_uuid)
+            for instance_param in instance_parameters:
+                if (
+                    instance_param.name == param_name and
+                    instance_param.section == param_section
+                ):
+                    err_msg = (
+                        f"Parameter already exists: section:{param_section} "
+                        f"parameter:{param_name} new value:{param_value} vs "
+                        f"existing value:{instance_param.value}"
+                    )
+                    return err_msg
 
         transport_param_names = ["L2", "UDPv4", "UDPv6"]
         if param_name in transport_param_names:
-            # Check transport_param_names other than param_name not already exists
+            # Check transport_param_names other than param_name not already
+            # exists within same instance and section
+            instance_parameters = \
+                pecan.request.dbapi.ptp_parameters_get_list(
+                    ptp_instance=instance_uuid)
             for transport_param_name in set(transport_param_names) - set([param_name]):
-                # Check PTP parameter name exists
-                ptp_parameters = \
-                    pecan.request.dbapi.ptp_parameter_get_by_name(
-                        transport_param_name, section=param_section)
-                if len(ptp_parameters) > 0:
-                    err_msg = (
-                        f"L2 or UPPv4 or UDPv6, these parameters can not be mixed, "
-                        f"section: {param_section}, new parameter:{param_name} vs "
-                        f"existing parameter:{transport_param_name}"
-                    )
-                    return err_msg
+                for instance_param in instance_parameters:
+                    if (
+                        instance_param.name == transport_param_name and
+                        instance_param.section == param_section
+                    ):
+                        err_msg = (
+                            f"L2 or UDPv4 or UDPv6, these parameters can not be mixed, "
+                            f"section: {param_section}, new parameter:{param_name} vs "
+                            f"existing parameter:{transport_param_name}"
+                        )
+                        return err_msg
 
         if param_name == "table_id":
-            ptp_parameters = \
-                pecan.request.dbapi.ptp_parameter_get_by_namevalue_anysection(
-                    param_name, param_value
-                )
-            for ptp_parameter_ in ptp_parameters:
-                if ptp_parameter_.section.startswith("unicast_master_table"):
-                    err_msg = (
-                        f"{param_name}={param_value} is not unique, "
-                        f"already exist in {ptp_parameter_.section}"
-                    )
-                    return err_msg
+            # Check for table_id uniqueness only within the same instance
+            err_msg = self._check_umt_table_id_uniqueness(
+                instance_uuid, param_section, param_name, param_value
+            )
 
         return err_msg
 
@@ -296,9 +328,12 @@ class PtpInstanceController(rest.RestController):
                         % (param_section, param_keypair))
                     )
 
-                # Creating parameter: check compliance of unicast_master_table section against DB
+                # Creating parameter: check compliance of unicast_master_table
+                # section against DB
                 if (param_section.startswith("unicast_master_table")):
-                    err_msg = self._check_umt_compliance(param_section, param_name, param_value)
+                    err_msg = self._check_umt_compliance(
+                        uuid, param_section, param_name, param_value
+                    )
                     if err_msg is not None:
                         raise wsme.exc.ClientSideError(_(err_msg))
 
@@ -315,6 +350,15 @@ class PtpInstanceController(rest.RestController):
 
             param_uuid = ptp_parameter.uuid
             if param_adding:
+                # Check compliance when adding existing parameter of
+                # unicast_master_table section
+                if (param_section.startswith("unicast_master_table")):
+                    err_msg = self._check_umt_table_id_uniqueness(
+                        uuid, param_section, param_name, param_value
+                    )
+                    if err_msg is not None:
+                        raise wsme.exc.ClientSideError(_(err_msg))
+
                 pecan.request.dbapi.ptp_instance_parameter_add(uuid,
                                                                param_uuid)
                 LOG.debug("PtpInstanceController.patch: added %s's %s to %s" %
