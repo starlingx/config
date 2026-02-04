@@ -37,21 +37,25 @@ SERVICE_PARAMETER_DATA_FORMAT_SKIP = 'skip'
 IDENTITY_CONFIG_TOKEN_EXPIRATION_MIN = 3600
 IDENTITY_CONFIG_TOKEN_EXPIRATION_MAX = 14400
 
-# Kubelet will manage these kernel parameters and override any changes
-# See.
 protected_kernel_parameters_opts = [
     cfg.ListOpt('protected_kernel_parameters',
                 default=[
+                    # These are overridden by Kubelet
                     'vm.panic_on_oom',
                     'vm.overcommit_memory',
                     'kernel.panic',
                     'kernel.panic_on_oops',
                     'kernel.keys.root_maxkeys',
                     'kernel.keys.root_maxbytes',
+
+                    # Considered unsafe to modify via service-parameters
+                    'kernel.sysrq',
+                    'kernel.modules_disabled',
+
                 ],
                 help='List of kernel parameters that cannot be modified by '
-                     'the system configuration service. Kubelet will override '
-                     'these parameters if they are set.'
+                     'the system configuration service. They are either unsafe'
+                     ' or will get overriden by another app like Kubelet.'
                 )
 ]
 
@@ -66,7 +70,7 @@ def _validate_sysctl_kernel_parameter(name, value):
     list_of_kubelet_managed_params = CONF.protected_kernel_parameters
     if name in list_of_kubelet_managed_params:
         msg = f"Parameter '{name}={value}' cannot be modified."
-        msg += " It will be overridden by Kubelet."
+        msg += " It may not persist or is unsafe to modify."
         LOG.error(_(msg))
         raise wsme.exc.ClientSideError(_(msg))
 
