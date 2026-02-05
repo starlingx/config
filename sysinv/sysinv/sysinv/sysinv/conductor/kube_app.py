@@ -3216,17 +3216,27 @@ class AppOperator(object):
             self._update_app_status(
                 to_app, new_progress=constants.APP_PROGRESS_UPDATE_STARTING)
 
-            # Check if it's a downgrade operation. If true, create a lifecycle action.
-            if LooseVersion(from_app.version) > LooseVersion(to_app.version):
-                lifecycle_downgrade = copy.deepcopy(lifecycle_hook_info_app_update)
-                lifecycle_downgrade.operation = constants.APP_DOWNGRADE_OP
-                lifecycle_downgrade.relative_timing = LifecycleConstants.APP_LIFECYCLE_TIMING_PRE
-                lifecycle_downgrade.lifecycle_type = LifecycleConstants.APP_LIFECYCLE_TYPE_RESOURCE
-                lifecycle_downgrade[LifecycleConstants.EXTRA][
-                    LifecycleConstants.FROM_APP_VERSION] = from_app.version
-                lifecycle_downgrade[LifecycleConstants.EXTRA][
-                    LifecycleConstants.TO_APP_VERSION] = to_app.version
-                self.app_lifecycle_actions(None, None, from_rpc_app, lifecycle_downgrade)
+            try:
+                # Check if it's a downgrade operation. If true, create a lifecycle action.
+                if LooseVersion(from_app.version) > LooseVersion(to_app.version):
+                    lifecycle_downgrade = copy.deepcopy(lifecycle_hook_info_app_update)
+                    lifecycle_downgrade.operation = constants.APP_DOWNGRADE_OP
+                    lifecycle_downgrade.relative_timing = LifecycleConstants.APP_LIFECYCLE_TIMING_PRE
+                    lifecycle_downgrade.lifecycle_type = LifecycleConstants.APP_LIFECYCLE_TYPE_RESOURCE
+                    lifecycle_downgrade[LifecycleConstants.EXTRA][
+                        LifecycleConstants.FROM_APP_VERSION] = from_app.version
+                    lifecycle_downgrade[LifecycleConstants.EXTRA][
+                        LifecycleConstants.TO_APP_VERSION] = to_app.version
+                    self.app_lifecycle_actions(None, None, from_rpc_app, lifecycle_downgrade)
+            except Exception as e:
+                LOG.exception(e)
+                error_msg = constants.APP_PROGRESS_UPDATE_ABORTED.format(
+                    from_app.version,
+                    to_app.version
+                ) + 'Please check sysinv.log for details.'
+                self._update_app_status(to_app, constants.APP_APPLY_FAILURE, error_msg,)
+                self._clear_app_alarm(to_app.name)
+                return False
 
             # Upload new app tarball. The upload will enable the new plugins to
             # generate overrides for images. Disable the plugins for the current
