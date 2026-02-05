@@ -1608,6 +1608,20 @@ class KubeOperator(object):
             LOG.error("Failed to delete clusterwide custom resource object, %s" % (e))
             raise
 
+    def get_custom_resource_definition(self, name):
+        extentions_api = self._get_kubernetesclient_extensions()
+
+        try:
+            crd_obj = extentions_api.read_custom_resource_definition(name)
+        except ApiException as e:
+            if e.status == httplib.NOT_FOUND:
+                return None
+            else:
+                LOG.error("Fail to access %s. %s" % (name, e))
+                raise
+        else:
+            return crd_obj
+
     def delete_custom_resource_definition(self, name):
         extentions_api = self._get_kubernetesclient_extensions()
 
