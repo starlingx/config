@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2025 Wind River Systems, Inc.
+# Copyright (c) 2013-2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -14,8 +14,6 @@ from cgtsclient import exc
 SERVICE_NAME = 'sysinv'
 SERVICE_TYPE = 'platform'
 
-PLATFORM_CONF_FILE = '/etc/platform/platform.conf'
-
 # TODO(jvazhapp): Modify for dynamic lookup of the endpoints from a service
 # rather than hard coding interfaces & ports
 SYSINV_PORT_MAP = {
@@ -23,9 +21,6 @@ SYSINV_PORT_MAP = {
     'RegionOne': {'admin': '6386', 'internal': '6385', 'public': '6385'},
     'Default': {'admin': '6385', 'internal': '6385', 'public': '6385'},
 }
-
-# Cache for distributed cloud role to avoid repeated file reads
-_dc_role_cache = None
 
 
 def _make_session(**kwargs):
@@ -114,10 +109,9 @@ def get_client(api_version, session=None, service_type=SERVICE_TYPE, **kwargs):
 
     if kwargs.get('stx_auth_type') == 'oidc':
         _validate_oidc_params(**kwargs)
-        endpoint = _build_oidc_endpoint(api_version, **kwargs)
-        cli_kwargs = _build_oidc_cli_kwargs(**kwargs)
         session = None
-        return Client(api_version, endpoint, session, **cli_kwargs)
+
+        return _get_oidc_client(api_version, **kwargs)
 
     if endpoint:
         api_version_str = 'v' + api_version
@@ -183,10 +177,16 @@ def get_client(api_version, session=None, service_type=SERVICE_TYPE, **kwargs):
     return Client(api_version, endpoint, session, **cli_kwargs)
 
 
+def _get_oidc_client(api_version, **kwargs):
+    endpoint = _build_oidc_endpoint(api_version, **kwargs)
+    cli_kwargs = _build_oidc_cli_kwargs(**kwargs)
+    return Client(api_version, endpoint, None, **cli_kwargs)
+
+
 def _build_oidc_endpoint(api_version, **kwargs):
     """Build OIDC endpoint URL from configuration."""
     interface = _normalize_interface(kwargs.get('os_endpoint_type'))
-    protocol = _get_protocol(interface)
+    protocol = 'http' if interface == 'internal' else 'https'
 
     auth_url = kwargs.get('os_auth_url')
     if not auth_url:
@@ -219,35 +219,6 @@ def _normalize_interface(interface):
     }
     normalized = interface_map.get(interface, interface)
     return normalized if normalized in ('public', 'internal', 'admin') else 'public'
-
-
-def _get_dc_role():
-    """Get distributed cloud role with caching."""
-    global _dc_role_cache
-    if _dc_role_cache is None:
-        try:
-            with open(PLATFORM_CONF_FILE, 'r') as f:
-                for line in f:
-                    if line.startswith('distributed_cloud_role='):
-                        role = line.split('=')[1].strip()
-                        _dc_role_cache = role in ['subcloud', 'systemcontroller']
-                        return _dc_role_cache
-        except FileNotFoundError:
-            pass  # Non-DC systems may not have distributed_cloud_role
-        except Exception as e:
-            print("Error reading %s: %s", PLATFORM_CONF_FILE, e)
-
-        _dc_role_cache = False
-    return _dc_role_cache
-
-
-def _get_protocol(interface):
-    is_dc = _get_dc_role()
-    if not is_dc:
-        protocol = 'https' if interface == 'public' else 'http'
-    else:
-        protocol = 'https' if interface in ('public', 'admin') else 'http'
-    return protocol
 
 
 def _validate_oidc_params(**kwargs):
