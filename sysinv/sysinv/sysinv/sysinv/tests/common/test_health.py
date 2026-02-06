@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2023 Wind River Systems, Inc.
+# Copyright (c) 2023, 2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -212,6 +212,53 @@ class TestHealth(dbbase.BaseHostTestCase):
                         side_effect=exception.NotFound()):
             health_ok, output = self.health.get_system_health(self.context)
         assert health_ok is True, "output: %s" % output
+
+    def test_get_system_health_fails_with_vim_service_disabled(self):
+        # Create controller-0
+        config_uuid = str(uuid.uuid4())
+        self._create_test_host(
+            personality=constants.CONTROLLER,
+            unit=0,
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            vim_progress_status=constants.VIM_SERVICES_DISABLED,
+        )
+
+        # Create controller-1
+        self._create_test_host(
+            personality=constants.CONTROLLER,
+            unit=1,
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+        )
+
+        # Set up the mocked results
+        self.mock_patch_query_hosts_result = self.patch_current_result
+        self.kube_get_nodes_result = self.multi_node_result
+        self.kube_get_control_plane_pod_ready_status_result = (
+            self.cp_pod_ready_status_result
+        )
+
+        # Check system health
+        with mock.patch(
+            "sysinv.common.usm_service.get_platform_upgrade",
+            side_effect=exception.NotFound(),
+        ):
+            health_ok, output = self.health.get_system_health(self.context)
+        assert health_ok is False, "output: %s" % output
+        assert "Vim disabled hosts: controller-0" in output, (
+            "get_system_health output: %s" % output
+        )
 
     def test_get_system_health_k8s_node_not_ready(self):
         # Create controller-0
