@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2023-2025 Wind River Systems, Inc.
+# Copyright (c) 2023-2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -8,6 +8,8 @@
 Tests for the kubernetes utilities.
 """
 
+from datetime import datetime
+from datetime import timedelta
 import kubernetes
 import mock
 import subprocess
@@ -655,16 +657,7 @@ class TestKubeOperator(base.TestCase):
             )]
         )
 
-        self.service_account_token_result = kubernetes.client.V1Secret(
-            api_version="v1",
-            kind="Secret",
-            metadata=kubernetes.client.V1ObjectMeta(
-                name="test-service-account-secret-1",
-                namespace="kube-system"),
-            data={
-                'token': FAKE_SERVICE_ACCOUNT_TOKEN
-            }
-        )
+        self.service_account_token_result = FAKE_SERVICE_ACCOUNT_TOKEN
 
         self.single_helmrepository_result = {
             'kind': 'HelmRepositoryList',
@@ -1200,16 +1193,48 @@ class TestKubeOperator(base.TestCase):
         result = self.kube_operator.kube_get_kubernetes_version()
         assert result is None
 
-    def test_kube_get_service_account_token(self):
-
+    def test_kube_get_service_account_token_new(self):
+        fakeTokenRequestStatus = kubernetes.client.V1TokenRequestStatus(
+                                    expiration_timestamp=datetime.now(),
+                                    token=FAKE_SERVICE_ACCOUNT_TOKEN,
+                                 )
         self.read_namespaced_service_account_result = \
             self.service_account_result
 
         self.read_namespaced_secret_result = \
             self.service_account_token_result
 
+        mock_kube_create_service_account_token = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.KubeOperator.kube_create_service_account_token',
+                       mock_kube_create_service_account_token)
+        p.start().return_value = fakeTokenRequestStatus
+        self.addCleanup(p.stop)
+
         result = self.kube_operator.kube_get_service_account_token(
             'test-service-account-1', kube.NAMESPACE_KUBE_SYSTEM)
+        self.assertEqual(mock_kube_create_service_account_token.call_count, 2)
+        self.assertEqual(result, FAKE_SERVICE_ACCOUNT_TOKEN)
+
+    def test_kube_get_service_account_token_cached(self):
+        fakeTokenRequestStatus = kubernetes.client.V1TokenRequestStatus(
+                                    expiration_timestamp=datetime.now() + timedelta(days=1),
+                                    token=FAKE_SERVICE_ACCOUNT_TOKEN,
+                                 )
+        self.read_namespaced_service_account_result = \
+            self.service_account_result
+
+        self.read_namespaced_secret_result = \
+            self.service_account_token_result
+
+        mock_kube_create_service_account_token = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.KubeOperator.kube_create_service_account_token',
+                       mock_kube_create_service_account_token)
+        p.start().return_value = fakeTokenRequestStatus
+        self.addCleanup(p.stop)
+
+        result = self.kube_operator.kube_get_service_account_token(
+            'test-service-account-1', kube.NAMESPACE_KUBE_SYSTEM)
+        mock_kube_create_service_account_token.assert_called_once()
         self.assertEqual(result, FAKE_SERVICE_ACCOUNT_TOKEN)
 
     def test_kube_get_service_account_token_not_found(self):

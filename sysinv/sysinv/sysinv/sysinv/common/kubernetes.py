@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2025 Wind River Systems, Inc.
+# Copyright (c) 2013-2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -10,7 +10,10 @@
 """ System Inventory Kubernetes Utilities and helper functions."""
 
 from __future__ import absolute_import
+from datetime import datetime
+from datetime import timedelta
 from distutils.version import LooseVersion
+from functools import lru_cache
 from functools import wraps
 from ipaddress import ip_address
 from ipaddress import IPv4Address
@@ -1649,14 +1652,45 @@ class KubeOperator(object):
             LOG.error("Kubernetes exception in kube_get_service_account: %s" % e)
             raise
 
+    @lru_cache
+    def kube_create_service_account_token(self, name, namespace):
+        c = self._get_kubernetesclient_core()
+        try:
+            response = c.create_namespaced_service_account_token(
+                name=name,
+                namespace=namespace,
+                body=client.AuthenticationV1TokenRequest(
+                    spec=client.V1TokenRequestSpec(
+                        # token valid for 1 hour
+                        expiration_seconds=3600,
+                        audiences=[],
+                    ),
+                ),
+            )
+            return response.status
+        except Exception as e:
+            LOG.error("Kubernetes exception in create_namespaced_service_account_token: %s"
+                      % e)
+            raise
+
     def kube_get_service_account_token(self, name, namespace):
         sa = self.kube_get_service_account(name, namespace)
         if not sa:
-            # ServiceAccount does not exist, no token available
+            LOG.warning("ServiceAccount %s/%s does not exist"
+                        % (namespace, name))
             return None
-
-        secret = self.kube_get_secret(sa.secrets[0].name, namespace)
-        return secret.data.get('token')
+        try:
+            tokenStatus = self.kube_create_service_account_token(name, namespace)
+            # 5 min buffer to avoid returning a token too close to expiration
+            buffer = timedelta(seconds=300)
+            expiration = tokenStatus.expiration_timestamp
+            if expiration - buffer < datetime.now(expiration.tzinfo):
+                self.kube_create_service_account_token.cache_clear()
+                tokenStatus = self.kube_create_service_account_token(name, namespace)
+            return tokenStatus.token
+        except Exception as e:
+            LOG.exception(e)
+            return None
 
     @retry(stop_max_attempt_number=API_RETRY_ATTEMPT_NUMBER,
            wait_fixed=API_RETRY_INTERVAL,
