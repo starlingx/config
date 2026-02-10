@@ -15,7 +15,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2025 Wind River Systems, Inc.
+# Copyright (c) 2013-2026 Wind River Systems, Inc.
 #
 
 """Sysinv test utilities."""
@@ -1652,6 +1652,7 @@ def get_test_app(**kw):
                                 constants.APP_TARFILE_NAME_PLACEHOLDER),
         'status': kw.get('status', constants.APP_UPLOAD_IN_PROGRESS),
         'active': kw.get('active', False),
+        'app_metadata': kw.get('app_metadata'),
     }
     return app_data
 

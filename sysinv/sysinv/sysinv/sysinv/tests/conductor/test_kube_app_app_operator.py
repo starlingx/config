@@ -2,6 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Copyright (C) 2020 Intel Corporation
+# Copyright (c) 2026 Wind River Systems, Inc.
+#
+# All Rights Reserved.
 #
 
 """Test class for Sysinv kube_app AppOperator."""
@@ -118,3 +121,23 @@ class AppOperatorTestCase(base.DbTestCase):
         self.assertEqual(res, True)
         res = self.app_operator.is_app_aborted("test_app_123")
         self.assertEqual(res, False)
+
+    def test_load_application_metadata_from_database_with_metadata(self):
+        metadata = {"desired_state": "applied", "maintain_user_overrides": True}
+        dbutils.create_test_app(name="test-app-1", app_metadata=metadata)
+        test_app = obj_app.get_by_name(self.context, "test-app-1")
+
+        self.app_operator.load_application_metadata_from_database(test_app)
+
+        self.assertIn("test-app-1", self.service.apps_metadata["apps"])
+        self.assertEqual(self.service.apps_metadata["apps"]["test-app-1"], metadata)
+
+    def test_load_application_metadata_from_database_without_metadata(self):
+        dbutils.create_test_app(name="test-app-2", app_metadata=None)
+        test_app = obj_app.get_by_name(self.context, "test-app-2")
+
+        with fixtures.MockPatchObject(
+            self.app_operator, "load_application_metadata_from_file"
+        ) as mock_load:
+            self.app_operator.load_application_metadata_from_database(test_app)
+            self.assertEqual(mock_load.mock.call_count, 1)
