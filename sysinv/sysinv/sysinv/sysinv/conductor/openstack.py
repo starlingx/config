@@ -254,7 +254,9 @@ class OpenStackOperator(object):
         """
         session = self._get_keystone_session_for_sysinv(service_config)
 
-        k_client = keystone_client.Client(session=session)
+        k_client = keystone_client.Client(session=session,
+                                         interface='internalURL',
+                                         region_name=cfg.CONF[service_config].region_name)
         self._set_cached_keystone_client(service_config, k_client)
 
         b_client = barbican_client_v1.Client(
