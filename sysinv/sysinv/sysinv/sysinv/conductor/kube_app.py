@@ -3703,10 +3703,6 @@ class AppOperator(object):
             # user deletes the application following an upload failure.
             self._clear_app_alarm(app.name)
 
-            # Remove the deleted app from _apps_metadata, since it's
-            # not in the system anymore.
-            self._remove_from_metadata_dict(app.name)
-
             # Remove charts from Helm repository
             self._remove_app_charts_from_repo(app._kube_app.id, app.charts)
 
