@@ -144,6 +144,7 @@ disable=
  W1406, # redundant-u-string-prefix
  W1505, # deprecated-method
  W1514, # unspecified-encoding
+ W1503, # redundant-unittest-assert
  W3101, # missing-timeout
  E0601, # used-before-assignment  !!!
  E0605, # invalid-all-format      !!!
