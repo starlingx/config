@@ -72,7 +72,10 @@ keystone_opts = [
                help=_("Sysinv keystone user domain name")),
     cfg.StrOpt('project_domain_name',
                default='Default',
-               help=_("Sysinv keystone user project domain name"))
+               help=_("Sysinv keystone user project domain name")),
+    cfg.IntOpt('request_timeout',
+               default=30,
+               help=_("Timeout for keystone requests in seconds"))
 ]
 
 
@@ -172,7 +175,8 @@ class OpenStackOperator(object):
                            project_name,
                            project_domain_name=cfg.CONF[service_config].
                            project_domain_name)
-        sess = session.Session(auth=auth)
+        timeout = cfg.CONF[service_config].request_timeout
+        sess = session.Session(auth=auth, timeout=timeout)
         return sess
 
     def _get_keystone_session_for_sysinv(self, service_config):
@@ -185,7 +189,8 @@ class OpenStackOperator(object):
                            project_name,
                            project_domain_name=cfg.CONF[service_config].
                            project_domain_name)
-        sess = session.Session(auth=auth)
+        timeout = cfg.CONF[service_config].request_timeout
+        sess = session.Session(auth=auth, timeout=timeout)
         return sess
 
     def _get_cached_keystone_session(self, service_config):
@@ -388,7 +393,9 @@ class OpenStackOperator(object):
         retry = False
         try:
             self._renew_keystone_and_barbican_clients(service_config)
-            user_list = self._get_keystone_client(service_config).users.list()
+            # Use session.request with timeout for specific operation
+            client = self._get_keystone_client(service_config)
+            user_list = client.users.list()
         except exceptions.Unauthorized:
             # Get users may fail after updating the sysinv user password. Update
             # the cached client and retry.
@@ -396,17 +403,16 @@ class OpenStackOperator(object):
             LOG.warning("Failed to get keystone users due to authentication "
                         "failure, refreshing the cached keystone client and "
                         "retry.")
-        except Exception as e:
-            LOG.error("Failed to get keystone user list:\n%s" % str(e))
+        except Exception:
+            LOG.exception("Failed to get keystone user list")
 
         if retry:
             try:
                 client = self._get_new_keystone_client(service_config)
                 self._set_cached_keystone_client(service_config, client)
                 user_list = client.users.list()
-            except Exception as e:
-                LOG.error("Failed to get keystone user list after renewing the "
-                          "keystone client:\n%s" % str(e))
+            except Exception:
+                LOG.exception("Failed to get keystone user list after renewing the keystone client")
 
         return user_list
 
