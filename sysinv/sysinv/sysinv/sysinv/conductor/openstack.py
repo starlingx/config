@@ -115,7 +115,10 @@ openstack_keystone_opts = [
                help=_("keystone user domain name")),
     cfg.StrOpt('project_domain_name',
                default='Default',
-               help=_("keystone user project domain name"))
+               help=_("keystone user project domain name")),
+    cfg.IntOpt('request_timeout',
+               default=30,
+               help=_("Timeout for keystone requests in seconds"))
 ]
 
 # Register the configuration options
