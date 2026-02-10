@@ -1,0 +1,15 @@
+[Unit]
+Description=System Inventory API
+After=network-online.target syslog-ng.service config.service sysinv-conductor.service
+
+[Service]
+Type=simple
+RemainAfterExit=yes
+User=root
+Environment=OCF_ROOT=/usr/lib/ocf
+ExecStart=/usr/lib/ocf/resource.d/platform/sysinv-api start
+ExecStop=/usr/lib/ocf/resource.d/platform/sysinv-api stop
+PIDFile=/var/run/sysinv-api.pid
+
+[Install]
+WantedBy=multi-user.target

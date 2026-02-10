@@ -1,0 +1,42 @@
+#!/usr/bin/make -f
+#export DH_VERBOSE = 1
+
+export PYBUILD_NAME=sysinv
+export PBR_VERSION=1.0.0
+DEBIAN_DIR := $(CURDIR)/debian/tmp
+
+%:
+	dh $@ --with python3 --buildsystem=pybuild
+
+ifeq (,$(findstring nocheck, $(DEB_BUILD_OPTIONS)))
+override_dh_auto_test:
+	# FIXME: UTs run during packaging are currently broken
+	PYTHONDIR=$(CURDIR) stestr run || true
+endif
+
+override_dh_install:
+	python3 setup.py install -f --install-layout=deb \
+		--root=$(CURDIR)/debian/tmp
+	python3 setup.py bdist_wheel \
+		--universal \
+		-d $(CURDIR)/debian/sysinv-wheels/usr/share/python-wheel
+	install -p -D -m 755 $(CURDIR)/etc/sysinv/motd-system $(CURDIR)/debian/tmp/etc/update-motd.d/10-system
+	install -p -D -m 755 $(CURDIR)/etc/sysinv/sysinv_goenabled_check.sh $(CURDIR)/debian/tmp/etc/goenabled.d/sysinv_goenabled_check.sh
+	install -p -D -m 644 debian/tmpfiles.conf $(CURDIR)/debian/tmp/usr/lib/tmpfiles.d/sysinv.conf
+	install -p -D -m 700 $(CURDIR)/scripts/kube-cert-rotation.sh $(CURDIR)/debian/tmp/usr/bin/kube-cert-rotation.sh
+	install -p -D -m 700 $(CURDIR)/scripts/ipsec-cert-renew.sh $(CURDIR)/debian/tmp/usr/bin/ipsec-cert-renew.sh
+	install -p -D -m 700 $(CURDIR)/scripts/ipsec-swap-certificates.py $(CURDIR)/debian/tmp/usr/bin/ipsec-swap-certificates
+	install -p -D -m 700 $(CURDIR)/scripts/check-ipsec-luks-dir.sh $(CURDIR)/debian/tmp/usr/bin/check-ipsec-luks-dir.sh
+	dh_install
+
+override_dh_python3:
+	dh_python3 --shebang=/usr/bin/python3
+
+override_dh_installsystemd:
+	dh_installsystemd --no-enable --name sysinv-api
+	dh_installsystemd --no-enable --name sysinv-conductor
+
+override_dh_fixperms:
+	dh_fixperms -Xkube-cert-rotation.sh
+	dh_fixperms -Xipsec-cert-renew.sh
+	dh_fixperms -Xcheck-ipsec-luks-dir.sh

@@ -1,0 +1,11 @@
+controllerconfig
+sysinv/cgts-client
+sysinv/sysinv
+tsconfig
+config-gate
+workerconfig
+storageconfig
+sysinv/cert-mon
+sysinv/cert-alarm
+sysinv/sysinv-agent
+sysinv/ipsec-auth
