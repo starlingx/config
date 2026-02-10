@@ -1,4 +1,4 @@
-# Copyright (c) 2021-2022 Wind River Systems, Inc.
+# Copyright (c) 2021-2022, 2026 Wind River Systems, Inc.
 
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
 #    not use this file except in compliance with the License. You may obtain
@@ -23,6 +23,7 @@ from oslo_log import log
 from sysinv.common import fpga_constants
 from sysinv.common import utils
 from sysinv.common import exception
+from sysinv.common import containers
 from sysinv.agent import fpga
 
 # Volatile flag file so we only reset the N3000s once after bootup.
@@ -186,6 +187,7 @@ def reset_n3000_fpgas():
 
         LOG.info("Done resetting N3000 FPGAs.")
         if not got_exception:
+            containers.pin_ctr_image(opae_img)  # Pin after successful reset
             utils.touch(fpga_constants.N3000_RESET_FLAG)
             if os.path.exists(fpga_constants.N3000_RETIMER_FLAG):
                 os.remove(fpga_constants.N3000_RETIMER_FLAG)
