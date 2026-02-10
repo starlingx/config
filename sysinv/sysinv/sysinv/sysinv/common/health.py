@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2018-2024 Wind River Systems, Inc.
+# Copyright (c) 2018-2024, 2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -59,6 +59,16 @@ class Health(object):
 
         success = not offline_host_list
         return success, offline_host_list
+
+    def _check_vim_progress_status_enabled(self, hosts):
+        """Checks that vim_progress_status is set to services-enabled"""
+        invalid_host_list = []
+        for host in hosts:
+            if host["vim_progress_status"] != constants.VIM_SERVICES_ENABLED:
+                invalid_host_list.append(host.hostname)
+
+        success = not invalid_host_list
+        return success, invalid_host_list
 
     def _check_hosts_config(self, hosts):
         """Checks that the applied and target config match for each host"""
@@ -519,6 +529,7 @@ class Health(object):
         - All hosts are provisioned
         - All hosts are patch current
         - All hosts are unlocked/enabled
+        - All hosts have vim enabled
         - All hosts having matching configs
         - No management affecting alarms
         - For ceph systems: The storage cluster is healthy
@@ -554,6 +565,13 @@ class Health(object):
         if not success:
             output += _('Locked or disabled hosts: %s\n') \
                 % ', '.join(error_hosts)
+
+        success, error_hosts = self._check_vim_progress_status_enabled(hosts)
+        output += _("All hosts have vim enabled: [%s]\n") % (
+            Health.SUCCESS_MSG if success else Health.FAIL_MSG
+        )
+        if not success:
+            output += _("Vim disabled hosts: %s\n") % ", ".join(error_hosts)
 
         health_ok = health_ok and success
 
