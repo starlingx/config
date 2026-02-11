@@ -2370,6 +2370,9 @@ APP_PROGRESS_REMOVE_FAILED_WARNING = "Application remove failed. Status forced t
 # Auto-recovery limits
 APP_AUTO_RECOVERY_MAX_COUNT = 5
 
+# Auto-recovery limits
+APP_AUTO_UPLOAD_MAX_COUNT = 5
+
 # Node label operation constants
 LABEL_ASSIGN_OP = 'assign'
 LABEL_REMOVE_OP = 'remove'

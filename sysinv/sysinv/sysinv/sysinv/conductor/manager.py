@@ -468,6 +468,7 @@ class ConductorManager(service.PeriodicService):
         self._kube = kubernetes.KubeOperator()
         self._kube_app_helper = kube_api.KubeAppHelper(self.dbapi)
         self._fernet = fernet.FernetOperator()
+        self._auto_upload_attemps = {}
 
         # Upgrade start tasks
         self._kube_upgrade_init_actions()
@@ -7778,21 +7779,28 @@ class ConductorManager(service.PeriodicService):
         if not skip_validations and self._patching_operation_is_occurring():
             return False
 
-        # Delete current uploaded version if a newer one is available
+        # initialize the auto upload attempts for the app if not already initialized
+        self._auto_upload_attemps[app_name] = self._auto_upload_attemps.get(app_name, 0)
+        # Delete current uploaded version if a newer one is available.
+        # Delete current uploaded version if in upload failure state.
         try:
             existing_app = kubeapp_obj.get_by_name(context, app_name)
+            if self._auto_upload_attemps[app_name] >= constants.APP_AUTO_UPLOAD_MAX_COUNT:
+                LOG.warning("Max auto upload attempts reached for %s" % app_name)
+                return
+
             app_bundle = self._get_app_bundle_for_update(
                 existing_app,
                 k8s_version,
                 k8s_upgrade_timing
             )
-            if app_bundle:
-                hook_info_delete = LifecycleHookInfo()
-                hook_info_delete.mode = LifecycleConstants.APP_LIFECYCLE_MODE_AUTO
-                self.perform_app_delete(context, existing_app, hook_info_delete)
-            else:
+            if not app_bundle and existing_app.status != constants.APP_UPLOAD_FAILURE:
                 LOG.debug("No bundle found for uploading a new version of %s" % app_name)
                 return
+
+            hook_info_delete = LifecycleHookInfo()
+            hook_info_delete.mode = LifecycleConstants.APP_LIFECYCLE_MODE_AUTO
+            self.perform_app_delete(context, existing_app, hook_info_delete)
         except exception.KubeAppNotFound:
             pass
         except Exception as e:
@@ -7816,6 +7824,9 @@ class ConductorManager(service.PeriodicService):
                 # Skip if no bundles are found
                 LOG.debug("No bundle found for uploading %s" % app_name)
                 return
+
+            # Increment the auto upload attempts
+            self._auto_upload_attemps[app_name] += 1
 
             tarball = self._check_tarfile(app_name, app_bundle.file_path)
             if ((tarball.manifest_name is None) or
@@ -17350,6 +17361,11 @@ class ConductorManager(service.PeriodicService):
         except Exception as e:
             LOG.error("Error performing app_lifecycle_actions %s" % str(e))
             return False
+
+        # Remove the app from the auto upload attempts list if it exists,
+        # since the upload has been completed
+        if rpc_app.name in self._auto_upload_attemps:
+            self._auto_upload_attemps.pop(rpc_app.name, None)
 
     def perform_app_apply(self, context, rpc_app, mode, lifecycle_hook_info_app_apply,
                           is_reapply_process=False):
