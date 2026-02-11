@@ -17760,6 +17760,20 @@ class ConductorManager(service.PeriodicService):
         LOG.info("Running registry secrets audit manually.")
         self._app.audit_local_registry_secrets(context)
 
+    # TODO (rdossant): This method is to support upgrades from stx-11 to stx-12
+    # to fix missing controller cluster-host IPs in apiserver certs.
+    # Can be removed in later releases.
+    def update_kube_apiserver_cert_sans(self, context):
+        personalities = [constants.CONTROLLER]
+        config_uuid = self._config_update_hosts(context, personalities)
+        config_dict = {
+            "personalities": personalities,
+            "classes": ['platform::kubernetes::certsans::runtime']
+        }
+        self._config_apply_runtime_manifest(
+            context, config_uuid, config_dict, force=True)
+        LOG.info("K8s cert sans update requested.")
+
     def reconfigure_service_endpoints(self, context, host):
         """Reconfigure the service endpoints
 
