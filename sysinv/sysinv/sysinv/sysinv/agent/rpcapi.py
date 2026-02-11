@@ -251,19 +251,22 @@ class AgentAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                        current_kube_version=current_kube_version,
                                        back_to_kube_version=back_to_kube_version))
 
-    def kube_upgrade_control_plane(self, context, host_uuid, to_kube_version, is_first_master):
+    def kube_upgrade_control_plane(self, context, host_uuid,
+            target_etcd_version, to_kube_version, is_first_master):
         """Asynchronously, upgrade control plane components on this host.
 
         Upgrade control plane components on controller hosts.
 
         :param: context: request context
         :param: host_uuid: UUID of the host reporting status
+        :param: target_etcd_version: target etcd binary version being upgraded to
         :param: to_kube_version: Kube version to which control plane is being upgraded to
         :param: is_first_master: True if this is the first master being upgraded, False otherwise
         """
         return self.cast(context,
                          self.make_msg("kube_upgrade_control_plane",
                                         host_uuid=host_uuid,
+                                        target_etcd_version=target_etcd_version,
                                         to_kube_version=to_kube_version,
                                         is_first_master=is_first_master))
 

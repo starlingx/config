@@ -2717,14 +2717,17 @@ class AgentManager(service.PeriodicService):
                 context, current_kube_version, back_to_kube_version, abort, recovery)
             self._cleanup_kube_upgrade_method_details()
 
-    def kube_upgrade_control_plane(self, context, host_uuid, to_kube_version, is_first_master):
-        """Upgrade kubernetes control plane on this host
+    def kube_upgrade_control_plane(self, context, host_uuid,
+            target_etcd_version, to_kube_version, is_first_master):
+        """Upgrade kubernetes etcd and control-plane on this controller host
 
-        Upgrade control plane on controller host.
+        The etcd binary version is upgraded and service restarted.
+        The control-plane is then upgraded.
 
         :param: context: context object
         :param: host_uuid: uuid of this host
         :param: to_kube_version: kubernetes version being upgraded to
+        :param: target_etcd_version: target etcd binary version being upgraded to
         :param: is_first_master: True if this is the first control plane host being upgraded
                                  else False
         """
@@ -2738,31 +2741,40 @@ class AgentManager(service.PeriodicService):
                             "error: [%s]. Continuing... " % (ex))
 
             operator = kube_host.KubeControllerOperator(context, host_uuid, self._hostname)
-            attempt = 1
-            while attempt <= constants.CONTROL_PLANE_RETRY_COUNT:
-                try:
-                    current_link = os.readlink(kubernetes.KUBERNETES_SYMLINKS_STAGE_1)
-                    from_kube_version = 'v' + current_link.split('/')[4]
+            rpcapi = conductor_rpcapi.ConductorAPI(topic=conductor_rpcapi.MANAGER_TOPIC)
 
-                    LOG.info("Kubernetes control-plane upgrade to version %s started on this "
-                            "host. Attempt: %s" % (to_kube_version, attempt))
-                    operator.upgrade_control_plane(
-                        from_kube_version, to_kube_version, is_first_master)
-                    LOG.info("Kubernetes control-plane upgrade to version %s successful on this "
-                             "host." % (to_kube_version))
-                    success = True
-                    break
-                except Exception as ex:
-                    LOG.error("Attempt %s to upgrade kubernetes control-plane to version %s failed "
-                              "on this host. Error: [%s]" % (attempt, to_kube_version, ex))
-                    attempt += 1
-                    success = False
+            # Upgrade etcd
+            etcd_success = operator.upgrade_etcd(target_etcd_version)
+            rpcapi.report_kube_upgrade_etcd_result(context, host_uuid,
+                    target_etcd_version, is_first_master, etcd_success)
+
+            # Upgrade control-plane
+            success = etcd_success
+            attempt = 1
+            if etcd_success:
+                while attempt <= constants.CONTROL_PLANE_RETRY_COUNT:
+                    try:
+                        current_link = os.readlink(kubernetes.KUBERNETES_SYMLINKS_STAGE_1)
+                        from_kube_version = 'v' + current_link.split('/')[4]
+
+                        LOG.info("Kubernetes control-plane upgrade to version %s started on this "
+                                "host. Attempt: %s" % (to_kube_version, attempt))
+                        operator.upgrade_control_plane(
+                            from_kube_version, to_kube_version, is_first_master)
+                        LOG.info("Kubernetes control-plane upgrade to version %s successful on this "
+                                 "host." % (to_kube_version))
+                        success = True
+                        break
+                    except Exception as ex:
+                        LOG.error("Attempt %s to upgrade kubernetes control-plane to version %s failed "
+                                  "on this host. Error: [%s]" % (attempt, to_kube_version, ex))
+                        attempt += 1
+                        success = False
 
             if not success:
                 LOG.error("Kubernetes control-plane upgrade to version %s failed on this host."
                           % (to_kube_version))
 
-            rpcapi = conductor_rpcapi.ConductorAPI(topic=conductor_rpcapi.MANAGER_TOPIC)
             rpcapi.report_kube_upgrade_control_plane_result(context, host_uuid, to_kube_version,
                                                             is_first_master, success)
             self._cleanup_kube_upgrade_method_details()

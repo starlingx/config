@@ -71,6 +71,7 @@ import uuid
 import wsme
 import yaml
 
+from distutils.version import LooseVersion
 from eventlet.green import subprocess
 from eventlet import greenthread
 from fm_api import constants as fm_constants
@@ -407,6 +408,47 @@ def execute_and_watch(cmd, timeout=60, log_prefix=None):
             process.kill()
         raise exception.SysinvException("Command %s execution failed with error: [%s] "
                                         % (cmd, ex))
+
+
+def systemctl_wait_is_active_service(service_name, timeout=60):
+    """Wait for a systemd service to be active
+
+    :param: service_name: string: Name of the service to be checked
+    :param: timeout: timeout in seconds
+    :raises: SysinvException
+    :return: True if service is 'active'; False if reach timeout and not active
+    """
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        if systemctl_is_active_service(service_name):
+            return True
+        time.sleep(1)
+    return False
+
+
+def systemctl_is_active_service_status(service_name):
+    """Retrieve systemd service is-active status
+
+    :param: service_name: string: Name of the service to query
+    :raises: SysinvException
+    :return: string: systemd service is-active status,
+             e.g., active, inactive, failed, activating
+    """
+    if not service_name or not isinstance(service_name, str):
+        raise ValueError("Service name must be a non-empty string.")
+
+    try:
+        result = subprocess.run(
+            [constants.SYSTEMCTL_PATH, constants.IS_ACTIVE_COMMAND, service_name],
+            capture_output=True,
+            text=True,
+            check=False     # ignore exception on non-zero result
+        )
+        return result.stdout.strip()
+    except Exception as ex:
+        raise exception.SysinvException(
+            "Failed to check if the service [%s] is active or not. "
+            "Error: [%s]" % (service_name, ex))
 
 
 def systemctl_is_active_service(service_name):
@@ -4944,3 +4986,37 @@ def config_is_reboot_required(config_uuid):
     except (ValueError, TypeError):
         # Invalid UUID format (e.g., "install" string)
         return False
+
+
+def filter_versions(versions, lower_bound, upper_bound):
+    """
+    Filters versions such that:
+    lower_bound < version <= upper_bound
+
+    Args:
+        versions (list[str]): List of version strings.
+        lower_bound (str): Exclusive lower bound.
+        upper_bound (str): Inclusive upper bound.
+
+    Returns:
+        list[str]: Filtered versions sorted in ascending order.
+    """
+    try:
+        lb = LooseVersion(lower_bound)
+        ub = LooseVersion(upper_bound)
+    except Exception as e:
+        raise ValueError(f"Invalid bound version: {e}")
+
+    filtered = []
+    for v in versions:
+        try:
+            lv = LooseVersion(v)
+            if lb < lv <= ub:
+                filtered.append(v)
+        except Exception as e:
+            raise ValueError(f"Invalid version string: {e}")
+    LOG.debug("List of versions: %s, lower_bound: %s, upper_bound: %s, filtered = %s"
+              % (versions, lower_bound, upper_bound, filtered))
+
+    # Sort using LooseVersion for correct semantic ordering
+    return sorted(filtered, key=LooseVersion)

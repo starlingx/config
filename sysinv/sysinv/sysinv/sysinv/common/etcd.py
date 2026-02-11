@@ -28,6 +28,9 @@ ETCD_API_ENV_VAR = {"ETCDCTL_API": "3"}
 ETCD_SNAPSHOT_FILE_NAME = "stx_etcd.snap"
 ETCD_SNAPSHOT_FULL_FILE_PATH = os.path.join(
     kubernetes.KUBE_CONTROL_PLANE_ETCD_BACKUP_PATH, ETCD_SNAPSHOT_FILE_NAME)
+ETCD_VERSION_FILE_NAME = "etcd_version"
+ETCD_VERSION_FULL_FILE_PATH = os.path.join(
+    kubernetes.KUBE_CONTROL_PLANE_ETCD_BACKUP_PATH, ETCD_VERSION_FILE_NAME)
 ETCD_DB_FILE_NAME = 'controller.etcd'
 ETCD_BACKUP_FILE_NAME = 'controller.etcd.bck'
 ETCD_CONFIG_FILE_PATH = '/etc/default/etcd'
@@ -134,7 +137,61 @@ def get_min_etcd_version():
         LOG.error("Failed to get etcd version from: %s, %s." % (path, e))
 
     etcd_version = min(directories, key=LooseVersion, default=None)
+    LOG.debug("Installed etcd version directories: %s, MIN etcd_version = %s"
+              % (directories, etcd_version))
     return etcd_version
+
+
+def get_max_etcd_version():
+    """Retrieve maximum installed etcd version.
+
+    Determine the maximum version of installed etcd packages under the
+    directory: /usr/local/etcd/<version>
+
+    :returns: etcd_version string
+    """
+
+    path = ETCD_VERSIONED_BINARIES_ROOT
+    directories = []
+    try:
+        if os.path.isdir(path):
+            for entry in os.listdir(path):
+                full_path = os.path.join(path, entry)
+                if os.path.isdir(full_path):
+                    directories.append(entry)
+    except Exception as e:
+        LOG.error("Failed to get etcd version from: %s, %s." % (path, e))
+
+    etcd_version = max(directories, key=LooseVersion, default=None)
+    LOG.debug("Installed etcd version directories: %s, MAX etcd_version = %s"
+              % (directories, etcd_version))
+    return etcd_version
+
+
+def get_installed_etcd_versions():
+    """Retrieve list of installed etcd versions.
+
+    Determines the list of installed etcd package versions under the
+    directory: /usr/local/etcd/<version>
+
+    :returns: etcd_versions list of string
+    """
+
+    path = ETCD_VERSIONED_BINARIES_ROOT
+    directories = []
+    try:
+        if os.path.isdir(path):
+            for entry in os.listdir(path):
+                full_path = os.path.join(path, entry)
+                if os.path.isdir(full_path):
+                    directories.append(entry)
+    except Exception as e:
+        LOG.error("Failed to get etcd version from: %s, %s." % (path, e))
+
+    etcd_versions = sorted(directories, key=LooseVersion)
+    LOG.debug("Installed etcd version directories (sorted): %s"
+              % (etcd_versions))
+    return etcd_versions
 
 
 def snapshot_etcd(snapshot_file):
@@ -179,11 +236,47 @@ def snapshot_etcd(snapshot_file):
         raise exception.EtcdOperationFailure(operation=command, error=str(stderr))
 
 
+def store_etcd_version():
+    """"Store current etcd binary version to a backup state file
+    """
+    try:
+        etcd_version = get_etcd_version_from_symlink()
+
+        version_path = os.path.dirname(ETCD_VERSION_FULL_FILE_PATH)
+        if not os.path.exists(version_path):
+            os.makedirs(version_path)
+
+        # Write the current etcd binary version to backup file
+        with open(ETCD_VERSION_FULL_FILE_PATH, "w") as file:
+            file.write(etcd_version)
+        LOG.info("Write etcd_version %s to %s"
+                % (etcd_version, ETCD_VERSION_FULL_FILE_PATH))
+    except Exception as ex:
+        raise exception.SysinvException(
+            "Failed to store etcd binary version: [%s]" % (ex))
+
+
+def retrieve_etcd_version():
+    """Retrieve etcd binary version stored in version state file
+
+    :returns: string: etcd binary version associated with etcd snapshot
+    """
+    try:
+        with open(ETCD_VERSION_FULL_FILE_PATH, "r") as file:
+            etcd_version = file.read()
+        LOG.info("Read etcd_version %s from %s"
+                % (etcd_version, ETCD_VERSION_FULL_FILE_PATH))
+    except Exception as ex:
+        raise exception.SysinvException(
+            "Failed to read etcd version. Error: [%s]" % (ex))
+    return etcd_version
+
+
 def restore_etcd_snapshot(snapshot_file, restore_to_file):
     """"Restore an etcd snapshot
 
     :param snapshot_file: Full path of the snapshot file
-    :param snapshot_file: Full path of the file to restore to
+    :param restore_to_file: Full path of the restore to file
     """
     etcd_config = None
     try:
