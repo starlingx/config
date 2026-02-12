@@ -2278,7 +2278,7 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         :param context: request context.
         """
         return self.call(context,
-                         self.make_msg('update_ldap_client_config'))
+                         self.make_msg('update_ldap_client_config'), timeout=RPC_TIMEOUT)
 
     def update_ldap_nat_config(self, context):
         """Synchronously, have a conductor configure LDAP NAT configureation
@@ -2289,7 +2289,7 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         :param context: request context.
         """
         return self.call(context,
-                         self.make_msg('update_ldap_nat_config'))
+                         self.make_msg('update_ldap_nat_config'), timeout=RPC_TIMEOUT)
 
     def save_kubernetes_rootca_cert(self, context, certificate_file):
         """Save the new uploaded k8s root CA certificate
