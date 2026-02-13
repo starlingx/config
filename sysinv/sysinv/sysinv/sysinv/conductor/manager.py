@@ -14259,6 +14259,14 @@ class ConductorManager(service.PeriodicService):
             except Exception as e:
                 LOG.warning("Failed to delete temp puppet dir %s: %s", full_path, str(e))
 
+    def _runtime_config_exists(self, host_id, config_uuid):
+        """Return True if a runtime_config entry exists for (config_uuid, host_id)."""
+        try:
+            self.dbapi.runtime_config_get(config_uuid, host_id=host_id)
+            return True
+        except exception.NotFound:
+            return False
+
     def _create_runtime_config_entries(self, config_uuid, config_dict):
         """Create runtime config entries in the database"""
         # it is expected for config_dict to contain the host_uuids
@@ -14290,13 +14298,18 @@ class ConductorManager(service.PeriodicService):
         tmp_config_dict.pop("host_uuids", None)
         tmp_config_dict.pop("puppet_path", None)
 
-        valid_inventory_states = [
-                    constants.INV_STATE_INITIAL_INVENTORIED,
-                    constants.INV_STATE_REINSTALLING
-        ]
-
         for host_uuid in host_uuids:
             host = self.dbapi.ihost_get(host_uuid)
+
+            if self._runtime_config_exists(host.id, config_uuid):
+                LOG.info(
+                    (
+                        f"Skipping create of runtime_config for host_id {host.id}; "
+                        f"config_uuid {config_uuid} already exists"
+                    )
+                )
+                continue
+
             runtime_config = {
                 "config_uuid": config_uuid,
                 "config_dict": json.dumps(tmp_config_dict),
@@ -14317,18 +14330,36 @@ class ConductorManager(service.PeriodicService):
                             f"{config_uuid}"
                         )
                     )
-                    self.dbapi.runtime_config_update(
-                        existing_config.id, {"config_uuid": config_uuid})
+
+                    try:
+                        self.dbapi.runtime_config_update(
+                            existing_config.id, {"config_uuid": config_uuid})
+                    except sqlalchemy.exc.IntegrityError as e:
+                        msg = str(getattr(e, "orig", e))
+                        if "u_config_uuid_forihostid" in msg or "UniqueViolation" in msg:
+                            LOG.info(
+                                (
+                                    f"Skipping update of runtime_config id "
+                                    f"{existing_config.id} for host_id {host.id}; "
+                                    f"target config_uuid {config_uuid} created concurrently"
+                                )
+                            )
+                        else:
+                            raise
                     break
             else:
                 # No matching pending entry found, create a new entry
                 try:
                     if host.inv_state in valid_inventory_states:
                         self.dbapi.runtime_config_create(runtime_config)
-                except Exception:
+                except sqlalchemy.exc.IntegrityError as e:
                     # Can be ignored as runtime_config can
                     # already exist in the retry scenario
-                    pass
+                    msg = str(getattr(e, "orig", e))
+                    if "u_config_uuid_forihostid" in msg or "UniqueViolation" in msg:
+                        pass
+                    else:
+                        raise
 
     def _create_temp_puppet_path(self):
         """Create temporary puppet directory to use during manifest application"""
