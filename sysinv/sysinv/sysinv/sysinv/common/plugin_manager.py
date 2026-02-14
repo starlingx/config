@@ -35,6 +35,7 @@ from oslo_log import log as logging
 
 from sysinv.common.exception import KubeAppNotFound
 from sysinv.common.exception import SysinvException
+from sysinv.helm import helm
 from sysinv.helm.common import APP_PLUGIN_PATH
 from sysinv.helm.common import APP_PTH_PREFIX
 from sysinv.helm.common import HELM_OVERRIDES_PATH
@@ -203,6 +204,17 @@ class PluginManager:  # noqa: H238
             )
             LOG.info(f"PluginManager: Loaded {plugin_name} plugin from path - {project_path}")
         self._plugins.setdefault(ns, {}).update(loaded_plugins)
+
+        # TODO dbarbosa: Support upgrades from stx.11 -> [stx.12, stx.13]; remove in stx.14.0.
+        # This is a temporary workaround to provide backwards compatibility for retrieving
+        # chart_operators from legacy applications. This should be removed once all
+        # applications have been updated to use the get_chart_operator method.
+        for arg in args:
+            if isinstance(arg, helm.HelmOperator):
+                for k, v in loaded_plugins.items():
+                    arg.update_chart_operators(k, v.operator)
+                break
+
         return loaded_plugins
 
     def load_plugins(self, namespace, invoke_on_load=True, args=()):

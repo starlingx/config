@@ -72,12 +72,28 @@ class HelmOperator(object):
         # applications
         self.plugins.audit_plugins(self.dbapi)
 
+        # TODO dbarbosa: Support upgrades from stx.11 -> [stx.12, stx.13]; remove in stx.14.0.
+        # This is a temporary workaround to provide backwards compatibility for retrieving
+        # chart_operators from legacy applications. This should be removed once all
+        # applications have been updated to use the get_chart_operator method.
+        self.chart_operators = {}
+
         # Find all plugins for apps, charts per app, and fluxcd operators
         self.discover_plugins()
 
     @utils.synchronized(LOCK_NAME)
     def discover_plugins(self):
         self.plugins.discover_plugins(self)
+
+    # TODO dbarbosa: Support upgrades from stx.11 -> [stx.12, stx.13]; remove in stx.14.0.
+    # This is a temporary workaround to provide backwards compatibility for retrieving
+    # chart_operators from legacy applications. This should be removed once all
+    # applications have been updated to use the get_chart_operator method.
+    def update_chart_operators(self, chart_name, operator):
+        """
+        Update the chart operators dictionary with a new operator for a given chart.
+        """
+        self.chart_operators[chart_name] = operator
 
     def get_app_lifecycle_operator(self, plugin_name):
         """Return an AppLifecycle operator based on app name"""
