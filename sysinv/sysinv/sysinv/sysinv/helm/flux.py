@@ -61,38 +61,34 @@ class FluxDeploymentManager(object):
 
         return success
 
-    def delete_helm_release_crd(self):
-        """Delete the Helm Release CRD."""
-        return self.delete_crd(HELM_RELEASE_CRD)
-
     def delete_oci_repository_crd(self):
         """ Delete ocirepositories.source.toolkit.fluxcd.io CRD as manifests from
         versions 2.15 and 2.17 do not support straightforward rollback.
         """
         return self.delete_crd(OCI_REPO_CRD)
 
-    def has_crd_helmrelease_with_v2beta1(self):
-        """ Check if the Helm Release CRD has the v2beta1 version.
-
-        Returns:
-            bool: True if v2beta1 version exists, False otherwise.
+    def remove_v2beta1_from_helmrelease(self):
         """
-
+            Check if the Helm Release CRD has the v2beta1 version and remove it.
+        """
         kubernetes_operator = kubernetes.KubeOperator()
         helm_crd = kubernetes_operator.get_custom_resource_definition(HELM_RELEASE_CRD)
 
-        has_v2beta1_version = False
-
-        if helm_crd:
-            for stored_version in helm_crd.status.stored_versions:
-                if stored_version == "v2beta1":
-                    LOG.info("Helm Release CRD has v2beta1 version.")
-                    has_v2beta1_version = True
-                    break
-        else:
+        if not helm_crd:
             LOG.error("Helm Release CRD not found.")
+            return
 
-        return has_v2beta1_version
+        if "v2beta1" in helm_crd.status.stored_versions:
+            LOG.info("Helm Release CRD has v2beta1 version.")
+            stored_versions = [
+                version for version in helm_crd.status.stored_versions
+                if version != "v2beta1"
+            ]
+            kubernetes_operator.patch_custom_resource_definition_stored_status(
+                HELM_RELEASE_CRD,
+                stored_versions
+            )
+            LOG.info("Sucessfully removed v2beta1 version from Helm Release")
 
     def get_image_list(self):
         """ Retrieve list of required images for controllers
@@ -167,8 +163,7 @@ class FluxDeploymentManager(object):
 
         LOG.info("Starting Flux release upgrade")
 
-        if self.has_crd_helmrelease_with_v2beta1() and not self.delete_helm_release_crd():
-            return False
+        self.remove_v2beta1_from_helmrelease()
 
         success = False
         if self.download_images():

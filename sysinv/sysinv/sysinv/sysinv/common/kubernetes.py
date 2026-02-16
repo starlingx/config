@@ -1270,6 +1270,15 @@ class KubeOperator(object):
                       "%s" % (name, namespace, e))
             raise
 
+    def patch_custom_resource_definition_stored_status(self, name, stored_versions):
+        extensions_api = self._get_kubernetesclient_extensions()
+        body = {"status": {"storedVersions": stored_versions}}
+        try:
+            extensions_api.patch_custom_resource_definition_status(name=name, body=body)
+        except Exception as e:
+            LOG.error(f"Fail to patch stored status of {name}. {e}")
+            raise
+
     def kube_create_config_map(self, namespace, body):
         c = self._get_kubernetesclient_core()
         try:
