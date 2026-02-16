@@ -14,6 +14,7 @@ from oslo_utils import importutils
 
 from fm_api import constants as fm_constants
 import fmclient as fm_client
+from sysinv.common import rest_api
 
 CONF = cfg.CONF
 
@@ -31,7 +32,10 @@ fm_opts = [
                help="Service catalog Look up info."),
     cfg.StrOpt('os_region_name',
                default='RegionOne',
-               help="Region name of this node. It is used for catalog lookup")
+               help="Region name of this node. It is used for catalog lookup"),
+    cfg.StrOpt('endpoint_fallback',
+               default='http://127.0.0.1:18002',
+               help="Fallback endpoint URL when token is unavailable")
 ]
 
 CONF.register_group(fm_group)
@@ -91,18 +95,32 @@ def fmclient(context, version=1, endpoint=None):
     """
     auth_token = context.auth_token
     if endpoint is None:
-        sc = k_service_catalog.ServiceCatalogV2(context.service_catalog)
-        service_type, service_name, interface = \
-            CONF.fm.catalog_info.split(':')
-        service_parameters = {'service_type': service_type,
-                              'service_name': service_name,
-                              'interface': interface,
-                              'region_name': CONF.fm.os_region_name}
-        endpoint = sc.url_for(**service_parameters)
+        if context.service_catalog:
+            sc = k_service_catalog.ServiceCatalogV2(context.service_catalog)
+            service_type, service_name, interface = \
+                CONF.fm.catalog_info.split(':')
+            service_parameters = {'service_type': service_type,
+                                'service_name': service_name,
+                                'interface': interface,
+                                'region_name': CONF.fm.os_region_name}
+            endpoint = sc.url_for(**service_parameters)
+        else:
+            # Create keystone token and endpoint for
+            # internal fm service while using OIDC authentication
+            token = rest_api.get_token(get_fm_region())
+            if token:
+                auth_token = token.get_id()
+            endpoint = get_fm_endpoint(token)
 
     return fm_client.Client(version=version,
                             endpoint=endpoint,
                             auth_token=auth_token)
+
+
+def get_fm_endpoint(token):
+    if token:
+        return token.get_service_internal_url("faultmanagement", "fm")
+    return CONF.fm.endpoint_fallback
 
 
 def get_fm_region():
