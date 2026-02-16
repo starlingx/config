@@ -17160,17 +17160,17 @@ class ConductorManager(service.PeriodicService):
             if mutually_exclusive_apps and apply_apps_succeeded_list:
                 break
             app_name = dependent_app['name']
-            app_version = dependent_app['version']
-            LOG.info(f"Starting apply process for dependent app: "
-                     f"{app_name}, version: {app_version}")
+            app_version_regex = dependent_app['version']
             try:
                 app = kubeapp_obj.get_by_name(context, app_name)
+                LOG.info(f"Starting apply process for dependent app: "
+                         f"{app_name}, version: {app.version}")
             except exception.KubeAppNotFound as e:
                 LOG.exception(e)
                 apply_apps_failed_list.append(dependent_app)
                 continue
 
-            if (app.app_version == app_version and
+            if (re.fullmatch(app_version_regex, app.app_version) and
                     app.status == constants.APP_APPLY_IN_PROGRESS):
                 # Wait for the app status to be applied
                 timeout = constants.APP_INSTALLATION_DEPENDENT_APP_TIMEOUT
@@ -17193,7 +17193,8 @@ class ConductorManager(service.PeriodicService):
                     apply_apps_failed_list.append(dependent_app)
                 continue
 
-            elif (app.app_version == app_version and
+            elif (
+                re.fullmatch(app_version_regex, app.app_version) and
                     app.status == constants.APP_APPLY_SUCCESS):
                 LOG.info(f"Dependent app {app_name} is already applied. "
                          f"Skipping apply.")
