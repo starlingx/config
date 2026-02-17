@@ -51,7 +51,8 @@ protected_kernel_parameters_opts = [
                     # Considered unsafe to modify via service-parameters
                     'kernel.sysrq',
                     'kernel.modules_disabled',
-
+                    'kernel.hostname',
+                    'kernel.ctrl-alt-del',
                 ],
                 help='List of kernel parameters that cannot be modified by '
                      'the system configuration service. They are either unsafe'
@@ -67,8 +68,8 @@ def _validate_sysctl_kernel_parameter(name, value):
     file_name = f'/proc/sys/{name}'.replace('.', '/')
     file_path = Path(file_name)
 
-    list_of_kubelet_managed_params = CONF.protected_kernel_parameters
-    if name in list_of_kubelet_managed_params:
+    protected_kernel_parameters = CONF.protected_kernel_parameters
+    if name in protected_kernel_parameters:
         msg = f"Parameter '{name}={value}' cannot be modified."
         msg += " It may not persist or is unsafe to modify."
         LOG.error(_(msg))
