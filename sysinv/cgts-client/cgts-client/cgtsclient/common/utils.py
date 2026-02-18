@@ -1,4 +1,4 @@
-# Copyright 2013-2025 Wind River, Inc
+# Copyright 2013-2026 Wind River, Inc
 # Copyright 2012 OpenStack LLC.
 # All Rights Reserved.
 #
@@ -927,7 +927,8 @@ def _is_cliconfirmation_param_enabled():
 
 def persist_auth_session_keyring(name: str,
                                  token: str,
-                                 endpoint: str = None,
+                                 auth_url: str = None,
+                                 system_url: str = None,
                                  timeout: int = None) -> int:
     """Stores the authentication data into keyring.
     Authentication data can be retrieved later and reused, avoiding unnecessary calls
@@ -937,15 +938,19 @@ def persist_auth_session_keyring(name: str,
 
     :param name: Key name
     :param token: Authentication token
-    :param endpoint: Endpoint URL
+    :param auth_url: Authentication URL (Keystone)
+    :param system_url: Endpoint URL
     :param timeout: Timeout interval in seconds to expire the key. Default: never expires.
     """
 
     try:
         session = {'token': token}
 
-        if endpoint is not None:
-            session['endpoint'] = endpoint
+        if auth_url is not None:
+            session['auth_url'] = auth_url
+
+        if system_url is not None:
+            session['system_url'] = system_url
 
         # Persist the key
         stdout = subprocess.run(['/usr/bin/keyctl', 'add', 'user', name, json.dumps(session), '@s'],  # nosec
@@ -983,7 +988,7 @@ def load_auth_session_keyring_by_name(key_name: str):
         return load_auth_session_keyring_by_id(keyring_entry_id)
 
     except subprocess.CalledProcessError:
-        return (None, None)
+        return (None, None, None)
 
 
 def load_auth_session_keyring_by_id(key_id: int):
@@ -1000,10 +1005,10 @@ def load_auth_session_keyring_by_id(key_id: int):
 
         session = json.loads(stdout.decode('utf-8').strip('\n'))
 
-        return (session.get('token'), session.get('endpoint'))
+        return (session.get('token'), session.get('auth_url'), session.get('system_url'))
 
     except subprocess.CalledProcessError:
-        return (None, None)
+        return (None, None, None)
 
 
 def revoke_keyring_by_name(key_name: str):

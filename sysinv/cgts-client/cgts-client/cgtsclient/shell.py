@@ -10,7 +10,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2025 Wind River Systems, Inc.
+# Copyright (c) 2013-2026 Wind River Systems, Inc.
 #
 
 
@@ -290,18 +290,17 @@ class CgtsShell(object):
         if not (args.os_auth_token and args.system_url):
 
             os_auth_token = None
+            os_auth_url = None
             system_url = None
 
             if not (args.refresh_cache or args.no_cache):
-                os_auth_token, system_url = utils.load_auth_session_keyring_by_name(
-                    self._cache_key(args.os_username))
-
-                if os_auth_token and system_url:
-                    self.keyring = True
+                os_auth_token, os_auth_url, system_url = \
+                    utils.load_auth_session_keyring_by_name(self._cache_key(args.os_username))
 
             # Reuses the last authorization token and service endpoint obtained from
             # keystone when available in the cache (keyring)
-            if os_auth_token and system_url:
+            if os_auth_token and system_url and os_auth_url == args.os_auth_url:
+                self.keyring = True
                 args.os_auth_token = os_auth_token
                 args.system_url = system_url
 
@@ -338,8 +337,9 @@ class CgtsShell(object):
 
         client = cgclient.get_client(api_version, **(args.__dict__))
 
-        if not args.no_cache and isinstance(client.http_client,
-                                            cgtsclient.common.http.SessionClient) \
+        # Store the auth token in the cache (keyring) for reuse in future calls
+        if not args.no_cache \
+           and isinstance(client.http_client, cgtsclient.common.http.SessionClient) \
            and client.http_client.session.auth.auth_ref:
 
             # Set the key timeout based on the token validity (in seconds)
@@ -350,6 +350,7 @@ class CgtsShell(object):
             utils.persist_auth_session_keyring(
                 self._cache_key(args.os_username),
                 client.http_client.session.get_token(),
+                args.os_auth_url,
                 client.http_client.endpoint_override,
                 timeout)
 
