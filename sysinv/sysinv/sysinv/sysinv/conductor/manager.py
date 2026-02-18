@@ -92,6 +92,7 @@ from platform_util.license import license
 from sqlalchemy.orm import exc
 import sqlalchemy
 from six.moves import http_client as httplib
+import threading as std_threading
 from sysinv._i18n import _
 from sysinv.agent import rpcapiproxy as agent_rpcapi
 from sysinv.api.controllers.v1 import cpu_utils
@@ -399,6 +400,7 @@ class ConductorManager(service.PeriodicService):
         self._initialize_backup_actions_log()
         self._app_alarm_audit_counter = 0  # Counter for alarm audit frequency
         self._k8s_upgrade_downloading_images_on_inactive_controller = False
+        self._app_operations_audit_thread = None
 
     def start(self):
         try:
@@ -8848,6 +8850,16 @@ class ConductorManager(service.PeriodicService):
         # Detect swact
         self._detect_swact_once(context)
 
+        # Check if previous audit is still running
+        if self._app_operations_audit_thread:
+            if self._app_operations_audit_thread.is_alive():
+                # Thread is still running, skip spawning this cycle
+                LOG.info("Previous app operations audit is still running, skipping this cycle")
+                return
+            else:
+                # Thread is done, clear it
+                self._app_operations_audit_thread = None
+
         # Initialize app operations audit helper
         operations_audit = app_operations_audit.AppOperationsAudit(
             self.dbapi,
@@ -8857,13 +8869,16 @@ class ConductorManager(service.PeriodicService):
             self.perform_automatic_operation_in_parallel,
             self.execute_automatic_operation_sync
         )
-
         # Run application operations audit:
         #   - Upload missing apps
         #   - Apply missing apps
         #   - Reapply the apps that need
         #   - Update apps if a new tarball version is available
-        operations_audit.trigger_automatic_operations()
+        self._app_operations_audit_thread = std_threading.Thread(
+            target=operations_audit.trigger_automatic_operations,
+            daemon=True
+        )
+        self._app_operations_audit_thread.start()
 
         # Run alarm audit every 5 iterations (5 minutes)
         self._app_alarm_audit_counter += 1
