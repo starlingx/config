@@ -1,4 +1,4 @@
-# Copyright (c) 2017-2025 Wind River Systems, Inc.
+# Copyright (c) 2017-2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -512,6 +512,97 @@ class InterfaceTestCase1(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
                  'metric': 1}
         config = interface.get_route_config(route, "eth0")
         expected = self._get_route_config()
+        self.assertEqual(expected, config)
+
+    def test_get_route_config_ipv6_platform_with_src_address(self):
+        test_iface = {
+            'id': 99,
+            'ifclass': constants.INTERFACE_CLASS_PLATFORM,
+            'ifname': 'test-mgmt'
+        }
+        route = {
+            'network': 'fd00::',
+            'prefix': 64,
+            'gateway': 'fd00::1',
+            'metric': 1,
+            'ifname': 'test-mgmt',
+            'interface_id': 99
+        }
+        address = {
+            'address': 'fd00::10',
+            'prefix': 64,
+            'interface_id': 99
+        }
+        context = {
+            'interfaces': {'test-mgmt': test_iface},
+            'addresses': {'test-mgmt': [address]}
+        }
+        config = interface.get_route_config(route, "eth0", context)
+        # Should include src address since gateway is in same network
+        expected = (
+            "fd00:: ffff:ffff:ffff:ffff:: fd00::1 eth0 "
+            "src fd00::10 metric 1\n"
+        )
+        self.assertEqual(expected, config)
+
+    def test_get_route_config_ipv6_platform_without_src_address(self):
+        test_iface = {
+            'id': 99,
+            'ifclass': constants.INTERFACE_CLASS_PLATFORM,
+            'ifname': 'test-mgmt'
+        }
+        route = {
+            'network': 'fd00::',
+            'prefix': 64,
+            'gateway': 'fd01::1',
+            'metric': 1,
+            'ifname': 'test-mgmt',
+            'interface_id': 99
+        }
+        address = {
+            'address': 'fd00::10',
+            'prefix': 64,
+            'interface_id': 99
+        }
+        context = {
+            'interfaces': {'test-mgmt': test_iface},
+            'addresses': {'test-mgmt': [address]}
+        }
+        config = interface.get_route_config(route, "eth0", context)
+        # Should NOT include src address since gateway is in different network
+        expected = (
+            "fd00:: ffff:ffff:ffff:ffff:: fd01::1 eth0 metric 1\n"
+        )
+        self.assertEqual(expected, config)
+
+    def test_get_route_config_ipv4_platform_no_src_address(self):
+        test_iface = {
+            'id': 99,
+            'ifclass': constants.INTERFACE_CLASS_PLATFORM,
+            'ifname': 'test-mgmt'
+        }
+        route = {
+            'network': '10.10.0.0',
+            'prefix': 16,
+            'gateway': '10.10.0.1',
+            'metric': 1,
+            'ifname': 'test-mgmt',
+            'interface_id': 99
+        }
+        address = {
+            'address': '10.10.1.10',
+            'prefix': 16,
+            'interface_id': 99
+        }
+        context = {
+            'interfaces': {'test-mgmt': test_iface},
+            'addresses': {'test-mgmt': [address]}
+        }
+        config = interface.get_route_config(route, "eth0", context)
+        # Should NOT include src for IPv4 (feature is IPv6 only)
+        expected = (
+            "10.10.0.0 255.255.0.0 10.10.0.1 eth0 metric 1\n"
+        )
         self.assertEqual(expected, config)
 
     def test_is_an_n3000_i40_device_false(self):
@@ -2380,7 +2471,6 @@ class InterfaceHostTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
 
     def test_is_platform_interface(self):
         if not self.expected_platform_interfaces:
-            self.assertTrue(True)
             return
         for iface in self.interfaces:
             expected = bool(iface['ifname'] in self.expected_platform_interfaces)
@@ -2389,33 +2479,30 @@ class InterfaceHostTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
                 print("iface %s is %sa kernel interface" % (
                     iface['ifname'], ('not ' if expected else '')))
 
-                self.assertFalse(True)
+                self.fail()
 
     def test_is_data_interface(self):
         if not self.expected_data_interfaces:
-            self.assertTrue(True)
             return
         for iface in self.interfaces:
             expected = bool(iface['ifname'] in self.expected_data_interfaces)
             if interface.is_data_interface(self.context, iface) != expected:
                 print("iface %s is %sa data interface" % (
                     iface['ifname'], ('not ' if expected else '')))
-                self.assertFalse(True)
+                self.fail()
 
     def test_is_pci_interface(self):
         if not self.expected_pci_interfaces:
-            self.assertTrue(True)
             return
         for iface in self.interfaces:
             expected = bool(iface['ifname'] in self.expected_pci_interfaces)
             if interface.is_pci_interface(iface) != expected:
                 print("iface %s is %sa pci interface" % (
                     iface['ifname'], ('not ' if expected else '')))
-                self.assertFalse(True)
+                self.fail()
 
     def test_is_a_mellanox_device(self):
         if not self.expected_mlx_interfaces:
-            self.assertTrue(True)
             return
         for iface in self.interfaces:
             if (iface['iftype'] not in
@@ -2426,22 +2513,20 @@ class InterfaceHostTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
                                               iface) != expected:
                 print("iface %s is %sa mellanox device" % (
                     iface['ifname'], ('not ' if expected else '')))
-                self.assertFalse(True)
+                self.fail()
 
     def test_is_dpdk_compatible_false(self):
         if not self.expected_slow_interfaces:
-            self.assertTrue(True)
             return
         for iface in self.interfaces:
             expected = bool(iface['ifname'] in self.expected_slow_interfaces)
             if interface.is_dpdk_compatible(self.context, iface) == expected:
                 print("iface %s is %sdpdk compatible" % (
                     iface['ifname'], ('not ' if not expected else '')))
-                self.assertFalse(True)
+                self.fail()
 
     def test_is_bridged_interface(self):
         if not self.expected_bridged_interfaces:
-            self.assertTrue(True)
             return
         for iface in self.interfaces:
             expected = bool(
@@ -2450,18 +2535,17 @@ class InterfaceHostTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
                                               iface) != expected:
                 print("iface %s is %sa bridged interface" % (
                     iface['ifname'], ('not ' if expected else '')))
-                self.assertFalse(True)
+                self.fail()
 
     def test_is_slave_interface(self):
         if not self.expected_slave_interfaces:
-            self.assertTrue(True)
             return
         for iface in self.interfaces:
             expected = bool(iface['ifname'] in self.expected_slave_interfaces)
             if interface.is_slave_interface(self.context, iface) != expected:
                 print("iface %s is %sa slave interface" % (
                     iface['ifname'], ('not ' if expected else '')))
-                self.assertFalse(True)
+                self.fail()
 
     def test_needs_interface_config(self):
         expected_configured = (self.expected_platform_interfaces +
@@ -2471,7 +2555,6 @@ class InterfaceHostTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
                                     self.expected_slow_interfaces +
                                     self.expected_mlx_interfaces)
         if (expected_configured == [None]):
-            self.assertTrue(True)
             return
         for iface in self.interfaces:
             expected = bool(iface['ifname'] in expected_configured)
@@ -2479,7 +2562,7 @@ class InterfaceHostTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
             if expected != actual:
                 print("iface %s is %sconfigured" % (
                     iface['ifname'], ('not ' if expected else '')))
-                self.assertFalse(True)
+                self.fail()
 
 
 class InterfaceControllerEthernet(InterfaceHostTestCase):
@@ -4251,10 +4334,10 @@ class InterfaceConfigTestMixin(InterfaceTestCaseMixin):
                     OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG]}},
                 {MODES: [SS_IPV6],
                     NET: constants.NETWORK_TYPE_OAM, FAMILY: INET6, METHOD: STATIC,
-                    OPTIONS: {GATEWAY: True, POST_UP: [SET_TC, IPV6_CFG, UNDEPR]}},
+                    OPTIONS: {GATEWAY: True, POST_UP: [SET_TC, IPV6_CFG]}},
                 {MODES: [DS_IPV4, DS_IPV6],
                     NET: constants.NETWORK_TYPE_OAM, FAMILY: INET6, METHOD: STATIC,
-                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG, UNDEPR]}}],
+                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG]}}],
         }
         self._validate_config(expected)
 
@@ -4275,7 +4358,7 @@ class InterfaceConfigTestMixin(InterfaceTestCaseMixin):
                     OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG]}},
                 {MODES: [SS_IPV6, DS_IPV4, DS_IPV6],
                     NET: constants.NETWORK_TYPE_MGMT, FAMILY: INET6, METHOD: STATIC,
-                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG, UNDEPR]}}],
+                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG]}}],
             'clhost0': [
                 {NET: None, FAMILY: INET, METHOD: MANUAL,
                     OPTIONS: {POST_UP: [IPV6_CFG]}},
@@ -4287,10 +4370,10 @@ class InterfaceConfigTestMixin(InterfaceTestCaseMixin):
                     OPTIONS: {POST_UP: [IPV6_CFG]}},
                 {MODES: [SS_IPV6],
                     NET: constants.NETWORK_TYPE_CLUSTER_HOST, FAMILY: INET6, METHOD: STATIC,
-                    OPTIONS: {POST_UP: [IPV6_CFG, UNDEPR]}},
+                    OPTIONS: {POST_UP: [IPV6_CFG]}},
                 {MODES: [DS_IPV4, DS_IPV6],
                     NET: constants.NETWORK_TYPE_CLUSTER_HOST, FAMILY: INET6, METHOD: STATIC,
-                    OPTIONS: {POST_UP: [IPV6_CFG, UNDEPR]}}],
+                    OPTIONS: {POST_UP: [IPV6_CFG]}}],
         }
         self._validate_config(expected)
 
@@ -4311,7 +4394,7 @@ class InterfaceConfigTestMixin(InterfaceTestCaseMixin):
                     OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG]}},
                 {MODES: [SS_IPV6, DS_IPV4, DS_IPV6],
                     NET: constants.NETWORK_TYPE_MGMT, FAMILY: INET6, METHOD: STATIC,
-                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG, UNDEPR]}},
+                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG]}},
                 {MODES: [SS_IPV4, DS_IPV4, DS_IPV6],
                     NET: constants.NETWORK_TYPE_CLUSTER_HOST, FAMILY: INET, METHOD: STATIC,
                     OPTIONS: {POST_UP: [IPV6_CFG]}},
@@ -4339,7 +4422,7 @@ class InterfaceConfigTestMixin(InterfaceTestCaseMixin):
                     OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG]}},
                 {MODES: [SS_IPV6, DS_IPV4, DS_IPV6],
                     NET: constants.NETWORK_TYPE_MGMT, FAMILY: INET6, METHOD: STATIC,
-                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG, UNDEPR]}},
+                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG]}},
                 {MODES: [SS_IPV4, DS_IPV4, DS_IPV6],
                     NET: constants.NETWORK_TYPE_CLUSTER_HOST, FAMILY: INET, METHOD: STATIC,
                     OPTIONS: {POST_UP: [IPV6_CFG]}},
@@ -4371,7 +4454,7 @@ class InterfaceConfigTestMixin(InterfaceTestCaseMixin):
                     OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG]}},
                 {MODES: [SS_IPV6, DS_IPV4, DS_IPV6],
                     NET: constants.NETWORK_TYPE_MGMT, FAMILY: INET6, METHOD: STATIC,
-                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG, UNDEPR]}},
+                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG]}},
                 {MODES: [SS_IPV4, DS_IPV4, DS_IPV6],
                     NET: constants.NETWORK_TYPE_CLUSTER_HOST, FAMILY: INET, METHOD: STATIC,
                     OPTIONS: {POST_UP: [IPV6_CFG]}},
@@ -4422,11 +4505,11 @@ class InterfaceConfigTestMixin(InterfaceTestCaseMixin):
                 {MODES: [SS_IPV6],
                     NET: constants.NETWORK_TYPE_MGMT, FAMILY: INET6, METHOD: STATIC,
                     OPTIONS: {GATEWAY: True, 'vlan-raw-device': True, PRE_UP: [VLAN_MOD],
-                              POST_UP: [SET_MTU, IPV6_CFG, UNDEPR]}},
+                              POST_UP: [SET_MTU, IPV6_CFG]}},
                 {MODES: [DS_IPV4, DS_IPV6],
                     NET: constants.NETWORK_TYPE_MGMT, FAMILY: INET6, METHOD: STATIC,
                     OPTIONS: {GATEWAY: True, 'vlan-raw-device': True, PRE_UP: [VLAN_MOD],
-                              POST_UP: [SET_MTU, IPV6_CFG, UNDEPR]}}],
+                              POST_UP: [SET_MTU, IPV6_CFG]}}],
             'clhost0': [
                 {NET: None, FAMILY: INET, METHOD: MANUAL,
                     OPTIONS: {'vlan-raw-device': True, PRE_UP: [VLAN_MOD],
@@ -4442,11 +4525,11 @@ class InterfaceConfigTestMixin(InterfaceTestCaseMixin):
                 {MODES: [SS_IPV6],
                     NET: constants.NETWORK_TYPE_CLUSTER_HOST, FAMILY: INET6, METHOD: STATIC,
                     OPTIONS: {'vlan-raw-device': True, PRE_UP: [VLAN_MOD],
-                              POST_UP: [SET_MTU, IPV6_CFG, UNDEPR]}},
+                              POST_UP: [SET_MTU, IPV6_CFG]}},
                 {MODES: [DS_IPV4, DS_IPV6],
                     NET: constants.NETWORK_TYPE_CLUSTER_HOST, FAMILY: INET6, METHOD: STATIC,
                     OPTIONS: {'vlan-raw-device': True, PRE_UP: [VLAN_MOD],
-                              POST_UP: [SET_MTU, IPV6_CFG, UNDEPR]}}],
+                              POST_UP: [SET_MTU, IPV6_CFG]}}],
         }
         self._validate_config(expected)
 
@@ -4489,11 +4572,11 @@ class InterfaceConfigTestMixin(InterfaceTestCaseMixin):
                 {MODES: [SS_IPV6],
                     NET: constants.NETWORK_TYPE_MGMT, FAMILY: INET6, METHOD: STATIC,
                     OPTIONS: {GATEWAY: True, 'vlan-raw-device': True, PRE_UP: [VLAN_MOD],
-                              POST_UP: [SET_MTU, IPV6_CFG, UNDEPR]}},
+                              POST_UP: [SET_MTU, IPV6_CFG]}},
                 {MODES: [DS_IPV4, DS_IPV6],
                     NET: constants.NETWORK_TYPE_MGMT, FAMILY: INET6, METHOD: STATIC,
                     OPTIONS: {GATEWAY: True, 'vlan-raw-device': True, PRE_UP: [VLAN_MOD],
-                              POST_UP: [SET_MTU, IPV6_CFG, UNDEPR]}},
+                              POST_UP: [SET_MTU, IPV6_CFG]}},
                 {MODES: [SS_IPV4, DS_IPV4, DS_IPV6],
                     NET: constants.NETWORK_TYPE_CLUSTER_HOST, FAMILY: INET, METHOD: STATIC,
                     OPTIONS: {'vlan-raw-device': True, PRE_UP: [VLAN_MOD],
@@ -4525,7 +4608,7 @@ class InterfaceConfigTestMixin(InterfaceTestCaseMixin):
                     OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG]}},
                 {MODES: [SS_IPV6, DS_IPV4, DS_IPV6],
                     NET: constants.NETWORK_TYPE_MGMT, FAMILY: INET6, METHOD: STATIC,
-                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG, UNDEPR]}}],
+                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG]}}],
             'clhost0': [
                 {NET: None, FAMILY: INET, METHOD: MANUAL,
                     OPTIONS: {PRE_UP: [DIS_DAD], POST_UP: [IPV6_CFG]}},
@@ -4537,10 +4620,10 @@ class InterfaceConfigTestMixin(InterfaceTestCaseMixin):
                     OPTIONS: {POST_UP: [IPV6_CFG]}},
                 {MODES: [SS_IPV6],
                     NET: constants.NETWORK_TYPE_CLUSTER_HOST, FAMILY: INET6, METHOD: STATIC,
-                    OPTIONS: {POST_UP: [SET_TC, IPV6_CFG, UNDEPR]}},
+                    OPTIONS: {POST_UP: [SET_TC, IPV6_CFG]}},
                 {MODES: [DS_IPV4, DS_IPV6],
                     NET: constants.NETWORK_TYPE_CLUSTER_HOST, FAMILY: INET6, METHOD: STATIC,
-                    OPTIONS: {POST_UP: [IPV6_CFG, UNDEPR]}}],
+                    OPTIONS: {POST_UP: [IPV6_CFG]}}],
         }
         self._validate_config(expected)
 
@@ -4586,14 +4669,14 @@ class InterfaceConfigTestMixin(InterfaceTestCaseMixin):
                     OPTIONS: {GATEWAY: True, 'bond-lacp-rate': 'fast', 'bond-miimon': '100',
                               'bond-mode': '802.3ad', 'bond-slaves': True,
                               'bond-xmit-hash-policy': 'layer2', 'hwaddress': True,
-                              POST_UP: [IPV6_CFG, UNDEPR],
+                              POST_UP: [IPV6_CFG],
                               UP: [BOND_CHECK]}},
                 {MODES: [DS_IPV4, DS_IPV6],
                     NET: constants.NETWORK_TYPE_MGMT, FAMILY: INET6, METHOD: STATIC,
                     OPTIONS: {GATEWAY: True, 'bond-lacp-rate': 'fast', 'bond-miimon': '100',
                               'bond-mode': '802.3ad', 'bond-slaves': True,
                               'bond-xmit-hash-policy': 'layer2', 'hwaddress': True,
-                              POST_UP: [IPV6_CFG, UNDEPR],
+                              POST_UP: [IPV6_CFG],
                               UP: [BOND_CHECK]}}],
             'eth1': [
                 {NET: None, FAMILY: INET, METHOD: MANUAL,
@@ -4619,11 +4702,11 @@ class InterfaceConfigTestMixin(InterfaceTestCaseMixin):
                     NET: constants.NETWORK_TYPE_CLUSTER_HOST, FAMILY: INET6, METHOD: STATIC,
                     OPTIONS: {'vlan-raw-device': True,
                               PRE_UP: [VLAN_MOD],
-                              POST_UP: [SET_MTU, IPV6_CFG, UNDEPR]}},
+                              POST_UP: [SET_MTU, IPV6_CFG]}},
                 {MODES: [DS_IPV4, DS_IPV6],
                     NET: constants.NETWORK_TYPE_CLUSTER_HOST, FAMILY: INET6, METHOD: STATIC,
                     OPTIONS: {'vlan-raw-device': True,
-                              PRE_UP: [VLAN_MOD], POST_UP: [SET_MTU, IPV6_CFG, UNDEPR]}}],
+                              PRE_UP: [VLAN_MOD], POST_UP: [SET_MTU, IPV6_CFG]}}],
         }
         self._validate_config(expected)
 
@@ -4645,7 +4728,7 @@ class InterfaceConfigTestMixin(InterfaceTestCaseMixin):
                     OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG]}},
                 {MODES: [SS_IPV6, DS_IPV4, DS_IPV6],
                     NET: constants.NETWORK_TYPE_MGMT, FAMILY: INET6, METHOD: STATIC,
-                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG, UNDEPR]}}],
+                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG]}}],
             'clhost0': [
                 {NET: None, FAMILY: INET, METHOD: MANUAL,
                     OPTIONS: {POST_UP: [SET_TC, IPV6_CFG]}},
@@ -4657,10 +4740,10 @@ class InterfaceConfigTestMixin(InterfaceTestCaseMixin):
                     OPTIONS: {POST_UP: [IPV6_CFG]}},
                 {MODES: [SS_IPV6],
                     NET: constants.NETWORK_TYPE_CLUSTER_HOST, FAMILY: INET6, METHOD: STATIC,
-                    OPTIONS: {POST_UP: [SET_TC, IPV6_CFG, UNDEPR]}},
+                    OPTIONS: {POST_UP: [SET_TC, IPV6_CFG]}},
                 {MODES: [DS_IPV4, DS_IPV6],
                     NET: constants.NETWORK_TYPE_CLUSTER_HOST, FAMILY: INET6, METHOD: STATIC,
-                    OPTIONS: {POST_UP: [IPV6_CFG, UNDEPR]}}],
+                    OPTIONS: {POST_UP: [IPV6_CFG]}}],
         }
         self._validate_config(expected)
 
@@ -4682,7 +4765,7 @@ class InterfaceConfigTestMixin(InterfaceTestCaseMixin):
                     OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG]}},
                 {MODES: [SS_IPV6, DS_IPV4, DS_IPV6],
                     NET: constants.NETWORK_TYPE_MGMT, FAMILY: INET6, METHOD: STATIC,
-                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG, UNDEPR]}}],
+                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG]}}],
             'clhost0': [
                 {NET: None, FAMILY: INET, METHOD: MANUAL,
                     OPTIONS: {POST_UP: [IPV6_CFG]}},
@@ -4694,10 +4777,10 @@ class InterfaceConfigTestMixin(InterfaceTestCaseMixin):
                     OPTIONS: {POST_UP: [IPV6_CFG]}},
                 {MODES: [SS_IPV6],
                     NET: constants.NETWORK_TYPE_CLUSTER_HOST, FAMILY: INET6, METHOD: STATIC,
-                    OPTIONS: {POST_UP: [IPV6_CFG, UNDEPR]}},
+                    OPTIONS: {POST_UP: [IPV6_CFG]}},
                 {MODES: [DS_IPV4, DS_IPV6],
                     NET: constants.NETWORK_TYPE_CLUSTER_HOST, FAMILY: INET6, METHOD: STATIC,
-                    OPTIONS: {POST_UP: [IPV6_CFG, UNDEPR]}}],
+                    OPTIONS: {POST_UP: [IPV6_CFG]}}],
         }
         self._validate_config(expected)
 
@@ -4719,10 +4802,10 @@ class InterfaceConfigTestMixin(InterfaceTestCaseMixin):
                     OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG]}},
                 {MODES: [SS_IPV6],
                     NET: constants.NETWORK_TYPE_MGMT, FAMILY: INET6, METHOD: STATIC,
-                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG, UNDEPR]}},
+                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG]}},
                 {MODES: [DS_IPV4, DS_IPV6],
                     NET: constants.NETWORK_TYPE_MGMT, FAMILY: INET6, METHOD: STATIC,
-                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG, UNDEPR]}}],
+                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG]}}],
             'clhost0': [
                 {NET: None, FAMILY: INET, METHOD: MANUAL,
                     OPTIONS: {POST_UP: [IPV6_CFG]}},
@@ -4733,7 +4816,7 @@ class InterfaceConfigTestMixin(InterfaceTestCaseMixin):
                     OPTIONS: {POST_UP: [IPV6_CFG]}},
                 {MODES: [SS_IPV6, DS_IPV4, DS_IPV6],
                     NET: constants.NETWORK_TYPE_CLUSTER_HOST, FAMILY: INET6, METHOD: STATIC,
-                    OPTIONS: {POST_UP: [IPV6_CFG, UNDEPR]}}],
+                    OPTIONS: {POST_UP: [IPV6_CFG]}}],
         }
         self._validate_config(expected)
 
@@ -4829,7 +4912,7 @@ class InterfaceConfigTestMixin(InterfaceTestCaseMixin):
                     OPTIONS: {POST_UP: [IPV6_CFG]}},
                 {MODES: [SS_IPV6, DS_IPV4, DS_IPV6],
                     NET: None, FAMILY: INET6, METHOD: STATIC,
-                    OPTIONS: {POST_UP: [IPV6_CFG, UNDEPR]}}],
+                    OPTIONS: {POST_UP: [IPV6_CFG]}}],
             'data4': [
                 {NET: None, FAMILY: INET, METHOD: MANUAL,
                     OPTIONS: {POST_UP: [IPV6_CFG]}},
@@ -4841,10 +4924,10 @@ class InterfaceConfigTestMixin(InterfaceTestCaseMixin):
                     OPTIONS: {POST_UP: [IPV6_CFG]}},
                 {MODES: [SS_IPV6, DS_IPV4, DS_IPV6],
                     NET: None, FAMILY: INET6, METHOD: STATIC,
-                    OPTIONS: {POST_UP: [IPV6_CFG, UNDEPR]}},
+                    OPTIONS: {POST_UP: [IPV6_CFG]}},
                 {MODES: [SS_IPV6, DS_IPV4, DS_IPV6],
                     NET: None, FAMILY: INET6, METHOD: STATIC,
-                    OPTIONS: {POST_UP: [IPV6_CFG, UNDEPR]}}],
+                    OPTIONS: {POST_UP: [IPV6_CFG]}}],
         }
         self._validate_config(expected)
 
@@ -4877,7 +4960,7 @@ class InterfaceConfigTestMixin(InterfaceTestCaseMixin):
                     OPTIONS: {POST_UP: [IPV6_CFG]}},
                 {MODES: [SS_IPV6, DS_IPV4, DS_IPV6],
                     NET: None, FAMILY: INET6, METHOD: STATIC,
-                    OPTIONS: {POST_UP: [SET_TC, IPV6_CFG, UNDEPR]}}],
+                    OPTIONS: {POST_UP: [SET_TC, IPV6_CFG]}}],
         }
         self._validate_config(expected)
 
