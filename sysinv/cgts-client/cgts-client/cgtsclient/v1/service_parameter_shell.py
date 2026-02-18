@@ -90,9 +90,6 @@ def _find_service_parameter(cc, service, section, name):
             break
     else:
         p = None
-        print('Service Parameter not found: service %s, '
-              'section %s, name %s' %
-              (service, section, name))
     return p
 
 
@@ -132,7 +129,12 @@ def do_service_parameter_modify(cc, args):
         service_parameter = _find_service_parameter(cc,
                                                     args.service,
                                                     args.section, name)
-        if service_parameter:
+        if not service_parameter:
+            raise exc.CommandError(
+                f'Service Parameter not found: service {args.service}, '
+                f'section {args.section}, name {name}'
+            )
+        else:
             patch.append({'op': 'replace', 'path': '/name', 'value': name})
             patch.append({'op': 'replace', 'path': '/value', 'value': value})
             if args.personality:
