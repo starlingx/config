@@ -9932,10 +9932,12 @@ class ConductorManager(service.PeriodicService):
                                                         constants.NETWORK_TYPE_OAM)
             registry_sans = []
             restapi_sans = []
+            oidc_sans = []
             for ip_addr in [oam1, oam2]:
                 if ip_addr is not None:
                     restapi_sans.append(ip_addr.address)
                     registry_sans.append(ip_addr.address)
+                    oidc_sans.append(ip_addr.address)
 
             kube_op = kubernetes.KubeOperator()
             certobj = kube_op.get_custom_resource(kubernetes.CERT_MANAGER_GROUP,
@@ -9964,6 +9966,21 @@ class ConductorManager(service.PeriodicService):
                                           'certificates',
                                           constants.REGISTRY_CERT_SECRET_NAME,
                                           certobj)
+
+            certobj = kube_op.get_custom_resource(kubernetes.CERT_MANAGER_GROUP,
+                                                  kubernetes.CERT_MANAGER_VERSION,
+                                                  kubernetes.NAMESPACE_KUBE_SYSTEM,
+                                                  'certificates',
+                                                  constants.OIDC_CERT_SECRET_NAME)
+            if certobj is not None:
+                certobj['spec']['ipAddresses'] = list(set(certobj['spec']['ipAddresses']
+                                                      + oidc_sans))
+                kube_op.apply_custom_resource(kubernetes.CERT_MANAGER_GROUP,
+                                              kubernetes.CERT_MANAGER_VERSION,
+                                              kubernetes.NAMESPACE_KUBE_SYSTEM,
+                                              'certificates',
+                                              constants.OIDC_CERT_SECRET_NAME,
+                                              certobj)
 
         personalities = [constants.CONTROLLER]
         config_uuid = self._config_update_hosts(context, personalities)
