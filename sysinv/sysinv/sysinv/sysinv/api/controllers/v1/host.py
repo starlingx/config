@@ -7186,8 +7186,9 @@ class HostController(rest.RestController):
                 "control plane."))
 
         # Verify the control plane is not being upgraded
-        if kube_host_upgrade_obj.status == \
-                kubernetes.KUBE_HOST_UPGRADING_CONTROL_PLANE:
+        if kube_host_upgrade_obj.status in [
+                kubernetes.KUBE_HOST_UPGRADING_ETCD,
+                kubernetes.KUBE_HOST_UPGRADING_CONTROL_PLANE]:
             raise wsme.exc.ClientSideError(_(
                 "The control plane on this host is already being upgraded."))
 

@@ -16,6 +16,7 @@ from oslo_context import context
 from sysinv.tests import base
 from sysinv.agent import kube_host
 from sysinv.common import constants
+from sysinv.common import etcd
 from sysinv.common import exception
 from sysinv.common import kubernetes
 
@@ -283,9 +284,9 @@ class TestKubernetesOperator(base.TestCase):
         p.start()
         self.addCleanup(p.stop)
 
-        mock_update_symlink = mock.MagicMock()
-        p = mock.patch('sysinv.agent.kube_host.KubeHostOperator._update_symlink',
-                       mock_update_symlink)
+        mock_update_kube_symlink = mock.MagicMock()
+        p = mock.patch('sysinv.agent.kube_host.KubeHostOperator._update_kube_symlink',
+                       mock_update_kube_symlink)
         p.start()
         self.addCleanup(p.stop)
 
@@ -308,8 +309,8 @@ class TestKubernetesOperator(base.TestCase):
                                               mock.call('fake_to_kube_version')], any_order=True)
         mock_file_open.assert_not_called()
         mock_kubeadm_upgrade_node.assert_not_called()
-        mock_update_symlink.assert_called_once_with(kubernetes.KUBERNETES_SYMLINKS_STAGE_2,
-                                                    'fake_to_kube_version')
+        mock_update_kube_symlink.assert_called_once_with(kubernetes.KUBERNETES_SYMLINKS_STAGE_2,
+                                                         'fake_to_kube_version')
         mock_enable_kubelet_garbage_collection.assert_not_called()
         mock_pmon_restart_service.assert_called_once()
 
@@ -344,9 +345,9 @@ class TestKubernetesOperator(base.TestCase):
         p.start()
         self.addCleanup(p.stop)
 
-        mock_update_symlink = mock.MagicMock()
-        p = mock.patch('sysinv.agent.kube_host.KubeHostOperator._update_symlink',
-                       mock_update_symlink)
+        mock_update_kube_symlink = mock.MagicMock()
+        p = mock.patch('sysinv.agent.kube_host.KubeHostOperator._update_kube_symlink',
+                       mock_update_kube_symlink)
         p.start()
         self.addCleanup(p.stop)
 
@@ -369,8 +370,8 @@ class TestKubernetesOperator(base.TestCase):
                                               mock.call('fake_to_kube_version')], any_order=True)
         mock_file_open.return_value.write.assert_called_with(containerd_write_data + '\n')
         mock_kubeadm_upgrade_node.assert_not_called()
-        mock_update_symlink.assert_called_once_with(kubernetes.KUBERNETES_SYMLINKS_STAGE_2,
-                                                    'fake_to_kube_version')
+        mock_update_kube_symlink.assert_called_once_with(kubernetes.KUBERNETES_SYMLINKS_STAGE_2,
+                                                         'fake_to_kube_version')
         mock_enable_kubelet_garbage_collection.assert_not_called()
         mock_pmon_restart_service.assert_called_once()
 
@@ -404,9 +405,9 @@ class TestKubernetesOperator(base.TestCase):
         p.start()
         self.addCleanup(p.stop)
 
-        mock_update_symlink = mock.MagicMock()
-        p = mock.patch('sysinv.agent.kube_host.KubeHostOperator._update_symlink',
-                       mock_update_symlink)
+        mock_update_kube_symlink = mock.MagicMock()
+        p = mock.patch('sysinv.agent.kube_host.KubeHostOperator._update_kube_symlink',
+                       mock_update_kube_symlink)
         p.start()
         self.addCleanup(p.stop)
 
@@ -429,8 +430,8 @@ class TestKubernetesOperator(base.TestCase):
                                               mock.call('fake_to_kube_version')], any_order=True)
         mock_file_open.assert_not_called()
         mock_kubeadm_upgrade_node.assert_not_called()
-        mock_update_symlink.assert_called_once_with(kubernetes.KUBERNETES_SYMLINKS_STAGE_2,
-                                                    'fake_to_kube_version')
+        mock_update_kube_symlink.assert_called_once_with(kubernetes.KUBERNETES_SYMLINKS_STAGE_2,
+                                                         'fake_to_kube_version')
         mock_enable_kubelet_garbage_collection.assert_called_once()
         mock_pmon_restart_service.assert_called_once()
 
@@ -463,9 +464,9 @@ class TestKubernetesOperator(base.TestCase):
         p.start().side_effect = Exception("Fake error")
         self.addCleanup(p.stop)
 
-        mock_update_symlink = mock.MagicMock()
-        p = mock.patch('sysinv.agent.kube_host.KubeHostOperator._update_symlink',
-                       mock_update_symlink)
+        mock_update_kube_symlink = mock.MagicMock()
+        p = mock.patch('sysinv.agent.kube_host.KubeHostOperator._update_kube_symlink',
+                       mock_update_kube_symlink)
         p.start()
         self.addCleanup(p.stop)
 
@@ -490,7 +491,7 @@ class TestKubernetesOperator(base.TestCase):
         mock_get_k8s_images.assert_has_calls([mock.call('fake_from_kube_version'),
                                               mock.call('fake_to_kube_version')], any_order=True)
         mock_kubeadm_upgrade_node.assert_not_called()
-        mock_update_symlink.assert_not_called()
+        mock_update_kube_symlink.assert_not_called()
         mock_enable_kubelet_garbage_collection.assert_not_called()
         mock_pmon_restart_service.assert_not_called()
 
@@ -525,9 +526,9 @@ class TestKubernetesOperator(base.TestCase):
         p.start()
         self.addCleanup(p.stop)
 
-        mock_update_symlink = mock.MagicMock()
-        p = mock.patch('sysinv.agent.kube_host.KubeHostOperator._update_symlink',
-                       mock_update_symlink)
+        mock_update_kube_symlink = mock.MagicMock()
+        p = mock.patch('sysinv.agent.kube_host.KubeHostOperator._update_kube_symlink',
+                       mock_update_kube_symlink)
         p.start().side_effect = Exception("Fake error")
         self.addCleanup(p.stop)
 
@@ -553,7 +554,7 @@ class TestKubernetesOperator(base.TestCase):
                                               mock.call('fake_to_kube_version')], any_order=True)
         mock_file_open.return_value.write.assert_called_with(containerd_write_data + '\n')
         mock_kubeadm_upgrade_node.assert_not_called()
-        mock_update_symlink.assert_called_once()
+        mock_update_kube_symlink.assert_called_once()
         mock_enable_kubelet_garbage_collection.assert_not_called()
         mock_pmon_restart_service.assert_not_called()
 
@@ -588,9 +589,9 @@ class TestKubernetesOperator(base.TestCase):
         p.start()
         self.addCleanup(p.stop)
 
-        mock_update_symlink = mock.MagicMock()
-        p = mock.patch('sysinv.agent.kube_host.KubeHostOperator._update_symlink',
-                       mock_update_symlink)
+        mock_update_kube_symlink = mock.MagicMock()
+        p = mock.patch('sysinv.agent.kube_host.KubeHostOperator._update_kube_symlink',
+                       mock_update_kube_symlink)
         p.start()
         self.addCleanup(p.stop)
 
@@ -616,7 +617,7 @@ class TestKubernetesOperator(base.TestCase):
                                               mock.call('fake_to_kube_version')], any_order=True)
         mock_file_open.return_value.write.assert_called_with(containerd_write_data + '\n')
         mock_kubeadm_upgrade_node.assert_not_called()
-        mock_update_symlink.assert_called_once()
+        mock_update_kube_symlink.assert_called_once()
         mock_enable_kubelet_garbage_collection.assert_called_once()
         mock_pmon_restart_service.assert_called_once()
 
@@ -654,9 +655,9 @@ class TestKubernetesOperator(base.TestCase):
         p.start()
         self.addCleanup(p.stop)
 
-        mock_update_symlink = mock.MagicMock()
-        p = mock.patch('sysinv.agent.kube_host.KubeHostOperator._update_symlink',
-                       mock_update_symlink)
+        mock_update_kube_symlink = mock.MagicMock()
+        p = mock.patch('sysinv.agent.kube_host.KubeHostOperator._update_kube_symlink',
+                       mock_update_kube_symlink)
         p.start()
         self.addCleanup(p.stop)
 
@@ -674,12 +675,11 @@ class TestKubernetesOperator(base.TestCase):
         mock_file_open.assert_not_called()
         mock_crictl_pull_images.assert_not_called()
         mock_kubeadm_upgrade_node.assert_called_once_with('fake_to_kube_version')
-        mock_update_symlink.assert_has_calls([mock.call(kubernetes.KUBERNETES_SYMLINKS_STAGE_1,
-                                                        'fake_to_kube_version'),
-                                              mock.call(kubernetes.KUBERNETES_SYMLINKS_STAGE_2,
-                                                        'fake_to_kube_version')],
-                                              any_order=True)
-        self.assertEqual(mock_update_symlink.call_count, 2)
+        mock_update_kube_symlink.assert_has_calls(
+            [mock.call(kubernetes.KUBERNETES_SYMLINKS_STAGE_1, 'fake_to_kube_version'),
+             mock.call(kubernetes.KUBERNETES_SYMLINKS_STAGE_2, 'fake_to_kube_version')],
+            any_order=True)
+        self.assertEqual(mock_update_kube_symlink.call_count, 2)
         mock_pmon_restart_service.assert_called_once()
 
     def test_kube_upgrade_kubelet_worker_host_success_different_pause_image_versions(self):
@@ -727,9 +727,9 @@ class TestKubernetesOperator(base.TestCase):
         p.start()
         self.addCleanup(p.stop)
 
-        mock_update_symlink = mock.MagicMock()
-        p = mock.patch('sysinv.agent.kube_host.KubeHostOperator._update_symlink',
-                       mock_update_symlink)
+        mock_update_kube_symlink = mock.MagicMock()
+        p = mock.patch('sysinv.agent.kube_host.KubeHostOperator._update_kube_symlink',
+                       mock_update_kube_symlink)
         p.start()
         self.addCleanup(p.stop)
 
@@ -749,12 +749,11 @@ class TestKubernetesOperator(base.TestCase):
         mock_crictl_pull_images.assert_called_once()
         mock_get_local_docker_registry_auth.assert_called_once()
         mock_kubeadm_upgrade_node.assert_called_once_with('fake_to_kube_version')
-        mock_update_symlink.assert_has_calls([mock.call(kubernetes.KUBERNETES_SYMLINKS_STAGE_1,
-                                                        'fake_to_kube_version'),
-                                              mock.call(kubernetes.KUBERNETES_SYMLINKS_STAGE_2,
-                                                        'fake_to_kube_version')],
-                                              any_order=True)
-        self.assertEqual(mock_update_symlink.call_count, 2)
+        mock_update_kube_symlink.assert_has_calls(
+            [mock.call(kubernetes.KUBERNETES_SYMLINKS_STAGE_1, 'fake_to_kube_version'),
+             mock.call(kubernetes.KUBERNETES_SYMLINKS_STAGE_2, 'fake_to_kube_version')],
+            any_order=True)
+        self.assertEqual(mock_update_kube_symlink.call_count, 2)
         mock_pmon_restart_service.assert_called_once()
 
     def test_kube_upgrade_kubelet_worker_host_failure_image_pull_failure(self):
@@ -800,9 +799,9 @@ class TestKubernetesOperator(base.TestCase):
         p.start()
         self.addCleanup(p.stop)
 
-        mock_update_symlink = mock.MagicMock()
-        p = mock.patch('sysinv.agent.kube_host.KubeHostOperator._update_symlink',
-                       mock_update_symlink)
+        mock_update_kube_symlink = mock.MagicMock()
+        p = mock.patch('sysinv.agent.kube_host.KubeHostOperator._update_kube_symlink',
+                       mock_update_kube_symlink)
         p.start()
         self.addCleanup(p.stop)
 
@@ -824,7 +823,7 @@ class TestKubernetesOperator(base.TestCase):
         mock_get_local_docker_registry_auth.assert_called_once()
         mock_crictl_pull_images.assert_called_once()
         mock_kubeadm_upgrade_node.assert_not_called()
-        mock_update_symlink.assert_not_called()
+        mock_update_kube_symlink.assert_not_called()
         mock_pmon_restart_service.assert_not_called()
 
     def test_kube_upgrade_kubelet_worker_host_failure_kubeadm_upgrade_node_failed(self):
@@ -870,9 +869,9 @@ class TestKubernetesOperator(base.TestCase):
         p.start()
         self.addCleanup(p.stop)
 
-        mock_update_symlink = mock.MagicMock()
-        p = mock.patch('sysinv.agent.kube_host.KubeHostOperator._update_symlink',
-                       mock_update_symlink)
+        mock_update_kube_symlink = mock.MagicMock()
+        p = mock.patch('sysinv.agent.kube_host.KubeHostOperator._update_kube_symlink',
+                       mock_update_kube_symlink)
         p.start()
         self.addCleanup(p.stop)
 
@@ -894,7 +893,7 @@ class TestKubernetesOperator(base.TestCase):
         mock_get_local_docker_registry_auth.assert_called_once()
         mock_crictl_pull_images.assert_called_once()
         mock_kubeadm_upgrade_node.assert_called_once()
-        mock_update_symlink.assert_not_called()
+        mock_update_kube_symlink.assert_not_called()
         mock_pmon_restart_service.assert_not_called()
 
     def test_kube_upgrade_kubelet_worker_host_failure_containerd_config_invalid_content(self):
@@ -927,9 +926,9 @@ class TestKubernetesOperator(base.TestCase):
         p.start()
         self.addCleanup(p.stop)
 
-        mock_update_symlink = mock.MagicMock()
-        p = mock.patch('sysinv.agent.kube_host.KubeHostOperator._update_symlink',
-                       mock_update_symlink)
+        mock_update_kube_symlink = mock.MagicMock()
+        p = mock.patch('sysinv.agent.kube_host.KubeHostOperator._update_kube_symlink',
+                       mock_update_kube_symlink)
         p.start()
         self.addCleanup(p.stop)
 
@@ -954,7 +953,7 @@ class TestKubernetesOperator(base.TestCase):
         mock_get_k8s_images.assert_has_calls([mock.call('fake_from_kube_version'),
                                               mock.call('fake_to_kube_version')], any_order=True)
         mock_kubeadm_upgrade_node.assert_not_called()
-        mock_update_symlink.assert_not_called()
+        mock_update_kube_symlink.assert_not_called()
         mock_enable_kubelet_garbage_collection.assert_not_called()
         mock_pmon_restart_service.assert_not_called()
 
@@ -1085,9 +1084,9 @@ class TestKubernetesOperator(base.TestCase):
         p.start()
         self.addCleanup(p.stop)
 
-        mock_update_symlink = mock.MagicMock()
-        p = mock.patch('sysinv.agent.kube_host.KubeHostOperator._update_symlink',
-                       mock_update_symlink)
+        mock_update_kube_symlink = mock.MagicMock()
+        p = mock.patch('sysinv.agent.kube_host.KubeHostOperator._update_kube_symlink',
+                       mock_update_kube_symlink)
         p.start()
         self.addCleanup(p.stop)
 
@@ -1118,7 +1117,7 @@ class TestKubernetesOperator(base.TestCase):
             'coredns', kubernetes.NAMESPACE_KUBE_SYSTEM, body=mock.ANY)
         mock_kube_patch_daemonset.assert_called_once_with(
             'kube-proxy', kubernetes.NAMESPACE_KUBE_SYSTEM, body=mock.ANY)
-        mock_update_symlink.assert_called()
+        mock_update_kube_symlink.assert_called()
         mock_pin_unpin_control_plane_images.assert_called_once_with(
             pin_images_version=to_kube_version, unpin_images_version=from_kube_version)
 
@@ -1176,9 +1175,9 @@ class TestKubernetesOperator(base.TestCase):
         p.start()
         self.addCleanup(p.stop)
 
-        mock_update_symlink = mock.MagicMock()
-        p = mock.patch('sysinv.agent.kube_host.KubeHostOperator._update_symlink',
-                       mock_update_symlink)
+        mock_update_kube_symlink = mock.MagicMock()
+        p = mock.patch('sysinv.agent.kube_host.KubeHostOperator._update_kube_symlink',
+                       mock_update_kube_symlink)
         p.start()
         self.addCleanup(p.stop)
 
@@ -1200,7 +1199,7 @@ class TestKubernetesOperator(base.TestCase):
         mock_kube_delete_config_map.assert_not_called()
         mock_kube_patch_deployment.assert_not_called()
         mock_kube_patch_daemonset.assert_not_called()
-        mock_update_symlink.assert_called_once()
+        mock_update_kube_symlink.assert_called_once()
         mock_pin_unpin_control_plane_images.assert_called_once_with(
             pin_images_version=to_kube_version, unpin_images_version=from_kube_version)
 
@@ -1293,9 +1292,9 @@ class TestKubernetesOperator(base.TestCase):
         p.start()
         self.addCleanup(p.stop)
 
-        mock_update_symlink = mock.MagicMock()
-        p = mock.patch('sysinv.agent.kube_host.KubeHostOperator._update_symlink',
-                       mock_update_symlink)
+        mock_update_kube_symlink = mock.MagicMock()
+        p = mock.patch('sysinv.agent.kube_host.KubeHostOperator._update_kube_symlink',
+                       mock_update_kube_symlink)
         p.start()
         self.addCleanup(p.stop)
 
@@ -1331,7 +1330,7 @@ class TestKubernetesOperator(base.TestCase):
             'coredns', kubernetes.NAMESPACE_KUBE_SYSTEM, body=mock.ANY)
         mock_kube_patch_daemonset.assert_called_once_with(
             'kube-proxy', kubernetes.NAMESPACE_KUBE_SYSTEM, body=mock.ANY)
-        mock_update_symlink.assert_called()
+        mock_update_kube_symlink.assert_called()
         mock_pin_unpin_control_plane_images.assert_called_once_with(
             pin_images_version=to_kube_version, unpin_images_version=from_kube_version)
 
@@ -1384,9 +1383,9 @@ class TestKubernetesOperator(base.TestCase):
         p.start()
         self.addCleanup(p.stop)
 
-        mock_update_symlink = mock.MagicMock()
-        p = mock.patch('sysinv.agent.kube_host.KubeHostOperator._update_symlink',
-                       mock_update_symlink)
+        mock_update_kube_symlink = mock.MagicMock()
+        p = mock.patch('sysinv.agent.kube_host.KubeHostOperator._update_kube_symlink',
+                       mock_update_kube_symlink)
         p.start()
         self.addCleanup(p.stop)
 
@@ -1412,7 +1411,7 @@ class TestKubernetesOperator(base.TestCase):
         mock_kube_patch_service_account.assert_not_called()
         mock_kube_patch_deployment.assert_not_called()
         mock_kube_patch_daemonset.assert_not_called()
-        mock_update_symlink.assert_not_called()
+        mock_update_kube_symlink.assert_not_called()
         mock_pin_unpin_control_plane_images.assert_not_called()
 
     def test_kube_upgrade_control_plane_failure_duplex(self):
@@ -1477,9 +1476,9 @@ class TestKubernetesOperator(base.TestCase):
         p.start()
         self.addCleanup(p.stop)
 
-        mock_update_symlink = mock.MagicMock()
-        p = mock.patch('sysinv.agent.kube_host.KubeHostOperator._update_symlink',
-                       mock_update_symlink)
+        mock_update_kube_symlink = mock.MagicMock()
+        p = mock.patch('sysinv.agent.kube_host.KubeHostOperator._update_kube_symlink',
+                       mock_update_kube_symlink)
         p.start()
         self.addCleanup(p.stop)
 
@@ -1506,10 +1505,10 @@ class TestKubernetesOperator(base.TestCase):
         mock_kube_patch_deployment.assert_called()
         mock_kube_patch_daemonset.assert_not_called()
         mock_pin_unpin_control_plane_images.assert_not_called()
-        mock_update_symlink.assert_not_called()
+        mock_update_kube_symlink.assert_not_called()
 
-    def test_update_symlink_success_stage1(self):
-        """Test successful execution of symlink update: stage1
+    def test_update_kube_symlink_success_stage1(self):
+        """Test successful execution of kube symlink update: stage1
         """
         link = kubernetes.KUBERNETES_SYMLINKS_STAGE_1
         to_kube_version = "vfake_to_kube_version"
@@ -1535,15 +1534,15 @@ class TestKubernetesOperator(base.TestCase):
         p.start()
         self.addCleanup(p.stop)
 
-        self.kube_controller_operator._update_symlink(link, to_kube_version)
+        self.kube_controller_operator._update_kube_symlink(link, to_kube_version)
 
         mock_os_path_join.assert_called()
         mock_os_path_islink.assert_called_once_with(link)
         mock_os_remove.assert_called_once_with(link)
         mock_os_symlink.assert_called_once_with(versioned_stage, link)
 
-    def test_update_symlink_success_stage2(self):
-        """Test successful execution of symlink update: stage2
+    def test_update_kube_symlink_success_stage2(self):
+        """Test successful execution of kube symlink update: stage2
         """
         link = kubernetes.KUBERNETES_SYMLINKS_STAGE_2
         to_kube_version = "vfake_to_kube_version"
@@ -1569,15 +1568,15 @@ class TestKubernetesOperator(base.TestCase):
         p.start()
         self.addCleanup(p.stop)
 
-        self.kube_controller_operator._update_symlink(link, to_kube_version)
+        self.kube_controller_operator._update_kube_symlink(link, to_kube_version)
 
         mock_os_path_join.assert_called()
         mock_os_path_islink.assert_called_once_with(link)
         mock_os_remove.assert_not_called()
         mock_os_symlink.assert_called_once_with(versioned_stage, link)
 
-    def test_update_symlink_failure_invalid_link(self):
-        """Test failed execution of symlink update: invalid link
+    def test_update_kube_symlink_failure_invalid_link(self):
+        """Test failed execution of kube symlink update: invalid link
         """
         link = 'crap_link_path'
         to_kube_version = "vfake_to_kube_version"
@@ -1603,7 +1602,7 @@ class TestKubernetesOperator(base.TestCase):
         self.addCleanup(p.stop)
 
         self.assertRaises(exception.SysinvException,
-                          self.kube_controller_operator._update_symlink,
+                          self.kube_controller_operator._update_kube_symlink,
                           link,
                           to_kube_version)
 
@@ -1612,8 +1611,8 @@ class TestKubernetesOperator(base.TestCase):
         mock_os_remove.assert_not_called()
         mock_os_symlink.assert_not_called()
 
-    def test_update_symlink_failure_invalid_kube_version(self):
-        """Test failed execution of symlink update: invalid kube version
+    def test_update_kube_symlink_failure_invalid_kube_version(self):
+        """Test failed execution of kube symlink update: invalid kube version
         """
         link = kubernetes.KUBERNETES_SYMLINKS_STAGE_1
         to_kube_version = "vfake_invalid_to_kube_version"
@@ -1640,9 +1639,81 @@ class TestKubernetesOperator(base.TestCase):
         self.addCleanup(p.stop)
 
         self.assertRaises(exception.SysinvException,
-                          self.kube_controller_operator._update_symlink,
+                          self.kube_controller_operator._update_kube_symlink,
                           link,
                           to_kube_version)
+
+        mock_os_path_join.assert_called_once()
+        mock_os_path_islink.assert_called_once_with(link)
+        mock_os_remove.assert_called_once_with(link)
+        mock_os_symlink.assert_called_once_with(versioned_stage, link)
+
+    def test_update_etcd_symlink_success_stage0(self):
+        """Test successful execution of etcd symlink update: stage0
+        """
+        link = etcd.ETCD_SYMLINKS_STAGE_0
+        to_etcd_version = "vfake_to_etcd_version"
+        versioned_stage = "fake_versioned_stage"
+
+        mock_os_path_join = mock.MagicMock()
+        p = mock.patch('os.path.join', mock_os_path_join)
+        p.start().return_value = versioned_stage
+        self.addCleanup(p.stop)
+
+        mock_os_path_islink = mock.MagicMock()
+        p = mock.patch('os.path.islink', mock_os_path_islink)
+        p.start().return_value = True
+        self.addCleanup(p.stop)
+
+        mock_os_remove = mock.MagicMock()
+        p = mock.patch('os.remove', mock_os_remove)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_os_symlink = mock.MagicMock()
+        p = mock.patch('os.symlink', mock_os_symlink)
+        p.start()
+        self.addCleanup(p.stop)
+
+        self.kube_controller_operator.\
+            _etcd_operator.update_etcd_symlink(to_etcd_version)
+
+        mock_os_path_join.assert_called()
+        mock_os_path_islink.assert_called_once_with(link)
+        mock_os_remove.assert_called_once_with(link)
+        mock_os_symlink.assert_called_once_with(versioned_stage, link)
+
+    def test_update_etcd_symlink_failure_invalid_etcd_version(self):
+        """Test failed execution of etcd symlink update: invalid etcd version
+        """
+        link = etcd.ETCD_SYMLINKS_STAGE_0
+        to_etcd_version = "vfake_invalid_to_etcd_version"
+        versioned_stage = "fake_versioned_stage"
+
+        mock_os_path_join = mock.MagicMock()
+        p = mock.patch('os.path.join', mock_os_path_join)
+        p.start().return_value = versioned_stage
+        self.addCleanup(p.stop)
+
+        mock_os_path_islink = mock.MagicMock()
+        p = mock.patch('os.path.islink', mock_os_path_islink)
+        p.start().return_value = True
+        self.addCleanup(p.stop)
+
+        mock_os_remove = mock.MagicMock()
+        p = mock.patch('os.remove', mock_os_remove)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_os_symlink = mock.MagicMock()
+        p = mock.patch('os.symlink', mock_os_symlink)
+        p.start().side_effect = Exception("Fake error")
+        self.addCleanup(p.stop)
+
+        self.assertRaises(exception.SysinvException,
+                          self.kube_controller_operator.
+                          _etcd_operator.update_etcd_symlink,
+                          to_etcd_version)
 
         mock_os_path_join.assert_called_once()
         mock_os_path_islink.assert_called_once_with(link)

@@ -2006,6 +2006,23 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.cast(context, self.make_msg('kube_host_uncordon',
                                                 host_name=host_name))
 
+    def report_kube_upgrade_etcd_result(self, context, host_uuid,
+            target_etcd_version, is_first_master, success):
+        """Asynchronously receive the result of etcd upgrade on a host.
+
+        :param: context: request context
+        :param: host_uuid: UUID of the host reporting status
+        :param: target_etcd_version: etcd binary version being upgraded to
+        :param: is_first_master: True if this was the first master being upgraded, False otherwise
+        :param: success: True if etcd binary upgrade was successful, False otherwise
+
+        """
+        return self.cast(context, self.make_msg('report_kube_upgrade_etcd_result',
+                                                host_uuid=host_uuid,
+                                                target_etcd_version=target_etcd_version,
+                                                is_first_master=is_first_master,
+                                                success=success))
+
     def report_kube_upgrade_control_plane_result(self, context, host_uuid,
                                                  to_version, is_first_master, success):
         """Asynchronously receive the result of control plane upgrade on a host.

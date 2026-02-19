@@ -109,6 +109,146 @@ class ContainerdOperator(object):
         return True
 
 
+class EtcdOperator(object):
+    '''Class to encapsulate etcd operations for Sysinv Agent'''
+
+    def __init__(self):
+        self._etcd_db_path = os.path.join(
+                constants.ETCD_PATH, constants.ETCD_DIR_NAME, etcd.ETCD_DB_FILE_NAME)
+        self._etcd_bkp_path = os.path.join(
+                constants.ETCD_PATH, constants.ETCD_DIR_NAME, etcd.ETCD_BACKUP_FILE_NAME)
+
+    def cleanup_etcd(self):
+        """Remove backed up etcd artifacts
+        """
+        try:
+            shutil.rmtree(self._etcd_bkp_path)
+            LOG.info("Removed etcd backed up at [%s]" % (self._etcd_bkp_path))
+        except Exception as ex:
+            LOG.warning("Failed to remove saved file(s) at [%s] after kubernetes upgrade "
+                        "abort. Error: [%s]. Please remove manually to save disk space."
+                        % (self._etcd_bkp_path, ex))
+
+    def get_etcd_version_from_symlink(self):
+        """Retrieve current etcd version based on the stage symlink.
+
+        :returns: etcd_version string
+        """
+        return etcd.get_etcd_version_from_symlink()
+
+    def get_installed_etcd_versions(self):
+        """Retrieve list of installed etcd versions.
+
+        :returns: etcd_versions list of string
+        """
+        return etcd.get_installed_etcd_versions()
+
+    def move_etcd(self):
+        """Save etcd for recovery
+        """
+        try:
+            if os.path.exists(self._etcd_bkp_path):
+                LOG.info("Etcd was saved already for the recovery purpose, continuing...")
+                # In case, if the previous run of the abort failed (all 3 attempts), followed by
+                # the recovery also failed *AFTER* recovering etcd, we'd have unintended version of
+                # the etcd which will fail the snapshot restore operation. So, remove it here.
+                if os.path.exists(self._etcd_db_path):
+                    shutil.rmtree(self._etcd_db_path)
+                return
+            if os.path.exists(self._etcd_db_path):
+                shutil.move(self._etcd_db_path, self._etcd_bkp_path)
+                LOG.info("Etcd at %s moved to %s" % (self._etcd_db_path, self._etcd_bkp_path))
+            else:
+                raise exception.SysinvException("Etcd not found at %s" % (self._etcd_db_path))
+        except Exception as ex:
+            raise exception.SysinvException("Failed to move etcd with error: [%s]" % (ex))
+
+    def _restart_etcd(self, force=False):
+        """Restart etcd service
+
+        :param: force: True restart service regardless of active status,
+                       False check status before trying to restart
+        """
+        service = kubernetes.KUBE_ETCD_SYSTEMD_SERVICE_NAME
+        try:
+            if force or utils.systemctl_is_active_service(service):
+                utils.sm_restart_service(service)
+            else:
+                LOG.info("Etcd service is not active")
+        except Exception as ex:
+            raise exception.SysinvException(
+                    "Error restarting service %s: Error [%s]" % (service, ex))
+
+    def retrieve_etcd_version(self):
+        """Retrieve etcd binary version stored in version state file
+
+        :returns: string: etcd binary version associated with etcd snapshot
+        """
+        return etcd.retrieve_etcd_version()
+
+    def update_etcd_symlink(self, to_etcd_version):
+        """Update symlink /var/lib/etcd/stage0 to etcd binary version
+
+        :param: to_etcd_version: etcd binary version to be linked
+        """
+        try:
+            source = os.path.join(etcd.ETCD_VERSIONED_BINARIES_ROOT,
+                                  to_etcd_version, 'stage0')
+
+            # Remove previous etcd version symlink
+            if os.path.islink(etcd.ETCD_SYMLINKS_STAGE_0):
+                os.remove(etcd.ETCD_SYMLINKS_STAGE_0)
+            os.symlink(source, etcd.ETCD_SYMLINKS_STAGE_0)
+            LOG.info("etcd binary symlink [%s] is updated to [%s] "
+                     % (etcd.ETCD_SYMLINKS_STAGE_0, source))
+        except Exception as ex:
+            raise exception.SysinvException("Failed to update symlink [%s]. Error: [%s]"
+                                            % (etcd.ETCD_SYMLINKS_STAGE_0, ex))
+
+    def recover_etcd(self):
+        """Recover etcd
+        """
+        try:
+            if not os.path.exists(self._etcd_bkp_path):
+                raise exception.SysinvException("Saved etcd for recovery purpose not found at %s"
+                                                % (self._etcd_bkp_path))
+            if os.path.exists(self._etcd_db_path):
+                shutil.rmtree(self._etcd_db_path)
+            shutil.copytree(self._etcd_bkp_path, self._etcd_db_path)
+            LOG.info("Kubernetes: etcd recovered successfully from %s to %s."
+                    % (self._etcd_bkp_path, self._etcd_db_path))
+        except Exception as ex:
+            raise exception.SysinvException("Failed to recover etcd. Error: [%s]" % (ex))
+
+    def restore_etcd_snapshot(self, abort_attempt):
+        """Restore etcd snapshot
+
+        This method restores the snapshot of the etcd database running before kubernetes upgrade
+        was started. The snapshot was taken during kubernetes networking upgrade stage.
+        """
+        try:
+            if os.path.exists(self._etcd_db_path) and abort_attempt > 1:
+                LOG.info("Etcd already restored in the previous attempt. Continuing...")
+                return
+            etcd.restore_etcd_snapshot(etcd.ETCD_SNAPSHOT_FULL_FILE_PATH, self._etcd_db_path)
+            LOG.info("Etcd snapshot restored successfully to %s" % (self._etcd_db_path))
+        except Exception as ex:
+            raise exception.SysinvException("Failed to restore etcd snapshot. Error: [%s]" % (ex))
+
+    def upgrade_etcd_binary(self, to_etcd_version, force=False):
+        """Upgrade etcd binary version on this controller
+
+        :param: to_etcd_version: etcd binary version being upgraded to
+        :param: force: True restart service regardless of active status,
+                       False check status before trying to restart
+        """
+        try:
+            self.update_etcd_symlink(to_etcd_version)
+            self._restart_etcd(force=force)
+        except Exception as ex:
+            raise exception.SysinvException("Error upgrading etcd version: %s" % (ex))
+
+
 class KubeHostOperator(object):
     '''Class to abstract kubernetes host operations for Sysinv'''
 
@@ -145,7 +285,7 @@ class KubeHostOperator(object):
             raise exception.SysinvException("Failed to unmask and start service %s. Error: [%s]"
                                             % (service, ex))
 
-    def _update_symlink(self, link, to_kube_version):
+    def _update_kube_symlink(self, link, to_kube_version):
         """Update symlinks to kubernetes binaries
 
         :param: link: string. Either a stage1 or stage2 link at /var/lib/kubernetes
@@ -249,7 +389,7 @@ class KubeHostOperator(object):
             self._update_pause_image_in_containerd(current_pause_image, target_pause_image)
 
         # update stage2 symlink.
-        self._update_symlink(kubernetes.KUBERNETES_SYMLINKS_STAGE_2, to_kube_version)
+        self._update_kube_symlink(kubernetes.KUBERNETES_SYMLINKS_STAGE_2, to_kube_version)
 
 
 class KubeWorkerOperator(KubeHostOperator):
@@ -296,7 +436,7 @@ class KubeWorkerOperator(KubeHostOperator):
             self.kubeadm_upgrade_node(to_kube_version)
 
             # update stage1 symlink.
-            self._update_symlink(kubernetes.KUBERNETES_SYMLINKS_STAGE_1, to_kube_version)
+            self._update_kube_symlink(kubernetes.KUBERNETES_SYMLINKS_STAGE_1, to_kube_version)
 
             super().upgrade_kubelet(
                     from_kube_version, to_kube_version, current_pause_image, target_pause_image)
@@ -313,11 +453,8 @@ class KubeControllerOperator(KubeHostOperator):
     def __init__(self, context, host_uuid, host_name):
         self._host_personality = constants.CONTROLLER
         self._abort_attempt = 1
-        self._etcd_db_path = os.path.join(
-                constants.ETCD_PATH, constants.ETCD_DIR_NAME, etcd.ETCD_DB_FILE_NAME)
-        self._etcd_bkp_path = os.path.join(
-                constants.ETCD_PATH, constants.ETCD_DIR_NAME, etcd.ETCD_BACKUP_FILE_NAME)
         self._kubeconfig = kubernetes.KUBERNETES_ADMIN_CONF
+        self._etcd_operator = EtcdOperator()
         super().__init__(context, host_uuid, host_name)
 
     def _backup_kubeconfig_files(self):
@@ -366,41 +503,6 @@ class KubeControllerOperator(KubeHostOperator):
             raise exception.SysinvException("Failed to move control plane manifests. "
                                             "Error: [%s]" % (ex))
 
-    def _move_etcd(self):
-        """Save etcd for recovery
-        """
-        try:
-            if os.path.exists(self._etcd_bkp_path):
-                LOG.info("Etcd was saved already for the recovery purpose, continuing...")
-                # In case, if the previous run of the abort failed (all 3 attempts), followed by
-                # the recovery also failed *AFTER* recovering etcd, we'd have unintended version of
-                # the etcd which will fail the snapshot restore operation. So, remove it here.
-                if os.path.exists(self._etcd_db_path):
-                    shutil.rmtree(self._etcd_db_path)
-                return
-            if os.path.exists(self._etcd_db_path):
-                shutil.move(self._etcd_db_path, self._etcd_bkp_path)
-                LOG.info("Etcd at %s moved to %s" % (self._etcd_db_path, self._etcd_bkp_path))
-            else:
-                raise exception.SysinvException("Etcd not found at %s" % (self._etcd_db_path))
-        except Exception as ex:
-            raise exception.SysinvException("Failed to move etcd with error: [%s]" % (ex))
-
-    def restore_etcd_snapshot(self):
-        """Restore etcd snapshot
-
-        This method restores the snapshot of the etcd database running before kubernetes upgrade
-        was started. The snapshot was taken during kubernetes networking upgrade stage.
-        """
-        try:
-            if os.path.exists(self._etcd_db_path) and self._abort_attempt > 1:
-                LOG.info("Etcd already restored in the previous attempt. Continuing...")
-                return
-            etcd.restore_etcd_snapshot(etcd.ETCD_SNAPSHOT_FULL_FILE_PATH, self._etcd_db_path)
-            LOG.info("Etcd snapshot restored successfully to %s" % (self._etcd_db_path))
-        except Exception as ex:
-            raise exception.SysinvException("Failed to restore etcd snapshot. Error: [%s]" % (ex))
-
     def restore_backed_up_static_pod_manifests(self):
         """Restore backed up static pod manifests
 
@@ -434,7 +536,7 @@ class KubeControllerOperator(KubeHostOperator):
         """
         self._backup_kubeconfig_files()
         self._move_control_plane_manifests()
-        self._move_etcd()
+        self._etcd_operator.move_etcd()
 
     def _cleanup_backed_up_artifacts(self):
         """Remove backed up artifacts upon successful abort
@@ -457,13 +559,7 @@ class KubeControllerOperator(KubeHostOperator):
                         "abort. Error: [%s]. Please remove manually to save disk space."
                         % (kubernetes.KUBE_CONFIG_BACKUP_PATH, ex))
 
-        try:
-            shutil.rmtree(self._etcd_bkp_path)
-            LOG.info("Removed etcd backed up at [%s]" % (self._etcd_bkp_path))
-        except Exception as ex:
-            LOG.warning("Failed to remove saved file(s) at [%s] after kubernetes upgrade "
-                        "abort. Error: [%s]. Please remove manually to save disk space."
-                        % (self._etcd_bkp_path, ex))
+        self._etcd_operator.cleanup_etcd()
 
     def upgrade_abort(self, current_kube_version, back_to_kube_version):
         """Procedure to abort a kubernetes upgrade
@@ -495,6 +591,20 @@ class KubeControllerOperator(KubeHostOperator):
         except Exception as ex:
             LOG.warning("Failed to get current kubeadm and kubelet binaries version. If the abort "
                         "operation fails, recovery will not be possible. Error was: [%s]" % (ex))
+            recovery_possible = False
+
+        # etcd doesn't have downgrade mechanism, so we can only revert to the
+        # to the snapshot version. If no upgrade actually occurred, we can
+        # can attempt to restart it.
+        service = kubernetes.KUBE_ETCD_SYSTEMD_SERVICE_NAME
+        try:
+            restore_etcd_version = self._etcd_operator.retrieve_etcd_version()
+            self._etcd_operator.upgrade_etcd_binary(restore_etcd_version, force=True)
+            active = utils.systemctl_wait_is_active_service(service, timeout=30)
+            LOG.info("Service %s is active: %s" % (service, active))
+        except Exception as ex:
+            LOG.warning("Failed to restore the etcd binary. If the abort operation fails, "
+                        "recovery will not be possible. Error was: [%s]" % (ex))
             recovery_possible = False
 
         while self._abort_attempt <= constants.AUTO_RECOVERY_COUNT:
@@ -532,7 +642,7 @@ class KubeControllerOperator(KubeHostOperator):
 
                 restart_services_for_recovery = False
 
-                self.restore_etcd_snapshot()
+                self._etcd_operator.restore_etcd_snapshot(self._abort_attempt)
 
                 self.restore_backed_up_static_pod_manifests()
 
@@ -540,7 +650,7 @@ class KubeControllerOperator(KubeHostOperator):
 
                 for link in [kubernetes.KUBERNETES_SYMLINKS_STAGE_1,
                              kubernetes.KUBERNETES_SYMLINKS_STAGE_2]:
-                    self._update_symlink(link, back_to_kube_version)
+                    self._update_kube_symlink(link, back_to_kube_version)
 
                 kubernetes.enable_kubelet_garbage_collection()
 
@@ -648,21 +758,6 @@ class KubeControllerOperator(KubeHostOperator):
             raise exception.SysinvException("Failed to recover static pod manifests. "
                                             "Error: [%s]" % (ex))
 
-    def _recover_etcd(self):
-        """Recover etcd
-        """
-        try:
-            if not os.path.exists(self._etcd_bkp_path):
-                raise exception.SysinvException("Saved etcd for recovery purpose not found at %s"
-                                                % (self._etcd_bkp_path))
-            if os.path.exists(self._etcd_db_path):
-                shutil.rmtree(self._etcd_db_path)
-            shutil.copytree(self._etcd_bkp_path, self._etcd_db_path)
-            LOG.info("Kubernetes: etcd recovered successfully from %s to %s."
-                    % (self._etcd_bkp_path, self._etcd_db_path))
-        except Exception as ex:
-            raise exception.SysinvException("Failed to recover etcd. Error: [%s]" % (ex))
-
     def upgrade_abort_recovery(
             self, recover_from_kube_version, restart_services):
         """Recover a failed abort attempt
@@ -676,7 +771,7 @@ class KubeControllerOperator(KubeHostOperator):
 
             self._recover_static_pod_manifests()
 
-            self._recover_etcd()
+            self._etcd_operator.recover_etcd()
 
             # Abort recovery should be done to the state at which abort was initiated.
             links = {
@@ -685,7 +780,7 @@ class KubeControllerOperator(KubeHostOperator):
             }
 
             for link, version in links.items():
-                self._update_symlink(link, version)
+                self._update_kube_symlink(link, version)
 
             kubernetes.enable_kubelet_garbage_collection()
 
@@ -939,6 +1034,91 @@ class KubeControllerOperator(KubeHostOperator):
             raise exception.SysinvException("Failed to pin/unpin control plane images. "
                                             "Error: [%s]" % (ex))
 
+    def upgrade_etcd(self, target_etcd_version):
+        """Upgrade etcd binary version on this controller
+
+        The etcd binary version on controller host is upgraded from the
+        current version through each intermediate version up to the target
+        version. At each binary upgrade step, etcd service is restarted,
+        and we wait for etcd and Kubernetes services to be healthy.
+
+        :param: target_etcd_version: target etcd binary version being upgraded to
+        :return: True if successful, False otherwise
+        """
+        try:
+            success = True
+
+            # Determine etcd binary versions available for upgrade
+            etcd_versions = self._etcd_operator.get_installed_etcd_versions()
+            from_etcd_version = self._etcd_operator.get_etcd_version_from_symlink()
+
+            # filter versions > from_etcd_version and <= target_etcd_version
+            filter_versions = utils.filter_versions(etcd_versions,
+                    from_etcd_version, target_etcd_version)
+            if filter_versions:
+                LOG.info("etcd binary upgrade from: %s through versions = %s"
+                        % (from_etcd_version, filter_versions))
+            else:
+                LOG.info("etcd binary upgrade not required from: %s"
+                        % (from_etcd_version))
+
+            service = kubernetes.KUBE_ETCD_SYSTEMD_SERVICE_NAME
+            for to_etcd_version in filter_versions:
+                try:
+                    # Determine whether this controller has an active etcd.service,
+                    # it will be 'inactive' on the standby.
+                    active = utils.systemctl_is_active_service(service)
+
+                    LOG.info("etcd binary upgrade to %s started on this %s controller"
+                            % (to_etcd_version, 'active' if active else 'standby'))
+
+                    self._etcd_operator.upgrade_etcd_binary(to_etcd_version)
+
+                    LOG.info("etcd binary upgrade to version %s successful on this host."
+                            % (to_etcd_version))
+
+                    if active:
+                        # This is active controller. Wait for the etcd.service to
+                        # transition from 'activating' to 'active'.
+                        active = utils.systemctl_wait_is_active_service(service, timeout=30)
+
+                        # Wait for K8S health
+                        if active:
+                            k8s_health = kubernetes.k8s_wait_for_endpoints_health(quiet=True)
+                            if k8s_health:
+                                LOG.info("All control plane pods are back, up and running")
+                                success = True
+                            else:
+                                LOG.error("Kubernetes control plane pods not back after "
+                                          "etcd upgrade procedure.")
+                                success = False
+                                break
+                        else:
+                            LOG.error("etcd service did not become active after upgrade. "
+                                      "Kubernetes control plane unhealthy.")
+                            success = False
+                            break
+                    else:
+                        # This is standby controller, no need to wait.
+                        LOG.info("etcd service is standby, no need to wait")
+                        success = True
+                except Exception as ex:
+                    LOG.error("etcd upgrade to binary version %s failed "
+                              "on this host. Error: [%s]" % (to_etcd_version, ex))
+                    success = False
+                    break
+
+            if not success:
+                LOG.error("etcd upgrade to binary version %s failed on this host."
+                          % (target_etcd_version))
+
+        except Exception as ex:
+            LOG.error("etcd upgrade to binary version %s failed "
+                      "on this host. Error: [%s]" % (target_etcd_version, ex))
+            success = False
+
+        return success
+
     def upgrade_control_plane(self, from_kube_version, to_kube_version, is_first_master):
         """Upgrade kubernetes control-plane components on this controller
 
@@ -964,7 +1144,7 @@ class KubeControllerOperator(KubeHostOperator):
 
                 self._rollout_restart_kube_proxy_daemonset()
 
-            self._update_symlink(kubernetes.KUBERNETES_SYMLINKS_STAGE_1, to_kube_version)
+            self._update_kube_symlink(kubernetes.KUBERNETES_SYMLINKS_STAGE_1, to_kube_version)
 
             try:
                 self._pin_unpin_control_plane_images(pin_images_version=to_kube_version,

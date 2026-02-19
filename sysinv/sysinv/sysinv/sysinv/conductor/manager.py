@@ -18001,10 +18001,18 @@ class ConductorManager(service.PeriodicService):
                 kube_host_upgrade.status == kubernetes.KUBE_HOST_UPGRADING_CONTROL_PLANE:
             fail_state = kubernetes.KUBE_UPGRADING_FIRST_MASTER_FAILED
             fail_status = kubernetes.KUBE_HOST_UPGRADING_CONTROL_PLANE_FAILED
+        elif current_kube_state == kubernetes.KUBE_UPGRADING_FIRST_MASTER and \
+                kube_host_upgrade.status == kubernetes.KUBE_HOST_UPGRADING_ETCD:
+            fail_state = kubernetes.KUBE_UPGRADING_FIRST_MASTER_FAILED
+            fail_status = kubernetes.KUBE_HOST_UPGRADING_ETCD_FAILED
         elif current_kube_state == kubernetes.KUBE_UPGRADING_SECOND_MASTER and \
                 kube_host_upgrade.status == kubernetes.KUBE_HOST_UPGRADING_CONTROL_PLANE:
             fail_state = kubernetes.KUBE_UPGRADING_SECOND_MASTER_FAILED
             fail_status = kubernetes.KUBE_HOST_UPGRADING_CONTROL_PLANE_FAILED
+        elif current_kube_state == kubernetes.KUBE_UPGRADING_SECOND_MASTER and \
+                kube_host_upgrade.status == kubernetes.KUBE_HOST_UPGRADING_ETCD:
+            fail_state = kubernetes.KUBE_UPGRADING_SECOND_MASTER_FAILED
+            fail_status = kubernetes.KUBE_HOST_UPGRADING_ETCD_FAILED
         elif current_kube_state == kubernetes.KUBE_UPGRADING_KUBELETS and \
                 kube_host_upgrade.status == kubernetes.KUBE_HOST_UPGRADING_KUBELET:
             fail_status = kubernetes.KUBE_HOST_UPGRADING_KUBELET_FAILED
@@ -18060,6 +18068,10 @@ class ConductorManager(service.PeriodicService):
         for kube_host_upgrade in kube_host_upgrades:
             fail_status = None
             if kube_host_upgrade.status == \
+                    kubernetes.KUBE_HOST_UPGRADING_ETCD:
+                fail_status = \
+                    kubernetes.KUBE_HOST_UPGRADING_ETCD_FAILED
+            if kube_host_upgrade.status == \
                     kubernetes.KUBE_HOST_UPGRADING_CONTROL_PLANE:
                 fail_status = \
                     kubernetes.KUBE_HOST_UPGRADING_CONTROL_PLANE_FAILED
@@ -18098,6 +18110,8 @@ class ConductorManager(service.PeriodicService):
         etcd.snapshot_etcd(
             os.path.join(kubernetes.KUBE_CONTROL_PLANE_ETCD_BACKUP_PATH,
                          etcd.ETCD_SNAPSHOT_FILE_NAME))
+
+        etcd.store_etcd_version()
 
         LOG.info("Successfully completed k8s control plane backup.")
 
@@ -18316,6 +18330,63 @@ class ConductorManager(service.PeriodicService):
                 uncordon_status = kubernetes.KUBE_UPGRADE_UNCORDON_FAILED
             self._kube_upgrade_state_update(context, uncordon_status)
 
+    def report_kube_upgrade_etcd_result(self, context, host_uuid,
+            target_etcd_version, is_first_master, success):
+        """Handle etcd binary upgrade result call from Sysinv Agent.
+
+        :param: context: request context
+        :param: host_uuid: UUID of the host reporting status
+        :param: target_etcd_version: etcd binary version being upgraded to
+        :param: is_first_master: True if this was the first master being upgraded, False otherwise
+        :param: success: True if etcd upgrade was successful, False otherwise
+        """
+        host_obj = objects.host.get_by_uuid(context, host_uuid)
+        kube_host_upgrade_obj = objects.kube_host_upgrade.get_by_host_id(context, host_obj.id)
+        kube_upgrade_obj = objects.kube_upgrade.get_one(context)
+        host_name = host_obj.hostname
+
+        # Update hieradata to persist etcd_version symlinks after reboots
+        if success:
+            try:
+                hieradata_file_path = os.path.join(
+                    tsc.PUPPET_PATH, 'hieradata', 'static.yaml')
+                configs_to_be_updated = {
+                    'platform::etcd::params::etcd_version': target_etcd_version
+                }
+                self._update_hieradata_file(hieradata_file_path, configs_to_be_updated)
+            except Exception as ex:
+                LOG.warning("Failed to update etcd version in hieradata after "
+                            "control-plane upgrade on host: [%s]. Error was: [%s]"
+                            % (host_name, ex))
+
+        if success and is_first_master:
+            upgrade_state = kubernetes.KUBE_UPGRADING_FIRST_MASTER
+            host_state = kubernetes.KUBE_HOST_UPGRADED_ETCD
+            LOG.info("Upgraded etcd component successfully to version %s on "
+                     "the first master." % (target_etcd_version))
+        elif not success and is_first_master:
+            upgrade_state = kubernetes.KUBE_UPGRADING_FIRST_MASTER_FAILED
+            host_state = kubernetes.KUBE_HOST_UPGRADING_ETCD_FAILED
+            LOG.error("Failed to upgrade etcd component to version %s on "
+                      "the first master. Check sysinv.log on that host for details and "
+                      "retry the operation." % (target_etcd_version))
+        elif success and not is_first_master:
+            upgrade_state = kubernetes.KUBE_UPGRADING_SECOND_MASTER
+            host_state = kubernetes.KUBE_HOST_UPGRADED_ETCD
+            LOG.info("Upgraded etcd component successfully to version %s on "
+                     "the second master." % (target_etcd_version))
+        elif not success and not is_first_master:
+            upgrade_state = kubernetes.KUBE_UPGRADING_SECOND_MASTER_FAILED
+            host_state = kubernetes.KUBE_HOST_UPGRADING_ETCD_FAILED
+            LOG.error("Failed to upgrade etcd component to version %s on "
+                      "the second master. Check sysinv.log on that host for details and "
+                      "retry the operation." % (target_etcd_version))
+
+        kube_host_upgrade_obj.status = host_state
+        kube_host_upgrade_obj.save()
+        kube_upgrade_obj.state = upgrade_state
+        kube_upgrade_obj.save()
+
     def report_kube_upgrade_control_plane_result(self, context, host_uuid,
                                                  to_version, is_first_master, success):
         """Handle control-plane upgrade result call from Sysinv Agent.
@@ -18514,10 +18585,14 @@ class ConductorManager(service.PeriodicService):
                         context, host_uuid, target_version, is_first, False)
                 return
 
+        # Upgrade etcd binary and control-plane
+        kube_host_upgrade_obj.status = kubernetes.KUBE_HOST_UPGRADING_ETCD
+        kube_host_upgrade_obj.save()
+        target_etcd_version = etcd.get_max_etcd_version()
         try:
             agent_api = agent_rpcapi.AgentAPI()
             agent_api.kube_upgrade_control_plane(
-                    context, host_uuid, target_version, is_first)
+                    context, host_uuid, target_etcd_version, target_version, is_first)
         except Exception as ex:
             # Handle unexpected exception
             LOG.exception("Kubernetes control-plane upgrade for host %s failed. Error: [%s]"
