@@ -19157,12 +19157,13 @@ class ConductorManager(service.PeriodicService):
                 self.perform_app_delete(context, app, hook_info_delete)
 
     def report_kube_upgrade_abort_result(self, context, current_kube_version, back_to_kube_version,
-                                         abort, recovery):
+                                         back_to_etcd_version, abort, recovery):
         """Report kube upgrade abort operation result
 
         :param: context: context object
         :param: current_kube_version: current kubernetes version
         :param: back_to_kube_version: kubernetes version being aborted back to
+        :param: back_to_etcd_version: etcd version being aborted back to
         :param: abort: True if abort was successful False otherwise. If this is True,
                        recovery is False.
         :param: recovery: True if abort recovery succeeds. If this is True, abort must be False.
@@ -19192,6 +19193,19 @@ class ConductorManager(service.PeriodicService):
                             "cause kubernetes on that host to run with the upgraded version. To "
                             "avoid this situation, perform lock and unlock operation for that host "
                             "at earliest. Error was: [%s]" % (constants.CONTROLLER_0_HOSTNAME, ex))
+
+            # Update hieradata to persist etcd_version symlinks after reboots
+            # TODO(jgauld): multi-node abort requires push config to all controllers.
+            try:
+                hieradata_file_path = os.path.join(
+                    tsc.PUPPET_PATH, 'hieradata', 'static.yaml')
+                configs_to_be_updated = {
+                    'platform::etcd::params::etcd_version': back_to_etcd_version
+                }
+                self._update_hieradata_file(hieradata_file_path, configs_to_be_updated)
+            except Exception as ex:
+                LOG.warning("Failed to update etcd version in hieradata after abort "
+                            "Error was: [%s]" % (ex))
 
             kube_upgrade_obj.state = kubernetes.KUBE_UPGRADE_ABORTED
             LOG.info("Kubernetes upgrade abort operation from version %s to %s successful."

@@ -2699,10 +2699,12 @@ class AgentManager(service.PeriodicService):
                 operator = kube_host.KubeControllerOperator(
                         context, self._ihost_uuid, self._hostname)
                 abort, recovery = operator.upgrade_abort(current_kube_version, back_to_kube_version)
+                back_to_etcd_version = operator._etcd_operator.get_etcd_version_from_symlink()
             except Exception as ex:
                 LOG.exception(ex)
                 abort = False
                 recovery = False
+                back_to_etcd_version = None
             if abort:
                 LOG.info("Kubernetes upgrade abort successful on this host.")
             else:
@@ -2714,7 +2716,8 @@ class AgentManager(service.PeriodicService):
 
             rpcapi = conductor_rpcapi.ConductorAPI(topic=conductor_rpcapi.MANAGER_TOPIC)
             rpcapi.report_kube_upgrade_abort_result(
-                context, current_kube_version, back_to_kube_version, abort, recovery)
+                context, current_kube_version, back_to_kube_version, back_to_etcd_version,
+                abort, recovery)
             self._cleanup_kube_upgrade_method_details()
 
     def kube_upgrade_control_plane(self, context, host_uuid,
