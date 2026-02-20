@@ -2670,6 +2670,9 @@ RESTAPI_CERT_SECRET_NAME = "system-restapi-gui-certificate"
 REGISTRY_CERT_SECRET_NAME = "system-registry-local-certificate"
 OPENLDAP_CERT_SECRET_NAME = "system-openldap-local-certificate"
 
+# The k8s secret for OIDC certificate
+OIDC_CERT_SECRET_NAME = "oidc-auth-apps-certificate"
+
 # The k8s secret that holds openldap CA certificate
 OPENLDAP_CA_CERT_SECRET_NAME = "system-local-ca"
 
