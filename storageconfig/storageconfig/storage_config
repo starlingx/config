@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Copyright (c) 2013-2019 Wind River Systems, Inc.
+# Copyright (c) 2013-2019, 2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -31,6 +31,8 @@ FIRST_BOOT="/etc/platform/.first_boot"
 IPSEC_RETRIES=3
 IPSEC_DELAY=5
 IPSEC_SERVER_PORT=64764
+SYSINV_CONF_DIR="/etc/sysinv"
+SYSINV_CONF_FILE="${SYSINV_CONF_DIR}/sysinv.conf"
 
 fatal_error()
 {
@@ -64,6 +66,26 @@ EOF
 
     echo "Pausing for 5 seconds..."
     sleep 5
+}
+
+check_mgmt_connectivity()
+{
+    local TIMEOUT=70
+    local INTERVAL=1
+    local mgmt_host=$1
+    local mgmt_port=$2
+
+    logger -t $0 -p info "Checking IPsec protected mgmt network connectivity to $mgmt_host:$mgmt_port for up to $TIMEOUT seconds."
+
+    while [ "$SECONDS" -le "$TIMEOUT" ]; do
+        nc -zv $mgmt_host $mgmt_port > /dev/null 2>&1
+        if [ $? -eq 0 ]; then
+            return 0
+        fi
+        logger -t $0 -p info "Retry in $INTERVAL second ..."
+        sleep $INTERVAL
+    done
+    return 1
 }
 
 get_ip()
@@ -243,15 +265,35 @@ start()
          fatal_error "Unable to contact active controller (controller-platform-nfs) from management address"
     fi
 
+    # verify IPsec-protected mgmt network is ready before NFS mount
+    check_mgmt_connectivity controller-platform-nfs 2049
+    if [ $? -ne 0 ]
+    then
+        fatal_error "Unable to contact active controller over IPsec protected mgmt network"
+    fi
+
     # Write the hostname to file so it's persistent
     echo $HOST > /etc/hostname
 
     # Mount the platform filesystem
     mkdir -p $PLATFORM_DIR
-    nfs-mount controller-platform-nfs:$PLATFORM_DIR $PLATFORM_DIR
+    # nfs-mount controller-platform-nfs:$PLATFORM_DIR $PLATFORM_DIR
+    mount_retries=5
+    for retry in $(seq 1 ${mount_retries}); do
+        nfs-mount controller-platform-nfs:$PLATFORM_DIR $PLATFORM_DIR && break
+        logger -t $0 -p warn "NFS mount failed (${retry}/${mount_retries}), retrying in 1s..."
+        sleep 1
+    done
+
     if [ $? -ne 0 ]
     then
         fatal_error "Unable to mount $PLATFORM_DIR"
+    fi
+
+    # restart sysinv-agent to obtain sysinv.conf now that NFS is available
+    if [ ! -f ${SYSINV_CONF_FILE} ]; then
+        logger -t $0 -p info "Restarting sysinv-agent to obtain sysinv.conf"
+        /etc/init.d/sysinv-agent restart
     fi
 
     # Check whether our installed load matches the active controller
