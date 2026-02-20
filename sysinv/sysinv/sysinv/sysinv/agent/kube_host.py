@@ -220,16 +220,16 @@ class EtcdOperator(object):
         except Exception as ex:
             raise exception.SysinvException("Failed to recover etcd. Error: [%s]" % (ex))
 
-    def restore_etcd_snapshot(self, abort_attempt):
+    def restore_etcd_snapshot(self):
         """Restore etcd snapshot
 
         This method restores the snapshot of the etcd database running before kubernetes upgrade
         was started. The snapshot was taken during kubernetes networking upgrade stage.
         """
         try:
-            if os.path.exists(self._etcd_db_path) and abort_attempt > 1:
-                LOG.info("Etcd already restored in the previous attempt. Continuing...")
-                return
+            if os.path.exists(self._etcd_db_path):
+                shutil.rmtree(self._etcd_db_path)
+                LOG.info("Previous etcd database removed from %s" % (self._etcd_db_path))
             etcd.restore_etcd_snapshot(etcd.ETCD_SNAPSHOT_FULL_FILE_PATH, self._etcd_db_path)
             LOG.info("Etcd snapshot restored successfully to %s" % (self._etcd_db_path))
         except Exception as ex:
@@ -595,12 +595,14 @@ class KubeControllerOperator(KubeHostOperator):
 
         # etcd doesn't have downgrade mechanism, so we can only revert to the
         # to the snapshot version. If no upgrade actually occurred, we can
-        # can attempt to restart it.
+        # attempt to restore the binary and restart it before drain-node.
         service = kubernetes.KUBE_ETCD_SYSTEMD_SERVICE_NAME
         try:
             restore_etcd_version = self._etcd_operator.retrieve_etcd_version()
-            self._etcd_operator.upgrade_etcd_binary(restore_etcd_version, force=True)
-            active = utils.systemctl_wait_is_active_service(service, timeout=30)
+            active = utils.systemctl_is_active_service(service)
+            if not active:
+                self._etcd_operator.upgrade_etcd_binary(restore_etcd_version, force=True)
+                active = utils.systemctl_wait_is_active_service(service, timeout=15)
             LOG.info("Service %s is active: %s" % (service, active))
         except Exception as ex:
             LOG.warning("Failed to restore the etcd binary. If the abort operation fails, "
@@ -642,7 +644,8 @@ class KubeControllerOperator(KubeHostOperator):
 
                 restart_services_for_recovery = False
 
-                self._etcd_operator.restore_etcd_snapshot(self._abort_attempt)
+                self._etcd_operator.restore_etcd_snapshot()
+                self._etcd_operator.update_etcd_symlink(restore_etcd_version)
 
                 self.restore_backed_up_static_pod_manifests()
 
