@@ -1643,6 +1643,9 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                          self.make_msg('app_has_system_plugins',
                                        app_name=app_name))
 
+    def get_active_plugins(self, context):
+        return self.call(context, self.make_msg('get_active_plugins',))
+
     def get_helm_application_namespaces(self, context, app_name):
         """Get supported application namespaces.
 
