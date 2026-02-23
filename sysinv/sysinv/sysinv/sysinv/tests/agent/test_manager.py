@@ -1632,3 +1632,45 @@ class TestHostKubernetesOperations(base.TestCase):
 
         mock_pin_unpin_control_plane_images.assert_called_once_with(
             pin_images_version=FAKE_KUBE_VERSION)
+
+
+class TestCpuFrequencyConfigurable(base.TestCase):
+    """Tests for CPU frequency configuration detection."""
+
+    def setUp(self):
+        super(TestCpuFrequencyConfigurable, self).setUp()
+        self.agent_manager = AgentManager('test-host', 'test-topic')
+
+    def tearDown(self):
+        super(TestCpuFrequencyConfigurable, self).tearDown()
+
+    @mock.patch('os.path.exists')
+    def test_is_max_cpu_mhz_configurable_supported(self, mock_exists):
+        """Test CPU frequency scaling is detected as configurable when sysfs path exists."""
+        mock_exists.return_value = True
+
+        result = self.agent_manager._is_max_cpu_mhz_configurable()
+
+        self.assertEqual(result, constants.CONFIGURABLE)
+        mock_exists.assert_called_once_with(
+            "/sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq")
+
+    @mock.patch('os.path.exists')
+    def test_is_max_cpu_mhz_configurable_not_supported(self, mock_exists):
+        """Test CPU frequency scaling is detected as not configurable when sysfs path missing."""
+        mock_exists.return_value = False
+
+        result = self.agent_manager._is_max_cpu_mhz_configurable()
+
+        self.assertEqual(result, constants.NOT_CONFIGURABLE)
+        mock_exists.assert_called_once_with(
+            "/sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq")
+
+    @mock.patch('os.path.exists')
+    def test_is_max_cpu_mhz_configurable_exception(self, mock_exists):
+        """Test CPU frequency scaling returns not configurable on exception."""
+        mock_exists.side_effect = Exception("Test exception")
+
+        result = self.agent_manager._is_max_cpu_mhz_configurable()
+
+        self.assertEqual(result, constants.NOT_CONFIGURABLE)

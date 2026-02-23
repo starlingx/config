@@ -396,14 +396,25 @@ class AgentManager(service.PeriodicService):
                           (info['name'], cpulist))
 
     def _is_max_cpu_mhz_configurable(self):
-        fail_result = "System does not support"
+        """Check if CPU frequency scaling is supported.
 
-        output = utils.execute('/usr/bin/cpupower', 'info', run_as_root=True)
+        Checks for the presence of cpufreq sysfs interface which is a
+        reliable indicator that frequency scaling is supported for both
+        Intel and AMD CPUs.
 
-        if isinstance(output, tuple):
-            cpu_info = output[0] or ''
-            if not cpu_info.startswith(fail_result):
+        The scaling_max_freq file is the actual interface used to configure
+        the maximum CPU frequency, so its presence confirms the capability.
+        """
+        try:
+            # Check for the sysfs interface used to set max frequency
+            # This works for both Intel (intel_pstate, intel_cpufreq, acpi-cpufreq)
+            # and AMD (amd-pstate, amd-pstate-epp, acpi-cpufreq) drivers
+            scaling_max_freq_path = "/sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq"
+            if os.path.exists(scaling_max_freq_path):
                 return constants.CONFIGURABLE
+        except Exception as e:
+            LOG.warning("Error checking CPU frequency scaling support: %s" % e)
+
         return constants.NOT_CONFIGURABLE
 
     def _get_min_cpu_mhz_allowed(self):
