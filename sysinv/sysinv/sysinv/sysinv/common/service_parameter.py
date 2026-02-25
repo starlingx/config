@@ -1182,7 +1182,9 @@ PLATFORM_CONFIG_PARAMETER_RESOURCE = {
     constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_POOL_SIZE:
         'platform::sysinv::custom::params::db_pool_size',
     constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_POOL_TIMEOUT:
-        'platform::sysinv::custom::params::db_idle_timeout',
+        ('platform::sysinv::custom::params::db_idle_timeout'
+         if cutils.get_debian_release_codename() == 'bullseye'
+         else 'platform::sysinv::custom::params::db_connection_recycle_time'),
     constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_OVERFLOW_SIZE:
         'platform::sysinv::custom::params::db_over_size',
     constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_HOST_UNLOCK_BLOCKING_PERIOD:
@@ -1509,7 +1511,9 @@ PLATFORM_FM_PARAMETER_RESOURCE = {
     constants.SERVICE_PARAM_NAME_FM_DATABASE_MAX_POOL_SIZE:
         'platform::fm::custom::params::db_pool_size',
     constants.SERVICE_PARAM_NAME_FM_DATABASE_MAX_POOL_TIMEOUT:
-        'platform::fm::custom::params::db_idle_timeout',
+        ('platform::fm::custom::params::db_idle_timeout'
+         if cutils.get_debian_release_codename() == 'bullseye'
+         else 'platform::fm::custom::params::db_connection_recycle_time'),
     constants.SERVICE_PARAM_NAME_FM_DATABASE_MAX_OVERFLOW_SIZE:
         'platform::fm::custom::params::db_over_size',
 }
