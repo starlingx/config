@@ -345,12 +345,12 @@ class PlatformFirewallPuppet(base.BasePuppet):
             http_service_port = self._get_http_service_port()
             if (http_service_port):
                 if (http_service_port not in tcp_ports):
-                    tcp_ports.remove(constants.PLATFORM_FIREWALL_HTTP_PORT)
+                    tcp_ports.remove(constants.PLATFORM_FIREWALL_HTTPS_PORT)
                     tcp_ports.append(http_service_port)
             else:
-                tcp_ports.remove(constants.PLATFORM_FIREWALL_HTTP_PORT)
+                tcp_ports.remove(constants.PLATFORM_FIREWALL_HTTPS_PORT)
         else:
-            tcp_ports.remove(constants.PLATFORM_FIREWALL_HTTP_PORT)
+            tcp_ports.remove(constants.PLATFORM_FIREWALL_HTTPS_PORT)
 
         if (dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER):
             tcp_ports.extend(self._get_oam_dc_tcp_ports())

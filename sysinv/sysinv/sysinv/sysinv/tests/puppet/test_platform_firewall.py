@@ -351,7 +351,7 @@ class PlatformFirewallTestCaseMixin(base.PuppetTestCaseMixin):
                 udp_ports = set(filtered_rules['ingress'][1]['destination']['ports'])
                 for port in firewall.OAM_COMMON["tcp"]:
                     # Not necessary to validate these ports as this is done separately
-                    if (port == constants.PLATFORM_FIREWALL_HTTP_PORT or
+                    if (port == constants.PLATFORM_FIREWALL_HTTPS_PORT or
                             port == constants.PLATFORM_CEPH_PARAMS_RGW_PORT):
                         continue
                     self.assertIn(port, tcp_ports)
