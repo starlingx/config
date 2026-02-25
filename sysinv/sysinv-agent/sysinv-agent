@@ -1,6 +1,6 @@
 #! /bin/sh
 #
-# Copyright (c) 2013-2021 Wind River Systems, Inc.
+# Copyright (c) 2013-2021, 2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -57,7 +57,7 @@ mount_and_copy_config_file()
 {
     echo "Mount /opt/platform"
     logger "$0: Info: nfs-mount controller:/opt/platform/sysinv/${SW_VERSION} /mnt/sysinv"
-    mkdir /mnt/sysinv
+    mkdir -p /mnt/sysinv
     timeout 10s nfs-mount controller:/opt/platform/sysinv/${SW_VERSION} /mnt/sysinv &> /dev/null
     RETVAL=$?
     # 0 = true
@@ -148,7 +148,7 @@ case "$1" in
                 if [ ${CONF_COPIED} -eq 0 ]
                 then
                     CONF_COPY_COUNT=0
-                    while [ $CONF_COPY_COUNT -lt 3 ]; do
+                    while [ $CONF_COPY_COUNT -lt 6 ]; do
                         if mount_and_copy_config_file ;
                         then
                             logger "$0: Info: Mount and copy config file PASSED. Attempt: ${CONF_COPY_COUNT}"
