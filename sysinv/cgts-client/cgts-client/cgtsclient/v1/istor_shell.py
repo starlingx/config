@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2018,2025 Wind River Systems, Inc.
+# Copyright (c) 2013-2018,2025,2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -24,7 +24,15 @@ def _print_istor_show(istor):
               'journal_size_gib', 'journal_path', 'journal_node',
               'uuid', 'ihost_uuid', 'idisk_uuid', 'tier_uuid', 'tier_name',
               'created_at', 'updated_at']
-    data = [(f, getattr(istor, f, '')) for f in fields]
+
+    # convert journal_size to gib before displaying it
+    data = []
+    for f in fields:
+        if f == 'journal_size_mib' and isinstance(getattr(istor, f, ''), int):
+            data.append((f, getattr(istor, f, '') // 1024))
+        else:
+            data.append((f, getattr(istor, f, '')))
+
     utils.print_tuple_list(data, labels)
 
 
@@ -53,10 +61,6 @@ def do_host_stor_show(cc, args):
         ihost_utils._find_ihost(cc, args.hostnameorid)
 
     i = cc.istor.get(args.storuuid)
-
-    # convert journal size from mib to gib when display
-    if i.journal_size_mib:
-        i.journal_size_mib = i.journal_size_mib // 1024
 
     _print_istor_show(i)
 
@@ -175,10 +179,10 @@ def do_host_stor_add(cc, args):
            default=None,
            help="Location of stor's journal")
 @utils.arg('--journal-size',
-           metavar='<size of the journal (MiB)>',
+           metavar='<size of the journal (GiB)>',
            nargs='?',
            default=None,
-           help="Size of stor's journal, in MiB")
+           help="Size of stor's journal, in GiB")
 def do_host_stor_update(cc, args):
     """Modify journal attributes for OSD."""
 
