@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2017-2025 Wind River Systems, Inc.
+# Copyright (c) 2017-2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -1099,16 +1099,72 @@ def get_ethernet_network_config(context, iface, config):
     return config
 
 
-def get_route_config(route, ifname):
+def _get_interface_local_address(context, route):
+    """Get local address for platform interface route source
     """
-    Builds a basic route config string with all of the fields required to
+    try:
+        ifname = route.get('ifname')
+
+        if not ifname or ifname not in context['interfaces']:
+            return None
+
+        iface = context['interfaces'][ifname]
+        if not is_platform_network_type(iface):
+            return None
+
+        gateway = route.get('gateway')
+        if not gateway:
+            return None
+
+        route_interface_id = route.get('interface_id')
+        if not route_interface_id:
+            return None
+
+        gateway_ip = IPAddress(gateway)
+        addresses = context['addresses'].get(ifname, [])
+
+        for addr in addresses:
+            if addr.get('interface_id') != route_interface_id:
+                continue
+
+            addr_ip = IPAddress(addr['address'])
+            if addr_ip.version != gateway_ip.version:
+                continue
+
+            addr_network = IPNetwork(addr['address'] + '/' + str(addr['prefix']))
+            if gateway_ip in addr_network:
+                LOG.info(f"Found source address {addr_ip} for route to {gateway} on {ifname}")
+                return str(addr_ip)
+
+        LOG.debug(f"No matching local address found for route on {ifname}")
+    except Exception as e:
+        LOG.error(f"Error getting local address for route on {ifname}: {e}")
+    return None
+
+
+def get_route_config(route, ifname, context=None):
+    """Builds a basic route config string with all of the fields required to
     be used by the networking.service
     """
-    options = 'metric ' + str(route['metric'])
+    options = ""
     netmask = IPNetwork(route['network'] + "/" + str(route['prefix'])).netmask
+
     if route['network'] == '0.0.0.0' or route['network'] == '::':
         route['network'] = 'default'
-    config = f"{route['network']} {netmask} {route['gateway']} {ifname} {options}\n"
+
+    src_addr = None
+    gateway = route.get('gateway')
+    if (context and gateway and
+            IPAddress(gateway).version == constants.IPV6_FAMILY):
+        src_addr = _get_interface_local_address(context, route)
+
+    if src_addr:
+        options = f"src {src_addr} "
+
+    options += 'metric ' + str(route['metric'])
+
+    config = (f"{route['network']} {netmask} {route['gateway']} "
+              f"{ifname} {options}\n")
     return config
 
 
@@ -1484,7 +1540,7 @@ def generate_network_config(context, hiera_config, iface):
         route_config = "\n"
     route_list = get_interface_routes(context, iface)
     for route in route_list:
-        route_data = get_route_config(route, os_ifname)
+        route_data = get_route_config(route, os_ifname, context)
         route_config = route_config + route_data
     hiera_config[ROUTE_CONFIG_RESOURCE] = f"{route_config}"
 
@@ -1607,21 +1663,6 @@ def process_interface_labels(config, context):
     #       - DHCPv4 can use a labeled interface (pxeboot for now is only IPv4),
     #         that was not the case when using CentOS
     #   - if the family is inet6
-    #       - interface needs to contain the static address that will be used as
-    #         source address (non-deprecated)
-    #           - in inet6 labeled interfaces mark the static address as deprecated
-    #           - a post-up operation will be added to remove this flag in one
-    #             of the interfaces
-    #               - the selected label interface will follow the precedence
-    #                   - oam
-    #                   - admin
-    #                   - mgmt
-    #                   - cluster-host
-    #                   - pxeboot
-    #                   - storage
-    #               - if a VLAN is shared by mgmt and another network,
-    #                 the mgmt interface will not have the address deprecated,
-    #                 except when the other network is admin (admin takes precedence over mgmt)
     #       - DHCPv6 cannot use label (pxeboot for now is only IPv4, so we don't
     #         have a use case for now for platform interfaces), move the label
     #         to interface
@@ -1635,18 +1676,6 @@ def process_interface_labels(config, context):
             label_map[base_interface].update({
                 net_cfg_key: config[NETWORK_CONFIG_RESOURCE][net_cfg_key]})
 
-    # get the list of unassigned interfaces (not connected to a platform network)
-    # if the interface have static addresses configured, add to the list
-    unassigned_interfaces = list()
-    for ifname in context['interface_networks']:
-        intf_net = context['interface_networks'].get(ifname)
-        for net_id in intf_net:
-            if net_id is None:
-                network = context['interface_networks'][ifname][None].get('network')
-                addresses = context['interface_networks'][ifname][None].get('addresses')
-                if (not network) and addresses:
-                    unassigned_interfaces.append(ifname)
-
     for intf in label_map.keys():
         if intf == 'lo':
             # no need to change the loopback
@@ -1654,32 +1683,6 @@ def process_interface_labels(config, context):
 
         if not label_map[intf]:
             continue
-
-        # process main ipv6 address
-        for label in label_map[intf].keys():
-            intf_data = label_map[intf][label]
-            if (intf_data['family'] == 'inet6') and (intf_data['method'] == 'static'):
-                name_net = intf_data['options']['stx-description'].split(',')
-                ifname = (name_net[0].split(":"))[1]
-                net = (name_net[1].split(":"))[1]
-                networktypelist = context['interfaces'][ifname].networktypelist
-                undeprecate = "ip -6 addr replace" + \
-                                f" {intf_data['ipaddress']}/{intf_data['netmask']}" + \
-                                f" dev {intf} preferred_lft forever"
-
-                preferred_net = _get_preferred_network(networktypelist)
-
-                if preferred_net and net == preferred_net:
-                    fill_interface_config_option_operation(
-                        intf_data['options'], IFACE_POST_UP_OP, undeprecate)
-                    break
-                else:
-                    if ifname in unassigned_interfaces:
-                        # static IPv6 addresses configured in unassigned interfaces can be
-                        # undeprecated
-                        fill_interface_config_option_operation(
-                            intf_data['options'], IFACE_POST_UP_OP, undeprecate)
-                    continue
 
         if len(label_map[intf]) == 1:
             # process DHCPv6, needs to be in the base interface, limitation in ifupdown to handle
@@ -1691,24 +1694,6 @@ def process_interface_labels(config, context):
                     config[NETWORK_CONFIG_RESOURCE][intf] = config[NETWORK_CONFIG_RESOURCE][label]
                     del config[NETWORK_CONFIG_RESOURCE][label]
                     break
-
-
-def _get_preferred_network(networktypelist):
-    """Return the preferred network type for this label/interface"""
-    precedence = [
-        constants.NETWORK_TYPE_OAM,
-        constants.NETWORK_TYPE_ADMIN,
-        constants.NETWORK_TYPE_MGMT,
-        constants.NETWORK_TYPE_CLUSTER_HOST,
-        constants.NETWORK_TYPE_PXEBOOT,
-        constants.NETWORK_TYPE_STORAGE,
-    ]
-
-    for net_type in precedence:
-        if net_type in networktypelist:
-            return net_type
-
-    return None
 
 
 def merge_interface_operations(config, intf, label):
