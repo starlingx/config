@@ -89,23 +89,40 @@ def n3000_img_accessible():
     return None
 
 
-def reset_device_n3000(pci_addr, opae_img):
-    # Reset the N3000 FPGA at the specified PCI address.
+def cleanup_resource(resource_type, match_string):
+    """Cleanup containerd resource"""
     try:
-        # Build up the command to perform the reset.
-        # Note the hack to work around OPAE tool locale issues
-        cmd = ("ctr -n=k8s.io run --rm --privileged " + opae_img +
-               " v1 rsu bmcimg " + pci_addr)
-        # Issue the command to perform the firmware update.
-        subprocess.check_output(shlex.split(cmd),  # pylint: disable=not-callable
-                                stderr=subprocess.STDOUT)
-    except subprocess.CalledProcessError as exc:
-        msg = ("Failed to reset device %s, "
-               "return code is %d, command output: %s." %
-               (pci_addr, exc.returncode,
-                exc.output.decode('utf-8')))
+        cmd = f"ctr -n=k8s.io {resource_type} list | grep {match_string}"
+        output = subprocess.check_output(cmd,  # pylint: disable=not-callable
+                                         shell=True,
+                                         stderr=subprocess.STDOUT,
+                                         universal_newlines=True)
+        if output:
+            cmd = ["ctr", "-n=k8s.io", resource_type, "remove", "v1"]
+            subprocess.check_output(cmd,  # pylint: disable=not-callable
+                                    stderr=subprocess.STDOUT,
+                                    universal_newlines=True)
+            LOG.info(f"Finished removing {resource_type}")
+    except (subprocess.CalledProcessError, subprocess.SubprocessError):
+        pass  # Resource does not exist or cleanup failed
+
+
+def reset_device_n3000(pci_addr, opae_img):
+    """Reset the N3000 FPGA at the specified PCI address."""
+    cleanup_resource("snapshot", "v1")
+    cleanup_resource("container", "n3000")
+
+    cmd = ["ctr", "-n=k8s.io", "run", "--rm", "--privileged",
+           opae_img, "v1", "rsu", "bmcimg", pci_addr]
+    try:
+        output = subprocess.check_output(cmd,  # pylint: disable=not-callable
+                                         stderr=subprocess.STDOUT,
+                                         universal_newlines=True)
+        LOG.info(f"Device {pci_addr} reset successfully, output: {output}")
+    except (subprocess.CalledProcessError, subprocess.SubprocessError) as exc:
+        msg = (f"Failed to reset device {pci_addr}, return code: {exc.returncode}, "
+               f"output: {exc.output}. Check intel-max10 kernel logs.")
         LOG.error(msg)
-        LOG.error("Check for intel-max10 kernel logs.")
         raise exception.SysinvException(msg)
 
 
