@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2024 Wind River Systems, Inc.
+# Copyright (c) 2024,2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -39,6 +39,8 @@ def barbican_bootstrap_config(puppet_operator: puppet.PuppetOperator):
     sql_connection = barbican_plugin._format_database_connection(
         barbican_plugin.SERVICE_NAME
     )
+    database_connection = sql_connection.replace('postgresql://', 'postgresql+psycopg2://')
+
     transport_url = keystone_listener.get_transport_url()
     bind_host = utils.format_url_address(
         barbican_plugin._get_address_by_name(
@@ -49,17 +51,22 @@ def barbican_bootstrap_config(puppet_operator: puppet.PuppetOperator):
         barbican_plugin.SERVICE_NAME
     )
     auth_url = barbican_plugin._keystone_identity_uri(host)
-    database_connection = sql_connection.replace('postgresql://', 'postgresql+psycopg2://')
     service_port = barbican_plugin.SERVICE_PORT
     gunicorn_config_bind = f'{bind_host}:{service_port}'
 
     values_to_update = [
-        {'section': 'DEFAULT', 'key': 'sql_connection', 'value': sql_connection},
         {'section': 'DEFAULT', 'key': 'transport_url', 'value': transport_url},
-        {'section': 'DEFAULT', 'key': 'bind_host', 'value': bind_host},
         {'section': 'keystone_authtoken', 'key': 'region_name', 'value': region_name},
         {'section': 'keystone_authtoken', 'key': 'auth_url', 'value': auth_url},
         {'section': 'database', 'key': 'connection', 'value': database_connection},
     ]
+
+    if utils.get_debian_release_codename() == 'bullseye':
+        bullseye_only_values = [
+            {'section': 'DEFAULT', 'key': 'sql_connection', 'value': sql_connection},
+            {'section': 'DEFAULT', 'key': 'bind_host', 'value': bind_host},
+        ]
+        values_to_update.extend(bullseye_only_values)
+
     utils.update_config_file(BARBICAN_CONFIG_FILEPATH, values_to_update)
     update_gunicorn_bind(gunicorn_config_bind)
