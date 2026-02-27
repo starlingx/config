@@ -17,7 +17,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2025 Wind River Systems, Inc.
+# Copyright (c) 2013-2026 Wind River Systems, Inc.
 #
 
 
@@ -490,7 +490,10 @@ class AgentManager(service.PeriodicService):
 
         config_applied = configparser.RawConfigParser()
         config_applied.optionxform = str
-        config_applied.readfp(ini_fp)
+        if utils.is_debian_bullseye():
+            config_applied.readfp(ini_fp)
+        else:
+            config_applied.read_file(ini_fp)
 
         if config_applied.has_option('DEFAULT', 'CONFIG_UUID'):
             config_uuid = config_applied.get('DEFAULT', 'CONFIG_UUID')
@@ -512,7 +515,10 @@ class AgentManager(service.PeriodicService):
 
         config_reboot = configparser.RawConfigParser()
         config_reboot.optionxform = str
-        config_reboot.readfp(ini_fp)
+        if utils.is_debian_bullseye():
+            config_reboot.readfp(ini_fp)
+        else:
+            config_reboot.read_file(ini_fp)
 
         if config_reboot.has_option('DEFAULT', 'CONFIG_UUID'):
             config_uuid = config_reboot.get('DEFAULT', 'CONFIG_UUID')
