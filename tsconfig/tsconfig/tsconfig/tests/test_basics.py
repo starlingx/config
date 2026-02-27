@@ -11,6 +11,17 @@ import testtools
 
 class TsConfigTestCase(testtools.TestCase):
 
+    def setUp(self):
+        super(TsConfigTestCase, self).setUp()
+        # Clear the lru_cache on get_debian_codename before removing the module,
+        # so it re-reads /etc/os-release on next import
+        mod = sys.modules.get('tsconfig.tsconfig')
+        if mod and hasattr(mod, 'get_debian_codename'):
+            mod.get_debian_codename.cache_clear()
+        # Remove cached tsconfig modules so _load() re-runs with fresh mocks
+        sys.modules.pop('tsconfig.tsconfig', None)
+        sys.modules.pop('tsconfig', None)
+
     mock_os_release = u'VERSION_CODENAME=bullseye\n'
 
     mock_19_09_build = u"""
@@ -112,11 +123,12 @@ vswitch_type=ovs-dpdk
                                       mock_isfile,
                                       mock_open,
                                       mock_logging_exception):
-        # two files are opened by tsconfig.
-        # 1st: /etc/build.info
-        # 2nd: /etc/platform/platform.conf
-        mock_open.side_effect = [io.StringIO(self.mock_os_release),
-                                 io.StringIO(self.mock_malformed_build)]
+        # Files opened by _load():
+        # 1st: /etc/build.info (malformed)
+        # 2nd: /etc/os-release (via is_debian_bullseye -> get_debian_codename)
+        # SW_VERSION parse fails, logs exception, returns early
+        mock_open.side_effect = [io.StringIO(self.mock_malformed_build),
+                                 io.StringIO(self.mock_os_release)]
         from tsconfig import tsconfig  # pylint: disable=unused-variable
         mock_logging_exception.assert_called_once()
 
@@ -128,12 +140,12 @@ vswitch_type=ovs-dpdk
                                             mock_isfile,
                                             mock_open,
                                             mock_logging_exception):
-        # three files are opened by tsconfig.
-        # 1st: /etc/os-release (get_debian_codename)
-        # 2nd: /etc/build.info
+        # Files opened by _load():
+        # 1st: /etc/build.info
+        # 2nd: /etc/os-release (via is_debian_bullseye -> get_debian_codename)
         # 3rd: /etc/platform/platform.conf (missing)
-        mock_open.side_effect = [io.StringIO(self.mock_os_release),
-                                 io.StringIO(self.mock_19_09_build),
+        mock_open.side_effect = [io.StringIO(self.mock_19_09_build),
+                                 io.StringIO(self.mock_os_release),
                                  FileNotFoundError]
         from tsconfig import tsconfig  # pylint: disable=unused-variable
         mock_logging_exception.assert_called_once()
@@ -146,11 +158,12 @@ vswitch_type=ovs-dpdk
                             mock_isfile,
                             mock_open,
                             mock_logging_exception):
-        # two files are opened by tsconfig.
+        # Files opened by _load():
         # 1st: /etc/build.info
-        # 2nd: /etc/platform/platform.conf
-        mock_open.side_effect = [io.StringIO(self.mock_os_release),
-                                 io.StringIO(self.mock_19_09_build),
+        # 2nd: /etc/os-release (via is_debian_bullseye -> get_debian_codename)
+        # 3rd: /etc/platform/platform.conf (empty)
+        mock_open.side_effect = [io.StringIO(self.mock_19_09_build),
+                                 io.StringIO(self.mock_os_release),
                                  io.StringIO(self.mock_platform_conf_empty)]
         from tsconfig import tsconfig  # pylint: disable=unused-variable
         mock_logging_exception.assert_called_once()
@@ -159,11 +172,12 @@ vswitch_type=ovs-dpdk
     @mock.patch('six.moves.builtins.open')
     @mock.patch('os.path.isfile', return_value=True)
     def test_tsconfig_minimal(self, mock_isfile, mock_open):
-        # two files are opened by tsconfig.
+        # Files opened by _load():
         # 1st: /etc/build.info
-        # 2nd: /etc/platform/platform.conf
-        mock_open.side_effect = [io.StringIO(self.mock_os_release),
-                                 io.StringIO(self.mock_19_09_build),
+        # 2nd: /etc/os-release (via is_debian_bullseye -> get_debian_codename)
+        # 3rd: /etc/platform/platform.conf
+        mock_open.side_effect = [io.StringIO(self.mock_19_09_build),
+                                 io.StringIO(self.mock_os_release),
                                  io.StringIO(self.mock_platform_conf_minimal)]
         from tsconfig import tsconfig
         val = tsconfig.nodetype
@@ -174,11 +188,12 @@ vswitch_type=ovs-dpdk
     @mock.patch('six.moves.builtins.open')
     @mock.patch('os.path.isfile', return_value=True)
     def test_tsconfig(self, mock_isfile, mock_open):
-        # two files are opened by tsconfig.
+        # Files opened by _load():
         # 1st: /etc/build.info
-        # 2nd: /etc/platform/platform.conf
-        mock_open.side_effect = [io.StringIO(self.mock_os_release),
-                                 io.StringIO(self.mock_19_09_build),
+        # 2nd: /etc/os-release (via is_debian_bullseye -> get_debian_codename)
+        # 3rd: /etc/platform/platform.conf
+        mock_open.side_effect = [io.StringIO(self.mock_19_09_build),
+                                 io.StringIO(self.mock_os_release),
                                  io.StringIO(self.mock_platform_conf)]
         from tsconfig import tsconfig
         ver = tsconfig.SW_VERSION
@@ -187,12 +202,15 @@ vswitch_type=ovs-dpdk
     @mock.patch('six.moves.builtins.open')
     @mock.patch('os.path.isfile', return_value=True)
     def test_tsconfig_reload(self, mock_isfile, mock_open):
-        # two files are opened by tsconfig.
+        # Files opened by _load() (1st call):
         # 1st: /etc/build.info
-        # 2nd: /etc/platform/platform.conf
-        # Next two files are loaded as part of reload
-        mock_open.side_effect = [io.StringIO(self.mock_os_release),
-                                 io.StringIO(self.mock_19_09_build),
+        # 2nd: /etc/os-release (via is_debian_bullseye -> get_debian_codename)
+        # 3rd: /etc/platform/platform.conf
+        # Files opened by _load() (2nd call, get_debian_codename cached):
+        # 4th: /etc/build.info
+        # 5th: /etc/platform/platform.conf (with regions)
+        mock_open.side_effect = [io.StringIO(self.mock_19_09_build),
+                                 io.StringIO(self.mock_os_release),
                                  io.StringIO(self.mock_platform_conf),
                                  io.StringIO(self.mock_19_09_build),
                                  io.StringIO(self.mock_platform_conf_regions)]
