@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2017-2025 Wind River Systems, Inc.
+# Copyright (c) 2017-2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -205,10 +205,23 @@ class NetworkingPuppet(base.BasePuppet):
                 controller1_address = None
             configdata[family_name].update({'controller1_address': controller1_address})
 
-            configdata[family_name].update({'controller_address_url':
-                                            self._format_url_address(controller_address)})
-            configdata[family_name].update({'subnet_network_url':
-                                            self._format_url_address(str(subnet.network))})
+            if utils.is_debian_bullseye():
+                configdata[family_name].update({'controller_address_url':
+                                                self._format_url_address(controller_address)})
+                configdata[family_name].update({'subnet_network_url':
+                                                self._format_url_address(str(subnet.network))})
+            else:
+                if controller_address is not None:
+                    configdata[family_name].update({'controller_address_url':
+                                                self._format_url_address(controller_address)})
+                else:
+                    configdata[family_name].update({'controller_address_url': None})
+
+                if subnet.network is not None:
+                    configdata[family_name].update({'subnet_network_url':
+                                                self._format_url_address(str(subnet.network))})
+                else:
+                    configdata[family_name].update({'subnet_network_url': None})
 
         # Convert the dash to underscore because puppet parameters cannot have
         # dashes
