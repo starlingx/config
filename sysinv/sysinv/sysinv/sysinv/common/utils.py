@@ -1565,6 +1565,29 @@ def is_centos():
     return get_os_type() == constants.OS_CENTOS
 
 
+@functools.lru_cache(maxsize=None)
+def get_debian_codename():
+    """
+    Returns the Debian codename, e.g., 'bullseye', 'trixie'.
+    """
+    try:
+        with open("/etc/os-release") as f:
+            for line in f:
+                if line.startswith("VERSION_CODENAME="):
+                    return line.strip().split("=")[1]
+    except FileNotFoundError:
+        return None
+    return None
+
+
+def is_debian_bullseye():
+    """Check if the current Debian release is bullseye.
+
+    NOTE: This will be deprecated once bullseye is no longer supported.
+    """
+    return get_debian_codename() == constants.OS_DEBIAN_BULLSEYE
+
+
 class ISO(object):
 
     def __init__(self, iso_path, mount_dir):
