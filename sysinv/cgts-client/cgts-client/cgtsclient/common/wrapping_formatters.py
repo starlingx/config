@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2016 Wind River Systems, Inc.
+# Copyright (c) 2016, 2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -27,7 +27,10 @@ import textwrap
 
 from cgtsclient.common.cli_no_wrap import is_nowrap_set
 from cgtsclient.common.cli_no_wrap import set_no_wrap
-from prettytable import _get_size
+try:
+    from prettytable.prettytable import _get_size  # trixie
+except ImportError:
+    from prettytable import _get_size  # bullseye
 from six.moves import range
 
 UUID_MIN_LENGTH = 36

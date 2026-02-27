@@ -15,11 +15,15 @@
 #    under the License.
 
 from __future__ import print_function
+import functools
+
 try:
     import tsconfig.tsconfig as tsc
     is_remote = False
 except Exception:
     is_remote = True
+
+from cgtsclient.common import constants  # noqa: E402
 
 import argparse
 from collections import OrderedDict
@@ -55,6 +59,27 @@ from six.moves import map
 from six.moves import zip
 
 CONFIRMATION_YES = "yes"
+
+
+@functools.lru_cache(maxsize=None)
+def get_debian_codename():
+    """Returns the Debian codename, e.g., 'bullseye', 'trixie'."""
+    try:
+        with open("/etc/os-release") as f:
+            for line in f:
+                if line.startswith("VERSION_CODENAME="):
+                    return line.strip().split("=")[1]
+    except FileNotFoundError:
+        return None
+    return None
+
+
+def is_debian_bullseye():
+    """Check if the current Debian release is bullseye.
+
+    NOTE: This will be deprecated once bullseye is no longer supported.
+    """
+    return get_debian_codename() == constants.OS_DEBIAN_BULLSEYE
 
 
 class HelpFormatter(argparse.HelpFormatter):
@@ -787,7 +812,10 @@ class WRPrettyTable(prettytable.PrettyTable):
             header_row_data.append(fieldname)
 
         # output actual header row data, word wrap when necessary
-        bits.append(self._stringify_row(header_row_data, options))
+        if is_debian_bullseye():
+            bits.append(self._stringify_row(header_row_data, options))
+        else:
+            bits.append(self._stringify_row(header_row_data, options, self._hrule))  # pylint: disable=too-many-function-args
 
         if options["border"] and options["hrules"] != NONE:
             bits.append("\n")
