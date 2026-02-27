@@ -13,6 +13,7 @@
 # under the License.
 
 from sysinv.common.fm import get_fm_region
+from sysinv.common import utils
 from sysinv.db import api as dbapi
 from oslo_context import context
 
@@ -41,17 +42,30 @@ class RequestContext(context.RequestContext):
         self.is_public_api = is_public_api
         self._session = None
 
-        super(RequestContext, self).__init__(auth_token=auth_token,
-                                             user=user, tenant=tenant,
-                                             is_admin=is_admin,
-                                             read_only=read_only,
-                                             show_deleted=show_deleted,
-                                             request_id=request_id,
-                                             project_name=project_name,
-                                             roles=roles,
-                                             domain_id=domain_id,
-                                             domain_name=domain_name,
-                                             system_scope=system_scope)
+        if utils.is_debian_bullseye():
+            super(RequestContext, self).__init__(auth_token=auth_token,
+                                                 user=user, tenant=tenant,
+                                                 is_admin=is_admin,
+                                                 read_only=read_only,
+                                                 show_deleted=show_deleted,
+                                                 request_id=request_id,
+                                                 project_name=project_name,
+                                                 roles=roles,
+                                                 domain_id=domain_id,
+                                                 domain_name=domain_name,
+                                                 system_scope=system_scope)
+        else:
+            super(RequestContext, self).__init__(auth_token=auth_token,
+                                                 user_id=user, project_id=tenant,
+                                                 is_admin=is_admin,
+                                                 read_only=read_only,
+                                                 show_deleted=show_deleted,
+                                                 request_id=request_id,
+                                                 project_name=project_name,
+                                                 roles=roles,
+                                                 domain_id=domain_id,
+                                                 domain_name=domain_name,
+                                                 system_scope=system_scope)
         if service_catalog:
             # Only include required parts of service_catalog
             self.service_catalog = [s for s in service_catalog
