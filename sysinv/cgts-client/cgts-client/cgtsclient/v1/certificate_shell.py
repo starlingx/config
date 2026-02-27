@@ -17,9 +17,9 @@ import re
 
 # matches all openssl supported key headers
 PRIVATE_KEY_PATTERN = \
-    "-----BEGIN (\w{2,9} )?PRIVATE KEY-----" \
-    "(.|\n)*" \
-    "-----END (\w{2,9} )?PRIVATE KEY-----"
+    r"-----BEGIN (\w{2,9} )?PRIVATE KEY-----" \
+    r"(.|\n)*" \
+    r"-----END (\w{2,9} )?PRIVATE KEY-----"
 
 
 def _print_certificate_show(certificate):
