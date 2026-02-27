@@ -1,4 +1,4 @@
-#    Copyright (c) 2023 Wind River Systems, Inc.
+#    Copyright (c) 2023, 2026 Wind River Systems, Inc.
 #
 #    SPDX-License-Identifier: Apache-2.0
 #
@@ -28,6 +28,7 @@ gettext.install('sysinv')
 from oslo_context import context
 from oslo_utils import timeutils
 from sysinv.common import exception
+from sysinv.common import utils as common_utils
 from sysinv.objects import base
 from sysinv.objects import utils
 from sysinv.tests import base as test_base
@@ -133,7 +134,10 @@ class TestUtils(test_base.TestCase):
         self.assertRaises(ValueError, utils.datetime_or_none, 'foo')
 
     def test_datetime_or_str_or_none(self):
-        dts = timeutils.isotime()
+        if common_utils.is_debian_bullseye():
+            dts = timeutils.isotime()
+        else:
+            dts = utils.isotime()
         dt = timeutils.parse_isotime(dts)
         self.assertEqual(utils.datetime_or_str_or_none(dt), dt)
         self.assertEqual(utils.datetime_or_str_or_none(None), None)
@@ -169,7 +173,10 @@ class TestUtils(test_base.TestCase):
 
         obj = Obj()
         obj.bar = timeutils.parse_isotime('1955-11-05T00:00:00Z')
-        self.assertEqual(obj.foo(), '1955-11-05T00:00:00Z')
+        if common_utils.is_debian_bullseye():
+            self.assertEqual(obj.foo(), '1955-11-05T00:00:00Z')
+        else:
+            self.assertEqual(obj.foo(), '1955-11-05T00:00:00.000000Z')
         obj.bar = None
         self.assertEqual(obj.foo(), None)
         obj.bar = 'foo'
@@ -177,8 +184,12 @@ class TestUtils(test_base.TestCase):
 
     def test_dt_deserializer(self):
         dt = timeutils.parse_isotime('1955-11-05T00:00:00Z')
-        self.assertEqual(utils.dt_deserializer(None, timeutils.isotime(dt)),
-                         dt)
+        if common_utils.is_debian_bullseye():
+            self.assertEqual(utils.dt_deserializer(None, timeutils.isotime(dt)),
+                             dt)
+        else:
+            self.assertEqual(utils.dt_deserializer(None, utils.isotime(at=dt)),
+                             dt)
         self.assertEqual(utils.dt_deserializer(None, None), None)
         self.assertRaises(ValueError, utils.dt_deserializer, None, 'foo')
 
@@ -398,26 +409,48 @@ class _TestObjectMixin(object):
         obj = MyObj()
         obj.created_at = dt
         obj.updated_at = dt
-        expected = {'sysinv_object.name': 'MyObj',
-                    'sysinv_object.namespace': 'sysinv',
-                    'sysinv_object.version': '1.5',
-                    'sysinv_object.changes':
-                        ['created_at', 'updated_at'],
-                    'sysinv_object.data':
-                        {'created_at': timeutils.isotime(dt),
-                         'updated_at': timeutils.isotime(dt),
+        if common_utils.is_debian_bullseye():
+            expected = {'sysinv_object.name': 'MyObj',
+                        'sysinv_object.namespace': 'sysinv',
+                        'sysinv_object.version': '1.5',
+                        'sysinv_object.changes':
+                            ['created_at', 'updated_at'],
+                        'sysinv_object.data':
+                            {'created_at': timeutils.isotime(dt),
+                             'updated_at': timeutils.isotime(dt),
+                             }
+                        }
+            expected2 = {'sysinv_object.name': 'MyObj',
+                         'sysinv_object.namespace': 'sysinv',
+                         'sysinv_object.version': '1.5',
+                         'sysinv_object.changes':
+                             ['updated_at', 'created_at'],
+                         'sysinv_object.data':
+                             {'created_at': timeutils.isotime(dt),
+                              'updated_at': timeutils.isotime(dt),
+                              }
                          }
-                    }
-        expected2 = {'sysinv_object.name': 'MyObj',
-                     'sysinv_object.namespace': 'sysinv',
-                     'sysinv_object.version': '1.5',
-                     'sysinv_object.changes':
-                         ['updated_at', 'created_at'],
-                     'sysinv_object.data':
-                         {'created_at': timeutils.isotime(dt),
-                          'updated_at': timeutils.isotime(dt),
-                          }
-                     }
+        else:
+            expected = {'sysinv_object.name': 'MyObj',
+                        'sysinv_object.namespace': 'sysinv',
+                        'sysinv_object.version': '1.5',
+                        'sysinv_object.changes':
+                            ['created_at', 'updated_at'],
+                        'sysinv_object.data':
+                            {'created_at': utils.isotime(dt, subsecond=True),
+                             'updated_at': utils.isotime(dt, subsecond=True),
+                             }
+                        }
+            expected2 = {'sysinv_object.name': 'MyObj',
+                         'sysinv_object.namespace': 'sysinv',
+                         'sysinv_object.version': '1.5',
+                         'sysinv_object.changes':
+                             ['updated_at', 'created_at'],
+                         'sysinv_object.data':
+                             {'created_at': utils.isotime(dt, subsecond=True),
+                              'updated_at': utils.isotime(dt, subsecond=True),
+                              }
+                         }
         prim = obj.obj_to_primitive()
         self.assertTrue(expected == prim or expected2 == prim)
 
