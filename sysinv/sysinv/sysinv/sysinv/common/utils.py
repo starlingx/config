@@ -163,10 +163,16 @@ class memoized(object):
         self.cache = {}
 
     def __call__(self, *args):
-        if not isinstance(args, collections.Hashable):
-            # uncacheable. a list, for instance.
-            # better to not cache than blow up.
-            return self.func(*args)
+        if is_debian_bullseye():
+            if not isinstance(args, collections.Hashable):
+                # uncacheable. a list, for instance.
+                # better to not cache than blow up.
+                return self.func(*args)
+        else:
+            if not isinstance(args, collections.abc.Hashable):
+                # uncacheable. a list, for instance.
+                # better to not cache than blow up.
+                return self.func(*args)
         if args in self.cache:
             return self.cache[args]
         else:
