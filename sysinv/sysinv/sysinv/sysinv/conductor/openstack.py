@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2025 Wind River Systems, Inc.
+# Copyright (c) 2013-2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -13,7 +13,10 @@
 
 import keyring
 
-from cinderclient.v2 import client as cinder_client_v2
+try:
+    from cinderclient.v3 import client as cinder_client  # trixie
+except ImportError:
+    from cinderclient.v2 import client as cinder_client  # bullseye
 from oslo_config import cfg
 from oslo_log import log as logging
 from sysinv._i18n import _
@@ -286,7 +289,7 @@ class OpenStackOperator(object):
 
     def _get_cinderclient(self):
         if not self.cinder_client:
-            self.cinder_client = cinder_client_v2.Client(
+            self.cinder_client = cinder_client.Client(
                 session=self._get_keystone_session(OPENSTACK_CONFIG),
                 auth_url=self._get_auth_url(OPENSTACK_CONFIG),
                 endpoint_type='internalURL',
