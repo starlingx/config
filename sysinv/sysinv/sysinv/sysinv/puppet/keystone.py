@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2017-2023 Wind River Systems, Inc.
+# Copyright (c) 2017-2023, 2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -83,9 +83,6 @@ class KeystonePuppet(openstack.OpenstackBasePuppet):
         admin_project = self.get_admin_project_name()
 
         config = {
-            'keystone::public_bind_host': self._get_management_address(),
-            'keystone::admin_bind_host': self._get_management_address(),
-
             'keystone::endpoint::public_url': self.get_public_url(),
             'keystone::endpoint::internal_url': self.get_internal_url(),
             'keystone::endpoint::admin_url': self.get_admin_url(),
@@ -131,6 +128,10 @@ class KeystonePuppet(openstack.OpenstackBasePuppet):
 
             'CONFIG_KEYSTONE_ADMIN_USERNAME': self.get_admin_user_name(),
         }
+
+        if utils.is_debian_bullseye():
+            config['keystone::public_bind_host'] = self._get_management_address()
+            config['keystone::admin_bind_host'] = self._get_management_address()
 
         if utils.is_openstack_applied(self.dbapi):
             config['openstack::keystone::params::openstack_auth_uri'] = \
