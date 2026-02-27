@@ -5,7 +5,6 @@
 
 import keyring
 import os
-import ruamel.yaml as yaml
 import re
 import numpy as np
 
@@ -15,7 +14,7 @@ from oslo_serialization import base64
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils
-from ruamel.yaml.compat import StringIO
+from sysinv.common.utils import get_debian_codename
 from sysinv.common import etcd
 from sysinv.common import kubernetes
 
@@ -25,6 +24,16 @@ from sysinv.puppet import base
 
 HOSTNAME_CLUSTER_HOST_SUFFIX = '-cluster-host'
 LOG = logging.getLogger(__name__)
+
+codename = get_debian_codename()
+
+# Import ruamel.yaml based on Debian version
+if codename == constants.OS_DEBIAN_BULLSEYE:
+    import ruamel.yaml as yaml
+    from ruamel.yaml.compat import StringIO
+else:
+    from ruamel.yaml import YAML
+    from io import StringIO
 # 28 bytes string mask for drdb cpu mask
 CPU_MASK_28 = 2 ** 112 - 1
 
@@ -793,7 +802,10 @@ class PlatformPuppet(base.BasePuppet):
         return config
 
     def _get_kubelet_eviction_hard_config_MiB(self, host):
-        newyaml = yaml.YAML()
+        if utils.is_debian_bullseye():
+            newyaml = yaml.YAML()
+        else:
+            newyaml = YAML()
 
         configmap_name = 'kubelet-config'
         eviction_threshold_memory_Mi = 100

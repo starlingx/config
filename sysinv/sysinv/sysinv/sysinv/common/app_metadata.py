@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2023-2025 Wind River Systems, Inc.
+# Copyright (c) 2023-2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -13,7 +13,6 @@ import io
 import glob
 import os
 import re
-import ruamel.yaml
 import shutil
 import six
 import tarfile
@@ -29,11 +28,20 @@ from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import kubernetes
 from sysinv.common import utils
+from sysinv.common.utils import get_debian_codename
 from sysinv.db import api
 
 CONF = cfg.CONF
 
 LOG = logging.getLogger(__name__)
+
+codename = get_debian_codename()
+
+# Import ruamel.yaml based on Debian version
+if codename == constants.OS_DEBIAN_BULLSEYE:
+    import ruamel.yaml
+else:
+    from ruamel.yaml import YAML
 
 
 # TODO(dbarbosa): Remove the get_kube_api function and return imports to the top of the file
@@ -441,7 +449,11 @@ def validate_metadata_file(path, metadata_file, upgrade_from_release=None):
     if os.path.isfile(metadata_path):
         with io.open(metadata_path, 'r', encoding='utf-8') as f:
             try:
-                doc = yaml.safe_load(f)
+                if utils.is_debian_bullseye():
+                    doc = yaml.safe_load(f)
+                else:
+                    local_yaml = YAML(typ='safe')
+                    doc = local_yaml.load(f)
                 app_name = doc['app_name']
                 app_version = doc['app_version']
             except KeyError:
@@ -760,9 +772,14 @@ def extract_bundle_metadata(file_path):
         tarball.getmember(metadata_yaml_path)
 
         with tarball.extractfile(metadata_yaml_path) as metadata_file:
-            metadata = ruamel.yaml.load(metadata_file,
-                                        Loader=ruamel.yaml.RoundTripLoader,
-                                        preserve_quotes=True)
+            if utils.is_debian_bullseye():
+                metadata = ruamel.yaml.load(metadata_file,
+                                            Loader=ruamel.yaml.RoundTripLoader,
+                                            preserve_quotes=True)
+            else:
+                yaml_rt = YAML(typ='rt')
+                yaml_rt.preserve_quotes = True
+                metadata = yaml_rt.load(metadata_file)
 
         minimum_supported_k8s_version = metadata.get(
             constants.APP_METADATA_SUPPORTED_K8S_VERSION, {}).get(
@@ -893,8 +910,13 @@ def load_metadata_of_apps(apps_metadata, is_platform_rollback=False):
                         # The RoundTripLoader removes the superfluous quotes by default.
                         # Set preserve_quotes=True to preserve all the quotes.
                         # The assumption here: there is just one yaml section
-                        metadata = ruamel.yaml.load(
-                            f, Loader=ruamel.yaml.RoundTripLoader, preserve_quotes=True)
+                        if utils.is_debian_bullseye():
+                            metadata = ruamel.yaml.load(
+                                f, Loader=ruamel.yaml.RoundTripLoader, preserve_quotes=True)
+                        else:
+                            yaml_rt = YAML(typ='rt')
+                            yaml_rt.preserve_quotes = True
+                            metadata = yaml_rt.load(f)
 
                 if name and metadata:
                     # Update metadata only if it was not loaded during conductor init

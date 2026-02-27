@@ -87,6 +87,32 @@ from sysinv._i18n import _
 from sysinv.common import exception
 from sysinv.common import constants
 from sysinv.helm import common as helm_common
+
+
+# Define early to avoid circular dependency with kubernetes.py
+@functools.lru_cache(maxsize=None)
+def get_debian_codename():
+    """
+    Returns the Debian codename, e.g., 'bullseye', 'trixie'.
+    """
+    try:
+        with open("/etc/os-release") as f:
+            for line in f:
+                if line.startswith("VERSION_CODENAME="):
+                    return line.strip().split("=")[1]
+    except FileNotFoundError:
+        return None
+    return None
+
+
+def is_debian_bullseye():
+    """Check if the current Debian release is bullseye.
+
+    NOTE: This will be deprecated once bullseye is no longer supported.
+    """
+    return get_debian_codename() == constants.OS_DEBIAN_BULLSEYE
+
+
 from sysinv.common import kubernetes
 from sysinv.common import usm_service as usm_service
 
@@ -968,7 +994,7 @@ def sanitize_hostname(hostname):
     if six.PY3:
         hostname = hostname.decode()
     hostname = re.sub('[ _]', '-', hostname)
-    hostname = re.sub('[^\w.-]+', '', hostname)
+    hostname = re.sub(r'[^\w.-]+', '', hostname)
     hostname = hostname.lower()
     hostname = hostname.strip('.-')
 
@@ -1491,7 +1517,7 @@ def _get_key_from_file(file_contents, key):
     :param key: key to search
     :return: found value or ''
     """
-    r = re.compile('^{}\=[\'\"]*([^\'\"\n]*)'.format(key), re.MULTILINE)
+    r = re.compile(r'^{}\=[\'\"]*([^\'\"\n]*)'.format(key), re.MULTILINE)
     match = r.search(file_contents)
     if match:
         return match.group(1)
@@ -1565,29 +1591,6 @@ def is_centos():
     return get_os_type() == constants.OS_CENTOS
 
 
-@functools.lru_cache(maxsize=None)
-def get_debian_codename():
-    """
-    Returns the Debian codename, e.g., 'bullseye', 'trixie'.
-    """
-    try:
-        with open("/etc/os-release") as f:
-            for line in f:
-                if line.startswith("VERSION_CODENAME="):
-                    return line.strip().split("=")[1]
-    except FileNotFoundError:
-        return None
-    return None
-
-
-def is_debian_bullseye():
-    """Check if the current Debian release is bullseye.
-
-    NOTE: This will be deprecated once bullseye is no longer supported.
-    """
-    return get_debian_codename() == constants.OS_DEBIAN_BULLSEYE
-
-
 class ISO(object):
 
     def __init__(self, iso_path, mount_dir):
@@ -1628,7 +1631,7 @@ def unmount_stuck_isos():
         output = subprocess.check_output(["mount"])  # pylint: disable=not-callable
     else:
         output = subprocess.check_output(["mount"]).decode("utf-8")  # pylint: disable=not-callable
-    mountpoint_regex = "on (/tmp/tmp\w+) type iso"
+    mountpoint_regex = r"on (/tmp/tmp\w+) type iso"
     mountpoints = [re.search(mountpoint_regex, line).group(1)
                    for line in output.splitlines()
                    if re.search(mountpoint_regex, line)]

@@ -1,7 +1,7 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 # coding=utf-8
 
-# Copyright (c) 2019 Wind River Systems, Inc.
+# Copyright (c) 2019, 2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -10,11 +10,21 @@
 
 import copy
 import io
-import ruamel.yaml as yaml
 import os
 
 from sysinv.conductor import kube_app
+from sysinv.common import constants
+from sysinv.common.utils import get_debian_codename
+from sysinv.common.utils import is_debian_bullseye
 from sysinv.tests import base
+
+codename = get_debian_codename()
+
+# Import ruamel.yaml based on Debian version
+if codename == constants.OS_DEBIAN_BULLSEYE:
+    import ruamel.yaml as yaml
+else:
+    from ruamel.yaml import YAML
 
 IMAGES_RESOURCE = {
     'images': {
@@ -110,7 +120,11 @@ class TestKubeAppImageParser(base.TestCase):
         yaml_file = os.path.join(os.path.dirname(__file__),
                                  "data", "chart_values_sample.yaml")
         with io.open(yaml_file, 'r', encoding='utf-8') as f:
-            values = yaml.safe_load(f)
+            if is_debian_bullseye():
+                values = yaml.safe_load(f)
+            else:
+                local_yaml = YAML()
+                values = local_yaml.load(f)
 
         expected = copy.deepcopy(IMAGES_RESOURCE)
         expected['monitoring'] = {'image': {'repository': 'docker.io/trustpilot/beat-exporter'}}

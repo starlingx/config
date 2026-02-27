@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2025 Wind River Systems, Inc.
+# Copyright (c) 2025-2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -19,6 +19,7 @@ from sysinv.common import constants
 from sysinv.common import etcd
 from sysinv.common import exception
 from sysinv.common import kubernetes
+from sysinv.common.utils import is_debian_bullseye
 
 
 class TestContainerdOperator(base.TestCase):
@@ -42,16 +43,26 @@ class TestContainerdOperator(base.TestCase):
         p.start().return_value = fake_file_object
         self.addCleanup(p.stop)
 
-        mock_ruamel_yaml = mock.MagicMock()
-        p = mock.patch('ruamel.yaml.safe_load', mock_ruamel_yaml)
-        p.start().return_value = hieradata
-        self.addCleanup(p.stop)
+        if is_debian_bullseye():
+            mock_ruamel_yaml = mock.MagicMock()
+            p = mock.patch('ruamel.yaml.safe_load', mock_ruamel_yaml)
+            p.start().return_value = hieradata
+            self.addCleanup(p.stop)
+        else:
+            mock_yaml_obj = mock.MagicMock()
+            mock_yaml_obj.load.return_value = hieradata
+            p = mock.patch('sysinv.agent.kube_host.YAML', return_value=mock_yaml_obj)
+            p.start()
+            self.addCleanup(p.stop)
 
         auth = self.containerd_operator._get_auth()
 
         self.assertEqual(auth, "fake_username:fake_password")
         mock_open.assert_called_once()
-        mock_ruamel_yaml.assert_called_once_with(fake_file_object)
+        if is_debian_bullseye():
+            mock_ruamel_yaml.assert_called_once_with(fake_file_object)
+        else:
+            mock_yaml_obj.load.assert_called_once_with(fake_file_object)
 
     def test_get_auth_file_read_error(self):
         """Test get auth information: Fail to read hieradata file for some reason
@@ -61,17 +72,26 @@ class TestContainerdOperator(base.TestCase):
         p.start().side_effect = Exception("Fake exception")
         self.addCleanup(p.stop)
 
-        mock_ruamel_yaml = mock.MagicMock()
-        p = mock.patch('ruamel.yaml.safe_load', mock_ruamel_yaml)
-        p.start()
-        self.addCleanup(p.stop)
+        if is_debian_bullseye():
+            mock_ruamel_yaml = mock.MagicMock()
+            p = mock.patch('ruamel.yaml.safe_load', mock_ruamel_yaml)
+            p.start()
+            self.addCleanup(p.stop)
+        else:
+            mock_yaml_obj = mock.MagicMock()
+            p = mock.patch('sysinv.agent.kube_host.YAML', return_value=mock_yaml_obj)
+            p.start()
+            self.addCleanup(p.stop)
 
         auth = self.containerd_operator._get_auth()
 
         # Actually asserts auth == None
         self.assertFalse(auth)
         mock_open.assert_called_once()
-        mock_ruamel_yaml.assert_not_called()
+        if is_debian_bullseye():
+            mock_ruamel_yaml.assert_not_called()
+        else:
+            mock_yaml_obj.load.assert_not_called()
 
     def test_get_auth_yaml_load_error(self):
         """Test get auth information: Failed to safe_load hieradata yaml
@@ -83,17 +103,27 @@ class TestContainerdOperator(base.TestCase):
         p.start().return_value = fake_file_object
         self.addCleanup(p.stop)
 
-        mock_ruamel_yaml = mock.MagicMock()
-        p = mock.patch('ruamel.yaml.safe_load', mock_ruamel_yaml)
-        p.start().side_effect = Exception("Fake error")
-        self.addCleanup(p.stop)
+        if is_debian_bullseye():
+            mock_ruamel_yaml = mock.MagicMock()
+            p = mock.patch('ruamel.yaml.safe_load', mock_ruamel_yaml)
+            p.start().side_effect = Exception("Fake error")
+            self.addCleanup(p.stop)
+        else:
+            mock_yaml_obj = mock.MagicMock()
+            mock_yaml_obj.load.side_effect = Exception("Fake error")
+            p = mock.patch('sysinv.agent.kube_host.YAML', return_value=mock_yaml_obj)
+            p.start()
+            self.addCleanup(p.stop)
 
         auth = self.containerd_operator._get_auth()
 
         # Actually asserts auth == None
         self.assertFalse(auth)
         mock_open.assert_called_once()
-        mock_ruamel_yaml.assert_called_once_with(fake_file_object)
+        if is_debian_bullseye():
+            mock_ruamel_yaml.assert_called_once_with(fake_file_object)
+        else:
+            mock_yaml_obj.load.assert_called_once_with(fake_file_object)
 
     def test_get_auth_missing_credentials(self):
         """Test get auth information: Missing auth credentials
@@ -107,17 +137,27 @@ class TestContainerdOperator(base.TestCase):
         p.start().return_value = fake_file_object
         self.addCleanup(p.stop)
 
-        mock_ruamel_yaml = mock.MagicMock()
-        p = mock.patch('ruamel.yaml.safe_load', mock_ruamel_yaml)
-        p.start().return_value = hieradata
-        self.addCleanup(p.stop)
+        if is_debian_bullseye():
+            mock_ruamel_yaml = mock.MagicMock()
+            p = mock.patch('ruamel.yaml.safe_load', mock_ruamel_yaml)
+            p.start().return_value = hieradata
+            self.addCleanup(p.stop)
+        else:
+            mock_yaml_obj = mock.MagicMock()
+            mock_yaml_obj.load.return_value = hieradata
+            p = mock.patch('sysinv.agent.kube_host.YAML', return_value=mock_yaml_obj)
+            p.start()
+            self.addCleanup(p.stop)
 
         auth = self.containerd_operator._get_auth()
 
         # Actually asserts auth == None
         self.assertFalse(auth)
         mock_open.assert_called_once()
-        mock_ruamel_yaml.assert_called_once_with(fake_file_object)
+        if is_debian_bullseye():
+            mock_ruamel_yaml.assert_called_once_with(fake_file_object)
+        else:
+            mock_yaml_obj.load.assert_called_once_with(fake_file_object)
 
     def test_get_auth_corrupted_hieradata_file_content(self):
         """Test get auth information: hieradata file contents corrupted
@@ -130,17 +170,27 @@ class TestContainerdOperator(base.TestCase):
         p.start().return_value = fake_file_object
         self.addCleanup(p.stop)
 
-        mock_ruamel_yaml = mock.MagicMock()
-        p = mock.patch('ruamel.yaml.safe_load', mock_ruamel_yaml)
-        p.start().return_value = hieradata
-        self.addCleanup(p.stop)
+        if is_debian_bullseye():
+            mock_ruamel_yaml = mock.MagicMock()
+            p = mock.patch('ruamel.yaml.safe_load', mock_ruamel_yaml)
+            p.start().return_value = hieradata
+            self.addCleanup(p.stop)
+        else:
+            mock_yaml_obj = mock.MagicMock()
+            mock_yaml_obj.load.return_value = hieradata
+            p = mock.patch('sysinv.agent.kube_host.YAML', return_value=mock_yaml_obj)
+            p.start()
+            self.addCleanup(p.stop)
 
         auth = self.containerd_operator._get_auth()
 
         # Actually asserts auth == None
         self.assertFalse(auth)
         mock_open.assert_called_once()
-        mock_ruamel_yaml.assert_called_once_with(fake_file_object)
+        if is_debian_bullseye():
+            mock_ruamel_yaml.assert_called_once_with(fake_file_object)
+        else:
+            mock_yaml_obj.load.assert_called_once_with(fake_file_object)
 
     def test_pull_images_suceess(self):
         """Test successful image pull

@@ -42,8 +42,6 @@ import os
 import psutil
 import re
 import requests
-import ruamel.yaml as yaml
-from ruamel.yaml.compat import StringIO
 import shutil
 import sys
 import six
@@ -122,6 +120,7 @@ from sysinv.common import service
 from sysinv.common import service_parameter
 from sysinv.common import usm_service as usm_service
 from sysinv.common import utils as cutils
+from sysinv.common.utils import get_debian_codename
 from sysinv.common.image_download import ContainerImageDownloader
 from sysinv.common.inotify import flags
 from sysinv.common.inotify import INotify
@@ -149,6 +148,16 @@ from sysinv.zmq_rpc.zmq_rpc import ZmqRpcServer
 MANAGER_TOPIC = 'sysinv.conductor_manager'
 
 LOG = log.getLogger(__name__)
+
+codename = get_debian_codename()
+
+# Import ruamel.yaml based on Debian version
+if codename == constants.OS_DEBIAN_BULLSEYE:
+    import ruamel.yaml as yaml
+    from ruamel.yaml.compat import StringIO
+else:
+    from ruamel.yaml import YAML
+    from io import StringIO
 
 conductor_opts = [
        cfg.StrOpt('api_url',
@@ -8386,8 +8395,13 @@ class ConductorManager(service.PeriodicService):
                         # The RoundTripLoader removes the superfluous quotes by default.
                         # Set preserve_quotes=True to preserve all the quotes.
                         # The assumption here: there is just one yaml section
-                        metadata = yaml.load(
-                                f, Loader=yaml.RoundTripLoader, preserve_quotes=True)
+                        if cutils.is_debian_bullseye():
+                            metadata = yaml.load(
+                                    f, Loader=yaml.RoundTripLoader, preserve_quotes=True)
+                        else:
+                            yaml_rt = YAML(typ='rt')
+                            yaml_rt.preserve_quotes = True
+                            metadata = yaml_rt.load(f)
                         return AppTarBall(tarball_name, name, version,
                                           manifest_name, manifest_file, metadata)
 
@@ -8495,8 +8509,13 @@ class ConductorManager(service.PeriodicService):
                         # The RoundTripLoader removes the superfluous quotes by default.
                         # Set preserve_quotes=True to preserve all the quotes.
                         # The assumption here: there is just one yaml section
-                        metadata = yaml.load(
-                            f, Loader=yaml.RoundTripLoader, preserve_quotes=True)
+                        if cutils.is_debian_bullseye():
+                            metadata = yaml.load(
+                                f, Loader=yaml.RoundTripLoader, preserve_quotes=True)
+                        else:
+                            yaml_rt = YAML(typ='rt')
+                            yaml_rt.preserve_quotes = True
+                            metadata = yaml_rt.load(f)
 
                 if name and metadata:
                     # Update metadata only if it was not loaded during conductor init
@@ -17974,7 +17993,10 @@ class ConductorManager(service.PeriodicService):
             def represent_null(representer, _):
                 return representer.represent_scalar('tag:yaml.org,2002:null', 'null')
 
-            yaml_rt = yaml.YAML()
+            if cutils.is_debian_bullseye():
+                yaml_rt = yaml.YAML()
+            else:
+                yaml_rt = YAML()
             yaml_rt.preserve_quotes = True
             yaml_rt.default_flow_style = False
             yaml_rt.representer.add_representer(type(None), represent_null)
@@ -18738,7 +18760,11 @@ class ConductorManager(service.PeriodicService):
             images_path = os.path.join(constants.ANSIBLE_KUBE_SYSTEM_IMAGES_PLAYBOOK_ROOT,
                                        "vars/k8s-%s/system-images.yml" % (kube_version))
             with open(images_path, 'r') as file:
-                images = yaml.safe_load(file)
+                if cutils.is_debian_bullseye():
+                    images = yaml.safe_load(file)
+                else:
+                    local_yaml = YAML(typ='safe')
+                    images = local_yaml.load(file)
             if not images:
                 raise exception.SysinvException("Image list is not available.")
         except Exception as ex:
@@ -18883,7 +18909,11 @@ class ConductorManager(service.PeriodicService):
         try:
             if os.path.exists(overrides_file):
                 with open(overrides_file, "r") as stream:
-                    overrides = yaml.safe_load(stream)
+                    if cutils.is_debian_bullseye():
+                        overrides = yaml.safe_load(stream)
+                    else:
+                        local_yaml = YAML(typ='safe')
+                        overrides = local_yaml.load(stream)
         except Exception as e:
             raise exception.SysinvException("Failed to read host overrides "
                                             "file. Details: %s" % str(e))
@@ -19482,7 +19512,11 @@ class ConductorManager(service.PeriodicService):
             try:
                 if os.path.exists(file_name):
                     with open(file_name, "r") as stream:
-                        system_images = yaml.safe_load(stream)
+                        if cutils.is_debian_bullseye():
+                            system_images = yaml.safe_load(stream)
+                        else:
+                            local_yaml = YAML(typ='safe')
+                            system_images = local_yaml.load(stream)
 
                         # Get images for target versions and lower versions in separate sets
                         if version == target_version:
@@ -20649,7 +20683,10 @@ class ConductorManager(service.PeriodicService):
         from 1.23 and it removed entirely in 1.25.
         """
         FILENAME = tsc.CONFIG_PATH + "last_kube_extra_config_bootstrap.yaml"
-        newyaml = yaml.YAML()
+        if cutils.is_debian_bullseye():
+            newyaml = yaml.YAML()
+        else:
+            newyaml = YAML()
         newyaml.default_flow_style = False
 
         try:
@@ -20692,7 +20729,10 @@ class ConductorManager(service.PeriodicService):
         Edit the kubelet configmap and remove stale feature gates that
         are no longer applicable for the version of K8s that we are upgrading to.
         """
-        newyaml = yaml.YAML()
+        if cutils.is_debian_bullseye():
+            newyaml = yaml.YAML()
+        else:
+            newyaml = YAML()
 
         configmap_name = 'kubelet-config'
 
@@ -20740,7 +20780,11 @@ class ConductorManager(service.PeriodicService):
             configmap = self._kube.kube_read_config_map(configmap_name, 'kube-system')
 
             stream = StringIO(configmap.data['ClusterConfiguration'])
-            kubeadm_config = yaml.safe_load(stream)
+            if cutils.is_debian_bullseye():
+                kubeadm_config = yaml.safe_load(stream)
+            else:
+                local_yaml = YAML(typ='safe')
+                kubeadm_config = local_yaml.load(stream)
 
             # Sanitize etcd endpoints. K8S upgrade will fail taking etcd
             # snapshot if there are multiple endpoints. Loopback endpoints
@@ -20799,7 +20843,11 @@ class ConductorManager(service.PeriodicService):
             #         raise
 
             outstream = StringIO()
-            yaml.dump(kubeadm_config, outstream)
+            if cutils.is_debian_bullseye():
+                yaml.dump(kubeadm_config, outstream)
+            else:
+                yaml_dumper = YAML()
+                yaml_dumper.dump(kubeadm_config, outstream)
             configmap = {'data': {'ClusterConfiguration': outstream.getvalue()}}
 
             self._kube.kube_patch_config_map(configmap_name, 'kube-system', configmap)
@@ -20895,7 +20943,11 @@ class ConductorManager(service.PeriodicService):
             configmap = self._kube.kube_read_config_map(configmap_name, 'kube-system')
             # Parse the configmap to get the imageRepository
             stream = StringIO(configmap.data['ClusterConfiguration'])
-            kubeadm_config = yaml.safe_load(stream)
+            if cutils.is_debian_bullseye():
+                kubeadm_config = yaml.safe_load(stream)
+            else:
+                local_yaml = YAML(typ='safe')
+                kubeadm_config = local_yaml.load(stream)
             image_repository = kubeadm_config.get('imageRepository', None)
 
             if image_repository:
@@ -20907,7 +20959,11 @@ class ConductorManager(service.PeriodicService):
                     LOG.info('Setting imageRepository=%s, dns imageRepository=%s \
                              in kubeadm-config.' % (NEW_IMAGE_REPOSITORY, NEW_DNS_IMAGE_REPOSITORY))
                     outstream = StringIO()
-                    yaml.dump(kubeadm_config, outstream)
+                    if cutils.is_debian_bullseye():
+                        yaml.dump(kubeadm_config, outstream)
+                    else:
+                        yaml_dumper = YAML()
+                        yaml_dumper.dump(kubeadm_config, outstream)
                     configmap = {'data': {'ClusterConfiguration': outstream.getvalue()}}
                     self._kube.kube_patch_config_map(configmap_name, 'kube-system', configmap)
 
@@ -21063,8 +21119,13 @@ class ConductorManager(service.PeriodicService):
             dex_db_chart = objects.helm_overrides.get_by_appid_name(context, app.id, "dex", oidc_ns)
 
             if oidc_client_db_chart.user_overrides and dex_db_chart.user_overrides:
-                client_user_overrides = yaml.load(oidc_client_db_chart.user_overrides)
-                dex_user_overrides = yaml.load(dex_db_chart.user_overrides)
+                if cutils.is_debian_bullseye():
+                    client_user_overrides = yaml.load(oidc_client_db_chart.user_overrides)
+                    dex_user_overrides = yaml.load(dex_db_chart.user_overrides)
+                else:
+                    yaml_loader = YAML(typ='safe')
+                    client_user_overrides = yaml_loader.load(oidc_client_db_chart.user_overrides)
+                    dex_user_overrides = yaml_loader.load(dex_db_chart.user_overrides)
                 oidc_ca_issuer = None
                 if "issuer_root_ca_secret" in client_user_overrides["config"]:
                     oidc_ca_issuer = client_user_overrides["config"]["issuer_root_ca_secret"]
@@ -21135,7 +21196,11 @@ class ConductorManager(service.PeriodicService):
                               ("controller_manager_client", "/etc/kubernetes/controller-manager.conf")]
         for cert_name, cert_path in user_account_certs:
             with open(cert_path, 'r') as f:
-                data = yaml.safe_load(f)
+                if cutils.is_debian_bullseye():
+                    data = yaml.safe_load(f)
+                else:
+                    local_yaml = YAML(typ='safe')
+                    data = local_yaml.load(f)
                 client_cert = base64.decode_as_bytes(
                     data["users"][0]["user"]["client-certificate-data"])
                 cert_obj = cutils.extract_certs_from_pem(client_cert)[0]
