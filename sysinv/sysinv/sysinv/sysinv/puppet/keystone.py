@@ -66,9 +66,7 @@ class KeystonePuppet(openstack.OpenstackBasePuppet):
         dburl = self._format_database_connection(self.SERVICE_NAME,
                                                  constants.LOCALHOST_HOSTNAME)
 
-        return {
-            'keystone::database_connection': dburl,
-
+        config = {
             'keystone::admin_password': admin_password,
             'keystone::admin_token': admin_token,
 
@@ -77,6 +75,13 @@ class KeystonePuppet(openstack.OpenstackBasePuppet):
             'keystone::roles::admin::password': admin_password,
             'platform::client::params::admin_password': admin_password,
         }
+
+        if utils.is_debian_bullseye():
+            config['keystone::database_connection'] = dburl
+        else:
+            config['keystone::db::database_connection'] = dburl
+
+        return config
 
     def get_system_config(self):
         admin_username = self.get_admin_user_name()
@@ -151,9 +156,14 @@ class KeystonePuppet(openstack.OpenstackBasePuppet):
         config = {
             'keystone::admin_password': admin_password,
             'keystone::roles::admin::password': admin_password,
-            'keystone::database_connection': db_connection,
             'platform::client::params::admin_password': admin_password,
         }
+
+        if utils.is_debian_bullseye():
+            config['keystone::database_connection'] = db_connection
+        else:
+            config['keystone::db::database_connection'] = db_connection
+
         return config
 
     def get_host_config(self, host):
