@@ -1298,6 +1298,18 @@ SERVICE_PARAM_PLAT_CONFIG_INTEL_PSTATE_VALUES = (
     'no_hwp',
     'none')
 
+SERVICE_PARAM_NAME_PLAT_CONFIG_AMD_PSTATE = 'amd_pstate'
+# Valid 'amd_pstate' values
+# Kernel driver documentation for amd-pstate at
+# https://docs.kernel.org/admin-guide/pm/amd-pstate.html
+#   The last entry is used as the default. Currently passive is the default
+#   to provide software-based frequency scaling using cpufreq governors.
+SERVICE_PARAM_PLAT_CONFIG_AMD_PSTATE_VALUES = (
+    'active',
+    'guided',
+    'disable',
+    'passive')
+
 # default time to live seconds
 PM_TTL_DEFAULT = 86400
 

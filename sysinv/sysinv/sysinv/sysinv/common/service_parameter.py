@@ -407,6 +407,15 @@ def _validate_intel_pstate(name, value):
                 name, constants.SERVICE_PARAM_PLAT_CONFIG_INTEL_PSTATE_VALUES)))
 
 
+def _validate_amd_pstate(name, value):
+    """Check if amd_pstate value is valid"""
+
+    if value not in constants.SERVICE_PARAM_PLAT_CONFIG_AMD_PSTATE_VALUES:
+        raise wsme.exc.ClientSideError(_(
+            "Parameter '{}' value must be one of {}".format(
+                name, constants.SERVICE_PARAM_PLAT_CONFIG_AMD_PSTATE_VALUES)))
+
+
 def _get_network_pool_from_ip_address(ip, networks):
     for name in networks:
         try:
@@ -1131,6 +1140,7 @@ PLATFORM_CONFIG_PARAMETER_OPTIONAL = [
     constants.SERVICE_PARAM_NAME_PLAT_CONFIG_VIRTUAL,
     constants.SERVICE_PARAM_NAME_PLATFORM_MAX_CPU_PERCENTAGE,
     constants.SERVICE_PARAM_NAME_PLAT_CONFIG_INTEL_PSTATE,
+    constants.SERVICE_PARAM_NAME_PLAT_CONFIG_AMD_PSTATE,
     constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_API_WORKERS,
     constants.SERVICE_PARAM_NAME_PLATFORM_SCTP_AUTOLOAD,
     constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_POOL_SIZE,
@@ -1152,6 +1162,8 @@ PLATFORM_CONFIG_PARAMETER_VALIDATOR = {
         _validate_max_cpu_min_percentage,
     constants.SERVICE_PARAM_NAME_PLAT_CONFIG_INTEL_PSTATE:
         _validate_intel_pstate,
+    constants.SERVICE_PARAM_NAME_PLAT_CONFIG_AMD_PSTATE:
+        _validate_amd_pstate,
     constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_API_WORKERS:
         _validate_sysinv_api_workers,
     constants.SERVICE_PARAM_NAME_PLATFORM_SCTP_AUTOLOAD:
@@ -1175,6 +1187,8 @@ PLATFORM_CONFIG_PARAMETER_RESOURCE = {
         'platform::params::virtual_system',
     constants.SERVICE_PARAM_NAME_PLAT_CONFIG_INTEL_PSTATE:
         'platform::compute::grub::params::g_intel_pstate',
+    constants.SERVICE_PARAM_NAME_PLAT_CONFIG_AMD_PSTATE:
+        'platform::compute::grub::params::g_amd_pstate',
     constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_API_WORKERS:
         'platform::sysinv::params::sysinv_api_workers',
     constants.SERVICE_PARAM_NAME_PLATFORM_SCTP_AUTOLOAD:

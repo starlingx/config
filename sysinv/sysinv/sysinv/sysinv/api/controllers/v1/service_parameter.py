@@ -667,11 +667,15 @@ class ServiceParameterController(rest.RestController):
             svc_params.append(new_parm)
 
         try:
-            # Pass name to update_service_config only in case the parameters are the Intel
-            # NIC driver version, intel_pstate or sysinv_api_workers, cli_confirmations
+            # Pass name to update_service_config only in case the parameter is
+            # intel_pstate, amd_pstate, sysinv_api_workers, or cli_confirmations
             new_name = None
             if section == constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG and \
                     name == constants.SERVICE_PARAM_NAME_PLAT_CONFIG_INTEL_PSTATE:
+                new_name = name
+
+            elif section == constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG and \
+                    name == constants.SERVICE_PARAM_NAME_PLAT_CONFIG_AMD_PSTATE:
                 new_name = name
 
             elif section == constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG and \
@@ -838,11 +842,14 @@ class ServiceParameterController(rest.RestController):
             delete_k8s_configmap(parameter.as_dict(), self.kube_operator)
 
         # Pass name to update_service_config only in case the parameter is
-        # the Intel NIC driver version, intel_pstate or sysinv_api_workers
-        # or cli_confirmations
+        # intel_pstate, amd_pstate, sysinv_api_workers, or cli_confirmations
         name = None
         if parameter.section == constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG and \
                parameter.name == constants.SERVICE_PARAM_NAME_PLAT_CONFIG_INTEL_PSTATE:
+            name = parameter.name
+
+        elif parameter.section == constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG and \
+               parameter.name == constants.SERVICE_PARAM_NAME_PLAT_CONFIG_AMD_PSTATE:
             name = parameter.name
 
         elif parameter.section == constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG and \
