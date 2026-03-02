@@ -18824,12 +18824,13 @@ class ConductorManager(service.PeriodicService):
             return False
         return True
 
-    def _upgrade_k8s_networking(self, kube_version):
+    def _upgrade_k8s_networking(self, context, kube_version):
         """Upgrade kubernetes networking.
 
         This method downloads network related images and apply manifests of
         calico, multus, sriov and coredns for new version.
 
+        :context: request context
         :kube_version: kubernetes version to be upgraded to
         :raises: SysinvException in case of failure
         """
@@ -18868,6 +18869,26 @@ class ConductorManager(service.PeriodicService):
         LOG.info("Download of kubernetes networking images for kubernetes version [%s] "
                  "to local registry and crictl completed successfully in [%s]."
                  % (kube_version, elapsed_time))
+
+        # Pull networking images to standby controller
+        system = self.dbapi.isystem_get_one()
+        if system.system_mode != constants.SYSTEM_MODE_SIMPLEX:
+            controller_hosts = self.dbapi.ihost_get_by_personality(constants.CONTROLLER)
+            agent_api = agent_rpcapi.AgentAPI()
+            for host in controller_hosts:
+                if host.uuid == self.host_uuid:
+                    continue
+                try:
+                    local_registry_auth = cutils.get_local_docker_registry_auth()
+                    crictl_auth = (
+                        f"{local_registry_auth['username']}:{local_registry_auth['password']}"
+                    )
+                    LOG.info("Pulling networking images to standby controller %s" % (host.hostname))
+                    agent_api.pull_kubernetes_images(context, host.uuid, networking_images,
+                        crictl_auth, report_state=False)
+                except Exception as ex:
+                    raise exception.SysinvException(
+                        "Networking images pull failed on %s. Error: [%s]" % (host.hostname, ex))
 
         overrides_file = "/tmp/upgrade_overrides.yaml"
         try:
@@ -19083,7 +19104,7 @@ class ConductorManager(service.PeriodicService):
             return
 
         try:
-            self._upgrade_k8s_networking(kube_version)
+            self._upgrade_k8s_networking(context, kube_version)
             upgrade_status = kubernetes.KUBE_UPGRADED_NETWORKING
         except Exception as e:
             LOG.error("Kubernetes networking upgrade failed with error: [%s]" % (e))
@@ -19099,12 +19120,13 @@ class ConductorManager(service.PeriodicService):
 
         self._kube_upgrade_state_update(context, upgrade_status)
 
-    def _upgrade_k8s_storage(self, kube_version):
+    def _upgrade_k8s_storage(self, context, kube_version):
         """Upgrade kubernetes storage.
 
         This method downloads storage related images and apply manifests of
         volume snapshot controller and its RBAC
 
+        :context: request context
         :kube_version: Kubernetes version to be upgraded to.
 
         :raises: SysinvException upon failure
@@ -19138,6 +19160,26 @@ class ConductorManager(service.PeriodicService):
         LOG.info("Download of kubernetes storage images for version [%s] to the "
                  "local registry and crictl completed successfully in [%s] seconds."
                  % (kube_version, elapsed_time))
+
+        # Pull storage images to standby controller
+        system = self.dbapi.isystem_get_one()
+        if system.system_mode != constants.SYSTEM_MODE_SIMPLEX:
+            controller_hosts = self.dbapi.ihost_get_by_personality(constants.CONTROLLER)
+            agent_api = agent_rpcapi.AgentAPI()
+            for host in controller_hosts:
+                if host.uuid == self.host_uuid:
+                    continue
+                try:
+                    local_registry_auth = cutils.get_local_docker_registry_auth()
+                    crictl_auth = (
+                        f"{local_registry_auth['username']}:{local_registry_auth['password']}"
+                    )
+                    LOG.info("Pulling storage images to standby controller %s" % (host.hostname))
+                    agent_api.pull_kubernetes_images(context, host.uuid, storage_images,
+                        crictl_auth, report_state=False)
+                except Exception as ex:
+                    raise exception.SysinvException(
+                        "Storage images pull failed on %s. Error: [%s]" % (host.hostname, ex))
 
         snapshot_controller_template_variables = {
             'local_registry': constants.DOCKER_REGISTRY_SERVER,
@@ -19174,7 +19216,7 @@ class ConductorManager(service.PeriodicService):
     def kube_upgrade_storage(self, context, kube_version):
         """Upgrade kubernetes storage for this kubernetes version"""
         try:
-            self._upgrade_k8s_storage(kube_version)
+            self._upgrade_k8s_storage(context, kube_version)
         except Exception as e:
             LOG.error("Kubernetes storage upgrade failed with error: [%s]" % (e))
             # Update the upgrade state

@@ -2643,13 +2643,14 @@ class AgentManager(service.PeriodicService):
             self._inventoried_initial = False
             self._inventory_reported = set()
 
-    def pull_kubernetes_images(self, context, host_uuid, images, crictl_auth):
+    def pull_kubernetes_images(self, context, host_uuid, images, crictl_auth, report_state=True):
         """ Pull kubernetes control plane images to crictl
 
         :param: context: context object.
         :param: host_uuid: A host UUID string.
         :param: images: List of images to be downloaded.
         :param: crictl_auth: Auth string to pull kubernetes images
+        :param: report_state: Whether to report download state (default True)
 
         :returns: True if image download succeeds False otherwise
         """
@@ -2682,8 +2683,9 @@ class AgentManager(service.PeriodicService):
             else:
                 LOG.error("Image download operation failed.")
 
-            rpcapi = conductor_rpcapi.ConductorAPI(topic=conductor_rpcapi.MANAGER_TOPIC)
-            rpcapi.report_download_images_result(context, result)
+            if report_state:
+                rpcapi = conductor_rpcapi.ConductorAPI(topic=conductor_rpcapi.MANAGER_TOPIC)
+                rpcapi.report_download_images_result(context, result)
             self._cleanup_kube_upgrade_method_details()
 
     def kube_upgrade_abort(self, context, current_kube_version, back_to_kube_version):

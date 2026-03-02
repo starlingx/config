@@ -320,20 +320,22 @@ class AgentAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                          self.make_msg("report_initial_inventory",
                                        host_uuid=host_uuid))
 
-    def pull_kubernetes_images(self, context, host_uuid, images, crictl_auth):
+    def pull_kubernetes_images(self, context, host_uuid, images, crictl_auth, report_state=True):
         """Asynchronously, pull kubernetes images
 
         :param context: request context
         :param host_uuid: the host uuid
         :param images: list of images to be downloaded
         :param: crictl_auth: Auth string to pull kubernetes images
+        :param: report_state: Whether to report download state (default True)
         :return:  none ... uses asynchronous cast().
         """
         return self.cast(context,
                          self.make_msg("pull_kubernetes_images",
                                        host_uuid=host_uuid,
                                        images=images,
-                                       crictl_auth=crictl_auth))
+                                       crictl_auth=crictl_auth,
+                                       report_state=report_state))
 
     def pin_kubernetes_control_plane_images(self, context, host_uuid, version):
         """Asynchronously, pin kubernetes static pod images of current kubernetes version
