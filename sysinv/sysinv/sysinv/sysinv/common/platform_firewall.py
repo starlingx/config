@@ -48,7 +48,7 @@ OAM_COMMON = {
             constants.OPENSTACK_BARBICAN_PARAMS_API_PORT,  # noqa: E501 docu: Barbican, platform,,Not used,Allowed (service public endpoint) on controllers and subclouds.,,,y,n,y,n
             constants.OPENSTACK_KEYSTONE_PARAMS_API_PORT,  # noqa: E501 docu: Keystone, platform,,Not used,Allowed (service public endpoint) on controllers and subclouds.,,,y,n,y,n
             constants.PLATFORM_FM_PARAMS_API_PORT,  # noqa: E501 docu: Fault Management, platform,,Not used,Allowed (service public endpoint) on controllers and subclouds.,,,y,y,n,n
-            constants.PLATFORM_FIREWALL_HTTP_PORT,  # noqa: E501 docu: Web access, platform,,Not used,Allowed (service public endpoint) on controllers and subclouds.,,,y,y,n,n
+            constants.PLATFORM_FIREWALL_HTTPS_PORT,  # noqa: E501 docu: Web access, platform,,Not used,Allowed (service public endpoint) on controllers and subclouds.,,Yes,y,y,n,n
             constants.PLATFORM_CEPH_PARAMS_RGW_PORT,  # noqa: E501 docu: CEPH parameters, platform,,Not used,Allowed (service public endpoint) on controllers and subclouds.,,,y,y,n,n
             constants.PLATFORM_KUBE_LOGIN_PORT,  # noqa: E501 docu: Kubectl oidc-login redirect port, platform, oam, Bidirectional, Both, Allowed (service public endpoint) on controllers and subclouds.,n,y,y,n,n
         },
