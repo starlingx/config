@@ -122,7 +122,8 @@ class KubeAppController(rest.RestController):
         'update_all': ['POST'],
         'get_apps_update_status': ['GET'],
         'rollback_all_apps': ['POST'],
-        'get_all_apps_by_status': ['GET']
+        'get_all_apps_by_status': ['GET'],
+        'kube_app_get_by_id': ['GET']
     }
 
     def __init__(self, parent=None, **kwargs):
@@ -221,6 +222,12 @@ class KubeAppController(rest.RestController):
         result = [KubeApp.convert_with_links(n) for n in apps]
 
         return result
+
+    @wsme_pecan.wsexpose(KubeApp, wtypes.text)
+    def kube_app_get_by_id(self, id):
+        """Retrieve a single application by id."""
+        kube_app = pecan.request.dbapi.kube_app_get_by_id(id)
+        return KubeApp.convert_with_links(kube_app)
 
     def _app_lifecycle_actions(self, db_app, hook_info):
         """Perform lifecycle actions for application

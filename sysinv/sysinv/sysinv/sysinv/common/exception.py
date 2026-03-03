@@ -1548,6 +1548,10 @@ class KubeAppNotFound(NotFound):
     message = _("No application with name %(name)s.")
 
 
+class KubeAppByIdNotFound(NotFound):
+    message = _("No application with id %(id)s.")
+
+
 class KubeAppInactiveNotFound(NotFound):
     message = _("No inactive application with name %(name)s and version %(version)s")
 
