@@ -18,7 +18,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2025 Wind River Systems, Inc.
+# Copyright (c) 2013-2026 Wind River Systems, Inc.
 #
 
 
@@ -5020,3 +5020,16 @@ def filter_versions(versions, lower_bound, upper_bound):
 
     # Sort using LooseVersion for correct semantic ordering
     return sorted(filtered, key=LooseVersion)
+
+
+@functools.lru_cache(maxsize=1)
+def get_debian_release_codename():
+    """Get the Debian release from /etc/os-release"""
+    try:
+        with open('/etc/os-release', 'r') as f:
+            for line in f:
+                if line.startswith('VERSION_CODENAME='):
+                    return line.split('=')[1].strip().strip('"')
+    except Exception:
+        pass
+    return None
