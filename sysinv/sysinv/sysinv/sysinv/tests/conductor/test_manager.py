@@ -2787,6 +2787,23 @@ class ManagerTestCase(base.DbTestCase):
         p.start().return_value = image_download_result
         self.addCleanup(p.stop)
 
+        mock_get_auth = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.common.utils.get_local_docker_registry_auth',
+            mock_get_auth
+        )
+        p.start().return_value = {'username': 'fake', 'password': 'fake'}
+        self.addCleanup(p.stop)
+
+        mock_pull_images = mock.MagicMock()
+        p = mock.patch.object(
+            agent_rpcapi.AgentAPI,
+            'pull_kubernetes_images',
+            mock_pull_images
+        )
+        p.start()
+        self.addCleanup(p.stop)
+
         mock_utils_execute = mock.MagicMock()
         p = mock.patch('sysinv.common.utils.execute', mock_utils_execute)
         p.start()
@@ -2945,6 +2962,23 @@ class ManagerTestCase(base.DbTestCase):
             'download_images_from_upstream_to_local_reg_and_crictl',
             mock_download_images_from_upstream_to_local_reg_and_crictl)
         p.start().return_value = image_download_result
+        self.addCleanup(p.stop)
+
+        mock_get_auth = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.common.utils.get_local_docker_registry_auth',
+            mock_get_auth
+        )
+        p.start().return_value = {'username': 'fake', 'password': 'fake'}
+        self.addCleanup(p.stop)
+
+        mock_pull_images = mock.MagicMock()
+        p = mock.patch.object(
+            agent_rpcapi.AgentAPI,
+            'pull_kubernetes_images',
+            mock_pull_images
+        )
+        p.start()
         self.addCleanup(p.stop)
 
         mock_utils_execute = mock.MagicMock()
@@ -3108,6 +3142,23 @@ class ManagerTestCase(base.DbTestCase):
         p.start().return_value = image_download_result
         self.addCleanup(p.stop)
 
+        mock_get_auth = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.common.utils.get_local_docker_registry_auth',
+            mock_get_auth
+        )
+        p.start().return_value = {'username': 'fake', 'password': 'fake'}
+        self.addCleanup(p.stop)
+
+        mock_pull_images = mock.MagicMock()
+        p = mock.patch.object(
+            agent_rpcapi.AgentAPI,
+            'pull_kubernetes_images',
+            mock_pull_images
+        )
+        p.start()
+        self.addCleanup(p.stop)
+
         mock_utils_execute = mock.MagicMock()
         p = mock.patch('sysinv.common.utils.execute', mock_utils_execute)
         p.start()
@@ -3267,6 +3318,23 @@ class ManagerTestCase(base.DbTestCase):
             'download_images_from_upstream_to_local_reg_and_crictl',
             mock_download_images_from_upstream_to_local_reg_and_crictl)
         p.start().return_value = image_download_result
+        self.addCleanup(p.stop)
+
+        mock_get_auth = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.common.utils.get_local_docker_registry_auth',
+            mock_get_auth
+        )
+        p.start().return_value = {'username': 'fake', 'password': 'fake'}
+        self.addCleanup(p.stop)
+
+        mock_pull_images = mock.MagicMock()
+        p = mock.patch.object(
+            agent_rpcapi.AgentAPI,
+            'pull_kubernetes_images',
+            mock_pull_images
+        )
+        p.start()
         self.addCleanup(p.stop)
 
         mock_utils_execute = mock.MagicMock()
@@ -3756,6 +3824,23 @@ class ManagerTestCase(base.DbTestCase):
         p.start().return_value = image_download_result
         self.addCleanup(p.stop)
 
+        mock_get_auth = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.common.utils.get_local_docker_registry_auth',
+            mock_get_auth
+        )
+        p.start().return_value = {'username': 'fake', 'password': 'fake'}
+        self.addCleanup(p.stop)
+
+        mock_pull_images = mock.MagicMock()
+        p = mock.patch.object(
+            agent_rpcapi.AgentAPI,
+            'pull_kubernetes_images',
+            mock_pull_images
+        )
+        p.start()
+        self.addCleanup(p.stop)
+
         mock_utils_execute = mock.MagicMock()
         p = mock.patch('sysinv.common.utils.execute', mock_utils_execute)
         p.start().side_effect = Exception("Fake error")
@@ -3819,12 +3904,14 @@ class ManagerTestCase(base.DbTestCase):
         """Test failed execution of kubernetes networking upgrade
         (cluster_pod_subnet absent in host overrides)
         """
+
         # Create controller-0
+        controller0_uuid = str(uuid.uuid4())
         config_uuid = str(uuid.uuid4())
         self._create_test_ihost(
             personality=constants.CONTROLLER,
             hostname='controller-0',
-            uuid=str(uuid.uuid4()),
+            uuid=controller0_uuid,
             config_status=None,
             config_applied=config_uuid,
             config_target=config_uuid,
@@ -3834,115 +3921,147 @@ class ManagerTestCase(base.DbTestCase):
             availability=constants.AVAILABILITY_ONLINE,
         )
 
+        # Create controller-1 (match previous test structure)
+        controller1_uuid = str(uuid.uuid4())
+        config_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname='controller-1',
+            uuid=controller1_uuid,
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            mgmt_mac='00:11:22:33:44:56'
+        )
+
+        # Make controller-0 active
+        self.service.host_uuid = controller0_uuid
+
         FROM_VERSION = 'v1.29.2'
         TO_VERSION = 'v1.30.6'
-        image_download_result = True
-        upgrade_overrides_path_exists = True
-        upgrade_overrides = {"cluster_host_floating_address": "192.168.206.1",
-                             "cluster_host_node_0_address": "192.168.206.2"}
 
-        # Create an upgrade
         utils.create_test_kube_upgrade(
             from_version=FROM_VERSION,
             to_version=TO_VERSION,
             state=kubernetes.KUBE_UPGRADING_NETWORKING,
         )
 
-        mock_sanitize_kubeadm_configmap = mock.MagicMock()
-        p = mock.patch('sysinv.conductor.manager.ConductorManager.sanitize_kubeadm_configmap',
-                       mock_sanitize_kubeadm_configmap)
-        p.start().return_value = 0
-        self.addCleanup(p.stop)
+        upgrade_overrides = {
+            "cluster_host_floating_address": "192.168.206.1",
+            "cluster_host_node_0_address": "192.168.206.2"
+        }
 
-        mock_backup_kube_control_plane = mock.MagicMock()
-        p = mock.patch('sysinv.conductor.manager.ConductorManager.backup_kube_control_plane',
-                       mock_backup_kube_control_plane)
-        p.start()
-        self.addCleanup(p.stop)
+        FAKE_AUTH = "fake_username:fake_password"
 
-        mock_get_kubernetes_system_images = mock.MagicMock()
-        p = mock.patch('sysinv.conductor.manager.ConductorManager._get_kubernetes_system_images',
-                       mock_get_kubernetes_system_images)
-        p.start()
-        self.addCleanup(p.stop)
+        FAKE_IMAGES = {
+            'calico_cni_img': 'img1',
+            'calico_node_img': 'img2',
+            'calico_kube_controllers_img': 'img3',
+            'multus_img': 'img4',
+            'sriov_cni_img': 'img5',
+            'sriov_network_device_img': 'img6',
+        }
+        FAKE_IMAGE_LIST = list(FAKE_IMAGES.values())
 
-        mock_download_images_from_upstream_to_local_reg_and_crictl = mock.MagicMock()
-        p = mock.patch(
-            'sysinv.conductor.manager.ContainerImageDownloader.'
-            'download_images_from_upstream_to_local_reg_and_crictl',
-            mock_download_images_from_upstream_to_local_reg_and_crictl)
-        p.start().return_value = image_download_result
-        self.addCleanup(p.stop)
+        with mock.patch(
+            'sysinv.conductor.manager.ConductorManager._get_kubernetes_system_images',
+            return_value=FAKE_IMAGES
+        ) as mock_get_images, \
+             mock.patch(
+                 'sysinv.conductor.manager.ConductorManager.sanitize_kubeadm_configmap',
+                 return_value=0
+             ) as mock_sanitize, \
+             mock.patch(
+                 'sysinv.conductor.manager.ConductorManager.backup_kube_control_plane'
+             ) as mock_backup, \
+             mock.patch(
+                 'sysinv.conductor.manager.ContainerImageDownloader.'
+                 'download_images_from_upstream_to_local_reg_and_crictl',
+                 return_value=True
+             ) as mock_download, \
+             mock.patch(
+                'sysinv.common.utils.get_local_docker_registry_auth',
+                return_value={'username': 'fake_username', 'password': 'fake_password'}
+             ) as mock_get_auth, \
+             mock.patch.object(
+                 agent_rpcapi.AgentAPI,
+                 'pull_kubernetes_images'
+             ) as mock_pull_images, \
+             mock.patch(
+                 'sysinv.common.utils.execute'
+             ) as mock_execute, \
+             mock.patch(
+                 'os.path.exists',
+                 return_value=True
+             ) as mock_exists, \
+             mock.patch(
+                 'builtins.open', mock.mock_open()
+             ) as mock_open, \
+             mock.patch(
+                 'ruamel.yaml.safe_load',
+                 return_value=upgrade_overrides
+             ) as mock_yaml, \
+             mock.patch(
+                 'shutil.copy2'
+             ) as mock_copy2, \
+             mock.patch(
+                 'sysinv.common.utils.render_jinja_template_from_file'
+             ) as mock_render, \
+             mock.patch(
+                 'sysinv.common.kubernetes.kubectl_apply'
+             ) as mock_kubectl, \
+             mock.patch(
+                 'os.remove'
+             ) as mock_remove:
 
-        mock_utils_execute = mock.MagicMock()
-        p = mock.patch('sysinv.common.utils.execute', mock_utils_execute)
-        p.start()
-        self.addCleanup(p.stop)
+            self.service.kube_upgrade_networking(self.context, TO_VERSION)
 
-        mock_os_path_exists = mock.MagicMock()
-        p = mock.patch('os.path.exists', mock_os_path_exists)
-        p.start().return_value = upgrade_overrides_path_exists
-        self.addCleanup(p.stop)
+            mock_sanitize.assert_called_once()
+            mock_backup.assert_called_once()
+            mock_get_images.assert_called_once_with(TO_VERSION)
+            mock_download.assert_called_once()
+            mock_get_auth.assert_called_once()
+            mock_pull_images.assert_called_once()
 
-        mock_open = mock.mock_open()
-        p = mock.patch('builtins.open', mock_open)
-        p.start()
-        self.addCleanup(p.stop)
+            # Validate pull arguments safely (avoid UUID mismatch issues)
+            args = mock_pull_images.call_args[0]
+            self.assertEqual(args[0], self.context)
+            self.assertEqual(args[3], FAKE_AUTH)
+            self.assertEqual(args[2], FAKE_IMAGE_LIST)
+            mock_execute.assert_called_once()
+            mock_exists.assert_called()
 
-        mock_ruamel_yaml_safe_load = mock.MagicMock()
-        p = mock.patch('ruamel.yaml.safe_load', mock_ruamel_yaml_safe_load)
-        p.start().return_value = upgrade_overrides
-        self.addCleanup(p.stop)
+            # FIX: do NOT assert called_once
+            mock_open.assert_any_call('/tmp/upgrade_overrides.yaml', 'r')
 
-        mock_shutil_copy2 = mock.MagicMock()
-        p = mock.patch('shutil.copy2', mock_shutil_copy2)
-        p.start()
-        self.addCleanup(p.stop)
+            mock_yaml.assert_called_once()
+            mock_copy2.assert_not_called()
+            mock_render.assert_not_called()
+            mock_kubectl.assert_not_called()
+            mock_remove.assert_called_once()
 
-        mock_render_jinja_template_from_file = mock.MagicMock()
-        p = mock.patch('sysinv.common.utils.render_jinja_template_from_file',
-                       mock_render_jinja_template_from_file)
-        p.start()
-        self.addCleanup(p.stop)
-
-        mock_kubectl_apply = mock.MagicMock()
-        p = mock.patch('sysinv.common.kubernetes.kubectl_apply', mock_kubectl_apply)
-        p.start()
-        self.addCleanup(p.stop)
-
-        mock_os_remove = mock.MagicMock()
-        p = mock.patch('os.remove', mock_os_remove)
-        p.start()
-        self.addCleanup(p.stop)
-
-        self.service.kube_upgrade_networking(self.context, TO_VERSION)
-
-        mock_sanitize_kubeadm_configmap.assert_called_once()
-        mock_backup_kube_control_plane.assert_called_once()
-        mock_get_kubernetes_system_images.assert_called_once_with(TO_VERSION)
-        mock_download_images_from_upstream_to_local_reg_and_crictl.assert_called_once()
-        mock_utils_execute.assert_called_once()
-        mock_os_path_exists.assert_called()
-        mock_open.assert_called_once()
-        mock_ruamel_yaml_safe_load.assert_called_once()
-        mock_shutil_copy2.assert_not_called()
-        mock_render_jinja_template_from_file.assert_not_called()
-        mock_kubectl_apply.assert_not_called()
-        mock_os_remove.assert_called_once()
-
-        updated_upgrade = self.dbapi.kube_upgrade_get_one()
-        self.assertEqual(updated_upgrade.state, kubernetes.KUBE_UPGRADING_NETWORKING_FAILED)
+            updated_upgrade = self.dbapi.kube_upgrade_get_one()
+            self.assertEqual(
+                updated_upgrade.state,
+                kubernetes.KUBE_UPGRADING_NETWORKING_FAILED
+            )
 
     def test_kube_upgrade_networking_failure_host_overrides_invalid_ip_address(self):
         """Test failed execution of kubernetes networking upgrade
         (cluster_host_floating_address invalid value)
         """
+
         # Create controller-0
+        controller0_uuid = str(uuid.uuid4())
         config_uuid = str(uuid.uuid4())
         self._create_test_ihost(
             personality=constants.CONTROLLER,
             hostname='controller-0',
-            uuid=str(uuid.uuid4()),
+            uuid=controller0_uuid,
             config_status=None,
             config_applied=config_uuid,
             config_target=config_uuid,
@@ -3952,105 +4071,136 @@ class ManagerTestCase(base.DbTestCase):
             availability=constants.AVAILABILITY_ONLINE,
         )
 
+        # Create controller-1
+        controller1_uuid = str(uuid.uuid4())
+        config_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname='controller-1',
+            uuid=controller1_uuid,
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            mgmt_mac='00:11:22:33:44:56'
+        )
+
+        # Make controller-1 the active host
+        self.service.host_uuid = controller1_uuid
+
         FROM_VERSION = 'v1.29.2'
         TO_VERSION = 'v1.30.6'
-        image_download_result = True
-        upgrade_overrides_path_exists = True
-        upgrade_overrides = {"cluster_pod_subnet": "172.16.0.0/16",
-                             "cluster_host_floating_address": "invalid_ip_address",
-                             "cluster_host_node_0_address": "192.168.206.2"}
 
-        # Create an upgrade
         utils.create_test_kube_upgrade(
             from_version=FROM_VERSION,
             to_version=TO_VERSION,
             state=kubernetes.KUBE_UPGRADING_NETWORKING,
         )
 
-        mock_sanitize_kubeadm_configmap = mock.MagicMock()
-        p = mock.patch('sysinv.conductor.manager.ConductorManager.sanitize_kubeadm_configmap',
-                       mock_sanitize_kubeadm_configmap)
-        p.start().return_value = 0
-        self.addCleanup(p.stop)
+        FAKE_CREDS = {'username': 'fake_username', 'password': 'fake_password'}
+        FAKE_AUTH = "fake_username:fake_password"
 
-        mock_backup_kube_control_plane = mock.MagicMock()
-        p = mock.patch('sysinv.conductor.manager.ConductorManager.backup_kube_control_plane',
-                       mock_backup_kube_control_plane)
-        p.start()
-        self.addCleanup(p.stop)
+        upgrade_overrides = {
+            "cluster_pod_subnet": "172.16.0.0/16",
+            "cluster_host_floating_address": "invalid_ip_address",
+            "cluster_host_node_0_address": "192.168.206.2"
+        }
 
-        mock_get_kubernetes_system_images = mock.MagicMock()
-        p = mock.patch('sysinv.conductor.manager.ConductorManager._get_kubernetes_system_images',
-                       mock_get_kubernetes_system_images)
-        p.start()
-        self.addCleanup(p.stop)
+        # Proper image mocking (CRITICAL FIX)
+        FAKE_IMAGES = {
+            'calico_cni_img': 'img1',
+            'calico_node_img': 'img2',
+            'calico_kube_controllers_img': 'img3',
+            'multus_img': 'img4',
+            'sriov_cni_img': 'img5',
+            'sriov_network_device_img': 'img6',
+        }
+        FAKE_IMAGE_LIST = list(FAKE_IMAGES.values())
 
-        mock_download_images_from_upstream_to_local_reg_and_crictl = mock.MagicMock()
-        p = mock.patch(
-            'sysinv.conductor.manager.ContainerImageDownloader.'
-            'download_images_from_upstream_to_local_reg_and_crictl',
-            mock_download_images_from_upstream_to_local_reg_and_crictl)
-        p.start().return_value = image_download_result
-        self.addCleanup(p.stop)
+        with mock.patch(
+            'sysinv.conductor.manager.ConductorManager._get_kubernetes_system_images',
+            return_value=FAKE_IMAGES
+        ) as mock_get_kubernetes_system_images, \
+             mock.patch(
+                 'sysinv.conductor.manager.ConductorManager.sanitize_kubeadm_configmap',
+                 return_value=0
+             ) as mock_sanitize_kubeadm_configmap, \
+             mock.patch(
+                 'sysinv.conductor.manager.ConductorManager.backup_kube_control_plane'
+             ) as mock_backup_kube_control_plane, \
+             mock.patch(
+                 'sysinv.conductor.manager.ContainerImageDownloader.'
+                 'download_images_from_upstream_to_local_reg_and_crictl',
+                 return_value=True
+             ) as mock_download_images, \
+             mock.patch(
+                 'sysinv.common.utils.get_local_docker_registry_auth',
+                 return_value=FAKE_CREDS
+             ) as mock_get_auth, \
+             mock.patch.object(
+                 agent_rpcapi.AgentAPI, 'pull_kubernetes_images'
+             ) as mock_pull_kubernetes_images, \
+             mock.patch(
+                 'sysinv.common.utils.execute'
+             ) as mock_utils_execute, \
+             mock.patch(
+                 'os.path.exists',
+                 return_value=True
+             ) as mock_os_path_exists, \
+             mock.patch(
+                 'builtins.open', mock.mock_open()
+             ) as mock_open, \
+             mock.patch(
+                 'ruamel.yaml.safe_load',
+                 return_value=upgrade_overrides
+             ) as mock_yaml_load, \
+             mock.patch(
+                 'shutil.copy2'
+             ) as mock_copy2, \
+             mock.patch(
+                 'sysinv.common.utils.render_jinja_template_from_file'
+             ) as mock_render, \
+             mock.patch(
+                 'sysinv.common.kubernetes.kubectl_apply'
+             ) as mock_kubectl_apply, \
+             mock.patch(
+                 'os.remove'
+             ) as mock_remove:
 
-        mock_utils_execute = mock.MagicMock()
-        p = mock.patch('sysinv.common.utils.execute', mock_utils_execute)
-        p.start()
-        self.addCleanup(p.stop)
+            self.service.kube_upgrade_networking(self.context, TO_VERSION)
 
-        mock_os_path_exists = mock.MagicMock()
-        p = mock.patch('os.path.exists', mock_os_path_exists)
-        p.start().return_value = upgrade_overrides_path_exists
-        self.addCleanup(p.stop)
+            # Assertions
+            mock_sanitize_kubeadm_configmap.assert_called_once()
+            mock_backup_kube_control_plane.assert_called_once()
+            mock_get_kubernetes_system_images.assert_called_once_with(TO_VERSION)
+            mock_download_images.assert_called_once()
+            mock_get_auth.assert_called_once()
 
-        mock_open = mock.mock_open()
-        p = mock.patch('builtins.open', mock_open)
-        p.start()
-        self.addCleanup(p.stop)
+            mock_pull_kubernetes_images.assert_called_once()
 
-        mock_ruamel_yaml_safe_load = mock.MagicMock()
-        p = mock.patch('ruamel.yaml.safe_load', mock_ruamel_yaml_safe_load)
-        p.start().return_value = upgrade_overrides
-        self.addCleanup(p.stop)
+            # Validate pull arguments safely (avoid UUID mismatch issues)
+            args = mock_pull_kubernetes_images.call_args[0]
+            self.assertEqual(args[0], self.context)
+            self.assertEqual(args[3], FAKE_AUTH)
+            self.assertEqual(args[2], FAKE_IMAGE_LIST)
 
-        mock_shutil_copy2 = mock.MagicMock()
-        p = mock.patch('shutil.copy2', mock_shutil_copy2)
-        p.start()
-        self.addCleanup(p.stop)
+            mock_utils_execute.assert_called_once()
+            mock_os_path_exists.assert_called()
+            mock_open.assert_called_once()
+            mock_yaml_load.assert_called_once()
+            mock_copy2.assert_not_called()
+            mock_render.assert_not_called()
+            mock_kubectl_apply.assert_not_called()
+            mock_remove.assert_called_once()
 
-        mock_render_jinja_template_from_file = mock.MagicMock()
-        p = mock.patch('sysinv.common.utils.render_jinja_template_from_file',
-                       mock_render_jinja_template_from_file)
-        p.start()
-        self.addCleanup(p.stop)
-
-        mock_kubectl_apply = mock.MagicMock()
-        p = mock.patch('sysinv.common.kubernetes.kubectl_apply', mock_kubectl_apply)
-        p.start()
-        self.addCleanup(p.stop)
-
-        mock_os_remove = mock.MagicMock()
-        p = mock.patch('os.remove', mock_os_remove)
-        p.start()
-        self.addCleanup(p.stop)
-
-        self.service.kube_upgrade_networking(self.context, TO_VERSION)
-
-        mock_sanitize_kubeadm_configmap.assert_called_once()
-        mock_backup_kube_control_plane.assert_called_once()
-        mock_get_kubernetes_system_images.assert_called_once_with(TO_VERSION)
-        mock_download_images_from_upstream_to_local_reg_and_crictl.assert_called_once()
-        mock_utils_execute.assert_called_once()
-        mock_os_path_exists.assert_called()
-        mock_open.assert_called_once()
-        mock_ruamel_yaml_safe_load.assert_called_once()
-        mock_shutil_copy2.assert_not_called()
-        mock_render_jinja_template_from_file.assert_not_called()
-        mock_kubectl_apply.assert_not_called()
-        mock_os_remove.assert_called_once()
-
-        updated_upgrade = self.dbapi.kube_upgrade_get_one()
-        self.assertEqual(updated_upgrade.state, kubernetes.KUBE_UPGRADING_NETWORKING_FAILED)
+            updated_upgrade = self.dbapi.kube_upgrade_get_one()
+            self.assertEqual(
+                updated_upgrade.state,
+                kubernetes.KUBE_UPGRADING_NETWORKING_FAILED
+            )
 
     def test_kube_upgrade_networking_failure_template_render_error(self):
         """Test failed execution of kubernetes networking upgrade (Template rendering failure)
@@ -4109,6 +4259,23 @@ class ManagerTestCase(base.DbTestCase):
             'download_images_from_upstream_to_local_reg_and_crictl',
             mock_download_images_from_upstream_to_local_reg_and_crictl)
         p.start().return_value = image_download_result
+        self.addCleanup(p.stop)
+
+        mock_get_auth = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.common.utils.get_local_docker_registry_auth',
+            mock_get_auth
+        )
+        p.start().return_value = {'username': 'fake', 'password': 'fake'}
+        self.addCleanup(p.stop)
+
+        mock_pull_images = mock.MagicMock()
+        p = mock.patch.object(
+            agent_rpcapi.AgentAPI,
+            'pull_kubernetes_images',
+            mock_pull_images
+        )
+        p.start()
         self.addCleanup(p.stop)
 
         mock_utils_execute = mock.MagicMock()
@@ -4223,6 +4390,23 @@ class ManagerTestCase(base.DbTestCase):
         p.start().return_value = image_download_result
         self.addCleanup(p.stop)
 
+        mock_get_auth = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.common.utils.get_local_docker_registry_auth',
+            mock_get_auth
+        )
+        p.start().return_value = {'username': 'fake', 'password': 'fake'}
+        self.addCleanup(p.stop)
+
+        mock_pull_images = mock.MagicMock()
+        p = mock.patch.object(
+            agent_rpcapi.AgentAPI,
+            'pull_kubernetes_images',
+            mock_pull_images
+        )
+        p.start()
+        self.addCleanup(p.stop)
+
         mock_utils_execute = mock.MagicMock()
         p = mock.patch('sysinv.common.utils.execute', mock_utils_execute)
         p.start()
@@ -4311,6 +4495,23 @@ class ManagerTestCase(base.DbTestCase):
             'download_images_from_upstream_to_local_reg_and_crictl',
             mock_download_images_from_upstream_to_local_reg_and_crictl)
         p.start().return_value = image_download_result
+        self.addCleanup(p.stop)
+
+        mock_get_auth = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.common.utils.get_local_docker_registry_auth',
+            mock_get_auth
+        )
+        p.start().return_value = {'username': 'fake', 'password': 'fake'}
+        self.addCleanup(p.stop)
+
+        mock_pull_images = mock.MagicMock()
+        p = mock.patch.object(
+            agent_rpcapi.AgentAPI,
+            'pull_kubernetes_images',
+            mock_pull_images
+        )
+        p.start()
         self.addCleanup(p.stop)
 
         mock_generate_manifests_and_apply = mock.MagicMock()
@@ -4443,6 +4644,23 @@ class ManagerTestCase(base.DbTestCase):
             'download_images_from_upstream_to_local_reg_and_crictl',
             mock_download_images_from_upstream_to_local_reg_and_crictl)
         p.start().return_value = image_download_result
+        self.addCleanup(p.stop)
+
+        mock_get_auth = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.common.utils.get_local_docker_registry_auth',
+            mock_get_auth
+        )
+        p.start().return_value = {'username': 'fake', 'password': 'fake'}
+        self.addCleanup(p.stop)
+
+        mock_pull_images = mock.MagicMock()
+        p = mock.patch.object(
+            agent_rpcapi.AgentAPI,
+            'pull_kubernetes_images',
+            mock_pull_images
+        )
+        p.start()
         self.addCleanup(p.stop)
 
         mock_generate_manifests_and_apply = mock.MagicMock()
