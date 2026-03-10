@@ -1339,6 +1339,15 @@ class AppOperator(object):
         root_kustomization_path = \
             os.path.join(manifest, app_root_kustomize_file)
 
+        charts = []
+
+        try:
+            db_app = self._dbapi.kube_app_get_by_id(app.id)
+            if db_app.status == constants.APP_INACTIVE_STATE:
+                return charts
+        except exception.KubeAppByIdNotFound:
+            return charts
+
         # In the event include_disabed is set to True, make sure the file exists.
         # Possible that the file has not yet been created yet.
         if not os.path.exists(root_kustomization_path) and include_disabled:
@@ -1367,8 +1376,6 @@ class AppOperator(object):
         helm_repo_url = helm_repo_dict["url"]
         helm_repo_name = helm_repo_dict["name"]
         helm_repo_local_path = helm_repo_dict["path"]
-
-        charts = []
 
         # Getting helmrelease result of "kubectl kustomize <fluxcd_directory>"
         if include_disabled:

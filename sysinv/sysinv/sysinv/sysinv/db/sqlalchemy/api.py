@@ -8284,6 +8284,17 @@ class Connection(api.Connection):
         return query.all()
 
     @db_objects.objectify(objects.kube_app)
+    def kube_app_get_by_id(self, id):
+        query = model_query(models.KubeApp)
+        query = query.filter(
+            models.KubeApp.id == id)
+        try:
+            result = query.one()
+        except NoResultFound:
+            raise exception.KubeAppByIdNotFound(id=id)
+        return result
+
+    @db_objects.objectify(objects.kube_app)
     def kube_app_get(self, name):
         return self._kube_app_get(name)
 
