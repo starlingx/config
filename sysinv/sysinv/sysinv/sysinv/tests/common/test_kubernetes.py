@@ -108,8 +108,6 @@ def mock_load_kube_config(path):
 
 
 @mock.patch('kubernetes.config.load_kube_config', mock_load_kube_config)
-@mock.patch('sysinv.common.kubernetes.get_kube_versions',
-            mock_get_kube_versions)
 class TestKubeOperator(base.TestCase):
 
     def setup_result(self):
@@ -1056,12 +1054,22 @@ class TestKubeOperator(base.TestCase):
 
         self.list_node_result = self.single_node_result
 
+        p = mock.patch('sysinv.common.kubernetes.get_kube_versions',
+                        mock_get_kube_versions)
+        p.start()
+        self.addCleanup(p.stop)
+
         result = self.kube_operator.kube_get_higher_patch_version('v1.41.3', 'v1.43.1')
         assert result == ['v1.42.4', 'v1.43.1']
 
     def test_kube_get_higher_patch_version_increment_check(self):
 
         self.list_node_result = self.single_node_result
+
+        p = mock.patch('sysinv.common.kubernetes.get_kube_versions',
+                        mock_get_kube_versions)
+        p.start()
+        self.addCleanup(p.stop)
 
         result = self.kube_operator.kube_get_higher_patch_version('v1.41.3', 'v1.45.1')
         assert result == ['v1.42.4', 'v1.43.1', 'v1.44.0', 'v1.45.1']
@@ -1070,12 +1078,22 @@ class TestKubeOperator(base.TestCase):
 
         self.list_node_result = self.single_node_result
 
+        p = mock.patch('sysinv.common.kubernetes.get_kube_versions',
+                        mock_get_kube_versions)
+        p.start()
+        self.addCleanup(p.stop)
+
         result = self.kube_operator.kube_get_higher_patch_version('v1.42.0', 'v1.42.3')
         assert result == ['v1.42.3']
 
     def test_kube_get_higher_patch_version_check_nohigher(self):
 
         self.list_node_result = self.single_node_result
+
+        p = mock.patch('sysinv.common.kubernetes.get_kube_versions',
+                        mock_get_kube_versions)
+        p.start()
+        self.addCleanup(p.stop)
 
         result = self.kube_operator.kube_get_higher_patch_version('v1.43.1', 'v1.42.4')
         assert result == []
@@ -1092,6 +1110,11 @@ class TestKubeOperator(base.TestCase):
 
         self.list_namespaced_pod_result = self.cp_pods_result
         self.list_node_result = self.single_node_result
+
+        p = mock.patch('sysinv.common.kubernetes.get_kube_versions',
+                        mock_get_kube_versions)
+        p.start()
+        self.addCleanup(p.stop)
 
         result = self.kube_operator.kube_get_version_states()
 
@@ -1131,6 +1154,11 @@ class TestKubeOperator(base.TestCase):
         self.single_node_result.items[0].status.node_info.kubelet_version = \
             "v1.42.1"
 
+        p = mock.patch('sysinv.common.kubernetes.get_kube_versions',
+                        mock_get_kube_versions)
+        p.start()
+        self.addCleanup(p.stop)
+
         result = self.kube_operator.kube_get_version_states()
         assert result == {'v1.41.3': 'unavailable',
                           'v1.42.0': 'unavailable',
@@ -1146,6 +1174,11 @@ class TestKubeOperator(base.TestCase):
 
         self.list_namespaced_pod_result = self.cp_pods_result
         self.list_node_result = self.multi_node_result
+
+        p = mock.patch('sysinv.common.kubernetes.get_kube_versions',
+                        mock_get_kube_versions)
+        p.start()
+        self.addCleanup(p.stop)
 
         result = self.kube_operator.kube_get_version_states()
         assert result == {'v1.41.3': 'unavailable',
@@ -1166,6 +1199,11 @@ class TestKubeOperator(base.TestCase):
         self.list_node_result = self.single_node_result
         self.single_node_result.items[0].status.node_info.kubelet_version = \
             "v1.49.1"
+
+        p = mock.patch('sysinv.common.kubernetes.get_kube_versions',
+                        mock_get_kube_versions)
+        p.start()
+        self.addCleanup(p.stop)
 
         result = self.kube_operator.kube_get_version_states()
         assert result == {'v1.41.3': 'unavailable',
@@ -1493,8 +1531,8 @@ class TestKubeOperator(base.TestCase):
             self.kube_operator.kube_patch_clusterrolebinding,
         )
 
-    def test_get_all_supported_k8s_versions_success(self):
-        """Test successful execution of method get_all_supported_k8s_versions()
+    def test_get_installed_kube_versions_success(self):
+        """Test successful execution of method get_installed_kube_versions()
         """
         expected_versions = ['fake_version1', 'fake_version2']
         mock_os_listdir = mock.MagicMock()
@@ -1502,21 +1540,47 @@ class TestKubeOperator(base.TestCase):
         p.start().return_value = expected_versions
         self.addCleanup(p.stop)
 
-        actual_versions = kube.get_all_supported_k8s_versions()
+        mock_os_path_isdir = mock.MagicMock()
+        p = mock.patch('os.path.isdir', mock_os_path_isdir)
+        p.start().return_value = True
+        self.addCleanup(p.stop)
+
+        mock_os_path_join = mock.MagicMock()
+        p = mock.patch('os.path.join', mock_os_path_join)
+        p.start()
+        self.addCleanup(p.stop)
+
+        actual_versions = kube.get_installed_kube_versions()
 
         self.assertEqual(expected_versions, actual_versions)
-        mock_os_listdir.assert_called_once()
+        mock_os_listdir.assert_called()
+        mock_os_path_isdir.assert_called()
+        mock_os_path_join.assert_called()
 
-    def test_get_all_supported_k8s_versions_failure(self):
-        """Test failure of method get_all_supported_k8s_versions()
+    def test_get_installed_kube_versions_failure(self):
+        """Test failure of method get_installed_kube_versions()
         """
         mock_os_listdir = mock.MagicMock()
         p = mock.patch('os.listdir', mock_os_listdir)
         p.start().side_effect = Exception("Fake error")
         self.addCleanup(p.stop)
 
-        self.assertRaises(exception.SysinvException, kube.get_all_supported_k8s_versions)
-        mock_os_listdir.assert_called_once()
+        mock_os_path_isdir = mock.MagicMock()
+        p = mock.patch('os.path.isdir', mock_os_path_isdir)
+        p.start().return_value = True
+        self.addCleanup(p.stop)
+
+        mock_os_path_join = mock.MagicMock()
+        p = mock.patch('os.path.join', mock_os_path_join)
+        p.start()
+        self.addCleanup(p.stop)
+
+        actual_versions = kube.get_installed_kube_versions()
+
+        self.assertEqual([], actual_versions)
+        mock_os_listdir.assert_called()
+        mock_os_path_isdir.assert_called()
+        mock_os_path_join.assert_not_called()
 
     def test_get_k8s_images_success(self):
         """Test successful execution of method get_k8s_images()
@@ -1561,9 +1625,9 @@ class TestKubeOperator(base.TestCase):
                               'fake_image2': 'fake_registry2/fake_image2:fake_tag2'},
         }
 
-        mock_get_all_supported_k8s_versions = mock.MagicMock()
-        p = mock.patch('sysinv.common.kubernetes.get_all_supported_k8s_versions',
-                       mock_get_all_supported_k8s_versions)
+        mock_get_installed_kube_versions = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.get_installed_kube_versions',
+                       mock_get_installed_kube_versions)
         p.start().return_value = fake_versions
         self.addCleanup(p.stop)
 
@@ -1575,7 +1639,7 @@ class TestKubeOperator(base.TestCase):
         actual_result = kube.get_k8s_images_for_all_versions()
 
         self.assertEqual(expected_result, actual_result)
-        mock_get_all_supported_k8s_versions.assert_called_once()
+        mock_get_installed_kube_versions.assert_called_once()
         self.assertEqual(mock_get_k8s_images.call_count, 2)
         mock_get_k8s_images.assert_called()
 
@@ -1584,9 +1648,9 @@ class TestKubeOperator(base.TestCase):
         """
         fake_versions = ['fake_version1', 'fake_version2']
 
-        mock_get_all_supported_k8s_versions = mock.MagicMock()
-        p = mock.patch('sysinv.common.kubernetes.get_all_supported_k8s_versions',
-                       mock_get_all_supported_k8s_versions)
+        mock_get_installed_kube_versions = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.get_installed_kube_versions',
+                       mock_get_installed_kube_versions)
         p.start().return_value = fake_versions
         self.addCleanup(p.stop)
 
@@ -1596,7 +1660,7 @@ class TestKubeOperator(base.TestCase):
         self.addCleanup(p.stop)
 
         self.assertRaises(exception.SysinvException, kube.get_k8s_images_for_all_versions)
-        mock_get_all_supported_k8s_versions.assert_called_once()
+        mock_get_installed_kube_versions.assert_called_once()
         mock_get_k8s_images.assert_called()
 
     def test_disable_kubelet_garbage_collection_success(self):
@@ -1977,6 +2041,210 @@ class TestKubeOperator(base.TestCase):
 
         self.assertRaises(Exception, self.kube_operator.kube_get_all_configmaps)  # noqa: H202
         mock_list_config_map_for_all_namespaces.assert_called_once()
+
+    def test_get_kube_version_from_symlink_success_stage1(self):
+        """Test successful execution of test_get_kube_version_from_symlink
+        """
+        stage_number = 1
+        link = "/usr/local/kubernetes/1.34.1/stage1"
+        expected_output = "1.34.1"
+
+        mock_os_readlink = mock.MagicMock()
+        p = mock.patch('os.readlink', mock_os_readlink)
+        p.start().return_value = link
+        self.addCleanup(p.stop)
+
+        actual_output = kube.get_kube_version_from_symlink(stage_number)
+
+        mock_os_readlink.assert_called()
+        self.assertEqual(expected_output, actual_output)
+
+    def test_get_kube_version_from_symlink_success_stage2(self):
+        """Test successful execution of test_get_kube_version_from_symlink
+        """
+        stage_number = 2
+        link = "/usr/local/kubernetes/1.34.1/stage2"
+        expected_output = "1.34.1"
+
+        mock_os_readlink = mock.MagicMock()
+        p = mock.patch('os.readlink', mock_os_readlink)
+        p.start().return_value = link
+        self.addCleanup(p.stop)
+
+        actual_output = kube.get_kube_version_from_symlink(stage_number)
+
+        mock_os_readlink.assert_called()
+        self.assertEqual(expected_output, actual_output)
+
+    def test_get_kube_version_from_symlink_failure_invalid_stage_input(self):
+        """Test failed execution of test_get_kube_version_from_symlink
+        """
+        stage_number = 3
+
+        mock_os_readlink = mock.MagicMock()
+        p = mock.patch('os.readlink', mock_os_readlink)
+        p.start()
+        self.addCleanup(p.stop)
+
+        self.assertRaises(exception.SysinvException,
+                          kube.get_kube_version_from_symlink,
+                          stage_number)
+
+        mock_os_readlink.assert_not_called()
+
+    def test_get_kube_version_from_symlink_failure_read_linking(self):
+        """Test failed execution of test_get_kube_version_from_symlink
+        """
+        stage_number = 3
+
+        mock_os_readlink = mock.MagicMock()
+        p = mock.patch('os.readlink', mock_os_readlink)
+        p.start().side_effect = exception.SysinvException
+        self.addCleanup(p.stop)
+
+        self.assertRaises(exception.SysinvException,
+                          kube.get_kube_version_from_symlink,
+                          stage_number)
+
+        mock_os_readlink.assert_not_called()
+
+    def test_get_min_kube_version_success(self):
+        """Test successful execution of test_get_min_kube_version
+        """
+        installed_versions = ['1.32.2', '1.33.0', '1.34.1']
+        expected_output = '1.32.2'
+
+        mock_get_installed_kube_versions = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.get_installed_kube_versions',
+                       mock_get_installed_kube_versions)
+        p.start().return_value = installed_versions
+        self.addCleanup(p.stop)
+
+        actual_output = kube.get_min_kube_version()
+
+        mock_get_installed_kube_versions.assert_called()
+        self.assertEqual(expected_output, actual_output)
+
+    def test_get_min_kube_version_failure(self):
+        """Test failed execution of test_get_min_kube_version
+        """
+        mock_get_installed_kube_versions = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.get_installed_kube_versions',
+                       mock_get_installed_kube_versions)
+        p.start().side_effect = Exception("Fake Error")
+        self.addCleanup(p.stop)
+
+        actual_output = kube.get_min_kube_version()
+
+        mock_get_installed_kube_versions.assert_called()
+        self.assertEqual(actual_output, None)
+
+    def test_get_max_kube_version_success(self):
+        """Test successful execution of test_get_max_kube_version
+        """
+        installed_versions = ['1.32.2', '1.33.0', '1.34.1']
+        expected_output = '1.34.1'
+
+        mock_get_installed_kube_versions = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.get_installed_kube_versions',
+                       mock_get_installed_kube_versions)
+        p.start().return_value = installed_versions
+        self.addCleanup(p.stop)
+
+        actual_output = kube.get_max_kube_version()
+
+        mock_get_installed_kube_versions.assert_called()
+        self.assertEqual(expected_output, actual_output)
+
+    def test_get_max_kube_version_failure(self):
+        """Test failed execution of test_get_max_kube_version
+        """
+        mock_get_installed_kube_versions = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.get_installed_kube_versions',
+                       mock_get_installed_kube_versions)
+        p.start().side_effect = Exception("Fake Error")
+        self.addCleanup(p.stop)
+
+        actual_output = kube.get_max_kube_version()
+
+        mock_get_installed_kube_versions.assert_called()
+        self.assertEqual(actual_output, None)
+
+    def test_get_kube_versions_success(self):
+        """Test successful execution of test_get_kube_versions
+        """
+        installed_versions = ['1.32.2', '1.33.0', '1.34.1']
+
+        expected_output = [{
+                    "version": "v1.32.2",
+                    "upgrade_from": [],
+                    "downgrade_to": [],
+                    "applied_patches": [],
+                    "available_patches": [],
+        }, {
+                    "version": "v1.33.0",
+                    "upgrade_from": ["v1.32.2"],
+                    "downgrade_to": [],
+                    "applied_patches": [],
+                    "available_patches": [],
+        }, {
+                    "version": "v1.34.1",
+                    "upgrade_from": ["v1.33.0"],
+                    "downgrade_to": [],
+                    "applied_patches": [],
+                    "available_patches": [],
+        }]
+
+        mock_get_installed_kube_versions = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.get_installed_kube_versions',
+                       mock_get_installed_kube_versions)
+        p.start().return_value = installed_versions
+        self.addCleanup(p.stop)
+
+        actual_output = kube.get_kube_versions()
+
+        mock_get_installed_kube_versions.assert_called()
+        self.assertEqual(expected_output, actual_output)
+
+    def test_get_kube_versions_single_version_success(self):
+        """Test successful execution of test_get_kube_versions
+        """
+        installed_versions = ['1.32.2']
+
+        expected_output = [{
+                    "version": "v1.32.2",
+                    "upgrade_from": [],
+                    "downgrade_to": [],
+                    "applied_patches": [],
+                    "available_patches": [],
+        }]
+
+        mock_get_installed_kube_versions = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.get_installed_kube_versions',
+                       mock_get_installed_kube_versions)
+        p.start().return_value = installed_versions
+        self.addCleanup(p.stop)
+
+        actual_output = kube.get_kube_versions()
+
+        mock_get_installed_kube_versions.assert_called()
+        self.assertEqual(expected_output, actual_output)
+
+    def test_get_kube_versions_failure(self):
+        """Test failed execution of test_get_kube_versions
+        """
+        expected_output = []
+
+        mock_get_installed_kube_versions = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.get_installed_kube_versions',
+                       mock_get_installed_kube_versions)
+        p.start().side_effect = Exception("Fake error")
+        self.addCleanup(p.stop)
+
+        actual_output = kube.get_kube_versions()
+
+        mock_get_installed_kube_versions.assert_called()
+        self.assertEqual(expected_output, actual_output)
 
 
 class TestKubernetesUtilities(base.TestCase):
