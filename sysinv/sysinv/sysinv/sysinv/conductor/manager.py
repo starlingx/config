@@ -14228,18 +14228,6 @@ class ConductorManager(service.PeriodicService):
                 break
         return config
 
-    def _has_host_specific_deferred_config(self, host_uuids):
-        if not self._host_deferred_runtime_config or not host_uuids:
-            return False
-
-        host_uuids = [host_uuids] if isinstance(host_uuids, str) else host_uuids
-
-        for deferred_config in self._host_deferred_runtime_config:
-            deferred_hosts = deferred_config['config_dict'].get('host_uuids', [])
-            if set(host_uuids) & set(deferred_hosts):
-                return True
-        return False
-
     def _try_config_update_puppet(
             self, config_uuid, config_dict,
             deferred_config=None, host_uuids=None, force=False, skip_update_config=False):
@@ -14534,7 +14522,7 @@ class ConductorManager(service.PeriodicService):
         # This will prevent newer configs from being applied
         # before older deferred configs.
         elif (deferred_config is None and
-              self._has_host_specific_deferred_config(host_uuids) and
+              self._host_deferred_runtime_config and
               not skip_deferred_manifests):
 
             self._update_host_deferred_runtime_config(
