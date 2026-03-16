@@ -11,7 +11,6 @@
 import datetime
 import os
 import tsconfig.tsconfig as tsc
-from sysinv.helm.lifecycle_constants import LifecycleConstants
 
 SYSINV_RUNNING_IN_LAB = '/etc/sysinv/.running_in_lab'
 SYSINV_CONFIG_PATH = os.path.join(tsc.PLATFORM_PATH, "sysinv", tsc.SW_VERSION)
@@ -2158,11 +2157,21 @@ APP_RESTORE = 'restore'
 
 # -----------------------------------------------------------------------------------------------
 # These constants are outdated and were copied to sysinv/helm/lifecycle_constants.py
-# TODO(dbarbosa): Third-party apps continue using these constants. To avoid breaking backward
-# compatibility, it will be maintained up to stx.13.
+# TODO(edias): after all apps start to use the new constants, the ones below should be deleted.
 
 APP_LIFECYCLE_TIMING_PRE = 'pre'
+APP_LIFECYCLE_TIMING_STATUS = 'status'
+APP_LIFECYCLE_TIMING_POST = 'post'
+APP_LIFECYCLE_TYPE_SEMANTIC_CHECK = 'check'
+APP_LIFECYCLE_TYPE_OPERATION = 'operation'
+APP_LIFECYCLE_TYPE_RBD = 'rbd'
+APP_LIFECYCLE_TYPE_RESOURCE = 'resource'
+APP_LIFECYCLE_TYPE_MANIFEST = 'manifest'
 APP_LIFECYCLE_TYPE_FLUXCD_REQUEST = 'fluxcd-request'
+APP_LIFECYCLE_MODE_MANUAL = 'manual'
+APP_LIFECYCLE_MODE_AUTO = 'auto'
+APP_LIFECYCLE_FORCE_OPERATION = 'force'
+APP_LIFECYCLE_OPERATION_MTC_ACTION = 'mtc-action'
 
 # -----------------------------------------------------------------------------------------------
 
@@ -2179,33 +2188,33 @@ BACKUP_ACTION_POST_RESTORE = 'post-restore-action'
 
 # backup/restore parameters from the command line utility:
 HOOK_PARAMETERS_MAP = {
-    BACKUP_ACTION_SEMANTIC_CHECK: [LifecycleConstants.APP_LIFECYCLE_MODE_AUTO,
-                                   LifecycleConstants.APP_LIFECYCLE_TYPE_SEMANTIC_CHECK,
-                                   LifecycleConstants.APP_LIFECYCLE_TIMING_PRE,
+    BACKUP_ACTION_SEMANTIC_CHECK: [APP_LIFECYCLE_MODE_AUTO,
+                                   APP_LIFECYCLE_TYPE_SEMANTIC_CHECK,
+                                   APP_LIFECYCLE_TIMING_PRE,
                                    APP_BACKUP],
-    BACKUP_ACTION_PRE_BACKUP: [LifecycleConstants.APP_LIFECYCLE_MODE_AUTO,
-                               LifecycleConstants.APP_LIFECYCLE_TYPE_OPERATION,
-                               LifecycleConstants.APP_LIFECYCLE_TIMING_PRE,
+    BACKUP_ACTION_PRE_BACKUP: [APP_LIFECYCLE_MODE_AUTO,
+                               APP_LIFECYCLE_TYPE_OPERATION,
+                               APP_LIFECYCLE_TIMING_PRE,
                                APP_BACKUP],
-    BACKUP_ACTION_POST_BACKUP: [LifecycleConstants.APP_LIFECYCLE_MODE_AUTO,
-                                LifecycleConstants.APP_LIFECYCLE_TYPE_OPERATION,
-                                LifecycleConstants.APP_LIFECYCLE_TIMING_POST,
+    BACKUP_ACTION_POST_BACKUP: [APP_LIFECYCLE_MODE_AUTO,
+                                APP_LIFECYCLE_TYPE_OPERATION,
+                                APP_LIFECYCLE_TIMING_POST,
                                 APP_BACKUP],
-    BACKUP_ACTION_PRE_ETCD_BACKUP: [LifecycleConstants.APP_LIFECYCLE_MODE_AUTO,
-                                    LifecycleConstants.APP_LIFECYCLE_TYPE_OPERATION,
-                                    LifecycleConstants.APP_LIFECYCLE_TIMING_PRE,
+    BACKUP_ACTION_PRE_ETCD_BACKUP: [APP_LIFECYCLE_MODE_AUTO,
+                                    APP_LIFECYCLE_TYPE_OPERATION,
+                                    APP_LIFECYCLE_TIMING_PRE,
                                     APP_ETCD_BACKUP],
-    BACKUP_ACTION_POST_ETCD_BACKUP: [LifecycleConstants.APP_LIFECYCLE_MODE_AUTO,
-                                     LifecycleConstants.APP_LIFECYCLE_TYPE_OPERATION,
-                                     LifecycleConstants.APP_LIFECYCLE_TIMING_POST,
+    BACKUP_ACTION_POST_ETCD_BACKUP: [APP_LIFECYCLE_MODE_AUTO,
+                                     APP_LIFECYCLE_TYPE_OPERATION,
+                                     APP_LIFECYCLE_TIMING_POST,
                                      APP_ETCD_BACKUP],
-    BACKUP_ACTION_PRE_RESTORE: [LifecycleConstants.APP_LIFECYCLE_MODE_AUTO,
-                                LifecycleConstants.APP_LIFECYCLE_TYPE_OPERATION,
-                                LifecycleConstants.APP_LIFECYCLE_TIMING_PRE,
+    BACKUP_ACTION_PRE_RESTORE: [APP_LIFECYCLE_MODE_AUTO,
+                                APP_LIFECYCLE_TYPE_OPERATION,
+                                APP_LIFECYCLE_TIMING_PRE,
                                 APP_RESTORE],
-    BACKUP_ACTION_POST_RESTORE: [LifecycleConstants.APP_LIFECYCLE_MODE_AUTO,
-                                 LifecycleConstants.APP_LIFECYCLE_TYPE_OPERATION,
-                                 LifecycleConstants.APP_LIFECYCLE_TIMING_POST,
+    BACKUP_ACTION_POST_RESTORE: [APP_LIFECYCLE_MODE_AUTO,
+                                 APP_LIFECYCLE_TYPE_OPERATION,
+                                 APP_LIFECYCLE_TIMING_POST,
                                  APP_RESTORE],
 }
 
