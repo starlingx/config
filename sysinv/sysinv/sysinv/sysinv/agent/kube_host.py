@@ -13,6 +13,7 @@
 
 import datetime
 import os
+import re
 import shutil
 import tsconfig.tsconfig as tsc
 
@@ -342,23 +343,23 @@ class KubeHostOperator(object):
             raise exception.SysinvException("'kubeadm upgrade node' operation failed "
                                             "with error: [%s]" % (ex))
 
-    def _update_pause_image_in_containerd(self, current_pause_image, target_pause_image):
+    def _update_pause_image_in_containerd(self, target_pause_image):
         """Update pause image in containerd config file
 
-        :param: current_pause_image: full pause image name with tag currently configured. String
         :param: target_pause_image: full pause image name with tag to be replaced. String
 
-        :return: True if successful, False otherwise
+        :return: None. Raises SysinvException on failure.
         """
         try:
             stream = ""
             with open(containers.CONTAINERD_CONFIG_FULL_PATH, 'r') as file:
                 stream = file.read()
             if stream != "":
-                sandbox_image_prefix = \
-                        f"sandbox_image = \"{constants.DOCKER_REGISTRY_SERVER}/"
-                stream = stream.replace(sandbox_image_prefix + current_pause_image,
-                                        sandbox_image_prefix + target_pause_image)
+                update_sandbox_image = (
+                    f'sandbox_image = "{constants.DOCKER_REGISTRY_SERVER}/{target_pause_image}"'
+                )
+                # containerd config.toml has a single sandbox_image entry
+                stream = re.sub(r'sandbox_image\s*=\s*".*?"', update_sandbox_image, stream, count=1)
                 with open(containers.CONTAINERD_CONFIG_FULL_PATH, 'w') as file:
                     file.write(stream + '\n')
                 LOG.info("Successfully updated pause image version in the "
@@ -386,7 +387,7 @@ class KubeHostOperator(object):
         if current_pause_image == target_pause_image:
             LOG.info("No need to update 'pause' image inside containerd config. Proceeding...")
         else:
-            self._update_pause_image_in_containerd(current_pause_image, target_pause_image)
+            self._update_pause_image_in_containerd(target_pause_image)
 
         # update stage2 symlink.
         self._update_kube_symlink(kubernetes.KUBERNETES_SYMLINKS_STAGE_2, to_kube_version)
