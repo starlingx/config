@@ -8841,8 +8841,8 @@ class ConductorManager(service.PeriodicService):
             LOG.info("Kubernetes is unhealthy. Defer application audit.")
             return
 
-        # Ensure that FluxCD pods are ready.
-        if not self._app.check_fluxcd_pod_status():
+        # Ensure that FluxCD deployments are ready.
+        if not self._app.check_fluxcd_deployment_status():
             LOG.warning("FluxCD pods are not ready. Defer application audit.")
             return
 

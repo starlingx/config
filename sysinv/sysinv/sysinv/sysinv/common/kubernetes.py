@@ -2243,3 +2243,29 @@ class KubeOperator(object):
         except Exception as ex:
             LOG.exception("Failed to patch clusterolebinding %s : %s" % (name, ex))
             raise
+
+    def kube_get_namespaced_deployment(self, name, namespace):
+        """Retrieves a specific deployment from a given namespace.
+
+        :param name (str): The name of the deployment to retrieve.
+        :param namespace (str): The namespace where the deployment is located.
+
+        :return: The deployment object if found, None if not found.
+        """
+
+        c = self._get_kubernetesclient_apps_v1_api()
+        try:
+            deployment = c.read_namespaced_deployment(name, namespace)
+            return deployment
+        except ApiException as e:
+            if e.status == httplib.NOT_FOUND:
+                LOG.warn("Deployment %s under Namespace %s "
+                        "not found." % (name, namespace))
+                return None
+            else:
+                LOG.error("Failed to get Deployment %s under "
+                        "Namespace %s: %s" % (name, namespace, e.body))
+                raise
+        except Exception as e:
+            LOG.error("Kubernetes exception in kube_get_namespaced_deployment: %s" % e)
+            raise

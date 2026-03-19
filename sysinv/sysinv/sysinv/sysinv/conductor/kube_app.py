@@ -3898,6 +3898,9 @@ class AppOperator(object):
     def check_fluxcd_pod_status(self):
         return self._fluxcd.check_fluxcd_pods_status()
 
+    def check_fluxcd_deployment_status(self):
+        return self._fluxcd.check_fluxcd_deployment_status()
+
 
 class DockerHelper(object):
     """ Utility class to encapsulate Docker related operations """
@@ -4844,6 +4847,64 @@ class FluxCDHelper(object):
 
         if self._check_fluxcd_pod_status(constants.FLUXCD_HELM_CONTROLLER_LABEL) and \
                 self._check_fluxcd_pod_status(constants.FLUXCD_SOURCE_CONTROLLER_LABEL):
+            return True
+        else:
+            return False
+
+    def _check_fluxcd_deployment_status(self, name):
+        """ Check if a FluxCD deployment is ready by verifying that all replicas are ready.
+
+        Args:
+            name (str): Name of the FluxCD deployment to check
+        Returns:
+            bool: True if the deployment is ready (all replicas are ready), False otherwise
+        """
+
+        try:
+            deployment = self._kube.kube_get_namespaced_deployment(
+                name, constants.FLUXCD_NAMESPACE)
+            LOG.debug("FluxCD deployment {} status ready replicas: {}. Total replicas: {}"
+                     .format(name,
+                             deployment.status.ready_replicas,
+                             deployment.status.replicas))
+        except Exception as e:
+            LOG.error("Could not retrieve FluxCD deployment {} on {} namespace. Error: {}"
+                      .format(name, constants.FLUXCD_NAMESPACE, e))
+            return False
+
+        if deployment is None:
+            LOG.warning("No FluxCD deployment found with name {} on namespace {}"
+                        .format(name, constants.FLUXCD_NAMESPACE))
+            return False
+
+        if deployment.status is None:
+            LOG.warning("Error while retrieving status for FluxCD deployment {}"
+                        .format(name))
+            return False
+
+        if deployment.status.ready_replicas is None:
+            LOG.warning("FluxCD deployment {} has no ready replicas"
+                        .format(name))
+            return False
+
+        if deployment.status.ready_replicas < deployment.status.replicas:
+            LOG.warning("FluxCD deployment {} is not ready. Ready replicas: {}. "
+                        "Total replicas: {}".format(name,
+                                                    deployment.status.ready_replicas,
+                                                    deployment.status.replicas))
+            return False
+
+        return True
+
+    def check_fluxcd_deployment_status(self):
+        """
+        Check if all FluxCD deployments are ready.
+        Return False if one of them is not.
+        """
+
+        if self._check_fluxcd_deployment_status(
+            "helm-controller"
+        ) and self._check_fluxcd_deployment_status("source-controller"):
             return True
         else:
             return False
