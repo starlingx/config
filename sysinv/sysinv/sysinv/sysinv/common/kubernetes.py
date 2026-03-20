@@ -436,46 +436,133 @@ class K8sEndpointsTest(object):
             raise Exception("Kubernetes is not responsive.")
 
 
+def get_kube_version_from_symlink(stage_number=None):
+    """Retrieve current kubernetes version based on the stage1 symlink.
+
+    Expecting the following symlink, e.g., for version 1.32.2
+    /var/lib/kubernetes/stage1 -> /usr/local/kubernetes/1.32.2/stage1
+
+    :param: stage_number(optional) int 1 or 2 as there are two stages total
+    :returns: kubernetes_version string
+    """
+    # Any stage can be used as default if "stage_number" is not provided
+    stage = KUBERNETES_SYMLINKS_STAGE_1
+    pattern = r"/usr/local/kubernetes/(.*)/stage1"
+    if stage_number:
+        if int(stage_number) == 1:
+            stage = KUBERNETES_SYMLINKS_STAGE_1
+            pattern = r"/usr/local/kubernetes/(.*)/stage1"
+        elif int(stage_number) == 2:
+            stage = KUBERNETES_SYMLINKS_STAGE_2
+            pattern = r"/usr/local/kubernetes/(.*)/stage2"
+        else:
+            raise exception.SysinvException(
+                "Invalid stage number to retrieve kubernetes version: %d."
+                "Could only be either 1 or 2" % (stage_number))
+
+    # Read the symlink
+    try:
+        target = os.readlink(stage)
+    except OSError as ex:
+        raise exception.SysinvException(
+                "Failed to read symlink %s. Error: %s"
+                % (stage, ex))
+
+    # Parse the kubernetes_version from the symlink target
+    match = re.search(pattern, target)
+    if match is None:
+        LOG.error("Unable to find kubernetes_version in symlink target %s" %
+                  target)
+        return None
+    else:
+        return match.group(1)
+
+
+def get_min_kube_version():
+    """Retrieve minimum installed kubernetes version.
+
+    Determine the minumum version of installed kubernetes packages under the
+    directory: /usr/local/kubernetes
+
+    :returns: kubernetes_version string
+    """
+    all_versions = []
+    try:
+        all_versions = get_installed_kube_versions()
+    except Exception as e:
+        LOG.error(e)
+
+    kubernetes_version = min(all_versions, key=LooseVersion, default=None)
+    LOG.debug("Installed kubernetes version directories: %s, MIN kubernetes_version = %s"
+              % (all_versions, kubernetes_version))
+    return kubernetes_version
+
+
+def get_max_kube_version():
+    """Retrieve maximum installed kubernetes version.
+
+    Determine the maximum version of installed kubernetes packages under the
+    directory: /usr/local/kubernetes
+
+    :returns: kubernetes_version string
+    """
+    all_versions = []
+    try:
+        all_versions = get_installed_kube_versions()
+    except Exception as e:
+        LOG.error(e)
+
+    kubernetes_version = max(all_versions, key=LooseVersion, default=None)
+    LOG.debug("Installed kubernetes version directories: %s, MAX kubernetes_version = %s"
+              % (all_versions, kubernetes_version))
+    return kubernetes_version
+
+
 def get_kube_versions():
     """Provides a list of supported kubernetes versions in
        increasing order."""
-    return [
-        {'version': 'v1.32.2',
-         'upgrade_from': ['v1.31.5'],
-         'downgrade_to': [],
-         'applied_patches': [],
-         'available_patches': [],
-         },
-        {'version': 'v1.33.0',
-         'upgrade_from': ['v1.32.2'],
-         'downgrade_to': [],
-         'applied_patches': [],
-         'available_patches': [],
-         },
-        {'version': 'v1.34.1',
-         'upgrade_from': ['v1.33.0'],
-         'downgrade_to': [],
-         'applied_patches': [],
-         'available_patches': [],
-         },
-    ]
+    return_list = []
+    try:
+        all_versions = get_installed_kube_versions()
+        for index, value in enumerate(all_versions):
+            return_list.append({
+                    "version": f"v{value}",
+                    "upgrade_from": [f"v{all_versions[index-1]}"],
+                    "downgrade_to": [],
+                    "applied_patches": [],
+                    "available_patches": [],
+            })
+        # Manually remove first version's "upgrade_from"
+        return_list[0]["upgrade_from"] = []
+    except Exception as ex:
+        LOG.error("Error getting kubernetes versions: %s" % (ex))
+    return return_list
 
 
-def get_all_supported_k8s_versions():
+def get_installed_kube_versions():
     """Return all supported kubernetes versions for an STX release
 
     This returns a list of all kubernetes versions supported for a particular
     release by scanning /usr/local/kubernetes
 
-    :returns: List of version strings e.g. ['1.29.2', '1.30.6', '1.31.5', '1.32.2']
+    :returns: List of version strings in ascending order
+              e.g. ['1.29.2', '1.30.6', '1.31.5', '1.32.2']
     """
+    path = KUBERNETES_VERSIONED_BINARIES_ROOT
+    directories = []
     try:
-        k8s_versions = os.listdir(KUBERNETES_VERSIONED_BINARIES_ROOT)
-        LOG.info("Supported kubernetes versions: %s" % (k8s_versions))
-    except Exception as ex:
-        raise exception.SysinvException("Error retrieving supported kubernetes versions for the "
-                                        "release: %s" % (ex))
-    return k8s_versions
+        if os.path.isdir(path):
+            for entry in os.listdir(path):
+                full_path = os.path.join(path, entry)
+                if os.path.isdir(full_path):
+                    directories.append(entry)
+    except Exception as e:
+        LOG.error("Failed to get kubernetes version from: %s, %s." % (path, e))
+
+    kube_versions = sorted(directories, key=LooseVersion)
+    LOG.debug("Installed kubernetes version directories (sorted): %s"
+              % (kube_versions))
+    return kube_versions
 
 
 def get_k8s_images(kube_version):
@@ -526,7 +613,7 @@ def get_k8s_images_for_all_versions():
     """
     try:
         all_images = {}
-        k8s_versions = get_all_supported_k8s_versions()
+        k8s_versions = get_installed_kube_versions()
         for version in k8s_versions:
             images_dict = get_k8s_images(version)
             all_images.update({version: images_dict})

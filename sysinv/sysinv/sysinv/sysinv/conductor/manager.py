@@ -18248,7 +18248,7 @@ class ConductorManager(service.PeriodicService):
         target_images = []
         for k8s_version in next_versions:
             k8s_version = k8s_version.strip('v')
-            # TODO(kdhokte): call get_all_supported_k8s_versions inside _start() so all images are
+            # TODO(kdhokte): call get_installed_kube_versions inside _start() so all images are
             # cached for future use and accessed whenever required.
             images = kubernetes.get_k8s_images(k8s_version)
             target_images.extend(images.values())
