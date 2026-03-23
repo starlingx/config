@@ -843,6 +843,11 @@ class ConductorManager(service.PeriodicService):
          'name': constants.SERVICE_PARAM_NAME_SECURITY_COMPLIANCE_LOCKOUT_FAILURE_ATTEMPTS,
          'value': constants.SERVICE_PARAM_NAME_SECURITY_COMPLIANCE_LOCKOUT_FAILURE_ATTEMPTS_DEFAULT,
          },
+        {'service': constants.SERVICE_TYPE_IDENTITY,
+         'section': constants.SERVICE_PARAM_SECTION_SECURITY_COMPLIANCE,
+         'name': constants.SERVICE_PARAM_NAME_SECURITY_COMPLIANCE_INACTIVE_SESSION_TERM_TIMEOUT,
+         'value': constants.SERVICE_PARAM_NAME_SECURITY_COMPLIANCE_INACTIVE_SESSION_TERM_TIMEOUT_DEFAULT,
+         },
         {'service': constants.SERVICE_TYPE_PLATFORM,
          'section': constants.SERVICE_PARAM_SECTION_PLATFORM_MAINTENANCE,
          'name': constants.SERVICE_PARAM_PLAT_MTCE_WORKER_BOOT_TIMEOUT,
@@ -13026,6 +13031,13 @@ class ConductorManager(service.PeriodicService):
                     config_dict = {
                         "personalities": personalities,
                         "classes": ['platform::params::config_oidc_role_binding::runtime']
+                    }
+                    self._config_apply_runtime_manifest(context, config_uuid, config_dict)
+                elif section == constants.SERVICE_PARAM_SECTION_SECURITY_COMPLIANCE:
+                    personalities = [constants.CONTROLLER]
+                    config_dict = {
+                            "personalities": personalities,
+                            "classes": ['openstack::horizon::runtime']
                     }
                     self._config_apply_runtime_manifest(context, config_uuid, config_dict)
                 else:
