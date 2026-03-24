@@ -7088,10 +7088,16 @@ class ConductorManager(service.PeriodicService):
         controller_fs_list = self.dbapi.controller_fs_get_list()
 
         for fs in controller_fs_list:
-            name = fs.get('name')
-            if ((eval(fs.get('state'))['status'] != constants.CONTROLLER_FS_AVAILABLE) and
-               (constants.FILESYSTEM_DRBD_DICT.get(name) in drbd_fs_resized)):
-                self.dbapi.controller_fs_update(fs.uuid, {'state': str({'status': constants.CONTROLLER_FS_AVAILABLE})})
+            if (eval(fs.get('state'))['status'] != constants.CONTROLLER_FS_AVAILABLE):
+                fs_name = constants.FILESYSTEM_DRBD_DICT.get(fs.get('name'))
+                if all_fs_resized or (fs_name in drbd_fs_resized):
+                    state = str({'status': constants.CONTROLLER_FS_AVAILABLE})
+                    self.dbapi.controller_fs_update(
+                        fs.uuid,
+                        {
+                            'state': state
+                        }
+                    )
 
         if all_fs_resized:
             cutils.touch(CONFIG_CONTROLLER_FINI_FLAG)
