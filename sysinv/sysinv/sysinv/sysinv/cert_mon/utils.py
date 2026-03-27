@@ -1,4 +1,4 @@
-# Copyright (c) 2020-2025 Wind River Systems, Inc.
+# Copyright (c) 2020-2026 Wind River Systems, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -447,7 +447,7 @@ def update_platform_cert(token, cert_type, pem_file_path, force=False):
     response = rest_api_upload(token, pem_file_path, api_cmd, data, timeout=60)
     error = response.get('error')
     if error:
-        LOG.info('Failed. Certificate not installed. Error=%s' % error)
+        raise Exception('Failed. Certificate %s not installed. Error=%s' % (cert_type, error))
     else:
         LOG.info('Certificate successfully installed')
 

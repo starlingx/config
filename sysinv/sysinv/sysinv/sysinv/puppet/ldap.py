@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2017-2024 Wind River Systems, Inc.
+# Copyright (c) 2017-2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -10,6 +10,7 @@ from passlib.hash import ldap_salted_sha1 as hash
 
 from sysinv.common import constants
 from sysinv.common import utils
+from sysinv.common.retrying import retry
 
 from sysinv.puppet import base
 
@@ -56,6 +57,7 @@ class LdapPuppet(base.BasePuppet):
 
         return bootstrap_completed
 
+    @retry(stop_max_attempt_number=3, wait_fixed=2 * 1000)
     def get_secure_system_config(self):
         config = {}
 

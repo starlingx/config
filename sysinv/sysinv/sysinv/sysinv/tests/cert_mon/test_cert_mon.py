@@ -1,4 +1,4 @@
-# Copyright (c) 2020-2025 Wind River Systems, Inc.
+# Copyright (c) 2020-2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -284,6 +284,7 @@ class CertMonTestCase(base.DbTestCase):
         mocked_rest_api_req = patcher2.start()
         self.addCleanup(patcher2.stop)
 
+        mocked_rest_api_upload.return_value = {'error': ''}
         mocked_rest_api_req.return_value = {
             'certificates': [
                 {
