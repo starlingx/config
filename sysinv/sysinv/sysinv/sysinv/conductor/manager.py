@@ -16770,7 +16770,9 @@ class ConductorManager(service.PeriodicService):
 
         LOG.info("Evaluating app reapply of %s" % app.name)
         if app.active and app.status in [
-            constants.APP_APPLY_SUCCESS, constants.APP_RESTORE_REQUESTED
+            constants.APP_APPLY_IN_PROGRESS,
+            constants.APP_APPLY_SUCCESS,
+            constants.APP_RESTORE_REQUESTED
         ]:
             # Hash the existing overrides
             # TODO these hashes can be stored in the db to reduce overhead,
