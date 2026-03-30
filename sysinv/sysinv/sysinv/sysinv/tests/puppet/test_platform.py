@@ -1,22 +1,24 @@
-# Copyright (c) 2019-2025 Wind River Systems, Inc.
+# Copyright (c) 2019-2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
 
 import mock
+from sysinv.common import constants
+from sysinv.common import utils
 from sysinv.tests.db import base as dbbase
 from sysinv.tests.db import utils as dbutils
 from sysinv.tests.puppet import base
-from sysinv.common import constants
 
 
 class PlatformIPv4WorkerHostTestCase(base.PuppetTestCaseMixin,
                                      dbbase.WorkerHostTestCase):
 
     def test_nfs_proto_version(self):
+        expected = 'udp' if utils.is_debian_bullseye() else 'tcp'
         self.operator.update_host_config(self.host)
         self.assertConfigParameters(self.mock_write_config, {
-            'platform::params::nfs_proto': 'udp'
+            'platform::params::nfs_proto': expected
         })
 
 
@@ -25,9 +27,10 @@ class PlatformIPv6WorkerHostTestCase(base.PuppetTestCaseMixin,
                                      dbbase.WorkerHostTestCase):
 
     def test_nfs_proto_version(self):
+        expected = 'udp6' if utils.is_debian_bullseye() else 'tcp6'
         self.operator.update_host_config(self.host)
         self.assertConfigParameters(self.mock_write_config, {
-            'platform::params::nfs_proto': 'udp6'
+            'platform::params::nfs_proto': expected
         })
 
 
