@@ -981,6 +981,11 @@ class ConductorManager(service.PeriodicService):
          'name': constants.SERVICE_PARAM_NAME_AUTOREAPPLY_APPS_AFTER_APPLY_RUNTIME_MANIFEST,
          'value': constants.SERVICE_PARAM_ENABLED,
          },
+        {'service': constants.SERVICE_TYPE_PLATFORM,
+         'section': constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG,
+         'name': constants.SERVICE_PARAM_NAME_CGROUP_V2_ENABLED,
+         'value': False
+         },
     ]
 
     def _create_default_service_parameter(self):
@@ -12936,6 +12941,66 @@ class ConductorManager(service.PeriodicService):
                 }
                 self._config_apply_runtime_manifest(
                     context, config_uuid, config_dict)
+
+            elif section == constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG and \
+                    name == constants.SERVICE_PARAM_NAME_CGROUP_V2_ENABLED:
+
+                # Skipping storage nodes,
+                # Only apply the grub parameter on controllers and computes
+                grub_personalities = [constants.CONTROLLER,
+                                      constants.WORKER]
+                # Only set config_target on unlocked hosts. Locked hosts
+                # will get the config applied by boot puppet on unlock.
+                unlocked_hosts = []
+                for p in grub_personalities:
+                    hosts = self.dbapi.ihost_get_by_personality(p)
+                    for h in hosts:
+                        if h.administrative == constants.ADMIN_UNLOCKED:
+                            unlocked_hosts.append(h.uuid)
+                config_uuid = self._config_update_hosts(
+                    context, grub_personalities, reboot=True,
+                    host_uuids=unlocked_hosts if unlocked_hosts else None
+                )
+
+                # Update kubelet cgroupDriver service parameter to match.
+                cgroup_param = self.dbapi.service_parameter_get_one(
+                    constants.SERVICE_TYPE_PLATFORM,
+                    constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG,
+                    constants.SERVICE_PARAM_NAME_CGROUP_V2_ENABLED)
+                cgroup_driver = (
+                    constants.CGROUP_DRIVER_SYSTEMD
+                    if cgroup_param.value.lower() == 'true'
+                    else constants.CGROUP_DRIVER_CGROUPFS
+                )
+                try:
+                    sp = self.dbapi.service_parameter_get_one(
+                        constants.SERVICE_TYPE_KUBERNETES,
+                        constants.SERVICE_PARAM_SECTION_KUBERNETES_KUBELET,
+                        constants.SERVICE_PARAM_NAME_KUBELET_CGROUP_DRIVER)
+                    self.dbapi.service_parameter_update(
+                        sp.uuid, {'value': cgroup_driver})
+                    LOG.info("Updated kubelet %s to %s"
+                             % (constants.SERVICE_PARAM_NAME_KUBELET_CGROUP_DRIVER,
+                                cgroup_driver))
+                except exception.NotFound:
+                    LOG.warning("%s service parameter not found,"
+                                " skipping update"
+                                % constants.SERVICE_PARAM_NAME_KUBELET_CGROUP_DRIVER)
+
+                # Apply grub runtime config on all personalities to
+                # update boot.env so changes are ready for next reboot.
+                config_uuid = self._config_clear_reboot_required(config_uuid)
+                grub_config_dict = {
+                    'personalities': grub_personalities,
+                    "classes": ['platform::grub::cgroup_version::runtime']
+                }
+                self._config_apply_runtime_manifest(
+                    context, config_uuid, grub_config_dict, force=True
+                )
+
+                # Update kubelet ConfigMap on active controller only.
+                # K8S is not configured on STORAGE nodes.
+                self.kube_config_kubelet(context)
             elif section == constants.SERVICE_PARAM_SECTION_PLATFORM_COREDUMP:
                 personalities = [constants.CONTROLLER,
                                  constants.WORKER,
