@@ -240,11 +240,13 @@ mount_platform_dir()
         fi
     else
         mkdir -p $PLATFORM_DIR
-        mount_retries=5
+        # TODO(svanka): Investigate deterministic IPsec startup dependencies
+        # to eliminate NFS mount retry workaround.
+        mount_retries=30
         for retry in $(seq 1 ${mount_retries}); do
             nfs-mount controller-platform-nfs:$PLATFORM_DIR $PLATFORM_DIR && break
-            logger -t $0 -p warn "NFS mount failed (${retry}/${mount_retries}), retrying in 1s..."
-            sleep 1
+            logger -t $0 -p warn "NFS mount failed (${retry}/${mount_retries}), retrying in 5s..."
+            sleep 5
         done
         if [ $? -ne 0 ]
         then
