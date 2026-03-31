@@ -742,15 +742,6 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.call(context,
                          self.make_msg('get_ceph_pools_df_stats'))
 
-    def execute_rook_migration(self, context, migration_type):
-        """Asynchronously, execute rook migration from Ceph bare metal to Rook Ceph.
-
-        :param context: request context.
-        """
-        return self.cast(context,
-                         self.make_msg('execute_rook_migration',
-                                           migration_type=migration_type))
-
     def update_dns_config(self, context):
         """Synchronously, have the conductor update the DNS configuration.
 

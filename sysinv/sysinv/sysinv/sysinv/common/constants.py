@@ -3003,5 +3003,3 @@ CUSTOM_STALLD_LABEL_STRING = "starlingx.io/stalld."
 
 # Image download
 IMAGE_DOWNLOAD_TIMEOUT_IN_SECS = 600
-
-ROOK_MIGRATION_TYPES = {"redeploy"}  # disable export-import and in-service for now
