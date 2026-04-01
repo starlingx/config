@@ -16367,6 +16367,9 @@ class ConductorManager(service.PeriodicService):
         app = kubeapp_obj.get_by_name(context, app_name)
         return self._app.app_has_system_plugins(app)
 
+    def get_active_plugins(self, context):
+        return self._helm.plugins.list_plugins()
+
     def get_helm_application_namespaces(self, context, app_name):
         """Get supported application namespaces.
 
