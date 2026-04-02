@@ -1531,6 +1531,10 @@ class KubeAppDeleteFailure(SysinvException):
     message = _("Delete of application %(name)s (%(version)s) failed: %(reason)s")
 
 
+class KubeAppCleanupFailure(SysinvException):
+    message = _("Application cleanup for application %(name)s (%(version)s) failed: %(reason)s")
+
+
 class KubeAppAbort(SysinvException):
     message = _("Operation aborted by user.")
 

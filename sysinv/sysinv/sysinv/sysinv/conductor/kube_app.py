@@ -2181,19 +2181,16 @@ class AppOperator(object):
         self._update_app_status(new_app, constants.APP_INACTIVE_STATE)
 
         try:
-            self._dbapi.kube_app_destroy(new_app.name,
-                                         version=new_app.version,
-                                         inactive=True)
-
+            self._dbapi.kube_app_destroy(new_app.name, version=new_app.version, inactive=True)
             LOG.info("Recovering helm charts for Application %s (%s)..."
-                     % (old_app.name, old_app.version))
-            self._update_app_status(old_app,
-                                    new_progress=constants.APP_PROGRESS_RECOVER_CHARTS)
+                    % (old_app.name, old_app.version))
+            self._update_app_status(old_app, new_progress=constants.APP_PROGRESS_RECOVER_CHARTS)
+
             with self._lock:
                 self._upload_helm_charts(old_app)
 
-            # Ensure the old releases have the suspend key set to false, as the update process sets
-            # this key to true.
+            # Ensure the old releases have the suspend key set to false, as the update process
+            # sets this key to true.
             old_app.charts = self._get_list_of_charts(old_app)
             for chart in old_app.charts:
                 self._kube.patch_custom_resource(
@@ -2221,41 +2218,12 @@ class AppOperator(object):
                     self._write_fluxcd_overrides(old_app.charts, helm_files)
                     LOG.info("Fluxcd overrides generated.")
 
-                    if self._make_app_request(old_app, constants.APP_APPLY_OP):
-                        old_app_charts = [c.release for c in old_app.charts]
-                        deployed_releases = helm_utils.retrieve_helm_releases()
-                        for new_chart in new_app.charts:
-                            # Cleanup the releases in the new application version
-                            # but are not in the old application version
-                            if (new_chart.release not in old_app_charts and
-                                    new_chart.release in deployed_releases):
-
-                                # Deletes secrets that are not in the version N of the app
-                                self._fluxcd.run_kubectl_kustomize(
-                                    constants.KUBECTL_KUSTOMIZE_DELETE,
-                                    new_chart.chart_os_path)
-
-                                # Send delete request in FluxCD so it doesn't
-                                # recreate the helm release
-                                self._kube.delete_custom_resource(
-                                    constants.FLUXCD_CRD_HELM_REL_GROUP,
-                                    constants.FLUXCD_CRD_HELM_REL_VERSION,
-                                    new_chart.namespace,
-                                    constants.FLUXCD_CRD_HELM_REL_PLURAL,
-                                    new_chart.metadata_name)
-
-                                # Use helm to immediately remove the release
-                                helm_utils.delete_helm_release(
-                                    new_chart.release,
-                                    new_chart.namespace
-                                )
-                    else:
+                    if not self._make_app_request(old_app, constants.APP_APPLY_OP):
                         rc = False
                 else:
                     LOG.error(f"No Helm charts found for application {old_app.name}.")
                     rc = False
-
-            self._cleanup(new_app, app_dir=False)
+            self._cleanup_post_recovery(old_app, new_app, rc, fluxcd_process_required)
 
         except exception.ApplicationApplyFailure:
             rc = False
@@ -2269,7 +2237,7 @@ class AppOperator(object):
             )
             LOG.error(f"The attempt to delete helmrelease failed with error: {e}")
             return False
-        except Exception as e:
+        except exception.KubeAppCleanupFailure as e:
             # ie. patch report error, cleanup application files error
             #     helm release delete failure
             self._update_app_status(
@@ -2280,6 +2248,17 @@ class AppOperator(object):
                 'Please check logs for details.')
             LOG.error(e)
             return
+        except Exception as e:
+            self._update_app_status(
+                old_app, constants.APP_APPLY_FAILURE,
+                constants.APP_PROGRESS_UPDATE_ABORTED.format(old_app.version, new_app.version) +
+                constants.APP_PROGRESS_RECOVER_ABORTED.format(old_app.version) +
+                old_app.error_message +
+                'Please check logs for details.')
+            LOG.error("Application %s recover to version %s aborted!"
+                    % (old_app.name, old_app.version))
+            LOG.exception(e)
+            return False
         finally:
             self._record_auto_update_failed_versions(old_app, new_app)
 
@@ -2317,6 +2296,46 @@ class AppOperator(object):
                 'Please check logs for details.')
             LOG.error("Application %s recover to version %s aborted!"
                     % (old_app.name, old_app.version))
+
+    def _cleanup_post_recovery(self, old_app, new_app, rc, fluxcd_process_required):
+        try:
+            if rc and fluxcd_process_required:
+                old_app_charts = [c.release for c in old_app.charts]
+                deployed_releases = helm_utils.retrieve_helm_releases()
+                for new_chart in new_app.charts:
+                    # Cleanup the releases in the new application version
+                    # but are not in the old application version
+                    if (new_chart.release not in old_app_charts and
+                            new_chart.release in deployed_releases):
+
+                        # Deletes secrets that are not in the version N of the app
+                        self._fluxcd.run_kubectl_kustomize(
+                            constants.KUBECTL_KUSTOMIZE_DELETE,
+                            new_chart.chart_os_path)
+
+                        # Send delete request in FluxCD so it doesn't
+                        # recreate the helm release
+                        self._kube.delete_custom_resource(
+                            constants.FLUXCD_CRD_HELM_REL_GROUP,
+                            constants.FLUXCD_CRD_HELM_REL_VERSION,
+                            new_chart.namespace,
+                            constants.FLUXCD_CRD_HELM_REL_PLURAL,
+                            new_chart.metadata_name)
+
+                        # Use helm to immediately remove the release
+                        helm_utils.delete_helm_release(
+                            new_chart.release,
+                            new_chart.namespace
+                        )
+            self._cleanup(new_app, app_dir=False)
+        except exception.HelmFailure as e:
+            raise e
+        except Exception as e:
+            raise exception.KubeAppCleanupFailure(
+                name=old_app.name,
+                version=old_app.app_version,
+                reason=e
+            )
 
     def perform_app_upload(self, rpc_app, tarfile, images=False, transitory_state=None):
         """Process application upload request
@@ -3230,31 +3249,27 @@ class AppOperator(object):
         LOG.info("Start updating Application %s from version %s to version %s ..."
                  % (to_app.name, from_app.version, to_app.version))
 
+        # Get the skip_recovery flag from app metadata
+        keys = [constants.APP_METADATA_UPGRADES,
+                constants.APP_METADATA_UPDATE_FAILURE_SKIP_RECOVERY]
+        skip_recovery = bool(strtobool(str(self._get_metadata_value(to_app, keys, False))))
+        operation_successful = False
+
         try:
             self._update_app_status(
                 to_app, new_progress=constants.APP_PROGRESS_UPDATE_STARTING)
 
-            try:
-                # Check if it's a downgrade operation. If true, create a lifecycle action.
-                if LooseVersion(from_app.version) > LooseVersion(to_app.version):
-                    lifecycle_downgrade = copy.deepcopy(lifecycle_hook_info_app_update)
-                    lifecycle_downgrade.operation = constants.APP_DOWNGRADE_OP
-                    lifecycle_downgrade.relative_timing = LifecycleConstants.APP_LIFECYCLE_TIMING_PRE
-                    lifecycle_downgrade.lifecycle_type = LifecycleConstants.APP_LIFECYCLE_TYPE_RESOURCE
-                    lifecycle_downgrade[LifecycleConstants.EXTRA][
-                        LifecycleConstants.FROM_APP_VERSION] = from_app.version
-                    lifecycle_downgrade[LifecycleConstants.EXTRA][
-                        LifecycleConstants.TO_APP_VERSION] = to_app.version
-                    self.app_lifecycle_actions(None, None, from_rpc_app, lifecycle_downgrade)
-            except Exception as e:
-                LOG.exception(e)
-                error_msg = constants.APP_PROGRESS_UPDATE_ABORTED.format(
-                    from_app.version,
-                    to_app.version
-                ) + 'Please check sysinv.log for details.'
-                self._update_app_status(to_app, constants.APP_APPLY_FAILURE, error_msg,)
-                self._clear_app_alarm(to_app.name)
-                return False
+            # Check if it's a downgrade operation. If true, create a lifecycle action.
+            if LooseVersion(from_app.version) > LooseVersion(to_app.version):
+                lifecycle_downgrade = copy.deepcopy(lifecycle_hook_info_app_update)
+                lifecycle_downgrade.operation = constants.APP_DOWNGRADE_OP
+                lifecycle_downgrade.relative_timing = LifecycleConstants.APP_LIFECYCLE_TIMING_PRE
+                lifecycle_downgrade.lifecycle_type = LifecycleConstants.APP_LIFECYCLE_TYPE_RESOURCE
+                lifecycle_downgrade[LifecycleConstants.EXTRA][
+                    LifecycleConstants.FROM_APP_VERSION] = from_app.version
+                lifecycle_downgrade[LifecycleConstants.EXTRA][
+                    LifecycleConstants.TO_APP_VERSION] = to_app.version
+                self.app_lifecycle_actions(None, None, from_rpc_app, lifecycle_downgrade)
 
             # Upload new app tarball. The upload will enable the new plugins to
             # generate overrides for images. Disable the plugins for the current
@@ -3316,84 +3331,59 @@ class AppOperator(object):
 
             lifecycle_hook_info_app_update.operation = constants.APP_UPDATE_OP
 
-            # Get the skip_recovery flag from app metadata
-            keys = [constants.APP_METADATA_UPGRADES,
-                    constants.APP_METADATA_UPDATE_FAILURE_SKIP_RECOVERY]
-            skip_recovery = bool(strtobool(str(self._get_metadata_value(to_app, keys, False))))
-
             # Semantic checking for N+1 app
-            semantic_check_result = False
-            try:
-                lifecycle_hook_info = copy.deepcopy(lifecycle_hook_info_app_update)
-                lifecycle_hook_info.relative_timing = LifecycleConstants.APP_LIFECYCLE_TIMING_PRE
-                lifecycle_hook_info.lifecycle_type = \
-                    LifecycleConstants.APP_LIFECYCLE_TYPE_SEMANTIC_CHECK
-                lifecycle_hook_info[LifecycleConstants.EXTRA][LifecycleConstants.TO_APP] = True
+            lifecycle_hook_info = copy.deepcopy(lifecycle_hook_info_app_update)
+            lifecycle_hook_info.relative_timing = LifecycleConstants.APP_LIFECYCLE_TIMING_PRE
+            lifecycle_hook_info.lifecycle_type = \
+                LifecycleConstants.APP_LIFECYCLE_TYPE_SEMANTIC_CHECK
+            lifecycle_hook_info[LifecycleConstants.EXTRA][LifecycleConstants.TO_APP] = True
 
-                self.app_lifecycle_actions(None, None, to_rpc_app, lifecycle_hook_info)
-                semantic_check_result = True
-            except exception.LifecycleSemanticCheckException as e:
-                LOG.info("App {} rejected operation {} for reason: {}"
-                         "".format(to_app.name, constants.APP_UPDATE_OP, str(e)))
-                if trigger_recovery(skip_recovery, fluxcd_process_required=False):
-                    return False
-            except Exception as e:
-                LOG.error("App {} operation {} semantic check error: {}"
-                          "".format(to_app.name, constants.APP_UPDATE_OP, str(e)))
-                if trigger_recovery(skip_recovery, fluxcd_process_required=False):
-                    return False
+            self.app_lifecycle_actions(None, None, to_rpc_app, lifecycle_hook_info)
 
-            if semantic_check_result:
-                self.load_application_metadata_from_file(to_rpc_app)
+            self.load_application_metadata_from_file(to_rpc_app)
 
-                # Check whether the new application is compatible with the given k8s version.
-                # If k8s_version is none the check is performed against the active version.
-                self._utils._check_app_compatibility(to_app.name,
-                                                     to_app.version,
-                                                     k8s_version)
+            # Check whether the new application is compatible with the given k8s version.
+            # If k8s_version is none the check is performed against the active version.
+            self._utils._check_app_compatibility(to_app.name, to_app.version, k8s_version)
+            self._update_app_status(to_app, constants.APP_UPDATE_IN_PROGRESS)
 
-                self._update_app_status(to_app, constants.APP_UPDATE_IN_PROGRESS)
+            lifecycle_hook_info.relative_timing = LifecycleConstants.APP_LIFECYCLE_TIMING_PRE
+            lifecycle_hook_info.lifecycle_type = LifecycleConstants.APP_LIFECYCLE_TYPE_RESOURCE
+            self.app_lifecycle_actions(None, None, to_rpc_app, lifecycle_hook_info)
 
-                lifecycle_hook_info.relative_timing = \
-                   LifecycleConstants.APP_LIFECYCLE_TIMING_PRE
-                lifecycle_hook_info.lifecycle_type = \
-                    LifecycleConstants.APP_LIFECYCLE_TYPE_RESOURCE
-                self.app_lifecycle_actions(None, None, to_rpc_app, lifecycle_hook_info)
+            reuse_overrides = self._get_metadata_value(
+                to_app, constants.APP_METADATA_MAINTAIN_USER_OVERRIDES, False
+            )
+            if reuse_user_overrides is not None:
+                reuse_overrides = reuse_user_overrides
 
-                reuse_overrides = \
-                    self._get_metadata_value(to_app,
-                                                constants.APP_METADATA_MAINTAIN_USER_OVERRIDES,
-                                                False)
-                if reuse_user_overrides is not None:
-                    reuse_overrides = reuse_user_overrides
+            # Preserve user overrides for the new app
+            if reuse_overrides:
+                self._preserve_user_overrides(from_app, to_app)
 
-                # Preserve user overrides for the new app
-                if reuse_overrides:
-                    self._preserve_user_overrides(from_app, to_app)
+            reuse_app_attributes = self._get_metadata_value(
+                to_app,
+                constants.APP_METADATA_MAINTAIN_ATTRIBUTES,
+                False
+            )
 
-                reuse_app_attributes = \
-                    self._get_metadata_value(to_app,
-                                                constants.APP_METADATA_MAINTAIN_ATTRIBUTES,
-                                                False)
-                if reuse_attributes is not None:
-                    reuse_app_attributes = reuse_attributes
+            if reuse_attributes is not None:
+                reuse_app_attributes = reuse_attributes
 
-                # Preserve attributes for the new app
-                if reuse_app_attributes:
-                    self._preserve_attributes(from_app, to_app)
+            # Preserve attributes for the new app
+            if reuse_app_attributes:
+                self._preserve_attributes(from_app, to_app)
 
-                # The app_apply will generate new versioned overrides for the
-                # app upgrade and will enable the new plugins for that version.
-                lifecycle_hook_info_app_update.operation = constants.APP_APPLY_OP
-                result = self.perform_app_apply(
-                    to_rpc_app, mode=None,
-                    lifecycle_hook_info_app_apply=lifecycle_hook_info_app_update,
-                    caller=constants.APP_UPDATE_OP)
-                lifecycle_hook_info_app_update.operation = constants.APP_UPDATE_OP
+            # The app_apply will generate new versioned overrides for the
+            # app upgrade and will enable the new plugins for that version.
+            lifecycle_hook_info_app_update.operation = constants.APP_APPLY_OP
+            result = self.perform_app_apply(
+                to_rpc_app, mode=None,
+                lifecycle_hook_info_app_apply=lifecycle_hook_info_app_update,
+                caller=constants.APP_UPDATE_OP)
+            lifecycle_hook_info_app_update.operation = constants.APP_UPDATE_OP
 
-                operation_successful = result
-            else:
-                operation_successful = semantic_check_result
+            operation_successful = result
 
             # If operation failed consider doing the app recovery
             do_recovery = not operation_successful
@@ -3402,11 +3392,80 @@ class AppOperator(object):
             if do_recovery and trigger_recovery(skip_recovery):
                 return False
 
-            self._update_app_status(to_app, constants.APP_UPDATE_IN_PROGRESS,
-                                    "cleanup application version {}".format(from_app.version))
-
-            # App apply/rollback succeeded or it failed but skip_recovery was set
             # Starting cleanup old application
+            self._cleanup_post_update(to_app, from_app)
+
+            # The initial operation for to_app is successful
+            if operation_successful:
+                self._update_app_status(
+                    to_app, constants.APP_APPLY_SUCCESS,
+                    constants.APP_PROGRESS_UPDATE_COMPLETED.format(
+                        from_app.version, to_app.version))
+                LOG.info("Application %s update from version %s to version "
+                         "%s completed." % (to_app.name, from_app.version, to_app.version))
+
+                # Update progress column of apps in uploaded state that depend on this app
+                # that has just been updated.
+                app_dependents.remove_dependency_msg_of_uploaded_apps(self._dbapi, to_app.name)
+
+            # The initial operation for to_app failed
+            # This is reached here only when skip_recovery is requested
+            # Need to inform the user
+            else:
+                message = constants.APP_PROGRESS_UPDATE_FAILED_SKIP_RECOVERY.format(
+                    to_app.name, from_app.version, to_app.version)
+                self._update_app_status(to_app, constants.APP_APPLY_FAILURE, message)
+                LOG.info(message)
+        except (exception.IncompatibleKubeVersion,
+                exception.KubeAppUploadFailure,
+                exception.KubeAppApplyFailure,
+                exception.KubeAppAbort) as e:
+            # Error occurs during app uploading or applying but before
+            # apply process...
+            # ie.images download/k8s resource creation failure
+            # Start recovering without trigger fluxcd process
+            LOG.exception(e)
+            if trigger_recovery(fluxcd_process_required=False):
+                return False
+        except exception.LifecycleSemanticCheckException as e:
+            LOG.info("App {} rejected operation {} for reason: {}"
+                     "".format(to_app.name, constants.APP_UPDATE_OP, str(e)))
+            if trigger_recovery(skip_recovery, fluxcd_process_required=False):
+                return False
+        except exception.KubeAppCleanupFailure as e:
+            # Application update successfully(fluxcd apply/rollback)
+            # Error occurs during cleanup old app
+            # ie. delete app files failure, patch controller failure,
+            #     helm release delete failure
+            self._update_app_status(
+                to_app, constants.APP_APPLY_SUCCESS,
+                constants.APP_PROGRESS_UPDATE_COMPLETED.format(from_app.version, to_app.version) +
+                constants.APP_PROGRESS_CLEANUP_FAILED.format(from_app.version) +
+                'please check logs for detail.')
+            LOG.exception(e)
+        except Exception as e:
+            LOG.exception(e)
+            if trigger_recovery(skip_recovery, fluxcd_process_required=False):
+                return False
+            else:
+                error_msg = constants.APP_PROGRESS_UPDATE_ABORTED.format(
+                    from_app.version,
+                    to_app.version
+                ) + 'Please check sysinv.log for details.'
+                self._update_app_status(to_app, constants.APP_APPLY_FAILURE, error_msg,)
+                self._clear_app_alarm(to_app.name)
+                return False
+        finally:
+            self._deregister_app_abort(to_app.name)
+
+        self._clear_app_alarm(to_app.name)
+        return operation_successful
+
+    def _cleanup_post_update(self, to_app, from_app):
+        try:
+            self._update_app_status(to_app, constants.APP_UPDATE_IN_PROGRESS,
+                                "cleanup application version {}".format(from_app.version))
+
             from_app.charts = self._get_list_of_charts(from_app, include_disabled=True)
             to_app_charts = [c.release for c in to_app.charts]
             deployed_releases = helm_utils.retrieve_helm_releases()
@@ -3448,58 +3507,12 @@ class AppOperator(object):
             self._remove_app_charts_from_repo(from_app._kube_app.id,
                                               charts_to_delete)
             self._cleanup(from_app, app_dir=False)
-
-            # The initial operation for to_app is successful
-            if operation_successful:
-                self._update_app_status(
-                    to_app, constants.APP_APPLY_SUCCESS,
-                    constants.APP_PROGRESS_UPDATE_COMPLETED.format(
-                        from_app.version, to_app.version))
-                LOG.info("Application %s update from version %s to version "
-                         "%s completed." % (to_app.name, from_app.version, to_app.version))
-
-                # Update progress column of apps in uploaded state that depend on this app
-                # that has just been updated.
-                app_dependents.remove_dependency_msg_of_uploaded_apps(
-                    self._dbapi, to_app.name)
-
-            # The initial operation for to_app failed
-            # This is reached here only when skip_recovery is requested
-            # Need to inform the user
-            else:
-                message = constants.APP_PROGRESS_UPDATE_FAILED_SKIP_RECOVERY.format(
-                    to_app.name, from_app.version, to_app.version)
-                self._update_app_status(to_app, constants.APP_APPLY_FAILURE, message)
-                LOG.info(message)
-
-        except (exception.IncompatibleKubeVersion,
-                exception.KubeAppUploadFailure,
-                exception.KubeAppApplyFailure,
-                exception.KubeAppAbort) as e:
-            # Error occurs during app uploading or applying but before
-            # apply process...
-            # ie.images download/k8s resource creation failure
-            # Start recovering without trigger fluxcd process
-            LOG.exception(e)
-
-            if trigger_recovery(fluxcd_process_required=False):
-                return False
         except Exception as e:
-            # Application update successfully(fluxcd apply/rollback)
-            # Error occurs during cleanup old app
-            # ie. delete app files failure, patch controller failure,
-            #     helm release delete failure
-            self._update_app_status(
-                to_app, constants.APP_APPLY_SUCCESS,
-                constants.APP_PROGRESS_UPDATE_COMPLETED.format(from_app.version, to_app.version) +
-                constants.APP_PROGRESS_CLEANUP_FAILED.format(from_app.version) +
-                'please check logs for detail.')
-            LOG.exception(e)
-        finally:
-            self._deregister_app_abort(to_app.name)
-
-        self._clear_app_alarm(to_app.name)
-        return operation_successful
+            raise exception.KubeAppCleanupFailure(
+                name=from_app.name,
+                version=from_app.app_version,
+                reason=e
+            )
 
     def perform_app_remove(self, rpc_app, lifecycle_hook_info_app_remove, force=False):
         """Process application remove request
