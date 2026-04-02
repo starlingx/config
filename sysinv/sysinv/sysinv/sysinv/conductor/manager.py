@@ -12887,7 +12887,8 @@ class ConductorManager(service.PeriodicService):
                 config_uuid = self._config_update_hosts(context, personalities)
                 config_dict = {
                     'personalities': personalities,
-                    'classes': ['platform::haproxy::runtime']
+                    'classes': ['platform::haproxy::runtime',
+                                'platform::dockerdistribution::runtime']
                 }
                 self._config_apply_runtime_manifest(
                     context, config_uuid, config_dict)
@@ -13047,7 +13048,8 @@ class ConductorManager(service.PeriodicService):
                 config_dict = {
                     "personalities": personalities,
                     "classes": ['platform::mtce::runtime',
-                                'platform::haproxy::runtime']
+                                'platform::haproxy::runtime',
+                                'platform::dockerdistribution::runtime']
                 }
                 self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
