@@ -812,21 +812,6 @@ def _patch(storcephrook_uuid, patch):
 
     ostorcephrook = copy.deepcopy(rpc_storcephrook)
 
-    # Handle Rook Migration
-    first_patch_value = patch_obj.patch[0].get('value', {})
-    if 'migration_type' in first_patch_value:
-        if first_patch_value['migration_type'] not in constants.ROOK_MIGRATION_TYPES:
-            raise wsme.exc.ClientSideError(_(
-                "Rook Migration type not supported. "
-                "Must be one of: %s." % ', '.join(constants.ROOK_MIGRATION_TYPES)
-            ))
-
-        pecan.request.rpcapi.execute_rook_migration(
-            pecan.request.context,
-            migration_type=first_patch_value['migration_type'],
-        )
-        return StorageCephRook.convert_with_links(rpc_storcephrook)
-
     # perform checks based on the current vs.requested modifications
     _pre_patch_checks(rpc_storcephrook, patch_obj)
 

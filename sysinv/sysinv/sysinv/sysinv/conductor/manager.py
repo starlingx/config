@@ -9198,27 +9198,6 @@ class ConductorManager(service.PeriodicService):
 
         return self._ceph.get_cluster_df_stats()
 
-    def execute_rook_migration(self, context, migration_type):
-        """Execute rook migration from Ceph bare metal to Rook Ceph."""
-
-        if migration_type not in constants.ROOK_MIGRATION_TYPES:
-            raise exception.SysinvException(_(
-                "Rook Migration type not supported. "
-                "Must be one of %s." % ', '.join(constants.ROOK_MIGRATION_TYPES)
-            ))
-
-        playbook_file = f"{constants.ANSIBLE_PLAYBOOKS_ROOT}/storage-backend-migration-{migration_type}.yaml"
-        ansible_config_file = f"{constants.ANSIBLE_PLAYBOOKS_ROOT}/vars/storage-backend-migration/ansible.cfg"
-
-        env = os.environ.copy()
-        env['ANSIBLE_CONFIG'] = ansible_config_file
-        env['ANSIBLE_LOG_PATH'] = "/home/sysadmin/storage-backend-migration-ansible.log"
-        env['ANSIBLE_CACHE_PLUGIN_CONNECTION'] = "/home/sysadmin/.storage-backend-migration-ansible-cache"
-
-        command = ["ansible-playbook", playbook_file, "-v"]
-
-        subprocess.Popen(command, env=env)
-
     def get_cinder_lvm_usage(self, context):
         """Get the usage information for the LVM pools."""
 
