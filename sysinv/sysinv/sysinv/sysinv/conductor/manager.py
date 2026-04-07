@@ -12893,7 +12893,8 @@ class ConductorManager(service.PeriodicService):
                 config_dict = {
                     'personalities': personalities,
                     'classes': ['platform::haproxy::runtime',
-                                'platform::dockerdistribution::runtime']
+                                'platform::dockerdistribution::runtime',
+                                'platform::ldap::tls::runtime']
                 }
                 self._config_apply_runtime_manifest(
                     context, config_uuid, config_dict)
@@ -13061,7 +13062,8 @@ class ConductorManager(service.PeriodicService):
                     "personalities": personalities,
                     "classes": ['platform::mtce::runtime',
                                 'platform::haproxy::runtime',
-                                'platform::dockerdistribution::runtime']
+                                'platform::dockerdistribution::runtime',
+                                'platform::ldap::tls::runtime']
                 }
                 self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
