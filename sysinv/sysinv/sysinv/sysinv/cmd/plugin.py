@@ -33,8 +33,8 @@ def list_plugins(plugin_name=None, project=None, namespace=None):
     conductor_api = rpcapiproxy.ConductorAPI()
     admin_context = context.get_admin_context()
     plugins = conductor_api.get_active_plugins(admin_context)
-    fields = ["name", "project_name", "namespace", "project_path"]
-    field_labels = ["Name", "Project", "Namespace", "Path"]
+    fields = ["name", "project_name", "namespace", "project_path", "origin_name"]
+    field_labels = ["Name", "Project", "Namespace", "Path", "Origin Name"]
     plugins_objs = [
         ObjWrapper(plugin) for plugin in plugins
         if (plugin_name is None or plugin['name'] == plugin_name)

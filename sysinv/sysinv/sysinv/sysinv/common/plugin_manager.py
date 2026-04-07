@@ -29,6 +29,7 @@ import types
 import zipfile
 from dataclasses import dataclass
 from importlib import metadata as metadata_importlib
+from typing import Optional
 
 import pkg_resources
 from oslo_log import log as logging
@@ -66,6 +67,21 @@ class Plugin:  # noqa: H238
     project_name: str
     project_path: str
     operator: object
+    prefix: Optional[int] = None
+    suffix: Optional[int] = None
+
+    @property
+    def origin_name(self):
+        prefix = f'{self.prefix:03d}_' if self.prefix is not None else ''
+        suffix = f'_{self.suffix:03d}' if self.suffix is not None else ''
+        return f'{prefix}{self.name}{suffix}'
+
+    @property
+    def _priority_tuple(self):
+        return (
+            self.prefix if self.prefix is not None else -1,
+            self.suffix if self.suffix is not None else -1,
+        )
 
 
 class PluginManager:  # noqa: H238
@@ -97,6 +113,10 @@ class PluginManager:  # noqa: H238
         for parent, sub_namespaces in NAMESPACE_AND_SUBNAMESPACE_RELATION.items():
             if sub_namespace.startswith(sub_namespaces):
                 return parent
+
+    @staticmethod
+    def _should_override(plugin, new_plugin):
+        return new_plugin._priority_tuple >= plugin._priority_tuple
 
     @staticmethod
     def _get_project_name_and_location(loaded_entrypoint):
@@ -186,22 +206,45 @@ class PluginManager:  # noqa: H238
         if self._order:
             entrypoints = sorted(entrypoints, key=lambda e: e.name)
 
+        existing_plugins = self._plugins.get(ns, {})
+
         for entrypoint in entrypoints:
             loaded_entrypoint = entrypoint.load()
             project_name, project_path = self._get_project_name_and_location(loaded_entrypoint)
             # In order to control the order of the plugins without changing their names, some
-            # plugins use a prefix following the pattern '###__PLUGINNAME'. Also to allow
+            # plugins use a prefix following the pattern '###_PLUGINNAME'. Also to allow
             # overriding with a newer version of the AppLifecycle operator, some plugins have the
-            # convention to use an optional suffix with the pattern 'PLUGINNAME_###'. As the
-            # entry points have already been ordered, the regex below removes both, prefix and
-            # suffix if they exist.
-            plugin_name = re.sub(r'^(?:\d{3}_)?(.*?)(?:_\d{3})?$', r'\1', entrypoint.name)
-            loaded_plugins[plugin_name] = Plugin(
+            # convention to use an optional suffix with the pattern 'PLUGINNAME_###'.
+            pattern = r'^(?:(?P<prefix>\d{3})_)?(?P<name>.*?)(?:_(?P<suffix>\d{3}))?$'
+
+            plugin_match = re.match(pattern, entrypoint.name)
+            if not plugin_match:
+                LOG.error(f"PluginManager: Could not load plugin from entrypoint - {entrypoint}")
+                continue
+
+            plugin_name = plugin_match.group('name')
+            prefix = plugin_match.group('prefix')
+            suffix = plugin_match.group('suffix')
+
+            new_plugin = Plugin(
                 name=plugin_name,
                 project_path=project_path,
                 project_name=project_name,
-                operator=loaded_entrypoint(*args) if invoke_on_load else loaded_entrypoint
+                operator=loaded_entrypoint(*args) if invoke_on_load else loaded_entrypoint,
+                prefix=int(prefix) if prefix else None,
+                suffix=int(suffix) if suffix else None
             )
+
+            old_plugin = existing_plugins.get(plugin_name)
+            if old_plugin and not self._should_override(old_plugin, new_plugin):
+                LOG.info(
+                    f"PluginManager: Skipping plugin {entrypoint.name}. "
+                    f"The system has already loaded plugin {plugin_name} with a higher priority "
+                    f"({old_plugin.origin_name})."
+                )
+                continue
+
+            loaded_plugins[plugin_name] = new_plugin
             LOG.info(f"PluginManager: Loaded {plugin_name} plugin from path - {project_path}")
         self._plugins.setdefault(ns, {}).update(loaded_plugins)
 
@@ -562,7 +605,8 @@ class PluginManager:  # noqa: H238
                         'name': plugin.name,
                         'project_name': plugin.project_name,
                         'project_path': plugin.project_path,
-                        'namespace': ns
+                        'namespace': ns,
+                        'origin_name': plugin.origin_name
                     }
                 )
         return loaded_plugins

@@ -162,6 +162,112 @@ class TestPluginManager(unittest.TestCase):
         expected_order = ["plugin_a", "plugin_b", "plugin_c"]
         self.assertListEqual(list(plugins.keys()), expected_order)
 
+    def test_should_override_respects_plugin_priority(self):
+        p1_prefix = Plugin(
+            name='fake_plugin',
+            project_name='fake_project',
+            project_path='fake/path',
+            operator=FakePlugin,
+            prefix=1
+        )
+        p2_prefix = Plugin(
+            name='fake_plugin',
+            project_name='fake_project',
+            project_path='fake/path',
+            operator=FakePlugin,
+            prefix=2
+        )
+        p1_suffix = Plugin(
+            name='fake_plugin',
+            project_name='fake_project',
+            project_path='fake/path',
+            operator=FakePlugin,
+            suffix=1
+        )
+        p2_suffix = Plugin(
+            name='fake_plugin',
+            project_name='fake_project',
+            project_path='fake/path',
+            operator=FakePlugin,
+            suffix=2
+        )
+        p3_priority_none = Plugin(
+            name='fake_plugin',
+            project_name='fake_project',
+            project_path='fake/path',
+            operator=FakePlugin,
+        )
+
+        # Plugins with higher prefix values should override lower/none prefix ones
+        # (None treated as lowest)
+        self.assertTrue(self.manager._should_override(p1_prefix, p2_prefix))
+        self.assertTrue(self.manager._should_override(p3_priority_none, p1_prefix))
+
+        # Plugins with higher suffix values should override lower/none suffix ones
+        # (None treated as lowest)
+        self.assertTrue(self.manager._should_override(p1_suffix, p2_suffix))
+        self.assertTrue(self.manager._should_override(p3_priority_none, p1_suffix))
+
+        # Prefix has higher precedence than suffix in priority comparison
+        self.assertTrue(self.manager._should_override(p2_suffix, p1_prefix))
+
+        # Plugins with lower prefix or suffix values should not override those with higher values.
+        self.assertFalse(self.manager._should_override(p2_prefix, p1_prefix))
+        self.assertFalse(self.manager._should_override(p2_suffix, p1_suffix))
+
+    @mock.patch("sysinv.common.plugin_manager.metadata_importlib.distributions")
+    @mock.patch.object(PluginManager, "_get_project_name_and_location",
+                    return_value=("fake_project", "/fake/path"))
+    @mock.patch.object(PluginManager, "_namespace_accept_args", return_value=False)
+    @mock.patch.object(PluginManager, "_is_subnamespace", return_value=False)
+    @mock.patch.object(PluginManager, "_has_subnamespace", return_value=False)
+    def test_higher_priority_plugin_overrides_lower_across_distributions(
+        self,
+        mock_has_subns,
+        mock_is_subns,
+        mock_accept_args,
+        mock_get_proj,
+        mock_distributions
+    ):
+        fake_ep_prefix = mock.Mock()
+        fake_ep_prefix.name = "001_testplugin_prefix"
+        fake_ep_prefix.group = "test.namespace"
+        fake_ep_prefix.load.return_value = FakePlugin
+
+        fake_ep_suffix = mock.Mock()
+        fake_ep_suffix.name = "testplugin_suffix_001"
+        fake_ep_suffix.group = "test.namespace"
+        fake_ep_suffix.load.return_value = FakePlugin
+
+        fake_ep_prefix_2 = mock.Mock()
+        fake_ep_prefix_2.name = "002_testplugin_prefix"
+        fake_ep_prefix_2.group = "test.namespace"
+        fake_ep_prefix_2.load.return_value = FakePlugin
+
+        fake_ep_suffix_2 = mock.Mock()
+        fake_ep_suffix_2.name = "testplugin_suffix_002"
+        fake_ep_suffix_2.group = "test.namespace"
+        fake_ep_suffix_2.load.return_value = FakePlugin
+
+        fake_distribution = mock.Mock()
+        fake_distribution.entry_points = [fake_ep_prefix_2, fake_ep_suffix]
+        fake_distribution_2 = mock.Mock()
+        fake_distribution_2.entry_points = [fake_ep_prefix, fake_ep_suffix_2]
+
+        mock_distributions.return_value = [fake_distribution, fake_distribution_2]
+
+        self.manager.load_plugins_from_path("/fake/path")
+        plugin_prefix = self.manager._plugins["test.namespace"]["testplugin_prefix"]
+        plugin_suffix = self.manager._plugins["test.namespace"]["testplugin_suffix"]
+
+        self.assertEqual(plugin_prefix.name, "testplugin_prefix")
+        self.assertEqual(plugin_prefix.prefix, 2)
+        self.assertEqual(plugin_prefix.origin_name, "002_testplugin_prefix")
+
+        self.assertEqual(plugin_suffix.name, "testplugin_suffix")
+        self.assertEqual(plugin_suffix.suffix, 2)
+        self.assertEqual(plugin_suffix.origin_name, "testplugin_suffix_002")
+
     @mock.patch.object(PluginManager, "load_plugins")
     def test_discover_plugins_calls_load_plugins_for_all_namespaces(self, mock_load_plugins):
         self.manager.discover_plugins()
