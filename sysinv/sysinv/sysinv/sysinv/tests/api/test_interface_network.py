@@ -880,10 +880,11 @@ class InterfaceNetworkCreateTestCase(InterfaceNetworkTestCase):
         worker_addresses = self.dbapi.addresses_get_by_interface(worker_interface.id)
         self.assertEqual(0, len(worker_addresses))
 
-    # Expected error:
-    # You cannot assign a network of type 'oam' to an interface
+    # Expected OK:
+    # You can assign a network of type 'oam' to an interface
     # which is already assigned with a different network
-    def test_create_invalid_mgmt_oam_interface_network(self):
+    # ( MGMT, CLUSTER-HOST, STORAGE)
+    def test_create_valid_mgmt_oam_interface_network(self):
         controller_interface = dbutils.create_test_interface(
             ifname='enp0s8',
             forihostid=self.controller.id)
@@ -901,8 +902,9 @@ class InterfaceNetworkCreateTestCase(InterfaceNetworkTestCase):
         controller_interface_network = dbutils.post_get_test_interface_network(
             interface_uuid=controller_interface.uuid,
             network_uuid=self.oam_network.uuid)
-        self._post_and_check(controller_interface_network, expect_errors=True)
+        self._post_and_check(controller_interface_network)
 
+        # but OAM interface can not be added to worker node
         worker_interface_network = dbutils.post_get_test_interface_network(
             interface_uuid=worker_interface.uuid,
             network_uuid=self.oam_network.uuid)

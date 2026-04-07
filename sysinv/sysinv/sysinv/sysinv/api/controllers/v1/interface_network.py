@@ -157,7 +157,6 @@ class InterfaceNetworkController(rest.RestController):
         self._check_duplicate_interface_network(interface_network_dict)
         self._check_duplicate_type(host, interface_uuid, network.type)
         self._check_pxeboot_network(interface_id, network.type)
-        self._check_oam_network(interface_id, network.type)
         self._check_network_type_and_host_type(host, network.type)
         self._check_network_type_and_interface_type(interface_obj, network.type)
         self._check_cluster_host_on_controller(host, interface_obj, network.type)
@@ -340,27 +339,6 @@ class InterfaceNetworkController(rest.RestController):
                 msg = _("An interface assigned with a network of type '%s' "
                         "cannot contain additional networks."
                         % i.network_type)
-                raise wsme.exc.ClientSideError(msg)
-
-    def _check_oam_network(self, interface_id, network_type):
-        NONASSIGNABLE_WITH_OAM = [constants.NETWORK_TYPE_MGMT,
-                                  constants.NETWORK_TYPE_PXEBOOT,
-                                  constants.NETWORK_TYPE_CLUSTER_HOST]
-        interface_networks = pecan.request.dbapi.interface_network_get_all()
-        for i in interface_networks:
-            if i.interface_id == interface_id and \
-                network_type == constants.NETWORK_TYPE_OAM and \
-                    i.network_type in NONASSIGNABLE_WITH_OAM:
-                msg = _("You cannot assign a network of type '%s' to an interface "
-                        "which is already assigned with a network of type '%s'."
-                        % (network_type, i.network_type))
-                raise wsme.exc.ClientSideError(msg)
-            elif i.interface_id == interface_id and \
-                i.network_type == constants.NETWORK_TYPE_OAM and \
-                    network_type in NONASSIGNABLE_WITH_OAM:
-                msg = _("An interface assigned with a network of type '%s' "
-                        "cannot assign a network of type '%s'."
-                        % (i.network_type, network_type))
                 raise wsme.exc.ClientSideError(msg)
 
     def _check_network_type_and_host_type(self, ihost, network_type):
