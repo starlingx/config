@@ -610,23 +610,27 @@ class AppOperator(object):
         :param app_charts: charts to be removed
         """
 
-        chart_files_in_use = [c.filesystem_location for c in
-                              self._get_charts_in_use_except([app_id])]
+        chart_files_in_use = {c.filesystem_location for c in
+                              self._get_charts_in_use_except([app_id])}
+        chart_files_to_remove = set()
         repo_set = set()
+
         for chart in app_charts:
+            if not chart.filesystem_location:
+                LOG.error("Filesystem location not available for "
+                          "chart {}. Unable to delete from repository."
+                          .format(chart.name))
+            elif chart.filesystem_location not in chart_files_in_use:
+                chart_files_to_remove.add(chart.filesystem_location)
+
+        for chart_file in chart_files_to_remove:
             try:
-                if not chart.filesystem_location:
-                    LOG.error("Filesystem location not available for "
-                              "chart {}. Unable to delete from repository."
-                              .format(chart.name))
-                elif chart.filesystem_location not in chart_files_in_use:
-                    os.remove(chart.filesystem_location)
-                    LOG.info("Chart {} deleted from repository.".
-                             format(chart.filesystem_location))
-                    repo_set.add(os.path.dirname(chart.filesystem_location))
+                os.remove(chart_file)
+                LOG.info("Chart {} deleted from repository.".format(chart_file))
+                repo_set.add(os.path.dirname(chart_file))
             except OSError:
                 LOG.error("Error while removing chart {} from repository".
-                          format(chart.filesystem_location))
+                          format(chart_file))
 
         # Re-index repositories
         for repo_path in repo_set:
@@ -3737,8 +3741,8 @@ class AppOperator(object):
                 sync_plugins_dir=app.sync_plugins_dir,
             )
 
-            self._dbapi.kube_app_destroy(app.name)
             app.charts = self._get_list_of_charts(app, include_disabled=True)
+            self._dbapi.kube_app_destroy(app.name)
             self._cleanup(app)
             # One last check of app alarm, should be no-op unless the
             # user deletes the application following an upload failure.
