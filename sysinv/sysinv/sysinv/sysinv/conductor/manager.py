@@ -19941,9 +19941,10 @@ class ConductorManager(service.PeriodicService):
                 LOG.error(str(e))
                 return str(e)
 
-        # Check and recover CephFS if MDS daemon is damaged
-        if cutils.is_app_applied(self.dbapi, constants.HELM_APP_PLATFORM):
-            self._check_and_recover_cephfs()
+        # Recover CephFS if ceph bare-metal and AIO-SX
+        if (cutils.is_app_applied(self.dbapi, constants.HELM_APP_PLATFORM)
+                and cutils.is_aio_simplex_system(self.dbapi)):
+            self._recover_cephfs()
 
         if not os.path.exists(constants.SYSINV_REPORTED):
             message = "Cannot complete the restore procedure. System " \
@@ -19996,36 +19997,21 @@ class ConductorManager(service.PeriodicService):
         LOG.info(output)
         return output
 
-    def _check_and_recover_cephfs(self):
-        """Check if CephFS MDS daemon is damaged and recover if needed"""
+    def _recover_cephfs(self):
+        """Recover CephFS MDS daemon damaged"""
         try:
-            cmd = ['ceph', '-s', '--format=json']
-            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-            if proc.returncode != 0:
-                LOG.warning("Failed to get ceph status (rc=%s)" % proc.returncode)
-                return
-
-            ceph_status = json.loads(proc.stdout)
-
-            # Check for MDS daemon damaged condition
-            health_checks = ceph_status.get('health', {}).get('checks', {})
-            mds_damage_check = health_checks.get('MDS_DAMAGE', {})
-            damage_msg = mds_damage_check.get('summary', {}).get('message', '')
-            mds_damaged = 'mds daemon damaged' in damage_msg.lower()
-
-            if mds_damaged:
-                LOG.info("Detected mds daemon damaged (%s), executing recovery script" % damage_msg)
-                if os.path.exists(constants.RECOVER_CEPHFS_SCRIPT):
-                    proc = subprocess.run([constants.RECOVER_CEPHFS_SCRIPT],
-                                          capture_output=True, text=True, timeout=300)
-                    if proc.returncode == 0:
-                        LOG.info("CephFS recovery script executed successfully")
-                    else:
-                        LOG.error("CephFS recovery script failed (rc=%s): %s" % (proc.returncode, proc.stderr))
+            LOG.info("Executing cephfs recovery script...")
+            if os.path.exists(constants.RECOVER_CEPHFS_SCRIPT):
+                proc = subprocess.run([constants.RECOVER_CEPHFS_SCRIPT],
+                                        capture_output=True, text=True, timeout=300)
+                if proc.returncode == 0:
+                    LOG.info("CephFS recovery script executed successfully.")
                 else:
-                    LOG.error("CephFS recovery script not found at %s" % constants.RECOVER_CEPHFS_SCRIPT)
+                    LOG.error("CephFS recovery script failed (rc=%s): %s." % (proc.returncode, proc.stderr))
+            else:
+                LOG.error("CephFS recovery script not found at %s." % constants.RECOVER_CEPHFS_SCRIPT)
         except Exception as e:
-            LOG.error("Error checking/recovering CephFS: %s" % str(e))
+            LOG.error("Error recovering CephFS: %s." % str(e))
 
     def _check_rook_ceph_recovery_configmap(self):
         """Check if the rook-ceph-recovery configmap exists
