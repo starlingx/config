@@ -1878,6 +1878,65 @@ class TestKubernetesOperator(base.TestCase):
         mock_pin_ctr_image.assert_not_called()
         mock_unpin_ctr_image.assert_not_called()
 
+    def test_kube_upgrade_kubelet_controller_host_success_upgrade_retry(self):
+        """Test successful kubelet upgrade on controller after aborted upgrade retry
+        and correctly applies a valid pause image.
+        """
+        from_kube_version = 'vfake_from_kube_version'
+        to_kube_version = 'vfake_to_kube_version'
+        is_final_version = False
+        from_pause_image = 'registry.k8s.io/pause:3.10'
+        target_pause_image = 'registry.k8s.io/pause:3.10.1'
+        # Containerd already has the target pause image from previous aborted upgrade
+        containerd_read_data = 'sandbox_image = "%s/%s"' % (constants.DOCKER_REGISTRY_SERVER,
+                                                            target_pause_image)
+        expected_write_data = 'sandbox_image = "%s/%s"' % (constants.DOCKER_REGISTRY_SERVER,
+                                                           target_pause_image)
+
+        mock_get_k8s_images = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.get_k8s_images', mock_get_k8s_images)
+        p.start().side_effect = [{'pause': from_pause_image},
+                                 {'pause': target_pause_image}]
+        self.addCleanup(p.stop)
+
+        mock_kubeadm_upgrade_node = mock.MagicMock()
+        p = mock.patch('sysinv.agent.kube_host.KubeHostOperator.kubeadm_upgrade_node',
+                       mock_kubeadm_upgrade_node)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_file_open = mock.mock_open(read_data=containerd_read_data)
+        p = mock.patch('builtins.open', mock_file_open)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_update_kube_symlink = mock.MagicMock()
+        p = mock.patch('sysinv.agent.kube_host.KubeHostOperator._update_kube_symlink',
+                       mock_update_kube_symlink)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_enable_kubelet_garbage_collection = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.enable_kubelet_garbage_collection',
+                       mock_enable_kubelet_garbage_collection)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_pmon_restart_service = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.pmon_restart_service', mock_pmon_restart_service)
+        p.start()
+        self.addCleanup(p.stop)
+
+        self.kube_controller_operator.upgrade_kubelet(
+            from_kube_version, to_kube_version, is_final_version)
+
+        self.assertEqual(mock_get_k8s_images.call_count, 2)
+        # Verify the write produces the correct value (not a corrupted tag like 3.10.1.1)
+        mock_file_open.return_value.write.assert_called_with(expected_write_data + '\n')
+        mock_update_kube_symlink.assert_called_once_with(kubernetes.KUBERNETES_SYMLINKS_STAGE_2,
+                                                         'fake_to_kube_version')
+        mock_pmon_restart_service.assert_called_once()
+
     def test_pin_unpin_control_plane_images_failure_operation_error(self):
         """Test failed execution of _pin_unpin_control_plane_images: operation error
         """
