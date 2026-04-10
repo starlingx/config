@@ -21,8 +21,6 @@ import json
 import os
 import re
 import requests
-import ruamel.yaml as yaml
-from ruamel.yaml.compat import StringIO
 import shutil
 import subprocess
 import sys
@@ -44,11 +42,22 @@ from oslo_log import log as logging
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils
+from sysinv.common.utils import get_debian_codename
 from sysinv.common.retrying import retry
 
 K8S_MODULE_MAJOR_VERSION = int(K8S_MODULE_VERSION.split('.')[0])
 
 LOG = logging.getLogger(__name__)
+
+codename = get_debian_codename()
+
+# Import ruamel.yaml based on Debian version
+if codename == constants.OS_DEBIAN_BULLSEYE:
+    import ruamel.yaml as yaml
+    from ruamel.yaml.compat import StringIO
+else:
+    from ruamel.yaml import YAML
+    from io import StringIO
 
 # Kubernetes groups
 CERT_MANAGER_GROUP = 'cert-manager.io'
@@ -2273,7 +2282,10 @@ class KubeOperator(object):
         try:
             configmap_name = 'kubeadm-config'
             configmap = self.kube_read_config_map(configmap_name, 'kube-system')
-            newyaml = yaml.YAML()
+            if utils.is_debian_bullseye():
+                newyaml = yaml.YAML()
+            else:
+                newyaml = YAML()
             stream = StringIO(configmap.data['ClusterConfiguration'])
             info = newyaml.load(stream)
             flow_style = info['apiServer']['certSANs'].fa.flow_style()

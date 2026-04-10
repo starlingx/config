@@ -1,16 +1,45 @@
 """
-Copyright (c) 2014-2025 Wind River Systems, Inc.
+Copyright (c) 2014-2026 Wind River Systems, Inc.
 
 SPDX-License-Identifier: Apache-2.0
 
 """
 
+import functools
 import io
 import logging
 import os
 import six
 
 from six.moves import configparser
+
+
+@functools.lru_cache(maxsize=None)
+def get_debian_codename():
+    """Returns the Debian codename, e.g., 'bullseye', 'trixie'."""
+    try:
+        with open("/etc/os-release") as f:
+            for line in f:
+                if line.startswith("VERSION_CODENAME="):
+                    return line.strip().split("=")[1]
+    except FileNotFoundError:
+        return None
+    return None
+
+
+OS_DEBIAN_BULLSEYE = 'bullseye'
+OS_DEBIAN_TRIXIE = 'trixie'
+
+
+def is_debian_bullseye():
+    """Check if the current Debian release is bullseye.
+
+    NOTE: This will be deprecated once bullseye is no longer supported.
+    """
+    return get_debian_codename() == OS_DEBIAN_BULLSEYE
+
+
+codename = get_debian_codename()
 
 SW_VERSION = ""
 SW_VERSION_21_12 = "21.12"
@@ -85,7 +114,12 @@ def _load():
 
     # The platform.conf file has no section headers, which causes problems
     # for ConfigParser. So we'll fake it out.
-    ini_str = u'[platform_conf]\n' + open(PLATFORM_CONF_FILE, 'r').read()
+    try:
+        ini_str = u'[platform_conf]\n' + open(PLATFORM_CONF_FILE, 'r').read()
+    except Exception:
+        logging.exception("Failed to read %s" % PLATFORM_CONF_FILE)
+        return False
+
     ini_fp = io.StringIO(ini_str)
     if six.PY2:
         config.readfp(ini_fp)  # pylint: disable=deprecated-method

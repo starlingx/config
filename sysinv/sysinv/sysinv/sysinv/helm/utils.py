@@ -1,6 +1,6 @@
 # sim: tabstop=4 shiftwidth=4 softtabstop=4
 #
-# Copyright (c) 2019-2023 Wind River Systems, Inc.
+# Copyright (c) 2019-2023, 2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -14,7 +14,6 @@ import json
 import os
 import time
 import psutil
-import ruamel.yaml as yaml
 import io
 import tempfile
 import random
@@ -27,13 +26,24 @@ from eventlet.green import subprocess
 from oslo_context import context
 from oslo_log import log as logging
 from sysinv.agent import rpcapiproxy as agent_rpcapi
+from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import kubernetes
 from sysinv.common.retrying import retry
+from sysinv.common.utils import get_debian_codename
+from sysinv.common.utils import is_debian_bullseye
 from sysinv.helm import common
 
 
 LOG = logging.getLogger(__name__)
+
+codename = get_debian_codename()
+
+# Import ruamel.yaml based on Debian version
+if codename == constants.OS_DEBIAN_BULLSEYE:
+    import ruamel.yaml as yaml
+else:
+    from ruamel.yaml import YAML
 
 
 # TODO(agrosu):
@@ -111,7 +121,11 @@ def retrieve_helm_releases():
 
         deployed_releases = {}
         if out:
-            releases = yaml.safe_load(out)
+            if is_debian_bullseye():
+                releases = yaml.safe_load(out)
+            else:
+                local_yaml = YAML(typ='safe')
+                releases = local_yaml.load(out)
             for r in releases:
                 r_name = r.get('name')
                 r_version = r.get('revision')
@@ -308,7 +322,11 @@ def get_chart_tarball_path(repo_path, chart_name, chart_version):
 
     repo_index_file = os.path.join(repo_path, "index.yaml")
     with io.open(repo_index_file, "r", encoding="utf-8") as f:
-        root_index_yaml = next(yaml.safe_load_all(f))
+        if is_debian_bullseye():
+            root_index_yaml = next(yaml.safe_load_all(f))
+        else:
+            local_yaml = YAML(typ='safe')
+            root_index_yaml = next(local_yaml.load_all(f))
         if chart_name in root_index_yaml["entries"]:
             chart_versions = root_index_yaml["entries"][chart_name]
 
@@ -367,7 +385,11 @@ def extract_repository_info(helmrepo_path):
     """
 
     with io.open(helmrepo_path, 'r', encoding='utf-8') as f:
-        helm_repo_yaml = next(yaml.safe_load_all(f))
+        if is_debian_bullseye():
+            helm_repo_yaml = next(yaml.safe_load_all(f))
+        else:
+            local_yaml = YAML(typ='safe')
+            helm_repo_yaml = next(local_yaml.load_all(f))
 
     helm_repo_url = helm_repo_yaml["spec"]["url"]
     helm_repo_name = helm_repo_yaml["metadata"]["name"]

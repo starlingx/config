@@ -21,7 +21,6 @@ import os
 import pwd
 import random
 import re
-import ruamel.yaml as yaml
 import shutil
 import six
 from six.moves.urllib.parse import urlparse
@@ -56,12 +55,21 @@ from sysinv.helm import utils as helm_utils
 from sysinv.helm.lifecycle_constants import LifecycleConstants
 from sysinv.helm.lifecycle_hook import LifecycleHookInfo
 from sysinv.objects import kube_app as kubeapp_obj
+from sysinv.common.utils import get_debian_codename
 
 CONF = cfg.CONF
 
 
 # Log and config
 LOG = logging.getLogger(__name__)
+
+codename = get_debian_codename()
+
+# Import ruamel.yaml based on Debian version
+if codename == constants.OS_DEBIAN_BULLSEYE:
+    import ruamel.yaml as yaml
+else:
+    from ruamel.yaml import YAML
 
 # Constants
 APPLY_SEARCH_PATTERN = 'Processing Chart,'
@@ -638,7 +646,11 @@ class AppOperator(object):
 
         if os.path.exists(app_images_file):
             with io.open(app_images_file, 'r', encoding='utf-8') as f:
-                images_file = yaml.safe_load(f)
+                if cutils.is_debian_bullseye():
+                    images_file = yaml.safe_load(f)
+                else:
+                    local_yaml = YAML(typ='safe')
+                    images_file = local_yaml.load(f)
 
         helmrepo_path = os.path.join(manifest, "base", "helmrepository.yaml")
         root_kustomization_path = os.path.join(
@@ -651,7 +663,11 @@ class AppOperator(object):
 
         # get namespace
         with io.open(root_kustomization_path, 'r', encoding='utf-8') as f:
-            root_kustomization_yaml = next(yaml.safe_load_all(f))
+            if cutils.is_debian_bullseye():
+                root_kustomization_yaml = next(yaml.safe_load_all(f))
+            else:
+                local_yaml = YAML(typ='safe')
+                root_kustomization_yaml = next(local_yaml.load_all(f))
             charts_groups = root_kustomization_yaml["resources"]
 
         for chart_group in charts_groups:
@@ -663,7 +679,11 @@ class AppOperator(object):
                         not os.path.isfile(helmrelease_path):
                     continue
                 with io.open(helmrelease_path, 'r', encoding='utf-8') as f:
-                    helmrelease_yaml = next(yaml.safe_load_all(f))
+                    if cutils.is_debian_bullseye():
+                        helmrelease_yaml = next(yaml.safe_load_all(f))
+                    else:
+                        local_yaml = YAML(typ='safe')
+                        helmrelease_yaml = next(local_yaml.load_all(f))
                     chart_name = helmrelease_yaml["metadata"]["name"]
 
                 # Get the image tags by chart from the images file
@@ -677,7 +697,11 @@ class AppOperator(object):
                 overrides_file = {}
                 if os.path.exists(app_overrides_file):
                     with io.open(app_overrides_file, 'r', encoding='utf-8') as f:
-                        overrides_file = yaml.safe_load(f)
+                        if cutils.is_debian_bullseye():
+                            overrides_file = yaml.safe_load(f)
+                        else:
+                            local_yaml = YAML(typ='safe')
+                            overrides_file = local_yaml.load(f)
                 else:
                     LOG.warn("Cannot find overrides file {}".format(app_overrides_file))
 
@@ -716,7 +740,11 @@ class AppOperator(object):
                         "Static overrides file not specified on %s" % helmrelease_path))
 
                 with io.open(static_overrides_path_orig, 'r', encoding='utf-8') as f:
-                    static_overrides_file = yaml.safe_load(f) or {}
+                    if cutils.is_debian_bullseye():
+                        static_overrides_file = yaml.safe_load(f) or {}
+                    else:
+                        local_yaml = YAML(typ='safe')
+                        static_overrides_file = local_yaml.load(f) or {}
 
                 # get the image tags from the static overrides file
                 static_overrides_imgs = self._image.find_images_in_dict(static_overrides_file)
@@ -742,7 +770,12 @@ class AppOperator(object):
                         try:
                             overrides_file = self._image.merge_dict(
                                 overrides_file, override_imgs)
-                            yaml.safe_dump(overrides_file, f, default_flow_style=False)
+                            if cutils.is_debian_bullseye():
+                                yaml.safe_dump(overrides_file, f, default_flow_style=False)
+                            else:
+                                local_yaml = YAML(typ='safe')
+                                local_yaml.default_flow_style = False
+                                local_yaml.dump(overrides_file, f)
                             LOG.info("Overrides file %s updated with new image tags" %
                                      app_overrides_file)
                         except (TypeError, KeyError):
@@ -833,8 +866,13 @@ class AppOperator(object):
                 reason="charts specify no docker images.")
 
         with open(app.sync_imgfile, 'a') as f:
-            yaml.safe_dump({"download_images": images_to_download}, f,
-                           default_flow_style=False)
+            if cutils.is_debian_bullseye():
+                yaml.safe_dump({"download_images": images_to_download}, f,
+                               default_flow_style=False)
+            else:
+                local_yaml = YAML(typ='safe')
+                local_yaml.default_flow_style = False
+                local_yaml.dump({"download_images": images_to_download}, f)
 
     def _save_images_list_by_charts(self, app):
         # Mine the images from values.yaml files in the charts directory.
@@ -864,7 +902,11 @@ class AppOperator(object):
             chart_path = os.path.join(chart_name, 'values.yaml')
             if os.path.exists(chart_path):
                 with io.open(chart_path, 'r', encoding='utf-8') as f:
-                    y = yaml.safe_load(f)
+                    if cutils.is_debian_bullseye():
+                        y = yaml.safe_load(f)
+                    else:
+                        local_yaml = YAML(typ='safe')
+                        y = local_yaml.load(f)
 
                 chart_images = self._image.find_images_in_dict(y)
                 if chart_images:
@@ -872,12 +914,22 @@ class AppOperator(object):
 
         if images_by_charts:
             with open(app.sync_imgfile, 'w') as f:
-                yaml.safe_dump(images_by_charts, f, explicit_start=True,
-                               default_flow_style=False)
+                if cutils.is_debian_bullseye():
+                    yaml.safe_dump(images_by_charts, f, explicit_start=True,
+                                   default_flow_style=False)
+                else:
+                    local_yaml = YAML(typ='safe')
+                    local_yaml.explicit_start = True
+                    local_yaml.default_flow_style = False
+                    local_yaml.dump(images_by_charts, f)
 
     def _retrieve_images_list(self, app_images_file):
         with io.open(app_images_file, 'r', encoding='utf-8') as f:
-            images_list = yaml.safe_load(f)
+            if cutils.is_debian_bullseye():
+                images_list = yaml.safe_load(f)
+            else:
+                local_yaml = YAML(typ='safe')
+                images_list = local_yaml.load(f)
         return images_list
 
     def _get_max_download_threads(self):
@@ -908,8 +960,14 @@ class AppOperator(object):
             if set(saved_download_images_list) != set(images_to_download):
                 saved_images_list.update({"download_images": images_to_download})
                 with open(app.sync_imgfile, 'w') as f:
-                    yaml.safe_dump(saved_images_list, f, explicit_start=True,
-                                   default_flow_style=False)
+                    if cutils.is_debian_bullseye():
+                        yaml.safe_dump(saved_images_list, f, explicit_start=True,
+                                       default_flow_style=False)
+                    else:
+                        local_yaml = YAML(typ='safe')
+                        local_yaml.explicit_start = True
+                        local_yaml.default_flow_style = False
+                        local_yaml.dump(saved_images_list, f)
         else:
             images_to_download = self._retrieve_images_list(
                 app.sync_imgfile).get("download_images")
@@ -1016,7 +1074,11 @@ class AppOperator(object):
         if os.path.exists(lfile) and os.path.getsize(lfile) > 0:
             with io.open(lfile, 'r', encoding='utf-8') as f:
                 try:
-                    y = yaml.safe_load(f)
+                    if cutils.is_debian_bullseye():
+                        y = yaml.safe_load(f)
+                    else:
+                        local_yaml = YAML(typ='safe')
+                        y = local_yaml.load(f)
                     repo = y.get('helm_repo', common.HELM_REPO_FOR_APPS)
                     disabled_charts = y.get('disabled_charts', [])
                 except KeyError:
@@ -1369,7 +1431,11 @@ class AppOperator(object):
 
         # get charts groups
         with io.open(root_kustomization_path, 'r', encoding='utf-8') as f:
-            root_kustomization_yaml = next(yaml.safe_load_all(f))
+            if cutils.is_debian_bullseye():
+                root_kustomization_yaml = next(yaml.safe_load_all(f))
+            else:
+                local_yaml = YAML(typ='safe')
+                root_kustomization_yaml = next(local_yaml.load_all(f))
             charts_groups = root_kustomization_yaml["resources"]
 
         helm_repo_dict = helm_utils.extract_repository_info(helmrepo_path)
@@ -1415,7 +1481,11 @@ class AppOperator(object):
                         not os.path.isfile(helmrelease_path):
                     continue
                 with io.open(helmrelease_path, 'r', encoding='utf-8') as f:
-                    helmrelease_yaml = next(yaml.safe_load_all(f))
+                    if cutils.is_debian_bullseye():
+                        helmrelease_yaml = next(yaml.safe_load_all(f))
+                    else:
+                        local_yaml = YAML(typ='safe')
+                        helmrelease_yaml = next(local_yaml.load_all(f))
                     metadata_name = helmrelease_yaml["metadata"]["name"]
                     chart_spec = helmrelease_yaml["spec"]["chart"]
                     chart_name = chart_spec["spec"]["chart"]
@@ -1588,7 +1658,11 @@ class AppOperator(object):
         if os.path.exists(metadata_file) and os.path.getsize(metadata_file) > 0:
             with io.open(metadata_file, 'r', encoding='utf-8') as f:
                 try:
-                    metadata = yaml.safe_load(f) or {}
+                    if cutils.is_debian_bullseye():
+                        metadata = yaml.safe_load(f) or {}
+                    else:
+                        local_yaml = YAML(typ='safe')
+                        metadata = local_yaml.load(f) or {}
                     value = cutils.deep_get(metadata, keys, default=default)
                     # TODO(jgauld): There is inconsistent treatment of YAML
                     # boolean between the module ruamel.yaml and module yaml
@@ -1650,7 +1724,11 @@ class AppOperator(object):
 
         # Get the kustomization.yaml file to find constructed chart groups
         with io.open(root_kustomization_path, 'r', encoding='utf-8') as f:
-            root_kustomization_yaml = next(yaml.safe_load_all(f))
+            if cutils.is_debian_bullseye():
+                root_kustomization_yaml = next(yaml.safe_load_all(f))
+            else:
+                local_yaml = YAML(typ='safe')
+                root_kustomization_yaml = next(local_yaml.load_all(f))
             charts_groups = root_kustomization_yaml["resources"]
 
         for chart_group in charts_groups:
@@ -1660,7 +1738,11 @@ class AppOperator(object):
 
                 # Get the helmrelease.yaml file
                 with io.open(helmrelease_path, 'r', encoding='utf-8') as f:
-                    helmrelease_yaml = next(yaml.safe_load_all(f))
+                    if cutils.is_debian_bullseye():
+                        helmrelease_yaml = next(yaml.safe_load_all(f))
+                    else:
+                        local_yaml = YAML(typ='safe')
+                        helmrelease_yaml = next(local_yaml.load_all(f))
                 # Check if the helmrelease.yaml has valuesFrom
                 if "valuesFrom" not in helmrelease_yaml["spec"]:
                     LOG.warning("No valuesFrom found in helmrelease.yaml for chart group "
@@ -2420,7 +2502,11 @@ class AppOperator(object):
             # Ensure the HelmRelease is not suspended before running future operations.
             kustomization = os.path.join(manifest_sync_path, constants.APP_ROOT_KUSTOMIZE_FILE)
             with io.open(kustomization, 'r', encoding='utf-8') as f:
-                kustomization_yaml = next(yaml.safe_load_all(f))
+                if cutils.is_debian_bullseye():
+                    kustomization_yaml = next(yaml.safe_load_all(f))
+                else:
+                    local_yaml = YAML(typ='safe')
+                    kustomization_yaml = next(local_yaml.load_all(f))
                 charts = kustomization_yaml["resources"]
 
             for chart in charts:
@@ -2429,7 +2515,11 @@ class AppOperator(object):
                     helmrelease_path = os.path.join(chart_path, "helmrelease.yaml")
 
                     with io.open(helmrelease_path, 'r', encoding='utf-8') as f:
-                        helmrelease_yaml = next(yaml.safe_load_all(f))
+                        if cutils.is_debian_bullseye():
+                            helmrelease_yaml = next(yaml.safe_load_all(f))
+                        else:
+                            local_yaml = YAML(typ='safe')
+                            helmrelease_yaml = next(local_yaml.load_all(f))
 
                     helmrelease_yaml['spec']['suspend'] = False
                     cutils.atomic_update_yaml_file(helmrelease_yaml, helmrelease_path)
@@ -2787,8 +2877,13 @@ class AppOperator(object):
                 # The RoundTripLoader removes the superfluous quotes by default.
                 # Set preserve_quotes=True to preserve all the quotes.
                 # The assumption here: there is just one yaml section
-                metadata = yaml.load(
-                    f, Loader=yaml.RoundTripLoader, preserve_quotes=True) or {}
+                if cutils.is_debian_bullseye():
+                    metadata = yaml.load(
+                        f, Loader=yaml.RoundTripLoader, preserve_quotes=True) or {}
+                else:
+                    yaml_rt = YAML(typ='rt')
+                    yaml_rt.preserve_quotes = True
+                    metadata = yaml_rt.load(f) or {}
 
         return metadata
 
@@ -4796,8 +4891,13 @@ class FluxCDHelper(object):
             return True
 
         with io.open(helmrelease_cleanup_fqpn, 'r', encoding='utf-8') as f:
-            helmrelease_doc = list(yaml.load_all(f,
-                Loader=yaml.RoundTripLoader, preserve_quotes=True))
+            if cutils.is_debian_bullseye():
+                helmrelease_doc = list(yaml.load_all(f,
+                    Loader=yaml.RoundTripLoader, preserve_quotes=True))
+            else:
+                local_yaml = YAML(typ='rt')
+                local_yaml.preserve_quotes = True
+                helmrelease_doc = list(local_yaml.load_all(f))
 
         for release in helmrelease_doc[0]['releases']:
             try:

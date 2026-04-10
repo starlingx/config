@@ -11,18 +11,28 @@
 
 import os
 import re
-import ruamel.yaml as yaml
 import subprocess
 
 from distutils.version import LooseVersion
 from oslo_log import log
-from ruamel.yaml.compat import StringIO
 
+from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import kubernetes
 from sysinv.common import utils
+from sysinv.common.utils import get_debian_codename
 
 LOG = log.getLogger(__name__)
+
+codename = get_debian_codename()
+
+# Import ruamel.yaml based on Debian version
+if codename == constants.OS_DEBIAN_BULLSEYE:
+    import ruamel.yaml as yaml
+    from ruamel.yaml.compat import StringIO
+else:
+    from ruamel.yaml import YAML
+    from io import StringIO
 
 ETCD_API_ENV_VAR = {"ETCDCTL_API": "3"}
 ETCD_SNAPSHOT_FILE_NAME = "stx_etcd.snap"
@@ -53,7 +63,10 @@ def get_cluster_information():
     """
     etcd_config = {}
     try:
-        newyaml = yaml.YAML()
+        if utils.is_debian_bullseye():
+            newyaml = yaml.YAML()
+        else:
+            newyaml = YAML()
         kube_operator = kubernetes.KubeOperator()
         configmap_data = kube_operator.kube_read_config_map(
             'kubeadm-config', kubernetes.NAMESPACE_KUBE_SYSTEM)

@@ -17,7 +17,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2025 Wind River Systems, Inc.
+# Copyright (c) 2013-2026 Wind River Systems, Inc.
 #
 
 """Test class for Sysinv ManagerService."""
@@ -48,6 +48,7 @@ from sysinv.common import usm_service
 from sysinv.common.image_download import ContainerImageDownloader
 from sysinv.conductor import kube_app
 from sysinv.conductor import manager
+
 from sysinv.db import api as dbapi
 from sysinv.tests.db import utils as dbutils
 
@@ -146,13 +147,32 @@ class ManagerTestCase(base.DbTestCase):
                         name='kubeadm-config',
                         namespace='kube-system'),
         )
-        config_patch = 'apiServer:\n  certSANs: [192.168.206.1, 127.0.0.1, 10.10.6.3]\n  '
-        config_patch += 'extraArgs: {event-ttl: 24h}\n  extraVolumes:\n  - {hostPath: '
-        config_patch += '/etc/kubernetes/encryption-provider.yaml}\napiVersion: '
-        config_patch += 'kubeadm.k8s.io/v1beta3\ncontrollerManager:\n  extraArgs: '
-        config_patch += '{feature-gates: CSIMigrationPortworx=false}\n'
-        config_patch += '  extraVolumes: null\nkind: ClusterConfiguration\nkubernetesVersion: '
-        config_patch += 'v1.42.1\nscheduler: {}\n'
+        if cutils.is_debian_bullseye():
+            config_patch = 'apiServer:\n  certSANs: [192.168.206.1, 127.0.0.1, 10.10.6.3]\n  '
+            config_patch += 'extraArgs: {event-ttl: 24h}\n  extraVolumes:\n  - {hostPath: '
+            config_patch += '/etc/kubernetes/encryption-provider.yaml}\napiVersion: '
+            config_patch += 'kubeadm.k8s.io/v1beta3\ncontrollerManager:\n  extraArgs: '
+            config_patch += '{feature-gates: CSIMigrationPortworx=false}\n'
+            config_patch += '  extraVolumes: null\nkind: ClusterConfiguration\nkubernetesVersion: '
+            config_patch += 'v1.42.1\nscheduler: {}\n'
+        else:
+            config_patch = ('apiServer:\n'
+                            '  certSANs:\n'
+                            '  - 192.168.206.1\n'
+                            '  - 127.0.0.1\n'
+                            '  - 10.10.6.3\n'
+                            '  extraArgs:\n'
+                            '    event-ttl: 24h\n'
+                            '  extraVolumes:\n'
+                            '  - hostPath: /etc/kubernetes/encryption-provider.yaml\n'
+                            'apiVersion: kubeadm.k8s.io/v1beta3\n'
+                            'controllerManager:\n'
+                            '  extraArgs:\n'
+                            '    feature-gates: CSIMigrationPortworx=false\n'
+                            '  extraVolumes:\n'
+                            'kind: ClusterConfiguration\n'
+                            'kubernetesVersion: v1.42.1\n'
+                            'scheduler: {}\n')
         self.kubeadm_config_map_patch = {'data': {'ClusterConfiguration': config_patch}}
 
         self.kubeadm_config_read_RemoveSelfLink = kubernetes.client.V1ConfigMap(
@@ -181,13 +201,32 @@ class ManagerTestCase(base.DbTestCase):
                         name='kubeadm-config',
                         namespace='kube-system'),
         )
-        selflink_patch = 'apiServer:\n  certSANs: [192.168.206.1, 127.0.0.1, 10.10.6.3]\n  '
-        selflink_patch += 'extraArgs: {event-ttl: 24h}\n  extraVolumes:\n  - {hostPath: '
-        selflink_patch += '/etc/kubernetes/encryption-provider.yaml}\napiVersion: '
-        selflink_patch += 'kubeadm.k8s.io/v1beta3\ncontrollerManager:\n  extraArgs: '
-        selflink_patch += '{feature-gates: CSIMigrationPortworx=false}\n'
-        selflink_patch += '  extraVolumes: null\nkind: '
-        selflink_patch += 'ClusterConfiguration\nkubernetesVersion: v1.42.1\nscheduler: {}\n'
+        if cutils.is_debian_bullseye():
+            selflink_patch = 'apiServer:\n  certSANs: [192.168.206.1, 127.0.0.1, 10.10.6.3]\n  '
+            selflink_patch += 'extraArgs: {event-ttl: 24h}\n  extraVolumes:\n  - {hostPath: '
+            selflink_patch += '/etc/kubernetes/encryption-provider.yaml}\napiVersion: '
+            selflink_patch += 'kubeadm.k8s.io/v1beta3\ncontrollerManager:\n  extraArgs: '
+            selflink_patch += '{feature-gates: CSIMigrationPortworx=false}\n'
+            selflink_patch += '  extraVolumes: null\nkind: '
+            selflink_patch += 'ClusterConfiguration\nkubernetesVersion: v1.42.1\nscheduler: {}\n'
+        else:
+            selflink_patch = ('apiServer:\n'
+                              '  certSANs:\n'
+                              '  - 192.168.206.1\n'
+                              '  - 127.0.0.1\n'
+                              '  - 10.10.6.3\n'
+                              '  extraArgs:\n'
+                              '    event-ttl: 24h\n'
+                              '  extraVolumes:\n'
+                              '  - hostPath: /etc/kubernetes/encryption-provider.yaml\n'
+                              'apiVersion: kubeadm.k8s.io/v1beta3\n'
+                              'controllerManager:\n'
+                              '  extraArgs:\n'
+                              '    feature-gates: CSIMigrationPortworx=false\n'
+                              '  extraVolumes:\n'
+                              'kind: ClusterConfiguration\n'
+                              'kubernetesVersion: v1.42.1\n'
+                              'scheduler: {}\n')
         self.kubeadm_config_map_patch_RemoveSelfLink = {'data': {'ClusterConfiguration': selflink_patch}}
 
         self.kubeadm_config_map_read_etcd_endpoints = kubernetes.client.V1ConfigMap(
@@ -225,26 +264,54 @@ class ManagerTestCase(base.DbTestCase):
                         namespace='kube-system'),
         )
 
-        self.kubeadm_config_map_patch_etcd_endpoints = \
-            {'data':
-             {'ClusterConfiguration': 'apiServer:\n'
-                                        '  certSANs: [192.168.206.1, 127.0.0.1, 10.10.6.3]\n'
-                                        '  extraArgs: {event-ttl: 24h}\n'
-                                        '  extraVolumes:\n'
-                                        '  - {hostPath: /etc/kubernetes/encryption-provider.yaml}\n'
-                                        'apiVersion: kubeadm.k8s.io/v1beta3\n'
-                                        'controllerManager:\n'
-                                        '  extraArgs: {feature-gates: CSIMigrationPortworx=false}\n'
-                                        '  extraVolumes: null\n'
-                                        'etcd:\n'
-                                        '  external:\n'
-                                        '    caFile: /etc/etcd/ca.crt\n'
-                                        '    certFile: /etc/kubernetes/pki/apiserver-etcd-client.crt\n'
-                                        '    endpoints: [https://192.168.206.1:2379]\n'
-                                        '    keyFile: /etc/kubernetes/pki/apiserver-etcd-client.key\n'
-                                        'kind: ClusterConfiguration\n'
-                                        'kubernetesVersion: v1.42.1\n'
-                                        'scheduler: {}\n'}}
+        if cutils.is_debian_bullseye():
+            self.kubeadm_config_map_patch_etcd_endpoints = \
+                {'data':
+                 {'ClusterConfiguration': 'apiServer:\n'
+                                            '  certSANs: [192.168.206.1, 127.0.0.1, 10.10.6.3]\n'
+                                            '  extraArgs: {event-ttl: 24h}\n'
+                                            '  extraVolumes:\n'
+                                            '  - {hostPath: /etc/kubernetes/encryption-provider.yaml}\n'
+                                            'apiVersion: kubeadm.k8s.io/v1beta3\n'
+                                            'controllerManager:\n'
+                                            '  extraArgs: {feature-gates: CSIMigrationPortworx=false}\n'
+                                            '  extraVolumes: null\n'
+                                            'etcd:\n'
+                                            '  external:\n'
+                                            '    caFile: /etc/etcd/ca.crt\n'
+                                            '    certFile: /etc/kubernetes/pki/apiserver-etcd-client.crt\n'
+                                            '    endpoints: [https://192.168.206.1:2379]\n'
+                                            '    keyFile: /etc/kubernetes/pki/apiserver-etcd-client.key\n'
+                                            'kind: ClusterConfiguration\n'
+                                            'kubernetesVersion: v1.42.1\n'
+                                            'scheduler: {}\n'}}
+        else:
+            self.kubeadm_config_map_patch_etcd_endpoints = \
+                {'data':
+                 {'ClusterConfiguration': 'apiServer:\n'
+                                            '  certSANs:\n'
+                                            '  - 192.168.206.1\n'
+                                            '  - 127.0.0.1\n'
+                                            '  - 10.10.6.3\n'
+                                            '  extraArgs:\n'
+                                            '    event-ttl: 24h\n'
+                                            '  extraVolumes:\n'
+                                            '  - hostPath: /etc/kubernetes/encryption-provider.yaml\n'
+                                            'apiVersion: kubeadm.k8s.io/v1beta3\n'
+                                            'controllerManager:\n'
+                                            '  extraArgs:\n'
+                                            '    feature-gates: CSIMigrationPortworx=false\n'
+                                            '  extraVolumes:\n'
+                                            'etcd:\n'
+                                            '  external:\n'
+                                            '    caFile: /etc/etcd/ca.crt\n'
+                                            '    certFile: /etc/kubernetes/pki/apiserver-etcd-client.crt\n'
+                                            '    endpoints:\n'
+                                            '    - https://192.168.206.1:2379\n'
+                                            '    keyFile: /etc/kubernetes/pki/apiserver-etcd-client.key\n'
+                                            'kind: ClusterConfiguration\n'
+                                            'kubernetesVersion: v1.42.1\n'
+                                            'scheduler: {}\n'}}
 
         super(ManagerTestCase, self).setUp()
 
@@ -2651,18 +2718,30 @@ class ManagerTestCase(base.DbTestCase):
         p.start().return_value = fake_file_object
         self.addCleanup(p.stop)
 
-        mock_ruamel_yaml = mock.MagicMock()
-        p = mock.patch('ruamel.yaml.safe_load', mock_ruamel_yaml)
-        p.start().return_value = expected_images
-        self.addCleanup(p.stop)
+        if cutils.is_debian_bullseye():
+            mock_ruamel_yaml = mock.MagicMock()
+            p = mock.patch('ruamel.yaml.safe_load', mock_ruamel_yaml)
+            p.start().return_value = expected_images
+            self.addCleanup(p.stop)
+        else:
+            mock_yaml_obj = mock.MagicMock()
+            mock_yaml_obj.load.return_value = expected_images
+            p = mock.patch('sysinv.conductor.manager.YAML', return_value=mock_yaml_obj)
+            p.start()
+            self.addCleanup(p.stop)
 
         actual_images = self.service._get_kubernetes_system_images("fake kube version")
 
         self.assertEqual(expected_images, actual_images)
 
-        mock_os_path_join.assert_called_once()
+        mock_os_path_join.assert_any_call(
+                    constants.ANSIBLE_KUBE_SYSTEM_IMAGES_PLAYBOOK_ROOT,
+                    'vars/k8s-fake kube version/system-images.yml')
         mock_open.assert_called_once_with(fake_images_path, 'r')
-        mock_ruamel_yaml.assert_called_once_with(fake_file_object)
+        if cutils.is_debian_bullseye():
+            mock_ruamel_yaml.assert_called_once_with(fake_file_object)
+        else:
+            mock_yaml_obj.load.assert_called_once_with(fake_file_object)
 
     def test_get_kubernetes_system_images_empty_images(self):
         """Test failed execution of _get_kubernetes_system_images
@@ -2680,18 +2759,30 @@ class ManagerTestCase(base.DbTestCase):
         p.start().return_value = fake_file_object
         self.addCleanup(p.stop)
 
-        mock_ruamel_yaml = mock.MagicMock()
-        p = mock.patch('ruamel.yaml.safe_load', mock_ruamel_yaml)
-        p.start().return_value = {}
-        self.addCleanup(p.stop)
+        if cutils.is_debian_bullseye():
+            mock_ruamel_yaml = mock.MagicMock()
+            p = mock.patch('ruamel.yaml.safe_load', mock_ruamel_yaml)
+            p.start().return_value = {}
+            self.addCleanup(p.stop)
+        else:
+            mock_yaml_obj = mock.MagicMock()
+            mock_yaml_obj.load.return_value = {}
+            p = mock.patch('sysinv.conductor.manager.YAML', return_value=mock_yaml_obj)
+            p.start()
+            self.addCleanup(p.stop)
 
         self.assertRaises(exception.SysinvException,
                           self.service._get_kubernetes_system_images,
                           "fake kube version")
 
-        mock_os_path_join.assert_called_once()
+        mock_os_path_join.assert_any_call(
+                    constants.ANSIBLE_KUBE_SYSTEM_IMAGES_PLAYBOOK_ROOT,
+                    'vars/k8s-fake kube version/system-images.yml')
         mock_open.assert_called_once_with(fake_images_path, 'r')
-        mock_ruamel_yaml.assert_called_once_with(fake_file_object)
+        if cutils.is_debian_bullseye():
+            mock_ruamel_yaml.assert_called_once_with(fake_file_object)
+        else:
+            mock_yaml_obj.load.assert_called_once_with(fake_file_object)
 
     def test_get_kubernetes_system_images_failure(self):
         """Test failed execution of _get_kubernetes_system_images
@@ -2709,18 +2800,30 @@ class ManagerTestCase(base.DbTestCase):
         p.start().return_value = fake_file_object
         self.addCleanup(p.stop)
 
-        mock_ruamel_yaml = mock.MagicMock()
-        p = mock.patch('ruamel.yaml.safe_load', mock_ruamel_yaml)
-        p.start().side_effect = Exception("Fake error")
-        self.addCleanup(p.stop)
+        if cutils.is_debian_bullseye():
+            mock_ruamel_yaml = mock.MagicMock()
+            p = mock.patch('ruamel.yaml.safe_load', mock_ruamel_yaml)
+            p.start().side_effect = Exception("Fake error")
+            self.addCleanup(p.stop)
+        else:
+            mock_yaml_obj = mock.MagicMock()
+            mock_yaml_obj.load.side_effect = Exception("Fake error")
+            p = mock.patch('sysinv.conductor.manager.YAML', return_value=mock_yaml_obj)
+            p.start()
+            self.addCleanup(p.stop)
 
         self.assertRaises(exception.SysinvException,
                           self.service._get_kubernetes_system_images,
                           "fake kube version")
 
-        mock_os_path_join.assert_called_once()
+        mock_os_path_join.assert_any_call(
+                    constants.ANSIBLE_KUBE_SYSTEM_IMAGES_PLAYBOOK_ROOT,
+                    'vars/k8s-fake kube version/system-images.yml')
         mock_open.assert_called_once_with(fake_images_path, 'r')
-        mock_ruamel_yaml.assert_called_once_with(fake_file_object)
+        if cutils.is_debian_bullseye():
+            mock_ruamel_yaml.assert_called_once_with(fake_file_object)
+        else:
+            mock_yaml_obj.load.assert_called_once_with(fake_file_object)
 
     def test_kube_upgrade_networking_success_ipv4(self):
         """Test successful execution of kubernetes networking upgrade (ipv4)
@@ -2819,10 +2922,17 @@ class ManagerTestCase(base.DbTestCase):
         p.start()
         self.addCleanup(p.stop)
 
-        mock_ruamel_yaml_safe_load = mock.MagicMock()
-        p = mock.patch('ruamel.yaml.safe_load', mock_ruamel_yaml_safe_load)
-        p.start().return_value = upgrade_overrides
-        self.addCleanup(p.stop)
+        if cutils.is_debian_bullseye():
+            mock_ruamel_yaml_safe_load = mock.MagicMock()
+            p = mock.patch('ruamel.yaml.safe_load', mock_ruamel_yaml_safe_load)
+            p.start().return_value = upgrade_overrides
+            self.addCleanup(p.stop)
+        else:
+            mock_yaml_obj = mock.MagicMock()
+            mock_yaml_obj.load.return_value = upgrade_overrides
+            p = mock.patch('sysinv.conductor.manager.YAML', return_value=mock_yaml_obj)
+            p.start()
+            self.addCleanup(p.stop)
 
         mock_shutil_copy2 = mock.MagicMock()
         p = mock.patch('shutil.copy2', mock_shutil_copy2)
@@ -2869,7 +2979,10 @@ class ManagerTestCase(base.DbTestCase):
         mock_utils_execute.assert_called()
         mock_os_path_exists.assert_called()
         mock_open.assert_called()
-        mock_ruamel_yaml_safe_load.assert_called_once()
+        if cutils.is_debian_bullseye():
+            mock_ruamel_yaml_safe_load.assert_called_once()
+        else:
+            mock_yaml_obj.load.assert_called_once()
         mock_shutil_copy2.assert_called_once()
 
         mock_render_jinja_template_from_file.assert_called()
@@ -2996,10 +3109,17 @@ class ManagerTestCase(base.DbTestCase):
         p.start()
         self.addCleanup(p.stop)
 
-        mock_ruamel_yaml_safe_load = mock.MagicMock()
-        p = mock.patch('ruamel.yaml.safe_load', mock_ruamel_yaml_safe_load)
-        p.start().return_value = upgrade_overrides
-        self.addCleanup(p.stop)
+        if cutils.is_debian_bullseye():
+            mock_ruamel_yaml_safe_load = mock.MagicMock()
+            p = mock.patch('ruamel.yaml.safe_load', mock_ruamel_yaml_safe_load)
+            p.start().return_value = upgrade_overrides
+            self.addCleanup(p.stop)
+        else:
+            mock_yaml_obj = mock.MagicMock()
+            mock_yaml_obj.load.return_value = upgrade_overrides
+            p = mock.patch('sysinv.conductor.manager.YAML', return_value=mock_yaml_obj)
+            p.start()
+            self.addCleanup(p.stop)
 
         mock_shutil_copy2 = mock.MagicMock()
         p = mock.patch('shutil.copy2', mock_shutil_copy2)
@@ -3045,7 +3165,10 @@ class ManagerTestCase(base.DbTestCase):
         mock_utils_execute.assert_called()
         mock_os_path_exists.assert_called()
         mock_open.assert_called()
-        mock_ruamel_yaml_safe_load.assert_called_once()
+        if cutils.is_debian_bullseye():
+            mock_ruamel_yaml_safe_load.assert_called_once()
+        else:
+            mock_yaml_obj.load.assert_called_once()
         mock_shutil_copy2.assert_called_once()
 
         mock_render_jinja_template_from_file.assert_called()
@@ -3174,10 +3297,17 @@ class ManagerTestCase(base.DbTestCase):
         p.start()
         self.addCleanup(p.stop)
 
-        mock_ruamel_yaml_safe_load = mock.MagicMock()
-        p = mock.patch('ruamel.yaml.safe_load', mock_ruamel_yaml_safe_load)
-        p.start().return_value = upgrade_overrides
-        self.addCleanup(p.stop)
+        if cutils.is_debian_bullseye():
+            mock_ruamel_yaml_safe_load = mock.MagicMock()
+            p = mock.patch('ruamel.yaml.safe_load', mock_ruamel_yaml_safe_load)
+            p.start().return_value = upgrade_overrides
+            self.addCleanup(p.stop)
+        else:
+            mock_yaml_obj = mock.MagicMock()
+            mock_yaml_obj.load.return_value = upgrade_overrides
+            p = mock.patch('sysinv.conductor.manager.YAML', return_value=mock_yaml_obj)
+            p.start()
+            self.addCleanup(p.stop)
 
         mock_shutil_copy2 = mock.MagicMock()
         p = mock.patch('shutil.copy2', mock_shutil_copy2)
@@ -3224,7 +3354,10 @@ class ManagerTestCase(base.DbTestCase):
         mock_utils_execute.assert_called()
         mock_os_path_exists.assert_called()
         mock_open.assert_called()
-        mock_ruamel_yaml_safe_load.assert_called_once()
+        if cutils.is_debian_bullseye():
+            mock_ruamel_yaml_safe_load.assert_called_once()
+        else:
+            mock_yaml_obj.load.assert_called_once()
         mock_shutil_copy2.assert_called_once()
 
         mock_render_jinja_template_from_file.assert_called()
@@ -3352,10 +3485,17 @@ class ManagerTestCase(base.DbTestCase):
         p.start()
         self.addCleanup(p.stop)
 
-        mock_ruamel_yaml_safe_load = mock.MagicMock()
-        p = mock.patch('ruamel.yaml.safe_load', mock_ruamel_yaml_safe_load)
-        p.start().return_value = upgrade_overrides
-        self.addCleanup(p.stop)
+        if cutils.is_debian_bullseye():
+            mock_ruamel_yaml_safe_load = mock.MagicMock()
+            p = mock.patch('ruamel.yaml.safe_load', mock_ruamel_yaml_safe_load)
+            p.start().return_value = upgrade_overrides
+            self.addCleanup(p.stop)
+        else:
+            mock_yaml_obj = mock.MagicMock()
+            mock_yaml_obj.load.return_value = upgrade_overrides
+            p = mock.patch('sysinv.conductor.manager.YAML', return_value=mock_yaml_obj)
+            p.start()
+            self.addCleanup(p.stop)
 
         mock_shutil_copy2 = mock.MagicMock()
         p = mock.patch('shutil.copy2', mock_shutil_copy2)
@@ -3387,7 +3527,10 @@ class ManagerTestCase(base.DbTestCase):
         mock_utils_execute.assert_called()
         mock_os_path_exists.assert_called()
         mock_open.assert_called()
-        mock_ruamel_yaml_safe_load.assert_called_once()
+        if cutils.is_debian_bullseye():
+            mock_ruamel_yaml_safe_load.assert_called_once()
+        else:
+            mock_yaml_obj.load.assert_called_once()
         mock_shutil_copy2.assert_called_once()
 
         mock_render_jinja_template_from_file.assert_called()
@@ -4037,6 +4180,11 @@ class ManagerTestCase(base.DbTestCase):
 
             # FIX: do NOT assert called_once
             mock_open.assert_any_call('/tmp/upgrade_overrides.yaml', 'r')
+        if cutils.is_debian_bullseye():
+            mock_ruamel_yaml_safe_load = mock.MagicMock()
+            p = mock.patch('ruamel.yaml.safe_load', mock_ruamel_yaml_safe_load)
+            p.start().return_value = upgrade_overrides
+            self.addCleanup(p.stop)
 
             mock_yaml.assert_called_once()
             mock_copy2.assert_not_called()
@@ -4049,6 +4197,12 @@ class ManagerTestCase(base.DbTestCase):
                 updated_upgrade.state,
                 kubernetes.KUBE_UPGRADING_NETWORKING_FAILED
             )
+        else:
+            mock_yaml_obj = mock.MagicMock()
+            mock_yaml_obj.load.return_value = upgrade_overrides
+            p = mock.patch('sysinv.conductor.manager.YAML', return_value=mock_yaml_obj)
+            p.start()
+            self.addCleanup(p.stop)
 
     def test_kube_upgrade_networking_failure_host_overrides_invalid_ip_address(self):
         """Test failed execution of kubernetes networking upgrade
@@ -4187,6 +4341,12 @@ class ManagerTestCase(base.DbTestCase):
             self.assertEqual(args[3], FAKE_AUTH)
             self.assertEqual(args[2], FAKE_IMAGE_LIST)
 
+        if cutils.is_debian_bullseye():
+            mock_ruamel_yaml_safe_load = mock.MagicMock()
+            p = mock.patch('ruamel.yaml.safe_load', mock_ruamel_yaml_safe_load)
+            p.start().return_value = upgrade_overrides
+            self.addCleanup(p.stop)
+
             mock_utils_execute.assert_called_once()
             mock_os_path_exists.assert_called()
             mock_open.assert_called_once()
@@ -4201,6 +4361,12 @@ class ManagerTestCase(base.DbTestCase):
                 updated_upgrade.state,
                 kubernetes.KUBE_UPGRADING_NETWORKING_FAILED
             )
+        else:
+            mock_yaml_obj = mock.MagicMock()
+            mock_yaml_obj.load.return_value = upgrade_overrides
+            p = mock.patch('sysinv.conductor.manager.YAML', return_value=mock_yaml_obj)
+            p.start()
+            self.addCleanup(p.stop)
 
     def test_kube_upgrade_networking_failure_template_render_error(self):
         """Test failed execution of kubernetes networking upgrade (Template rendering failure)
@@ -4293,10 +4459,17 @@ class ManagerTestCase(base.DbTestCase):
         p.start()
         self.addCleanup(p.stop)
 
-        mock_ruamel_yaml_safe_load = mock.MagicMock()
-        p = mock.patch('ruamel.yaml.safe_load', mock_ruamel_yaml_safe_load)
-        p.start().return_value = upgrade_overrides
-        self.addCleanup(p.stop)
+        if cutils.is_debian_bullseye():
+            mock_ruamel_yaml_safe_load = mock.MagicMock()
+            p = mock.patch('ruamel.yaml.safe_load', mock_ruamel_yaml_safe_load)
+            p.start().return_value = upgrade_overrides
+            self.addCleanup(p.stop)
+        else:
+            mock_yaml_obj = mock.MagicMock()
+            mock_yaml_obj.load.return_value = upgrade_overrides
+            p = mock.patch('sysinv.conductor.manager.YAML', return_value=mock_yaml_obj)
+            p.start()
+            self.addCleanup(p.stop)
 
         mock_render_jinja_template_from_file = mock.MagicMock()
         p = mock.patch('sysinv.common.utils.render_jinja_template_from_file',
@@ -4323,7 +4496,10 @@ class ManagerTestCase(base.DbTestCase):
         mock_utils_execute.assert_called_once()
         mock_os_path_exists.assert_called()
         mock_open.assert_called()
-        mock_ruamel_yaml_safe_load.assert_called_once()
+        if cutils.is_debian_bullseye():
+            mock_ruamel_yaml_safe_load.assert_called_once()
+        else:
+            mock_yaml_obj.load.assert_called_once()
         # Assert kubectl apply called at max once for coredns where template is copied not rendered.
         assert mock_kubectl_apply.call_count <= 1
         mock_os_remove.assert_called_once()
@@ -4422,10 +4598,17 @@ class ManagerTestCase(base.DbTestCase):
         p.start()
         self.addCleanup(p.stop)
 
-        mock_ruamel_yaml_safe_load = mock.MagicMock()
-        p = mock.patch('ruamel.yaml.safe_load', mock_ruamel_yaml_safe_load)
-        p.start().return_value = upgrade_overrides
-        self.addCleanup(p.stop)
+        if cutils.is_debian_bullseye():
+            mock_ruamel_yaml_safe_load = mock.MagicMock()
+            p = mock.patch('ruamel.yaml.safe_load', mock_ruamel_yaml_safe_load)
+            p.start().return_value = upgrade_overrides
+            self.addCleanup(p.stop)
+        else:
+            mock_yaml_obj = mock.MagicMock()
+            mock_yaml_obj.load.return_value = upgrade_overrides
+            p = mock.patch('sysinv.conductor.manager.YAML', return_value=mock_yaml_obj)
+            p.start()
+            self.addCleanup(p.stop)
 
         mock_kubectl_apply = mock.MagicMock()
         p = mock.patch('sysinv.common.kubernetes.kubectl_apply', mock_kubectl_apply)
@@ -4446,7 +4629,10 @@ class ManagerTestCase(base.DbTestCase):
         mock_utils_execute.assert_called_once()
         mock_os_path_exists.assert_called()
         mock_open.assert_called()
-        mock_ruamel_yaml_safe_load.assert_called_once()
+        if cutils.is_debian_bullseye():
+            mock_ruamel_yaml_safe_load.assert_called_once()
+        else:
+            mock_yaml_obj.load.assert_called_once()
         mock_os_remove.assert_called_once()
 
         updated_upgrade = self.dbapi.kube_upgrade_get_one()

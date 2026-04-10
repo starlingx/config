@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2025 Wind River Systems, Inc.
+# Copyright (c) 2025-2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -17,8 +17,6 @@ import re
 import shutil
 import tsconfig.tsconfig as tsc
 
-from ruamel import yaml
-
 from oslo_log import log as logging
 from operator import attrgetter
 from sysinv.common import constants
@@ -27,8 +25,17 @@ from sysinv.common import etcd
 from sysinv.common import exception
 from sysinv.common import kubernetes
 from sysinv.common import utils
+from sysinv.common.utils import get_debian_codename
 
 LOG = logging.getLogger(__name__)
+
+codename = get_debian_codename()
+
+# Import ruamel.yaml based on Debian version
+if codename == constants.OS_DEBIAN_BULLSEYE:
+    from ruamel import yaml
+else:
+    from ruamel.yaml import YAML
 
 CONTAINERD_CLEANUP_SCRIPT_PATH = '/usr/sbin/k8s-container-cleanup.sh'
 CONTAINERD_CLEANUP_FORCE_CLEAN_CMD = 'force-clean'
@@ -48,7 +55,11 @@ class ContainerdOperator(object):
         hieradata_secure_system = ""
         try:
             with open(constants.TMP_HIERADATA_SECURE_SYSTEM_YAML, 'r') as file:
-                hieradata_secure_system = yaml.safe_load(file)
+                if utils.is_debian_bullseye():
+                    hieradata_secure_system = yaml.safe_load(file)
+                else:
+                    newyaml = YAML()
+                    hieradata_secure_system = newyaml.load(file)
             if hieradata_secure_system:
                 username = hieradata_secure_system.get(
                         'platform::dockerdistribution::params::registry_username', None)

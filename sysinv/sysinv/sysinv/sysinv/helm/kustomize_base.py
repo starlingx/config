@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2022 Wind River Systems, Inc.
+# Copyright (c) 2022, 2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -12,7 +12,6 @@ import abc
 import io
 import json
 import os
-import ruamel.yaml as yaml
 import shutil
 import six
 import tempfile
@@ -21,10 +20,19 @@ from copy import deepcopy
 from oslo_log import log as logging
 from sysinv.common import constants
 from sysinv.common import utils as common_utils
+from sysinv.common.utils import get_debian_codename
 from sysinv.db import api as dbapi
 
 
 LOG = logging.getLogger(__name__)
+
+codename = get_debian_codename()
+
+# Import ruamel.yaml based on Debian version
+if codename == constants.OS_DEBIAN_BULLSEYE:
+    import ruamel.yaml as yaml
+else:
+    from ruamel.yaml import YAML
 
 
 @six.add_metaclass(abc.ABCMeta)
@@ -69,9 +77,14 @@ class FluxCDKustomizeOperator(object):
 
         if os.path.isfile(kustomization_fqpn):
             with io.open(kustomization_fqpn, 'r', encoding='utf-8') as fk:
-                kustomization_content = list(yaml.load_all(fk,
-                                                           Loader=yaml.RoundTripLoader,
-                                                           preserve_quotes=True))
+                if common_utils.is_debian_bullseye():
+                    kustomization_content = list(yaml.load_all(fk,
+                                                               Loader=yaml.RoundTripLoader,
+                                                               preserve_quotes=True))
+                else:
+                    local_yaml = YAML(typ='rt')
+                    local_yaml.preserve_quotes = True
+                    kustomization_content = list(local_yaml.load_all(fk))
 
             # Important having distinct error messages since they can help
             # identifying different potential bugs.
@@ -163,8 +176,13 @@ class FluxCDKustomizeOperator(object):
             if os.path.isfile(resource_helmrelease_fqpn):
 
                 with io.open(resource_helmrelease_fqpn, 'r', encoding='utf-8') as f:
-                    resource_helmrelease_contents = list(yaml.load_all(f,
-                        Loader=yaml.RoundTripLoader, preserve_quotes=True))
+                    if common_utils.is_debian_bullseye():
+                        resource_helmrelease_contents = list(yaml.load_all(f,
+                            Loader=yaml.RoundTripLoader, preserve_quotes=True))
+                    else:
+                        local_yaml = YAML(typ='rt')
+                        local_yaml.preserve_quotes = True
+                        resource_helmrelease_contents = list(local_yaml.load_all(f))
 
                 if len(resource_helmrelease_contents) > 1:
                     LOG.error("Malformed HelmRelease:  %s contains more than one "
@@ -244,7 +262,11 @@ class FluxCDKustomizeOperator(object):
 
         # get the helm repo base url
         with io.open(self.original_helmrepo_fqpn, 'r', encoding='utf-8') as f:
-            helmrepo_yaml = next(yaml.safe_load_all(f))
+            if common_utils.is_debian_bullseye():
+                helmrepo_yaml = next(yaml.safe_load_all(f))
+            else:
+                local_yaml = YAML(typ='safe')
+                helmrepo_yaml = next(local_yaml.load_all(f))
             helmrepo_url = helmrepo_yaml["spec"]["url"]
 
             helmrepo_yaml["spec"]["url"] = \
@@ -256,7 +278,12 @@ class FluxCDKustomizeOperator(object):
 
             with open(temp_helmrepo_path, 'w') as f:
                 try:
-                    yaml.dump(helmrepo_yaml, f, default_flow_style=False)
+                    if common_utils.is_debian_bullseye():
+                        yaml.dump(helmrepo_yaml, f, default_flow_style=False)
+                    else:
+                        local_yaml = YAML(typ='safe')
+                        local_yaml.default_flow_style = False
+                        local_yaml.dump(helmrepo_yaml, f)
                     LOG.debug(f"Temporary Helm repository file {temp_helmrepo_path} generated")
                 except Exception as e:
                     LOG.error("Failed to generate temporary Helm repository file "
@@ -295,8 +322,13 @@ class FluxCDKustomizeOperator(object):
                                            text=True)
 
             with open(tmppath, 'w') as f:
-                yaml.dump(data, f, Dumper=yaml.RoundTripDumper,
-                          default_flow_style=False)
+                if common_utils.is_debian_bullseye():
+                    yaml.dump(data, f, Dumper=yaml.RoundTripDumper,
+                              default_flow_style=False)
+                else:
+                    local_yaml = YAML(typ='rt')
+                    local_yaml.default_flow_style = False
+                    local_yaml.dump(data, f)
                 os.close(fd)
                 os.rename(tmppath, pathfilename)
                 # Change the permission to be readable to non-root
@@ -323,9 +355,15 @@ class FluxCDKustomizeOperator(object):
 
                 with open(temp_kustomization_path, 'w') as f:
                     try:
-                        yaml.dump_all(self.kustomization_content, f, Dumper=yaml.RoundTripDumper,
-                                      explicit_start=True,
-                                      default_flow_style=False)
+                        if common_utils.is_debian_bullseye():
+                            yaml.dump_all(self.kustomization_content, f, Dumper=yaml.RoundTripDumper,
+                                          explicit_start=True,
+                                          default_flow_style=False)
+                        else:
+                            local_yaml = YAML(typ='rt')
+                            local_yaml.explicit_start = True
+                            local_yaml.default_flow_style = False
+                            local_yaml.dump_all(self.kustomization_content, f)
                         LOG.debug(f"Temporary kustomization file {temp_kustomization_path} "
                                   "generated")
                     except Exception as e:

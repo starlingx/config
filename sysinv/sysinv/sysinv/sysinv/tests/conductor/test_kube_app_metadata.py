@@ -1,7 +1,7 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 # coding=utf-8
 
-# Copyright (c) 2025 Wind River Systems, Inc.
+# Copyright (c) 2025-2026 Wind River Systems, Inc.
 
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -11,12 +11,21 @@
 import copy
 import io
 import os
-import ruamel.yaml as yaml
 
 from sysinv.common import constants
+from sysinv.common.utils import get_debian_codename
+from sysinv.common.utils import is_debian_bullseye
 from sysinv.conductor import kube_app
 from sysinv.conductor import manager
 from sysinv.tests import base
+
+codename = get_debian_codename()
+
+# Import ruamel.yaml based on Debian version
+if codename == constants.OS_DEBIAN_BULLSEYE:
+    import ruamel.yaml as yaml
+else:
+    from ruamel.yaml import YAML
 
 
 class TestKubeAppMetadata(base.TestCase):
@@ -34,7 +43,11 @@ class TestKubeAppMetadata(base.TestCase):
                         "data", "metadata_multiple_dependencies.yaml")
 
         with io.open(yaml_file, 'r', encoding='utf-8') as f:
-            metadata_collection = yaml.safe_load_all(f)
+            if is_debian_bullseye():
+                metadata_collection = yaml.safe_load_all(f)
+            else:
+                local_yaml = YAML()
+                metadata_collection = local_yaml.load_all(f)
 
             for metadata in metadata_collection:
                 kube_app.AppOperator.update_and_process_app_metadata(mock_apps_metadata,
@@ -51,7 +64,11 @@ class TestKubeAppMetadata(base.TestCase):
                         "data", "metadata_mutual_cyclic_dependency.yaml")
 
         with io.open(yaml_file, 'r', encoding='utf-8') as f:
-            metadata_collection = yaml.safe_load_all(f)
+            if is_debian_bullseye():
+                metadata_collection = yaml.safe_load_all(f)
+            else:
+                local_yaml = YAML()
+                metadata_collection = local_yaml.load_all(f)
 
             for metadata in metadata_collection:
                 kube_app.AppOperator.update_and_process_app_metadata(mock_apps_metadata,
@@ -73,7 +90,11 @@ class TestKubeAppMetadata(base.TestCase):
                         "data", "metadata_indirect_cyclic_dependency.yaml")
 
         with io.open(yaml_file, 'r', encoding='utf-8') as f:
-            metadata_collection = yaml.safe_load_all(f)
+            if is_debian_bullseye():
+                metadata_collection = yaml.safe_load_all(f)
+            else:
+                local_yaml = YAML()
+                metadata_collection = local_yaml.load_all(f)
 
             for metadata in metadata_collection:
                 kube_app.AppOperator.update_and_process_app_metadata(mock_apps_metadata,

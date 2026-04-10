@@ -11,6 +11,8 @@ import testtools
 
 class TsConfigTestCase(testtools.TestCase):
 
+    mock_os_release = u'VERSION_CODENAME=bullseye\n'
+
     mock_19_09_build = u"""
 ###
 ### StarlingX
@@ -113,7 +115,8 @@ vswitch_type=ovs-dpdk
         # two files are opened by tsconfig.
         # 1st: /etc/build.info
         # 2nd: /etc/platform/platform.conf
-        mock_open.return_value = io.StringIO(self.mock_malformed_build)
+        mock_open.side_effect = [io.StringIO(self.mock_os_release),
+                                 io.StringIO(self.mock_malformed_build)]
         from tsconfig import tsconfig  # pylint: disable=unused-variable
         mock_logging_exception.assert_called_once()
 
@@ -125,10 +128,13 @@ vswitch_type=ovs-dpdk
                                             mock_isfile,
                                             mock_open,
                                             mock_logging_exception):
-        # two files are opened by tsconfig.
-        # 1st: /etc/build.info
-        # 2nd: /etc/platform/platform.conf
-        mock_open.return_value = io.StringIO(self.mock_19_09_build)
+        # three files are opened by tsconfig.
+        # 1st: /etc/os-release (get_debian_codename)
+        # 2nd: /etc/build.info
+        # 3rd: /etc/platform/platform.conf (missing)
+        mock_open.side_effect = [io.StringIO(self.mock_os_release),
+                                 io.StringIO(self.mock_19_09_build),
+                                 FileNotFoundError]
         from tsconfig import tsconfig  # pylint: disable=unused-variable
         mock_logging_exception.assert_called_once()
 
@@ -143,7 +149,8 @@ vswitch_type=ovs-dpdk
         # two files are opened by tsconfig.
         # 1st: /etc/build.info
         # 2nd: /etc/platform/platform.conf
-        mock_open.side_effect = [io.StringIO(self.mock_19_09_build),
+        mock_open.side_effect = [io.StringIO(self.mock_os_release),
+                                 io.StringIO(self.mock_19_09_build),
                                  io.StringIO(self.mock_platform_conf_empty)]
         from tsconfig import tsconfig  # pylint: disable=unused-variable
         mock_logging_exception.assert_called_once()
@@ -155,7 +162,8 @@ vswitch_type=ovs-dpdk
         # two files are opened by tsconfig.
         # 1st: /etc/build.info
         # 2nd: /etc/platform/platform.conf
-        mock_open.side_effect = [io.StringIO(self.mock_19_09_build),
+        mock_open.side_effect = [io.StringIO(self.mock_os_release),
+                                 io.StringIO(self.mock_19_09_build),
                                  io.StringIO(self.mock_platform_conf_minimal)]
         from tsconfig import tsconfig
         val = tsconfig.nodetype
@@ -169,7 +177,8 @@ vswitch_type=ovs-dpdk
         # two files are opened by tsconfig.
         # 1st: /etc/build.info
         # 2nd: /etc/platform/platform.conf
-        mock_open.side_effect = [io.StringIO(self.mock_19_09_build),
+        mock_open.side_effect = [io.StringIO(self.mock_os_release),
+                                 io.StringIO(self.mock_19_09_build),
                                  io.StringIO(self.mock_platform_conf)]
         from tsconfig import tsconfig
         ver = tsconfig.SW_VERSION
@@ -182,7 +191,8 @@ vswitch_type=ovs-dpdk
         # 1st: /etc/build.info
         # 2nd: /etc/platform/platform.conf
         # Next two files are loaded as part of reload
-        mock_open.side_effect = [io.StringIO(self.mock_19_09_build),
+        mock_open.side_effect = [io.StringIO(self.mock_os_release),
+                                 io.StringIO(self.mock_19_09_build),
                                  io.StringIO(self.mock_platform_conf),
                                  io.StringIO(self.mock_19_09_build),
                                  io.StringIO(self.mock_platform_conf_regions)]
