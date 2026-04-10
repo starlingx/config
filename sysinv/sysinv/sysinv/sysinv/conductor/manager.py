@@ -11565,6 +11565,10 @@ class ConductorManager(service.PeriodicService):
             for ip_addr in [oam1, oam2, mgmt1, mgmt2]:
                 if ip_addr is not None:
                     openldap_sans.append(ip_addr.address)
+            openbao_sans = []
+            for ip_addr in [mgmt1, mgmt2]:
+                if ip_addr is not None:
+                    openbao_sans.append(ip_addr.address)
 
             kube_op = kubernetes.KubeOperator()
             certobj = kube_op.get_custom_resource(kubernetes.CERT_MANAGER_GROUP,
@@ -11580,6 +11584,21 @@ class ConductorManager(service.PeriodicService):
                                               kubernetes.NAMESPACE_DEPLOYMENT,
                                               'certificates',
                                               constants.OPENLDAP_CERT_SECRET_NAME,
+                                              certobj)
+
+            certobj = kube_op.get_custom_resource(kubernetes.CERT_MANAGER_GROUP,
+                                                  kubernetes.CERT_MANAGER_VERSION,
+                                                  kubernetes.NAMESPACE_DEPLOYMENT,
+                                                  'certificates',
+                                                  constants.OPENBAO_CERT_SECRET_NAME)
+            if certobj is not None:
+                certobj['spec']['ipAddresses'] = list(set(certobj['spec']['ipAddresses']
+                                                    + openbao_sans))
+                kube_op.apply_custom_resource(kubernetes.CERT_MANAGER_GROUP,
+                                              kubernetes.CERT_MANAGER_VERSION,
+                                              kubernetes.NAMESPACE_DEPLOYMENT,
+                                              'certificates',
+                                              constants.OPENBAO_CERT_SECRET_NAME,
                                               certobj)
 
         personalities = [constants.CONTROLLER]
@@ -17676,6 +17695,7 @@ class ConductorManager(service.PeriodicService):
                     constants.CERT_MODE_OPENSTACK,
                     constants.CERT_MODE_OPENLDAP,
                     constants.CERT_MODE_OPENLDAP_CA,
+                    constants.CERT_MODE_OPENBAO,
                     ]:
             private_mode = True
 
@@ -17965,6 +17985,63 @@ class ConductorManager(service.PeriodicService):
         LOG.info("config_certificate mode=%s completed successfully" % mode)
         return inv_certs
 
+    @staticmethod
+    def _openbao_write_luks_cert(private_bytes, public_bytes):
+        """Write the openbao server leaf to the shared LUKS tree.
+
+        The bao server on new controller is active before SM, requires
+        the server certificate/key pair to join raft.  Other files
+        required by bao are available on luks (including AES unseal
+        key).
+
+        Direct write on the active controller to the luksdata rsync
+        source, so a new controller can retrieve the cert-manager server
+        leaf.
+
+        Best-effort: a failure here (e.g. LUKS not mounted)
+        must not fail the primary cert install to /etc/openbao/certs.
+        """
+        try:
+            if not os.path.ismount(constants.LUKS_MOUNT_PATH):
+                LOG.info("Openbao: LUKS not mounted at %s; "
+                         "skipping shared cert copy.",
+                         constants.LUKS_MOUNT_PATH)
+                return
+
+            flist = ((constants.OPENBAO_LUKS_KEY_FILE,
+                      private_bytes,
+                      constants.CONFIG_FILE_PERMISSION_ROOT_WR),
+                     (constants.OPENBAO_LUKS_CERT_FILE,
+                      public_bytes,
+                      constants.CONFIG_FILE_PERMISSION_DEFAULT))
+            for path, content, mode in flist:
+                # tmppath has root/root 0o600 perms
+                fd, tmppath = tempfile.mkstemp(
+                    dir=constants.OPENBAO_LUKS_CERT_DIR,
+                    prefix=os.path.basename(path))
+                try:
+                    with os.fdopen(fd, 'wb') as f:
+                        f.write(six.ensure_binary(content))
+                    os.chmod(tmppath, mode)
+                    shutil.chown(tmppath,
+                                 user=constants.OPENBAO_USER_NAME,
+                                 group=constants.OPENBAO_GRP_NAME)
+                    # tmp + os.replace is 'write atomically'
+                    # os.replace removes the source file, maintains the
+                    # source's owner/permissions
+                    os.replace(tmppath, path)
+                except Exception:
+                    if os.path.exists(tmppath):
+                        os.remove(tmppath)
+                    raise
+            LOG.info("Openbao: wrote shared server leaf to %s",
+                     constants.OPENBAO_LUKS_CERT_DIR)
+        except Exception as e:
+            # Best-effort: log and continue; the primary install to
+            # /etc/openbao/certs already succeeded.
+            LOG.warning("Openbao: failed to write "
+                        "shared LUKS cert copy: %s", e)
+
     def _config_certificate_install(self, context, mode, pem_contents,
                                     passphrase, cert_list, private_key,
                                     personalities):
@@ -18237,6 +18314,41 @@ class ConductorManager(service.PeriodicService):
             self._config_apply_runtime_manifest(context,
                                                 config_uuid,
                                                 config_dict)
+
+        elif mode == constants.CERT_MODE_OPENBAO:
+            LOG.info("Openbao certificate install")
+
+            config_uuid = self._config_update_hosts(context, personalities)
+            key_path = constants.OPENBAO_KEY_FILE
+            cert_path = constants.OPENBAO_CERT_FILE
+            private_bytes = self._get_private_bytes_one(private_key)
+            public_bytes = self._get_public_bytes(cert_list)
+
+            # Deliver the cert-manager pair to the controller's
+            # /etc/openbao/certs dir
+            config_dict = {
+                'personalities': personalities,
+                'file_names': [key_path, cert_path],
+                'file_content': {key_path: private_bytes,
+                                 cert_path: public_bytes},
+                'nobackup': True,
+                'permissions': constants.CONFIG_FILE_PERMISSION_DEFAULT,
+            }
+            self._config_update_file(context, config_uuid, config_dict)
+
+            self._openbao_write_luks_cert(private_bytes, public_bytes)
+
+            # Reload openbao onto the renewed cert via a runtime puppet
+            # manifest
+            config_uuid = self._config_update_hosts(context, personalities)
+            config_dict = {
+                "personalities": personalities,
+                "classes": ['platform::openbao::reload::runtime']
+            }
+            self._config_apply_runtime_manifest(context,
+                                                config_uuid,
+                                                config_dict)
+
         else:
             msg = "config_certificate unexpected mode=%s" % mode
             LOG.warn(msg)
@@ -24059,7 +24171,8 @@ class ConductorManager(service.PeriodicService):
                   ("apiserver-kubelet-client", constants.AUTOMATIC,
                    "/etc/kubernetes/pki/apiserver-kubelet-client.crt"),
                   ("front-proxy-client", constants.AUTOMATIC, "/etc/kubernetes/pki/front-proxy-client.crt"),
-                  ("front-proxy-ca", constants.MANUAL, "/etc/kubernetes/pki/front-proxy-ca.crt")]
+                  ("front-proxy-ca", constants.MANUAL, "/etc/kubernetes/pki/front-proxy-ca.crt"),
+                  (constants.OPENBAO_CERT_SECRET_NAME, constants.MANUAL, constants.OPENBAO_CERT_FILE)]
 
         # IPsec certificate
         try:
@@ -24088,7 +24201,8 @@ class ConductorManager(service.PeriodicService):
 
         for secret in [constants.RESTAPI_CERT_SECRET_NAME,
                        constants.REGISTRY_CERT_SECRET_NAME,
-                       constants.OPENLDAP_CERT_SECRET_NAME]:
+                       constants.OPENLDAP_CERT_SECRET_NAME,
+                       constants.OPENBAO_CERT_SECRET_NAME]:
             ns = constants.CERT_NAMESPACE_PLATFORM_CERTS
             if kube_operator.kube_get_secret(secret, ns):
                 if secret == constants.RESTAPI_CERT_SECRET_NAME:

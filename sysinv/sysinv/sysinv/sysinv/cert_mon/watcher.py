@@ -444,6 +444,20 @@ class OpenldapCert_CertWatcher(CertWatcher):
         self.register_listener(OpenldapCertRenew(self.context))
 
 
+class OpenbaoCert_CertWatcher(CertWatcher):
+    def __init__(self):
+        super(OpenbaoCert_CertWatcher, self).__init__()
+
+    def initialize(self):
+        self.context.initialize()
+
+        platcert_ns = constants.CERT_NAMESPACE_PLATFORM_CERTS
+        LOG.info('setting ns for Openbao cert : %s & registering listener' % platcert_ns)
+        self.namespace = platcert_ns
+        self.context.kubernetes_namespace = platcert_ns
+        self.register_listener(OpenbaoCertRenew(self.context))
+
+
 class CertificateRenew(CertWatcherListener):
     def __init__(self, context):
         super(CertificateRenew, self).__init__(context)
@@ -713,3 +727,13 @@ class OpenldapCertRenew(PlatformCertRenew):
         LOG.info('OpenldapCertRenew: Secret changes detected. Initiating certificate update')
 
         self.update_platform_certificate(event_data, constants.CERT_MODE_OPENLDAP, force=True)
+
+
+class OpenbaoCertRenew(PlatformCertRenew):
+    def __init__(self, context):
+        super(OpenbaoCertRenew, self).__init__(context, constants.OPENBAO_CERT_SECRET_NAME)
+
+    def update_certificate(self, event_data):
+        LOG.info('OpenbaoCertRenew: Secret changes detected. Initiating certificate update')
+
+        self.update_platform_certificate(event_data, constants.CERT_MODE_OPENBAO, force=True)

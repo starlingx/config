@@ -53,6 +53,7 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
         self.restapicert_monitor = None
         self.registrycert_monitor = None
         self.openldapcert_monitor = None
+        self.openbaocert_monitor = None
         self.reattempt_monitor_tasks = []
 
     def periodic_tasks(self, context, raise_on_error=False):
@@ -115,6 +116,10 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
         self.openldapcert_monitor = watcher.OpenldapCert_CertWatcher()
         self.openldapcert_monitor.initialize()
 
+    def init_openbaocert_monitor(self):
+        self.openbaocert_monitor = watcher.OpenbaoCert_CertWatcher()
+        self.openbaocert_monitor.initialize()
+
     def start_monitor(self, dc_role):
         while True:
             try:
@@ -124,6 +129,7 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
                 self.init_restapicert_monitor()
                 self.init_registrycert_monitor()
                 self.init_openldapcert_monitor()
+                self.init_openbaocert_monitor()
 
                 # init dc monitor only if running in DC role
                 if dc_role in (constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER,
@@ -149,6 +155,9 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
         self.mon_threads.append(
             eventlet.greenthread.spawn(self.monitor_cert,
                                        self.openldapcert_monitor))
+        self.mon_threads.append(
+            eventlet.greenthread.spawn(self.monitor_cert,
+                                       self.openbaocert_monitor))
 
         if dc_role in (constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER,
                        constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD):

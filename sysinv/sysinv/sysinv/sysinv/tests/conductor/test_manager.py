@@ -14583,6 +14583,295 @@ class ManagerTestCaseInternal(base.BaseHostTestCase):
         self.assertEqual(0, collisions)
 
 
+class TestOpenbaoCertificateInstall(base.DbTestCase):
+    """Tests for the CERT_MODE_OPENBAO branch of
+    ConductorManager._config_certificate_install().
+
+    The openbao cert handler aligns with the platform norm: instead of an
+    inline 'systemctl restart openbao' it delivers the cert-manager pair
+    to the fixed on-disk path via _config_update_file (content only) and
+    applies the runtime puppet class 'platform::openbao::reload::runtime'
+    (which re-asserts cert ownership/mode and issues a SIGHUP reload).
+    The handler fetches a FRESH config_uuid for the runtime manifest apply
+    (the file update consumes the first uuid), and it does NOT write the
+    cert/key directly with os.open. These tests pin that behaviour.
+    """
+
+    def setUp(self):
+        super(TestOpenbaoCertificateInstall, self).setUp()
+        self.service = manager.ConductorManager('test-host', 'test-topic')
+        self.service.dbapi = dbapi.get_instance()
+        self.context = context.get_admin_context()
+
+        # Start a patcher and register its own stop() for cleanup. Using
+        # per-patcher addCleanup(p.stop) rather than mock.patch.stopall()
+        # keeps each patch's start/stop symmetric and independent of the
+        # module-global active-patch registry. stopall() is order-sensitive
+        # and, combined with the nested `with mock.patch(...)` blocks used
+        # in some tests below, could try to stop a patcher it believed was
+        # active, raising "'_patch' object has no attribute 'is_local'"
+        # during teardown (the error only surfaced under the gate's pinned
+        # mock version).
+        def _start_patch(*args, **kwargs):
+            patcher = mock.patch(*args, **kwargs)
+            started = patcher.start()
+            self.addCleanup(patcher.stop)
+            return started
+
+        def _start_patch_object(*args, **kwargs):
+            patcher = mock.patch.object(*args, **kwargs)
+            started = patcher.start()
+            self.addCleanup(patcher.stop)
+            return started
+
+        # The handler no longer writes the cert/key directly with os.open;
+        # content is delivered via _config_update_file. Mock the low-level
+        # fs calls anyway so a regression that reintroduces a direct write
+        # is caught (see test_openbao_cert_install_no_direct_disk_write)
+        # and never touches the real system.
+        self.mock_open = _start_patch(
+            'sysinv.conductor.manager.os.open', return_value=3)
+        _start_patch('sysinv.conductor.manager.os.makedirs')
+        _start_patch('sysinv.conductor.manager.os.path.exists',
+                     return_value=True)
+
+        # os.fdopen must return a context manager exposing write().
+        self.written = []
+        fake_fd = mock.MagicMock()
+        fake_fd.__enter__.return_value = fake_fd
+        fake_fd.write.side_effect = lambda b: self.written.append(b)
+        _start_patch('sysinv.conductor.manager.os.fdopen',
+                     return_value=fake_fd)
+
+        # Decouple from the host/config plumbing.
+        self.mock_update_hosts = _start_patch_object(
+            manager.ConductorManager, '_config_update_hosts',
+            return_value='fake-config-uuid')
+        self.mock_update_file = _start_patch_object(
+            manager.ConductorManager, '_config_update_file')
+        _start_patch_object(manager.ConductorManager, '_get_public_bytes',
+                            return_value=b'-----BEGIN CERTIFICATE-----\n')
+        _start_patch_object(manager.ConductorManager, '_get_private_bytes_one',
+                            return_value=b'-----BEGIN PRIVATE KEY-----\n')
+
+        self.mock_apply_runtime = _start_patch_object(
+            manager.ConductorManager,
+            '_config_apply_runtime_manifest')
+
+    def test_openbao_cert_install_applies_reload_runtime_class(self):
+        personalities = [constants.CONTROLLER]
+
+        self.service._config_certificate_install(
+            self.context, constants.CERT_MODE_OPENBAO,
+            pem_contents=None, passphrase=None,
+            cert_list=[{'cert': 'fake'}], private_key='fake-key',
+            personalities=personalities)
+
+        # The reload runtime class is applied exactly once.
+        self.mock_apply_runtime.assert_called_once()
+        _, _, config_dict = self.mock_apply_runtime.call_args[0]
+        self.assertEqual(['platform::openbao::reload::runtime'],
+                         config_dict['classes'])
+        self.assertEqual(personalities, config_dict['personalities'])
+
+    def test_openbao_cert_install_delivers_cert_and_key_content(self):
+        # cert-mon delivery pushes the pair to the fixed path via
+        # _config_update_file (content only); puppet owns ownership/mode.
+        self.service._config_certificate_install(
+            self.context, constants.CERT_MODE_OPENBAO,
+            pem_contents=None, passphrase=None,
+            cert_list=[{'cert': 'fake'}], private_key='fake-key',
+            personalities=[constants.CONTROLLER])
+
+        # _config_update_file is the single delivery mechanism and targets
+        # both the cert and the key at the fixed path.
+        self.mock_update_file.assert_called_once()
+        _, _, file_config = self.mock_update_file.call_args[0]
+        self.assertIn(constants.OPENBAO_CERT_FILE, file_config['file_names'])
+        self.assertIn(constants.OPENBAO_KEY_FILE, file_config['file_names'])
+
+    def test_openbao_cert_install_fetches_fresh_config_uuid_for_reload(self):
+        # The file update consumes the first config_uuid; the runtime
+        # manifest apply must use a FRESH one or the reload is never
+        # tracked/applied. Assert _config_update_hosts is called twice.
+        self.service._config_certificate_install(
+            self.context, constants.CERT_MODE_OPENBAO,
+            pem_contents=None, passphrase=None,
+            cert_list=[{'cert': 'fake'}], private_key='fake-key',
+            personalities=[constants.CONTROLLER])
+
+        self.assertEqual(2, self.mock_update_hosts.call_count)
+
+    def test_openbao_cert_install_no_direct_disk_write(self):
+        # Regression: the duplicate direct os.open write of the cert/key
+        # (which left the private key root:root 0644) must be gone. All
+        # delivery now flows through _config_update_file; ownership/mode
+        # is owned by puppet (platform::openbao::certs::perms).
+        self.service._config_certificate_install(
+            self.context, constants.CERT_MODE_OPENBAO,
+            pem_contents=None, passphrase=None,
+            cert_list=[{'cert': 'fake'}], private_key='fake-key',
+            personalities=[constants.CONTROLLER])
+
+        opened_paths = [call.args[0] for call in self.mock_open.call_args_list]
+        self.assertNotIn(constants.OPENBAO_CERT_FILE, opened_paths)
+        self.assertNotIn(constants.OPENBAO_KEY_FILE, opened_paths)
+
+    def test_openbao_cert_install_does_not_restart_inline(self):
+        # Regression: the outlier inline 'systemctl restart openbao' must
+        # be gone. If cutils.systemctl_restart_service is called at all,
+        # fail.
+        with mock.patch.object(cutils, 'systemctl_restart_service') as m_restart:
+            self.service._config_certificate_install(
+                self.context, constants.CERT_MODE_OPENBAO,
+                pem_contents=None, passphrase=None,
+                cert_list=[{'cert': 'fake'}], private_key='fake-key',
+                personalities=[constants.CONTROLLER])
+            m_restart.assert_not_called()
+
+    def test_openbao_cert_install_writes_shared_luks_copy(self):
+        # The server leaf is also written to the shared LUKS tree so a new
+        # controller can retrieve it and join the raft before openbao
+        # starts on first unlock. Written key first (0600) then cert
+        # (0644), openbao-owned, via atomic tmp + os.replace.
+        replaced = []
+        chmoded = []
+        chowned = []
+        with mock.patch('sysinv.conductor.manager.os.path.ismount',
+                        return_value=True), \
+                mock.patch('sysinv.conductor.manager.tempfile.mkstemp',
+                           side_effect=lambda dir=None, prefix=None:
+                           (4, os.path.join(dir, (prefix or '') + '.tmp'))), \
+                mock.patch('sysinv.conductor.manager.os.chmod',
+                           side_effect=lambda p, m: chmoded.append((p, m))), \
+                mock.patch('sysinv.conductor.manager.shutil.chown',
+                           side_effect=lambda p, user=None, group=None:
+                           chowned.append((p, user, group))), \
+                mock.patch('sysinv.conductor.manager.os.replace',
+                           side_effect=lambda s, d: replaced.append(d)):
+            self.service._config_certificate_install(
+                self.context, constants.CERT_MODE_OPENBAO,
+                pem_contents=None, passphrase=None,
+                cert_list=[{'cert': 'fake'}], private_key='fake-key',
+                personalities=[constants.CONTROLLER])
+
+        # Both LUKS files were produced (replaced into place).
+        self.assertIn(constants.OPENBAO_LUKS_KEY_FILE, replaced)
+        self.assertIn(constants.OPENBAO_LUKS_CERT_FILE, replaced)
+        # Key 0600, cert 0644.
+        modes = dict(chmoded)
+        self.assertEqual(constants.CONFIG_FILE_PERMISSION_ROOT_WR,
+                         modes[os.path.join(
+                             constants.OPENBAO_LUKS_CERT_DIR,
+                             'openbao-cert.key.tmp')])
+        self.assertEqual(constants.CONFIG_FILE_PERMISSION_DEFAULT,
+                         modes[os.path.join(
+                             constants.OPENBAO_LUKS_CERT_DIR,
+                             'openbao-cert.crt.tmp')])
+        # Both chowned openbao:openbao.
+        for _p, user, group in chowned:
+            self.assertEqual(constants.OPENBAO_USER_NAME, user)
+            self.assertEqual(constants.OPENBAO_GRP_NAME, group)
+
+    def test_openbao_cert_install_luks_copy_skipped_when_not_mounted(self):
+        # If the LUKS filesystem is not mounted, the shared copy is
+        # skipped (no write) and the primary install still succeeds.
+        with mock.patch('sysinv.conductor.manager.os.path.ismount',
+                        return_value=False), \
+                mock.patch('sysinv.conductor.manager.os.replace') as m_replace:
+            self.service._config_certificate_install(
+                self.context, constants.CERT_MODE_OPENBAO,
+                pem_contents=None, passphrase=None,
+                cert_list=[{'cert': 'fake'}], private_key='fake-key',
+                personalities=[constants.CONTROLLER])
+            # No LUKS file replace happened.
+            for call in m_replace.call_args_list:
+                self.assertNotIn(constants.OPENBAO_LUKS_CERT_DIR,
+                                 call.args[1])
+        # Primary delivery + reload still occurred.
+        self.mock_update_file.assert_called_once()
+        self.mock_apply_runtime.assert_called_once()
+
+    def test_openbao_cert_install_luks_write_failure_is_best_effort(self):
+        # A failure writing the shared LUKS copy must NOT fail the primary
+        # cert install (which already succeeded via _config_update_file).
+        with mock.patch('sysinv.conductor.manager.os.path.ismount',
+                        return_value=True), \
+                mock.patch('sysinv.conductor.manager.os.makedirs',
+                           side_effect=OSError('boom')):
+            # Should not raise.
+            self.service._config_certificate_install(
+                self.context, constants.CERT_MODE_OPENBAO,
+                pem_contents=None, passphrase=None,
+                cert_list=[{'cert': 'fake'}], private_key='fake-key',
+                personalities=[constants.CONTROLLER])
+        self.mock_update_file.assert_called_once()
+        self.mock_apply_runtime.assert_called_once()
+
+
+class TestOpenbaoPemPrivateKeyExtraction(base.DbTestCase):
+    """Regression: CERT_MODE_OPENBAO must be treated as a private-key-
+    bearing mode in _extract_certs_from_pem_file(). It was omitted from
+    the private_mode list, so the private key was never parsed and the
+    openbao cert install failed with 'No private key found in the pem
+    contents.' even though cert-mon uploaded a valid key+cert PEM.
+    """
+
+    def setUp(self):
+        super(TestOpenbaoPemPrivateKeyExtraction, self).setUp()
+        self.service = manager.ConductorManager('test-host', 'test-topic')
+        self.service.dbapi = dbapi.get_instance()
+
+    @staticmethod
+    def _make_key_and_cert_pem():
+        """Build a PEM containing an EC private key followed by a
+        matching self-signed cert (the shape cert-mon uploads)."""
+        from cryptography.hazmat.primitives import serialization
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.hazmat.primitives.asymmetric import ec
+        from cryptography.x509.oid import NameOID
+        import datetime
+
+        key = ec.generate_private_key(ec.SECP384R1(), default_backend())
+        subject = issuer = x509.Name([
+            x509.NameAttribute(NameOID.COMMON_NAME, u'system-openbao')])
+        cert = (
+            x509.CertificateBuilder()
+            .subject_name(subject)
+            .issuer_name(issuer)
+            .public_key(key.public_key())
+            .serial_number(x509.random_serial_number())
+            .not_valid_before(datetime.datetime.utcnow())
+            .not_valid_after(datetime.datetime.utcnow()
+                             + datetime.timedelta(days=1))
+            .sign(key, hashes.SHA256(), default_backend())
+        )
+        key_pem = key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.TraditionalOpenSSL,
+            encryption_algorithm=serialization.NoEncryption())
+        cert_pem = cert.public_bytes(serialization.Encoding.PEM)
+        return (key_pem + cert_pem).decode('utf-8')
+
+    def test_openbao_mode_extracts_private_key(self):
+        from cryptography.hazmat.primitives import serialization
+        pem_contents = self._make_key_and_cert_pem()
+
+        cert_list, private_bytes = manager.ConductorManager._extract_keys_from_pem(
+            constants.CERT_MODE_OPENBAO, pem_contents,
+            serialization.PrivateFormat.TraditionalOpenSSL, passphrase=None)
+
+        # The private key must be extracted (the bug left this None,
+        # which then raised 'No private key found in the pem contents').
+        self.assertIsNotNone(private_bytes)
+        self.assertIn(b'PRIVATE KEY', private_bytes)
+        self.assertEqual(len(cert_list), 1)
+        # _get_private_bytes_one must now succeed (no exception).
+        self.assertEqual(
+            private_bytes,
+            manager.ConductorManager._get_private_bytes_one(private_bytes))
+
+
 class TestPeriodicChartCleanup(base.DbTestCase):
     """Tests for ConductorManager.delete_unused_helm_charts()."""
 
