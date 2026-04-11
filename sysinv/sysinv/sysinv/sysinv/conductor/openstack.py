@@ -27,7 +27,7 @@ from sysinv.common.storage_backend_conf import StorageBackendConfig
 from keystoneclient.v3 import client as keystone_client
 from keystoneclient.auth.identity import v3
 from keystoneclient import exceptions
-from keystoneclient import session
+from keystoneauth1 import session
 from barbicanclient.v1 import client as barbican_client_v1
 
 LOG = logging.getLogger(__name__)
