@@ -10,6 +10,7 @@ scripts/manage-partitions usr/bin
 scripts/query_pci_id usr/bin
 scripts/ceph_k8s_update_monitors.sh usr/bin
 usr/lib/python*/dist-packages/*
+sysinv/db/sqlalchemy/* usr/lib/python3/dist-packages/sysinv/db/sqlalchemy/
 etc/goenabled.d/sysinv_goenabled_check.sh
 etc/update-motd.d/10-system
 usr/bin/cert-alarm
