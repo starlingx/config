@@ -23,7 +23,7 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
-# Copyright (c) 2013-2015 Wind River Systems, Inc.
+# Copyright (c) 2013-2015, 2026 Wind River Systems, Inc.
 #
 
 import ast
@@ -37,6 +37,7 @@ from oslo_log import log
 from oslo_utils import strutils
 from oslo_utils import timeutils
 from sysinv._i18n import _
+from sysinv.common import utils
 
 LOG = log.getLogger(__name__)
 
@@ -54,7 +55,10 @@ class _Base(wtypes.Base):
         return cls(links=links, **(m.as_dict()))
 
     def as_dict(self, db_model):
-        valid_keys = inspect.getargspec(db_model.__init__)[0]
+        if utils.is_debian_bullseye():
+            valid_keys = inspect.getargspec(db_model.__init__)[0]
+        else:
+            valid_keys = inspect.getfullargspec(db_model.__init__)[0]
         if 'self' in valid_keys:
             valid_keys.remove('self')
         return self.as_dict_from_keys(valid_keys)
