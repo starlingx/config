@@ -1078,12 +1078,11 @@ class PlatformPuppet(base.BasePuppet):
                     mtu = interface.imtu
                     break
 
+        nfs_proto = 'udp' if utils.is_debian_bullseye() else 'tcp'
         if self._get_address_by_name(
                 constants.CONTROLLER_HOSTNAME,
                 constants.NETWORK_TYPE_MGMT).family == constants.IPV6_FAMILY:
-            nfs_proto = 'udp6'
-        else:
-            nfs_proto = 'udp'
+            nfs_proto += '6'
 
         # round to the nearest 1k of the MTU
         nfs_rw_size = (mtu // 1024) * 1024
