@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2025 Wind River Systems, Inc.
+# Copyright (c) 2025-2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -35,6 +35,7 @@ from oslo_log import log as logging
 
 from sysinv.common.exception import KubeAppNotFound
 from sysinv.common.exception import SysinvException
+from sysinv.common import utils
 from sysinv.helm import helm
 from sysinv.helm.common import APP_PLUGIN_PATH
 from sysinv.helm.common import APP_PTH_PREFIX
@@ -228,12 +229,22 @@ class PluginManager:  # noqa: H238
         """
 
         entrypoints = metadata_importlib.entry_points()
-        loaded_plugins = self._load_entrypoints(
-            entrypoints=entrypoints.get(namespace, []),
-            namespace=namespace,
-            invoke_on_load=invoke_on_load,
-            args=args
-        )
+        if utils.is_debian_bullseye():
+            loaded_plugins = self._load_entrypoints(
+                entrypoints=entrypoints.get(namespace, []),
+                namespace=namespace,
+                invoke_on_load=invoke_on_load,
+                args=args
+            )
+        else:
+            # Filter entrypoints by group (namespace)
+            filtered_eps = [ep for ep in entrypoints if ep.group == namespace]
+            loaded_plugins = self._load_entrypoints(
+                entrypoints=filtered_eps,
+                namespace=namespace,
+                invoke_on_load=invoke_on_load,
+                args=args
+            )
         return loaded_plugins
 
     def load_plugins_from_path(self, plugin_path, invoke_on_load=True, args=()):
