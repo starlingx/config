@@ -39,8 +39,6 @@ def is_debian_bullseye():
     return get_debian_codename() == OS_DEBIAN_BULLSEYE
 
 
-codename = get_debian_codename()
-
 SW_VERSION = ""
 SW_VERSION_21_12 = "21.12"
 SW_VERSION_22_06 = "22.06"
@@ -99,7 +97,10 @@ def _load():
         config = configparser.SafeConfigParser()
         config.readfp(ini_fp)  # pylint: disable=deprecated-method
     elif six.PY3:
-        config = configparser.SafeConfigParser(strict=False)  # pylint: disable=unexpected-keyword-arg
+        if is_debian_bullseye():
+            config = configparser.SafeConfigParser(strict=False)  # pylint: disable=unexpected-keyword-arg
+        else:
+            config = configparser.ConfigParser(strict=False)  # pylint: disable=unexpected-keyword-arg
         config.read_file(ini_fp)
 
     try:
