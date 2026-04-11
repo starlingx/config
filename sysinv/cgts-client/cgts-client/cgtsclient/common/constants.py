@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2023, 2025 Wind River Systems, Inc.
+# Copyright (c) 2013-2023, 2025-2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -146,3 +146,8 @@ SUBJECT = "Subject"
 # sysinv-vim-mtce definitions
 # Host Actions:
 HOST_AUDIT_ACTION = 'host-audit'
+
+
+# OS type
+OS_DEBIAN_BULLSEYE = 'bullseye'
+OS_DEBIAN_TRIXIE = 'trixie'
