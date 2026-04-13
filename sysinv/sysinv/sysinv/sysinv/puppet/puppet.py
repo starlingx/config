@@ -353,7 +353,7 @@ class PuppetOperator(object):
             fd, tmppath = tempfile.mkstemp(dir=path, prefix=filename,
                                            text=True)
             with open(tmppath, 'w') as f:
-                yaml.dump(config, f, default_flow_style=False, default_style="'")
+                yaml.dump(config, f, default_flow_style=False)
             os.close(fd)
             os.rename(tmppath, filepath)
         except Exception:
