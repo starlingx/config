@@ -138,6 +138,28 @@ def _validate_enabled_disabled(name, value):
             % name))
 
 
+def _validate_tls_min_version(name, value):
+    """Validate TLS minimum version parameter."""
+    if value not in constants.SERVICE_PARAM_PLATFORM_TLS_VERSIONS:
+        raise wsme.exc.ClientSideError(_(
+            "Invalid TLS version '%s'. Valid values are: %s" %
+            (value, ', '.join(constants.SERVICE_PARAM_PLATFORM_TLS_VERSIONS))))
+
+
+def _validate_tls_cipher_suite(name, value):
+    """Validate TLS cipher suite parameter."""
+    ciphers = [c.strip() for c in value.split(',')]
+    invalid_ciphers = [
+        c for c in ciphers
+        if c not in constants.SERVICE_PARAM_PLATFORM_TLS_CIPHERS_VALID]
+
+    if invalid_ciphers:
+        raise wsme.exc.ClientSideError(_(
+            "Invalid cipher suite(s): %s. Valid ciphers are: %s" %
+            (', '.join(invalid_ciphers),
+             ', '.join(constants.SERVICE_PARAM_PLATFORM_TLS_CIPHERS_VALID))))
+
+
 def _validate_integer(name, value):
     try:
         int(value)
@@ -1148,7 +1170,9 @@ PLATFORM_CONFIG_PARAMETER_OPTIONAL = [
     constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_OVERFLOW_SIZE,
     constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_HOST_UNLOCK_BLOCKING_PERIOD,
     constants.SERVICE_PARAM_NAME_K8S_APPLICATION_AUDIT,
-    constants.SERVICE_PARAM_NAME_AUTOREAPPLY_APPS_AFTER_APPLY_RUNTIME_MANIFEST
+    constants.SERVICE_PARAM_NAME_AUTOREAPPLY_APPS_AFTER_APPLY_RUNTIME_MANIFEST,
+    constants.SERVICE_PARAM_NAME_PLATFORM_TLS_MIN_VERSION,
+    constants.SERVICE_PARAM_NAME_PLATFORM_TLS_CIPHER_SUITE,
 ]
 
 PLATFORM_CONFIG_PARAMETER_READONLY = [
@@ -1180,6 +1204,10 @@ PLATFORM_CONFIG_PARAMETER_VALIDATOR = {
         _validate_enabled_disabled,
     constants.SERVICE_PARAM_NAME_AUTOREAPPLY_APPS_AFTER_APPLY_RUNTIME_MANIFEST:
         _validate_enabled_disabled,
+    constants.SERVICE_PARAM_NAME_PLATFORM_TLS_MIN_VERSION:
+        _validate_tls_min_version,
+    constants.SERVICE_PARAM_NAME_PLATFORM_TLS_CIPHER_SUITE:
+        _validate_tls_cipher_suite,
 }
 
 PLATFORM_CONFIG_PARAMETER_RESOURCE = {
