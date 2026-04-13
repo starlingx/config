@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Copyright (C) 2019 Intel Corporation
-# Copyright (c) 2021-2025 Wind River Systems, Inc.
+# Copyright (c) 2021-2026 Wind River Systems, Inc.
 #
 
 . /usr/bin/tsconfig
@@ -261,11 +261,21 @@ RESTART_HAPROXY=0
 # If they are expired the process should not continue
 for CA in /etc/kubernetes/pki/ca.crt /etc/etcd/ca.crt;
 do
-    sudo cat ${CA} | openssl x509 -checkend 0 >/dev/null
+    sudo cat "${CA}" | openssl x509 -checkend 0 >/dev/null
     RC=$?
     if [ ${RC} -eq 1 ]; then
         ERR_REASON="${CA} Root CA is expired. Leaf certificates renewal will not be attempted."
         ERR=1
+    fi
+
+    START_DATE_TXT=$(sudo openssl x509 -in "${CA}" -noout -startdate | cut -d= -f2)
+    if [ -n "${START_DATE_TXT}" ]; then
+        START_DATE=$(date -d "${START_DATE_TXT}" +%s)
+        CUR_DATE=$(date +%s)
+        if [ -n "${START_DATE}" ] && [ "${CUR_DATE}" -lt "${START_DATE}" ]; then
+            ERR_REASON="${CA} Root CA not yet valid. Leaf certificates renewal will not be attempted."
+            ERR=1
+        fi
     fi
 done
 
