@@ -17450,8 +17450,13 @@ class ConductorManager(service.PeriodicService):
         if rpc_app.name in self._auto_upload_attemps:
             self._auto_upload_attemps.pop(rpc_app.name, None)
 
-    def perform_app_apply(self, context, rpc_app, mode, lifecycle_hook_info_app_apply,
-                          is_reapply_process=False):
+    def perform_app_apply(self,
+                          context,
+                          rpc_app,
+                          mode,
+                          lifecycle_hook_info_app_apply,
+                          is_reapply_process=False,
+                          client_side=False):
         """Handling of application install request (via AppOperator)
 
         :param context: request context.
@@ -17523,7 +17528,8 @@ class ConductorManager(service.PeriodicService):
         # TODO pass context and move hooks inside?
         app_applied = self._app.perform_app_apply(rpc_app, mode,
                                                   lifecycle_hook_info_app_apply,
-                                                  is_reapply_process=is_reapply_process)
+                                                  is_reapply_process=is_reapply_process,
+                                                  client_side=client_side)
         (
             lifecycle_hook_info_app_apply[LifecycleConstants.EXTRA]
             [LifecycleConstants.APP_APPLIED]

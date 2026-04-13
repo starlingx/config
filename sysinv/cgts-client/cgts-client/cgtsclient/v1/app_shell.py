@@ -1,6 +1,6 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 #
-# Copyright (c) 2018-2019 Wind River Systems, Inc.
+# Copyright (c) 2018-2019,2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -170,10 +170,14 @@ def do_application_update(cc, args):
            default=None,
            help=('The mode is application specific. It controls how applicaton'
                  ' manifest is applied.'))
+@utils.arg('-f', '--client-side',
+           action='store_true',
+           default=False,
+           help="Use Flux client side apply")
 def do_application_apply(cc, args):
     """Apply/reapply the application manifest"""
     try:
-        fields = ['mode']
+        fields = ['mode', 'client_side']
 
         data = dict((k, v) for (k, v) in vars(args).items()
                     if k in fields and not (v is None))

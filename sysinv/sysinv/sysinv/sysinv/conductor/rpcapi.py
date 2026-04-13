@@ -1793,7 +1793,7 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                        images=images))
 
     def perform_app_apply(self, context, rpc_app, mode, lifecycle_hook_info,
-                          is_reapply_process=False):
+                          is_reapply_process=False, client_side=False):
         """Handle application apply request
 
         :param context: request context.
@@ -1810,7 +1810,8 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                              rpc_app=rpc_app,
                              mode=mode,
                              lifecycle_hook_info_app_apply=lifecycle_hook_info,
-                             is_reapply_process=is_reapply_process))
+                             is_reapply_process=is_reapply_process,
+                             client_side=client_side))
 
     def perform_app_update(self, context, from_rpc_app, to_rpc_app, tarfile,
                            lifecycle_hook_info, reuse_user_overrides=None,

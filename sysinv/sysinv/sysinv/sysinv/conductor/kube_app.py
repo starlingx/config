@@ -1839,14 +1839,27 @@ class AppOperator(object):
                          "Chart %s from version %s" % (to_app.name, to_app.version,
                                                        chart.name, from_app.version))
 
-    def _make_app_request(self, app, request, is_reapply_process=False, caller=None):
-        return self._make_fluxcd_operation_with_monitor(app, request, is_reapply_process, caller)
+    def _make_app_request(self,
+                          app,
+                          request,
+                          is_reapply_process=False,
+                          caller=None,
+                          client_side=False):
+        return self._make_fluxcd_operation_with_monitor(app,
+                                                        request,
+                                                        is_reapply_process,
+                                                        caller,
+                                                        client_side)
 
     @retry(retry_on_exception=lambda x: isinstance(x, exception.ApplicationApplyFailure),
            stop_max_attempt_number=5, wait_fixed=30 * 1000)
     @kubernetes.test_k8s_health
-    def _make_fluxcd_operation_with_monitor(self, app, request, is_reapply_process=False,
-                                            caller=None):
+    def _make_fluxcd_operation_with_monitor(self,
+                                            app,
+                                            request,
+                                            is_reapply_process=False,
+                                            caller=None,
+                                            client_side=False):
         def _recover_from_helm_operation_in_progress_on_app_apply(metadata_name, namespace,
                                                                   flux_error_message):
             """ Recovery logic for FluxCD on apply
@@ -2164,7 +2177,8 @@ class AppOperator(object):
 
                 rc = self._fluxcd.make_fluxcd_operation(
                     request,
-                    app.sync_fluxcd_manifest)
+                    app.sync_fluxcd_manifest,
+                    client_side)
 
                 # check progress only for apply for now
                 if rc and request == constants.APP_APPLY_OP:
@@ -3000,8 +3014,12 @@ class AppOperator(object):
 
         LOG.info(f"Removed app {app_name} from ordered_apps")
 
-    def perform_app_apply(self, rpc_app, mode, lifecycle_hook_info_app_apply, caller=None,
-                          is_reapply_process=False):
+    def perform_app_apply(self,
+                          rpc_app, mode,
+                          lifecycle_hook_info_app_apply,
+                          caller=None,
+                          is_reapply_process=False,
+                          client_side=False):
         """Process application install request
 
         This method processes node labels per configuration and invokes
@@ -3172,7 +3190,11 @@ class AppOperator(object):
                 if caller == constants.RECOVER_VIA_REMOVAL:
                     return True
 
-                if self._make_app_request(app, constants.APP_APPLY_OP, is_reapply_process, caller):
+                if self._make_app_request(app,
+                                          constants.APP_APPLY_OP,
+                                          is_reapply_process,
+                                          caller,
+                                          client_side):
                     # Check if the application has dependent apps missing of action type 'warn'
                     dependent_apps_warn_type = app_dependents.get_dependent_apps_by_action(
                         dependent_apps_missing_list,
@@ -4513,7 +4535,7 @@ class FluxCDHelper(object):
         self._dbapi = dbapi
         self._kube = kube
 
-    def make_fluxcd_operation(self, operation, manifest_dir=""):
+    def make_fluxcd_operation(self, operation, manifest_dir="", client_side=False):
 
         self.check_fluxcd_pods_status()
 
@@ -4522,7 +4544,11 @@ class FluxCDHelper(object):
         rc = True
         try:
             if operation == constants.APP_APPLY_OP:
-                rc = self._apply(manifest_dir)
+                if client_side:
+                    rc = self._client_side_apply(manifest_dir)
+                else:
+                    rc = self._apply(manifest_dir)
+
                 if rc:
                     rc = self._cleanup_disabled_helm_releases(manifest_dir)
                 else:
@@ -4584,6 +4610,29 @@ class FluxCDHelper(object):
 
     def _apply(self, manifest_dir):
         return self.run_kubectl_kustomize(constants.KUBECTL_KUSTOMIZE_APPLY, manifest_dir)
+
+    def _client_side_apply(self, manifest_dir):
+        """ Install Helm releases using client-side apply.
+
+        :param manifest_dir: original Flux manifest path
+        :return: True if kubectl apply is successful. False otherwise.
+        """
+
+        with tempfile.TemporaryDirectory() as temp_dirname:
+            temp_manifest_dir = os.path.join(temp_dirname, os.path.basename(manifest_dir))
+            shutil.copytree(manifest_dir, temp_manifest_dir)
+
+            for dirpath, dirnames, filenames in os.walk(temp_manifest_dir):
+                for filename in filenames:
+                    if filename == "helmrelease.yaml":
+                        helmrelease_path = os.path.join(dirpath, filename)
+                        with io.open(helmrelease_path, 'r', encoding='utf-8') as f:
+                            helmrelease_yaml = next(yaml.safe_load_all(f))
+                        helmrelease_yaml.setdefault('spec', {}).\
+                            setdefault('install', {})['serverSideApply'] = False
+                        cutils.atomic_update_yaml_file(helmrelease_yaml, helmrelease_path)
+
+            return self.run_kubectl_kustomize(constants.KUBECTL_KUSTOMIZE_APPLY, temp_manifest_dir)
 
     def _delete(self, manifest_dir):
         return self.run_kubectl_kustomize(constants.KUBECTL_KUSTOMIZE_DELETE, manifest_dir)

@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2018-2024 Wind River Systems, Inc.
+# Copyright (c) 2018-2024,2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -323,7 +323,7 @@ class KubeAppController(rest.RestController):
         plugin_name = cutils.find_app_plugin_name(name)
 
         if directive == 'apply':
-            if not values:
+            if 'mode' not in values:
                 mode = None
             elif plugin_name not in constants.HELM_APP_APPLY_MODES:
                 raise wsme.exc.ClientSideError(_(
@@ -338,6 +338,11 @@ class KubeAppController(rest.RestController):
                         constants.HELM_APP_APPLY_MODES[plugin_name])))
             else:
                 mode = values['mode']
+
+            if 'client_side' in values:
+                client_side = values['client_side']
+            else:
+                client_side = False
 
             try:
                 app_helper = KubeAppHelper(pecan.request.dbapi)
@@ -389,7 +394,8 @@ class KubeAppController(rest.RestController):
                 db_app,
                 mode=mode,
                 lifecycle_hook_info=lifecycle_hook_info,
-                is_reapply_process=is_reapply_process)
+                is_reapply_process=is_reapply_process,
+                client_side=client_side)
         elif directive == 'remove':
             if db_app.status not in [constants.APP_APPLY_SUCCESS,
                                      constants.APP_APPLY_FAILURE,
