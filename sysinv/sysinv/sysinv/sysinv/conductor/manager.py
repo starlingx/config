@@ -18977,6 +18977,33 @@ class ConductorManager(service.PeriodicService):
         kube_host_upgrade_obj = objects.kube_host_upgrade.get_by_host_id(context, host_obj.id)
         host_name = host_obj.hostname
 
+        try:
+            kube_upgrade_obj = objects.kube_upgrade.get_one(context)
+        except exception.NotFound:
+            LOG.warning("Kubernetes upgrade not in progress. Can not proceed "
+                        "with the kubelet upgrade status update!")
+            return
+
+        if kube_host_upgrade_obj.status == kubernetes.KUBE_HOST_UPGRADED_KUBELET:
+            LOG.info("Kubelet on host %s has been upgraded already. Nothing to do." % (host_name))
+            return
+
+        if kube_upgrade_obj.state in [kubernetes.KUBE_UPGRADE_COMPLETE,
+                                      kubernetes.KUBE_POST_UPDATED_APPS]:
+            LOG.info("Kubelet on host %s has been upgraded already. Nothing to do." % (host_name))
+            return
+
+        if cutils.is_aio_simplex_system(self.dbapi) and \
+                kube_upgrade_obj.state == kubernetes.KUBE_UPGRADED_FIRST_MASTER:
+            # ON AIO-SX, in case of combined platform + k8s upgrade, kubernetes upgrade
+            # is not transitioned to "upgrading_kubelets" as sysinv API for kubelet
+            # upgrade is not called to upgrade the kubelet. This is updated here to
+            # maintain the k8s upgrade workflow.
+            kube_upgrade_obj.state = kubernetes.KUBE_UPGRADING_KUBELETS
+            kube_upgrade_obj.save()
+
+        to_version = to_version if to_version.startswith("v") else "v" + to_version
+
         if success:
             # Update hieradata to persist symlinks in case of unexpected reboot after kubelet
             # upgrade
