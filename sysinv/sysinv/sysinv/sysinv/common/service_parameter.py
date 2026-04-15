@@ -246,6 +246,8 @@ def _validate_token_expiry_time(name, value):
 
 def _validate_identity_role_bindings(name, value):
     """Check role bindings syntax"""
+    valid_domains = ["Default"]
+    valid_projects = ["admin"]
     lines = value.split(";")
     for line in lines:
         split_line = line.split(":")
@@ -266,6 +268,14 @@ def _validate_identity_role_bindings(name, value):
             raise wsme.exc.ClientSideError(_(
                 "Parameter '%s' misconfigured: %s has an empty term"
                 % (name, rhs)))
+        if len(rhs) > 1 and rhs[-2] not in valid_projects:
+            raise wsme.exc.ClientSideError(_(
+                "Parameter '%s' invalid project %s: valid projects: %s"
+                % (name, rhs[-2], valid_projects)))
+        if len(rhs) > 2 and rhs[-3] not in valid_domains:
+            raise wsme.exc.ClientSideError(_(
+                "Parameter '%s' invalid domain %s: valid domains: %s"
+                % (name, rhs[-3], valid_domains)))
 
 
 def _validate_ip_address(name, value):
