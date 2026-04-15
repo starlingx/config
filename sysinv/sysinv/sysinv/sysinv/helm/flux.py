@@ -4,6 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
+import glob
 import os
 import subprocess
 import yaml
@@ -22,6 +23,10 @@ TEMPLATE_PATH = os.path.join(CONFIG_DIR, 'templates')
 TEMPLATE_FILENAME = 'values.yaml.j2'
 OCI_REPO_CRD = "ocirepositories.source.toolkit.fluxcd.io"
 HELM_RELEASE_CRD = "helmreleases.helm.toolkit.fluxcd.io"
+
+# Chart paths
+BASE_CHART_DIR = "/usr/local/share/flux2-charts/"
+PREVIOUS_VERSION_CHART_DIR = os.path.join("/ostree/2", BASE_CHART_DIR.lstrip('/'))
 
 # Log and config
 LOG = logging.getLogger(__name__)
@@ -63,7 +68,8 @@ class FluxDeploymentManager(object):
 
     def delete_oci_repository_crd(self):
         """ Delete ocirepositories.source.toolkit.fluxcd.io CRD as manifests from
-        versions 2.15 and 2.17 do not support straightforward rollback.
+        versions 2.15 do not support straightforward rollback and upgrade from/to
+        versions 2.17 and 2.18.
         """
         return self.delete_crd(OCI_REPO_CRD)
 
@@ -154,6 +160,28 @@ class FluxDeploymentManager(object):
 
         return overrides
 
+    @staticmethod
+    def get_chart_path(chart_dir):
+        """ Find the Flux Helm chart path dynamically in the given directory.
+
+        Args:
+            chart_dir (str): Directory to search for the chart.
+
+        Returns:
+            str or None: Path to the chart file, or None if not found.
+        """
+        matches = glob.glob(os.path.join(chart_dir, "flux2-*.tgz"))
+
+        if len(matches) == 0:
+            LOG.error(f"No Flux charts found in {chart_dir}")
+            return None
+        elif len(matches) == 1:
+            LOG.info(f"Chart {os.path.basename(matches[0])} found under {chart_dir}")
+            return matches[0]
+        else:
+            LOG.error(f"Multiple Flux charts found in {chart_dir}: {matches}")
+            return None
+
     def upgrade_controllers(self):
         """ Upgrade Flux controllers via Helm
 
@@ -163,7 +191,13 @@ class FluxDeploymentManager(object):
 
         LOG.info("Starting Flux release upgrade")
 
+        chart_path = self.get_chart_path(BASE_CHART_DIR)
+        if not chart_path:
+            LOG.error("Unable to locate Flux chart for upgrade")
+            return False
+
         self.remove_v2beta1_from_helmrelease()
+        self.delete_oci_repository_crd()
 
         success = False
         if self.download_images():
@@ -183,7 +217,7 @@ class FluxDeploymentManager(object):
                      "--wait-for-jobs",
                      "--values", "-",
                      self.conf_dict['flux_helm_release_name'],
-                     self.conf_dict['flux_charts_path']
+                     chart_path
                      ],
 
                     check=True,
@@ -264,28 +298,22 @@ class FluxDeploymentManager(object):
     def rollback_controllers(self):
         """ Rollback Flux controllers to the previous version """
 
-        if not os.path.isfile(self.conf_dict['flux_legacy_charts_path']):
-
-            # Check if previous and target charts are the same. Covers the scenario where
-            # rollback is being executed but Flux hasn't been upversioned.
-            previous_chart_path = os.path.dirname(self.conf_dict['flux_legacy_charts_path'])
-            current_chart_filename = os.path.basename(self.conf_dict['flux_charts_path'])
-            chart_path = os.path.join(previous_chart_path, current_chart_filename)
-
-            if os.path.isfile(chart_path):
-                LOG.info(f"Previous and target chart versions are the same: {chart_path}. "
-                         "Skipping rollback.")
-                return True
-            else:
-                LOG.info("Previous chart version not available at "
-                         f"{self.conf_dict['flux_legacy_charts_path']}")
-
+        previous_version_chart_path = self.get_chart_path(PREVIOUS_VERSION_CHART_DIR)
+        if not previous_version_chart_path:
+            LOG.error("Unable to locate Flux chart for rollback")
             return False
+
+        # Check if previous and target charts are the same. Covers the scenario where
+        # rollback is being executed but Flux hasn't been upversioned.
+        if os.path.basename(previous_version_chart_path) == \
+                os.path.basename(self.get_chart_path(BASE_CHART_DIR)):
+            LOG.info(f"Previous and target chart versions are the same: "
+                     f"{previous_version_chart_path}. Skipping rollback.")
+            return True
 
         success = False
         try:
-            previous_version = helm_utils.get_chart_version(
-                self.conf_dict['flux_legacy_charts_path'])
+            previous_version = helm_utils.get_chart_version(previous_version_chart_path)
             history = helm_utils.get_history(self.conf_dict['flux_helm_release_name'],
                                              self.conf_dict['fluxcd_namespace'],
                                              KUBECONFIG)
