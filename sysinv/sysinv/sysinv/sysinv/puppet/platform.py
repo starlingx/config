@@ -345,6 +345,108 @@ class PlatformPuppet(base.BasePuppet):
                 user.passwd_last_change,
         }
 
+    # IANA to OpenSSL cipher name mapping for HAProxy
+    IANA_TO_OPENSSL_CIPHER_MAP = {
+        'TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384':
+            'ECDHE-RSA-AES256-GCM-SHA384',
+        'TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256':
+            'ECDHE-RSA-AES128-GCM-SHA256',
+        'TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384':
+            'ECDHE-ECDSA-AES256-GCM-SHA384',
+        'TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256':
+            'ECDHE-ECDSA-AES128-GCM-SHA256',
+        'TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256':
+            'ECDHE-RSA-CHACHA20-POLY1305',
+        'TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256':
+            'ECDHE-ECDSA-CHACHA20-POLY1305',
+    }
+
+    # TLS 1.3 ciphers use the same name in OpenSSL
+    TLS13_CIPHERS = [
+        'TLS_AES_256_GCM_SHA384',
+        'TLS_AES_128_GCM_SHA256',
+        'TLS_CHACHA20_POLY1305_SHA256',
+    ]
+
+    @staticmethod
+    def _iana_to_openssl_cipher(iana_name):
+        """Convert IANA cipher name to OpenSSL format for HAProxy.
+
+        TLS 1.3 cipher names are the same in both formats.
+        TLS 1.2 ciphers require mapping to OpenSSL naming.
+        """
+        if iana_name in PlatformPuppet.TLS13_CIPHERS:
+            return iana_name
+        openssl_name = PlatformPuppet.IANA_TO_OPENSSL_CIPHER_MAP.get(
+            iana_name)
+        if not openssl_name:
+            LOG.warning("Unknown IANA cipher: %s, skipping" % iana_name)
+        return openssl_name
+
+    def _get_haproxy_tls_config(self):
+        """Get HAProxy TLS configuration from service parameters.
+
+        Reads platform config TLS service parameters and converts
+        them to HAProxy ssl-default-bind-options, ssl-default-bind-ciphers,
+        and ssl-default-bind-ciphersuites hieradata values.
+        """
+        tls_min_version = constants.SERVICE_PARAM_PLATFORM_TLS_MIN_VERSION_DEFAULT
+        tls_cipher_suite = constants.SERVICE_PARAM_PLATFORM_TLS_CIPHER_SUITE_DEFAULT
+
+        try:
+            parms = self.dbapi.service_parameter_get_all(
+                service=constants.SERVICE_TYPE_PLATFORM,
+                section=constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG)
+            for p in parms:
+                if p.name == constants.SERVICE_PARAM_NAME_PLATFORM_TLS_MIN_VERSION:
+                    tls_min_version = p.value
+                elif p.name == constants.SERVICE_PARAM_NAME_PLATFORM_TLS_CIPHER_SUITE:
+                    tls_cipher_suite = p.value
+        except Exception:
+            LOG.warning("Failed to read TLS service parameters, "
+                        "using defaults")
+
+        # Build ssl-default-bind-options from min version
+        if tls_min_version == constants.SERVICE_PARAM_PLATFORM_TLS_VERSION_TLS13:
+            ssl_bind_options = 'no-sslv3 no-tlsv10 no-tlsv11 no-tlsv12'
+        else:
+            ssl_bind_options = 'no-sslv3 no-tlsv10 no-tlsv11'
+
+        # Split ciphers into TLS 1.2 (ssl-default-bind-ciphers)
+        # and TLS 1.3 (ssl-default-bind-ciphersuites)
+        tls12_ciphers = []
+        tls13_ciphers = []
+        for iana_name in tls_cipher_suite.split(','):
+            iana_name = iana_name.strip()
+            if not iana_name:
+                continue
+            if iana_name in self.TLS13_CIPHERS:
+                tls13_ciphers.append(iana_name)
+            else:
+                openssl_name = self._iana_to_openssl_cipher(iana_name)
+                if openssl_name:
+                    tls12_ciphers.append(openssl_name)
+
+        config = {
+            'platform::haproxy::params::ssl_bind_options':
+                ssl_bind_options,
+        }
+
+        if tls12_ciphers:
+            config['platform::haproxy::params::ssl_ciphers'] = \
+                ':'.join(tls12_ciphers)
+        if tls13_ciphers:
+            config['platform::haproxy::params::ssl_ciphersuites'] = \
+                ':'.join(tls13_ciphers)
+
+        # ssl-default-bind-curves is only supported on HAProxy 2.4+
+        # (Trixie ships 2.8+, Bullseye ships 2.2.9)
+        if utils.get_debian_release_codename() != 'bullseye':
+            config['platform::haproxy::params::ssl_bind_curves'] = \
+                'secp256r1:secp384r1:secp521r1'
+
+        return config
+
     def _get_haproxy_config(self):
         public_address = self._get_address_by_name(
             constants.CONTROLLER, constants.NETWORK_TYPE_OAM)
@@ -378,6 +480,9 @@ class PlatformPuppet(base.BasePuppet):
             'platform::haproxy::params::enable_https':
                 https_enabled,
         }
+
+        # Add TLS configuration from service parameters
+        config.update(self._get_haproxy_tls_config())
 
         try:
             tpmconfig = self.dbapi.tpmconfig_get_one()
