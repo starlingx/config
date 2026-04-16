@@ -86,7 +86,6 @@ class PlatformPuppet(base.BasePuppet):
         config.update(self._get_host_tpm_config(host))
         config.update(self._get_host_cpu_config(host))
         config.update(self._get_host_memory_config(host))
-        config.update(self._get_kvm_timer_advance_config(host))
         config.update(self._get_nvidia_vgpu_drivers_config(host))
         config.update(self._get_host_lldp_config(host))
         config.update(self._get_ttys_dcd_config(host))
@@ -1023,31 +1022,6 @@ class PlatformPuppet(base.BasePuppet):
                 })
 
         return config
-
-    def _get_vcpu_pin_set(self, host):
-        vm_cpus = self._get_host_cpu_list(
-            host, function=constants.APPLICATION_FUNCTION, threads=True)
-        cpu_list = [c.cpu for c in vm_cpus]
-        return "\"%s\"" % utils.format_range_set(cpu_list)
-
-    # kvm-timer-advance only enabled on computes with openstack compute label
-    # vcpu_pin_set is only used when kvm-timer-advance is enabled
-    def _get_kvm_timer_advance_config(self, host):
-        kvm_timer_advance_enabled = False
-        vcpu_pin_set = None
-
-        if constants.WORKER in utils.get_personalities(host):
-            host_labels = self.dbapi.label_get_by_host(host.id)
-            if utils.has_openstack_compute(host_labels):
-                kvm_timer_advance_enabled = True
-                vcpu_pin_set = self._get_vcpu_pin_set(host)
-
-        return {
-            'platform::compute::kvm_timer_advance::enabled':
-                kvm_timer_advance_enabled,
-            'platform::compute::kvm_timer_advance::vcpu_pin_set':
-                vcpu_pin_set,
-        }
 
     # Config flag to control, based on the openstack_compute node label,
     # the conditional loading of the non-open-source NVIDIA vGPU
