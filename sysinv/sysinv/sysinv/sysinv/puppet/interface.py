@@ -1148,9 +1148,10 @@ def get_route_config(route, ifname, context=None):
     """
     options = ""
     netmask = IPNetwork(route['network'] + "/" + str(route['prefix'])).netmask
+    network = route['network']
 
-    if route['network'] == '0.0.0.0' or route['network'] == '::':
-        route['network'] = 'default'
+    if network == '0.0.0.0' or network == '::':
+        network = 'default'
 
     src_addr = None
     gateway = route.get('gateway')
@@ -1162,8 +1163,7 @@ def get_route_config(route, ifname, context=None):
         options = f"src {src_addr} "
 
     options += 'metric ' + str(route['metric'])
-
-    config = (f"{route['network']} {netmask} {route['gateway']} "
+    config = (f"{network} {netmask} {gateway} "
               f"{ifname} {options}\n")
     return config
 
