@@ -764,6 +764,46 @@ class NetworkingPuppet(base.BasePuppet):
 
         return ptp_instances
 
+    def _set_ptp_gnss_state(self, nic_clock_config):
+        GNSS_ENABLED_KEY = 'gnss_enabled'
+        GNSS_ENABLED = '1'
+        GNSS_DISABLED = '0'
+
+        # Though GNR-D only has one GNSS, but keep the data structure with port
+        # For future expansion for different port/NIC e.g. Westport
+        gnss_pin_config = []
+        for port, iface in nic_clock_config.items():
+            if iface.get('parameters', {}):
+                for param, value in iface['parameters'].items():
+                    if param == GNSS_ENABLED_KEY:
+                        if value in [GNSS_ENABLED, GNSS_DISABLED]:
+                            gnss_pin_config.append(
+                                {'port_names': port,
+                                 'base_port': iface['base_port'],
+                                 GNSS_ENABLED_KEY: value}
+                            )
+                        else:
+                            raise Exception(f'Invalid gnss_enabled: {value}')
+
+        # GNR-D disables gnss on motherboard level but not port/NIC level
+        # So ignore port but use pin_package_label instead
+        gnrd_pin_values = {
+            GNSS_DISABLED: {'pin_package_label': 'REF4P',
+                            'state': 'disconnected'},
+            GNSS_ENABLED: {'pin_package_label': 'REF4P',
+                           'state': 'selectable'},
+        }
+        # Set is_gnss_enabled default GNSS_ENABLED to handle situations
+        # e.g. user deletes the parameter, removes interface/host from ptp
+        is_gnss_enabled = GNSS_ENABLED
+        # If user configures gnss_enabled on multiple interfaces
+        # Take GNSS_DISABLED 0 as preference
+        for item in gnss_pin_config:
+            if item[GNSS_ENABLED_KEY] == GNSS_DISABLED:
+                is_gnss_enabled = GNSS_DISABLED
+
+        return gnrd_pin_values[is_gnss_enabled]
+
     def _generate_clock_port_dict(self, host, nic_clock_config, host_port_list):
         port_dict = {}
         for instance in nic_clock_config:
@@ -943,6 +983,10 @@ class NetworkingPuppet(base.BasePuppet):
                 nic_clock_config_extended, ptp_parameters_instance
             )
 
+        # Generate the gnss_pin_config for gnss enable/disable
+        gnss_pin_config = self._set_ptp_gnss_state(nic_clock_config)
+        LOG.info(f"PTP GNSS Config for host id {host.id}: {gnss_pin_config}")
+
         # Generate the ptp instance config if ptp is enabled
         if ptpinstance_enabled:
             ptp_config = self._set_ptp_instance_global_parameters(ptp_instance_configs,
@@ -982,6 +1026,7 @@ class NetworkingPuppet(base.BasePuppet):
             'platform::ptpinstance::nic_clock::nic_clock_config': nic_clock_config,
             'platform::ptpinstance::nic_clock::nic_clock_config_extended': nic_clock_config_extended,
             'platform::ptpinstance::nic_clock::nic_clock_enabled': nic_clock_enabled,
+            'platform::ptpinstance::gnss_state::gnss_pin_config': gnss_pin_config,
         }
 
     def _get_interface_config(self, networktype):
