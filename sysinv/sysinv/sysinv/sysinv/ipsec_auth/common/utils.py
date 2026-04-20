@@ -9,6 +9,7 @@ from sysinv.ipsec_auth.common import constants
 from sysinv.common.kubernetes import KUBERNETES_ADMIN_CONF
 
 import base64
+import math
 import fcntl
 import os
 import socket
@@ -25,10 +26,13 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import utils
 from cryptography.hazmat.primitives.asymmetric import padding as pad
 from cryptography.hazmat.primitives import padding
+from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives.ciphers import Cipher
 from cryptography.hazmat.primitives.ciphers import algorithms
 from cryptography.hazmat.primitives.ciphers import modes
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
 from oslo_log import log as logging
 
@@ -153,38 +157,100 @@ def symmetric_decrypt_data(aes_key, iv, data):
     return decrypted_data
 
 
-def asymmetric_encrypt_data(key_data, data, is_cert=False):
-    if is_cert:
-        cert = x509.load_pem_x509_certificate(key_data)
-        key = cert.public_key()
-    else:
-        key = serialization.load_pem_public_key(
-            key_data,
-            backend=default_backend()
-        )
-
+def rsa_encrypt_data(key: rsa.RSAPublicKey, data: bytes):
     return key.encrypt(
         data,
         pad.OAEP(
             mgf=pad.MGF1(algorithm=hashes.SHA256()),
             algorithm=hashes.SHA256(),
-            label=None
-        )
+            label=None,
+        ),
     )
 
 
-def asymmetric_decrypt_data(key, data):
-    if not isinstance(key, rsa.RSAPrivateKey):
-        key = serialization.load_pem_private_key(key, None, default_backend())
-
+def rsa_decrypt_data(key: rsa.RSAPrivateKey, data: bytes):
     return key.decrypt(
         data,
         pad.OAEP(
             mgf=pad.MGF1(algorithm=hashes.SHA256()),
             algorithm=hashes.SHA256(),
-            label=None
-        )
+            label=None,
+        ),
     )
+
+
+def ec_encrypt_data(key: ec.EllipticCurvePublicKey, data: bytes):
+    tmp_priv_key = ec.generate_private_key(key.curve)
+    ecdh_secret = tmp_priv_key.exchange(ec.ECDH(), key)
+    aes_key = HKDF(
+        algorithm=hashes.SHA256(),
+        length=constants.ECIES_AES_KEY_LENGTH,
+        salt=None,
+        info=constants.ECIES_HKDF_INFO
+    ).derive(ecdh_secret)
+
+    nonce = os.urandom(constants.ECIES_NONCE_SIZE)
+    tmp_pub_bytes = tmp_priv_key.public_key().public_bytes(
+        serialization.Encoding.X962, serialization.PublicFormat.CompressedPoint
+    )
+    return (
+        tmp_pub_bytes
+        + nonce
+        + AESGCM(aes_key).encrypt(nonce, data, None)
+    )
+
+
+def ec_decrypt_data(key: ec.EllipticCurvePrivateKey, data: bytes):
+    # Size of the compressed public key in bytes (e.g. 49 for P-384)
+    key_size = math.ceil(key.curve.key_size / 8) + 1
+
+    tmp_pub_key = ec.EllipticCurvePublicKey.from_encoded_point(
+        key.curve, data[:key_size]
+    )
+    nonce = data[key_size:key_size + constants.ECIES_NONCE_SIZE]
+    enc_data = data[key_size + constants.ECIES_NONCE_SIZE:]
+
+    ecdh_secret = key.exchange(ec.ECDH(), tmp_pub_key)
+
+    aes_key = HKDF(
+        algorithm=hashes.SHA256(),
+        length=constants.ECIES_AES_KEY_LENGTH,
+        salt=None,
+        info=constants.ECIES_HKDF_INFO
+    ).derive(ecdh_secret)
+
+    return AESGCM(aes_key).decrypt(nonce, enc_data, None)
+
+
+def asymmetric_encrypt_data(key_data: bytes, data: bytes, is_cert=False):
+    if is_cert:
+        cert = x509.load_pem_x509_certificate(key_data)
+        key = cert.public_key()
+    else:
+        key = serialization.load_pem_public_key(
+            key_data, backend=default_backend()
+        )
+
+    if isinstance(key, rsa.RSAPublicKey):
+        return rsa_encrypt_data(key, data)
+    elif isinstance(key, ec.EllipticCurvePublicKey):
+        return ec_encrypt_data(key, data)
+    else:
+        LOG.exception(f'Unsupported public key type: {type(key)}')
+        return None
+
+
+def asymmetric_decrypt_data(key, data: bytes):
+    if isinstance(key, bytes):
+        key = serialization.load_pem_private_key(key, None, default_backend())
+
+    if isinstance(key, rsa.RSAPrivateKey):
+        return rsa_decrypt_data(key, data)
+    elif isinstance(key, ec.EllipticCurvePrivateKey):
+        return ec_decrypt_data(key, data)
+    else:
+        LOG.exception(f'Unsupported private key type: {type(key)}')
+        return None
 
 
 def socket_recv_all_json(socket, buff_size):
@@ -227,17 +293,26 @@ def hash_and_sign_payload(signer, data: bytes):
 
     key = signer
 
-    if not isinstance(key, rsa.RSAPrivateKey):
+    if isinstance(key, bytes):
         key = serialization.load_pem_private_key(key, None, default_backend())
 
-    data = key.sign(
-        digest,
-        pad.PSS(
-            mgf=pad.MGF1(hashes.SHA256()),
-            salt_length=pad.PSS.MAX_LENGTH
-        ),
-        utils.Prehashed(hashes.SHA256())
-    )
+    if isinstance(key, rsa.RSAPrivateKey):
+        data = key.sign(
+            digest,
+            pad.PSS(
+                mgf=pad.MGF1(hashes.SHA256()),
+                salt_length=pad.PSS.MAX_LENGTH
+            ),
+            utils.Prehashed(hashes.SHA256())
+        )
+    elif isinstance(key, ec.EllipticCurvePrivateKey):
+        data = key.sign(
+            digest,
+            ec.ECDSA(utils.Prehashed(hashes.SHA256()))
+        )
+    else:
+        LOG.exception(f'Unsupported private key type: {type(key)}')
+        return None
 
     return base64.b64encode(data)
 
@@ -251,16 +326,44 @@ def verify_signed_hash(cert_data, signed_hash, data: bytes):
     key = cert.public_key()
 
     try:
-        key.verify(
-            signed_hash,
-            digest,
-            pad.PSS(
-                mgf=pad.MGF1(hashes.SHA256()),
-                salt_length=pad.PSS.MAX_LENGTH
-            ),
-            utils.Prehashed(hashes.SHA256())
-        )
+        if isinstance(key, rsa.RSAPublicKey):
+            key.verify(
+                signed_hash,
+                digest,
+                pad.PSS(
+                    mgf=pad.MGF1(hashes.SHA256()),
+                    salt_length=pad.PSS.MAX_LENGTH
+                ),
+                utils.Prehashed(hashes.SHA256())
+            )
+        elif isinstance(key, ec.EllipticCurvePublicKey):
+            key.verify(
+                signed_hash,
+                digest,
+                ec.ECDSA(utils.Prehashed(hashes.SHA256()))
+            )
+        else:
+            LOG.exception(f'Unsupported public key type: {type(key)}')
+            return False
     except exceptions.InvalidSignature:
+        return False
+
+    return True
+
+
+def verify_cert_signature(cert: x509.Certificate, pub_key) -> bool:
+    try:
+        if isinstance(pub_key, rsa.RSAPublicKey):
+            pub_key.verify(cert.signature, cert.tbs_certificate_bytes,
+                           pad.PKCS1v15(), cert.signature_hash_algorithm)
+        elif isinstance(pub_key, ec.EllipticCurvePublicKey):
+            pub_key.verify(cert.signature, cert.tbs_certificate_bytes,
+                           ec.ECDSA(cert.signature_hash_algorithm))
+        else:
+            LOG.exception(f'Unsupported public key type: {type(pub_key)}')
+            return False
+    except exceptions.InvalidSignature:
+        LOG.exception("Invalid certificate signature.")
         return False
 
     return True

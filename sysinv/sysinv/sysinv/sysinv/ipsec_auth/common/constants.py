@@ -70,3 +70,8 @@ MGMT_IPSEC_UPGRADING = 'upgrading'
 
 CHILD_SA_NAME = 'node'
 IKE_SA_NAME = 'system-nodes'
+
+# ECIES encryption parameters
+ECIES_AES_KEY_LENGTH = 32
+ECIES_NONCE_SIZE = 12
+ECIES_HKDF_INFO = b'ipsec-auth-ecies-payload'
