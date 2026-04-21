@@ -41,6 +41,8 @@ PLATFORM_GNSET_CLASSES = {constants.NETWORK_TYPE_ADMIN: FIREWALL_GNSET_ADMIN_CFG
 
 LINK_LOCAL = "fe80::/64"
 LINK_LOCAL_MC = "ff02::/16"
+LOCAL_MULTICAST_IPV4 = "224.0.0.0/24"
+DHCP_PROTO = "DHCP"
 
 IPSEC_NETWORKS = [constants.NETWORK_TYPE_MGMT, constants.NETWORK_TYPE_CLUSTER_HOST]
 
@@ -142,21 +144,23 @@ class PlatformFirewallPuppet(base.BasePuppet):
             self._get_basic_firewall_gnp(host, firewall_networks, config)
             networks = {network.type: network for network in firewall_networks}
 
+            multicast_pools = self._get_multicast_address_pools()
+
             if (config[FIREWALL_GNP_OAM_CFG]):
                 self._set_rules_oam(config[FIREWALL_GNP_OAM_CFG],
                                     networks[constants.NETWORK_TYPE_OAM], host, dc_role)
 
             if (config[FIREWALL_GNP_MGMT_CFG]):
                 self._set_rules_mgmt(config[FIREWALL_GNP_MGMT_CFG],
-                                    networks[constants.NETWORK_TYPE_MGMT], host)
+                                    networks[constants.NETWORK_TYPE_MGMT], host, multicast_pools)
 
             if (config[FIREWALL_GNP_ADMIN_CFG]):
                 self._set_rules_admin(config[FIREWALL_GNP_ADMIN_CFG],
-                                      networks[constants.NETWORK_TYPE_ADMIN], host)
+                                      networks[constants.NETWORK_TYPE_ADMIN], host, multicast_pools)
 
             if (config[FIREWALL_GNP_CLUSTER_HOST_CFG]):
                 self._set_rules_cluster_host(config[FIREWALL_GNP_CLUSTER_HOST_CFG],
-                                    networks[constants.NETWORK_TYPE_CLUSTER_HOST], host)
+                                    networks[constants.NETWORK_TYPE_CLUSTER_HOST], host, multicast_pools)
 
             if (config[FIREWALL_GNP_PXEBOOT_CFG]):
                 self._set_rules_pxeboot(config[FIREWALL_GNP_PXEBOOT_CFG],
@@ -164,7 +168,7 @@ class PlatformFirewallPuppet(base.BasePuppet):
 
             if (config[FIREWALL_GNP_STORAGE_CFG]):
                 self._set_rules_storage(config[FIREWALL_GNP_STORAGE_CFG],
-                                    networks[constants.NETWORK_TYPE_STORAGE], host)
+                                    networks[constants.NETWORK_TYPE_STORAGE], host, multicast_pools)
 
             if (host.personality == constants.CONTROLLER):
                 if (dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD):
@@ -235,12 +239,6 @@ class PlatformFirewallPuppet(base.BasePuppet):
             interfaceName = puppet_intf.get_interface_os_ifname(self.context, intf)
             host_endpoints["spec"].update({"interfaceName": interfaceName})
 
-            # adding only for OAM for compatibility with old implementation
-            if constants.NETWORK_TYPE_OAM in iftype:
-                hep_name = host.hostname + "-oam-if-hep"
-                host_endpoints["metadata"]["name"] = hep_name
-                self._add_hep_expected_ip(host, constants.NETWORK_TYPE_OAM, host_endpoints)
-
             config[hep_name] = copy.copy(host_endpoints)
 
     def _add_gnp_proto_rules(self, host, network, ip_version, firewall_gnp, proto_name,
@@ -268,6 +266,23 @@ class PlatformFirewallPuppet(base.BasePuppet):
             rule.update({"action": "Allow"})
             firewall_gnp["spec"][direction].append(rule)
 
+    def _get_multicast_address_pools(self):
+        """ Get multicast address pools indexed by IP family
+
+        :return: dict with IP family as key and address pool object as value
+                 Example: {4: pool_ipv4, 6: pool_ipv6}
+        """
+        multicast_pools = {}
+        try:
+            multicast_net = self.dbapi.network_get_by_type(constants.NETWORK_TYPE_MULTICAST)
+            if multicast_net:
+                pools = self._address_pools_get_by_network(multicast_net.id)
+                for pool in pools:
+                    multicast_pools[pool.family] = pool
+        except exception.NotFound:
+            pass
+        return multicast_pools
+
     def _get_basic_firewall_gnp(self, host, firewall_networks, config):
         """ Fill the GlobalNetworkPolicy basic hiera data (no filter rules)
 
@@ -291,7 +306,10 @@ class PlatformFirewallPuppet(base.BasePuppet):
 
             firewall_gnp["spec"] = dict()
             firewall_gnp["spec"].update({"applyOnForward": False})
-            firewall_gnp["spec"].update({"order": 100})
+            if network.type == constants.NETWORK_TYPE_OAM:
+                firewall_gnp["spec"].update({"order": 101})
+            else:
+                firewall_gnp["spec"].update({"order": 100})
             firewall_gnp["spec"].update({"selector": selector})
             firewall_gnp["spec"].update({"types": ["Ingress", "Egress"]})
             firewall_gnp["spec"].update({"egress": list()})
@@ -372,7 +390,7 @@ class PlatformFirewallPuppet(base.BasePuppet):
         for addr_pool in addr_pools:
             ip_version = addr_pool.family
             self._add_destination_net_filter(gnp_config["spec"]["ingress"],
-                                             f"{addr_pool.network}/{addr_pool.prefix}")
+                                             f"{addr_pool.network}/{addr_pool.prefix}", ip_version)
             if (ip_version == constants.IPV6_FAMILY):
                 for rule in gnp_config["spec"]["ingress"]:
                     if rule["protocol"] == "ICMPv6":
@@ -384,22 +402,36 @@ class PlatformFirewallPuppet(base.BasePuppet):
             if rule["protocol"] == "TCP" and rule["ipVersion"] == ip_version:
                 return copy.deepcopy(rule)
 
-    def _set_rules_mgmt(self, gnp_config, network, host):
+    def _set_rules_mgmt(self, gnp_config, network, host, multicast_pools):
         """ Fill the management network specific filtering data
 
         :param gnp_config: the dict containing the hiera data to be filled
         :param network: the sysinv.object.network object for this network
+        :param host: a sysinv.object.host class object
+        :param multicast_pools: dict with IP family as key and multicast pool as value
         """
         addr_pools = self._address_pools_get_by_network(network.id)
         for addr_pool in addr_pools:
             ip_version = addr_pool.family
             self._add_source_net_filter(gnp_config["spec"]["ingress"],
                                         f"{addr_pool.network}/{addr_pool.prefix}", ip_version)
+            self._add_destination_net_filter(gnp_config["spec"]["ingress"],
+                                            f"{addr_pool.network}/{addr_pool.prefix}", ip_version)
 
+            ICMP = "ICMP"
+            # ESP protocol uses the proto_id 50
+            ESP = 50
+            IGMP_PROTO = 2
             if (ip_version == 6):
+                ICMP = "ICMPv6"
                 self._add_source_net_filter(gnp_config["spec"]["ingress"], LINK_LOCAL, ip_version)
+                self._add_destination_net_filter(gnp_config["spec"]["ingress"], LINK_LOCAL, ip_version)
+                self._add_destination_net_filter(gnp_config["spec"]["ingress"], LINK_LOCAL_MC, ip_version)
 
             if (ip_version == 4):
+                self._add_destination_net_filter(gnp_config["spec"]["ingress"], LOCAL_MULTICAST_IPV4, ip_version,
+                                                exclude_protocols=[ICMP, ESP])
+
                 # add rule to allow DHCP requests (dhcp-offer have src addr == 0.0.0.0)
                 # worker/storage nodes request IP dynamically
                 rule = self._get_dhcp_rule(host.personality, "UDP", constants.IPV4_FAMILY)
@@ -407,23 +439,44 @@ class PlatformFirewallPuppet(base.BasePuppet):
 
                 self._create_igmp_rule(gnp_config, host, network, ip_version)
 
-    def _set_rules_admin(self, gnp_config, network, host):
+            self._add_multicast_destination_filter(gnp_config["spec"]["ingress"], ip_version, multicast_pools,
+                                                   exclude_protocols=[ICMP, ESP, DHCP_PROTO, IGMP_PROTO])
+
+    def _set_rules_admin(self, gnp_config, network, host, multicast_pools):
         """ Fill the admin network specific filtering data
 
         :param gnp_config: the dict containing the hiera data to be filled
         :param network: the sysinv.object.network object for this network
+        :param host: a sysinv.object.host class object
+        :param multicast_pools: dict with IP family as key and multicast pool as value
         """
         addr_pools = self._address_pools_get_by_network(network.id)
         for addr_pool in addr_pools:
             ip_version = addr_pool.family
             self._add_source_net_filter(gnp_config["spec"]["ingress"],
                                         f"{addr_pool.network}/{addr_pool.prefix}", ip_version)
+            self._add_destination_net_filter(gnp_config["spec"]["ingress"],
+                                            f"{addr_pool.network}/{addr_pool.prefix}", ip_version)
+            ICMP = "ICMP"
+            # ESP protocol uses the proto_id 50
+            ESP = 50
+            IGMP_PROTO = 2
             if (ip_version == 6):
+                ICMP = "ICMPv6"
                 self._add_source_net_filter(gnp_config["spec"]["ingress"], LINK_LOCAL, ip_version)
+                self._add_destination_net_filter(gnp_config["spec"]["ingress"], LINK_LOCAL, ip_version)
+                self._add_destination_net_filter(gnp_config["spec"]["ingress"], LINK_LOCAL_MC, ip_version)
+
             if (ip_version == 4):
+                self._add_destination_net_filter(gnp_config["spec"]["ingress"], LOCAL_MULTICAST_IPV4, ip_version,
+                                                exclude_protocols=[ICMP, ESP])
+
                 self._create_igmp_rule(gnp_config, host, network, ip_version)
 
-    def _set_rules_cluster_host(self, gnp_config, network, host):
+            self._add_multicast_destination_filter(gnp_config["spec"]["ingress"], ip_version, multicast_pools,
+                                                   exclude_protocols=[ICMP, ESP, IGMP_PROTO])
+
+    def _set_rules_cluster_host(self, gnp_config, network, host, multicast_pools):
         """ Fill the cluster-host network specific filtering data
 
         :param gnp_config: the dict containing the hiera data to be filled
@@ -444,12 +497,16 @@ class PlatformFirewallPuppet(base.BasePuppet):
             ip_version = addr_pool.family
             self._add_source_net_filter(gnp_config["spec"]["ingress"],
                                         f"{addr_pool.network}/{addr_pool.prefix}", ip_version)
+            self._add_destination_net_filter(gnp_config["spec"]["ingress"],
+                                            f"{addr_pool.network}/{addr_pool.prefix}", ip_version)
 
             # add cluster-pod to cover the cases where there is no tunneling, the pod traffic goes
             # directly in the cluster-host interface
             cpod_pool = cpod_pool_index.get(ip_version, None)
             if cpod_pool:
                 self._add_source_net_filter(gnp_config["spec"]["ingress"],
+                                            f"{cpod_pool.network}/{cpod_pool.prefix}", ip_version)
+                self._add_destination_net_filter(gnp_config["spec"]["ingress"],
                                             f"{cpod_pool.network}/{cpod_pool.prefix}", ip_version)
 
             # copy the TCP rule and do the same for SCTP
@@ -464,16 +521,29 @@ class PlatformFirewallPuppet(base.BasePuppet):
                 f"stx-ingr-{host.personality}-{network.type}-sctp{ip_version}"
             gnp_config["spec"]["ingress"].append(sctp_ingr_rule)
 
+            ICMP = "ICMP"
+            # ESP protocol uses the proto_id 50
+            ESP = 50
+            IGMP_PROTO = 2
             if (ip_version == 6):
+                ICMP = "ICMPv6"
                 # add link-local network too
                 self._add_source_net_filter(gnp_config["spec"]["ingress"], LINK_LOCAL, ip_version)
+                self._add_destination_net_filter(gnp_config["spec"]["ingress"], LINK_LOCAL, ip_version)
+                self._add_destination_net_filter(gnp_config["spec"]["ingress"], LINK_LOCAL_MC, ip_version)
 
             if (ip_version == 4):
+                self._add_destination_net_filter(gnp_config["spec"]["ingress"], LOCAL_MULTICAST_IPV4, ip_version,
+                                                exclude_protocols=[ICMP, ESP])
+
                 # add rule to allow DHCP requests (dhcp-offer have src addr == 0.0.0.0)
                 rule = self._get_dhcp_rule(host.personality, "UDP", ip_version)
                 gnp_config["spec"]["ingress"].append(rule)
 
                 self._create_igmp_rule(gnp_config, host, network, ip_version)
+
+            self._add_multicast_destination_filter(gnp_config["spec"]["ingress"], ip_version, multicast_pools,
+                                                   exclude_protocols=[ICMP, ESP, DHCP_PROTO, IGMP_PROTO])
 
     def _set_rules_pxeboot(self, gnp_config, network, host):
         """ Fill the pxeboot network specific filtering data
@@ -487,24 +557,7 @@ class PlatformFirewallPuppet(base.BasePuppet):
             ip_version = addr_pool.family
             self._add_source_net_filter(gnp_config["spec"]["ingress"],
                                         f"{addr_pool.network}/{addr_pool.prefix}", ip_version)
-            if (ip_version == 6):
-                self._add_source_net_filter(gnp_config["spec"]["ingress"], LINK_LOCAL, ip_version)
-            if (ip_version == 4):
-                # add rule to allow DHCP requests (dhcp-offer have src addr == 0.0.0.0)
-                rule = self._get_dhcp_rule(host.personality, "UDP", ip_version)
-                gnp_config["spec"]["ingress"].append(rule)
-
-    def _set_rules_storage(self, gnp_config, network, host):
-        """ Fill the storage network specific filtering data
-
-        :param gnp_config: the dict containing the hiera data to be filled
-        :param network: the sysinv.object.network object for this network
-        """
-
-        addr_pools = self._address_pools_get_by_network(network.id)
-        for addr_pool in addr_pools:
-            ip_version = addr_pool.family
-            self._add_source_net_filter(gnp_config["spec"]["ingress"],
+            self._add_destination_net_filter(gnp_config["spec"]["ingress"],
                                         f"{addr_pool.network}/{addr_pool.prefix}", ip_version)
             if (ip_version == 6):
                 self._add_source_net_filter(gnp_config["spec"]["ingress"], LINK_LOCAL, ip_version)
@@ -512,6 +565,43 @@ class PlatformFirewallPuppet(base.BasePuppet):
                 # add rule to allow DHCP requests (dhcp-offer have src addr == 0.0.0.0)
                 rule = self._get_dhcp_rule(host.personality, "UDP", ip_version)
                 gnp_config["spec"]["ingress"].append(rule)
+
+    def _set_rules_storage(self, gnp_config, network, host, multicast_pools):
+        """ Fill the storage network specific filtering data
+
+        :param gnp_config: the dict containing the hiera data to be filled
+        :param network: the sysinv.object.network object for this network
+        :param host: a sysinv.object.host class object
+        :param multicast_pools: dict with IP family as key and multicast pool as value
+        """
+
+        addr_pools = self._address_pools_get_by_network(network.id)
+        for addr_pool in addr_pools:
+            ip_version = addr_pool.family
+            self._add_source_net_filter(gnp_config["spec"]["ingress"],
+                                        f"{addr_pool.network}/{addr_pool.prefix}", ip_version)
+            self._add_destination_net_filter(gnp_config["spec"]["ingress"],
+                                            f"{addr_pool.network}/{addr_pool.prefix}", ip_version)
+
+            ICMP = "ICMP"
+            # ESP protocol uses the proto_id 50
+            ESP = 50
+            if (ip_version == 6):
+                ICMP = "ICMPv6"
+                self._add_source_net_filter(gnp_config["spec"]["ingress"], LINK_LOCAL, ip_version)
+                self._add_destination_net_filter(gnp_config["spec"]["ingress"], LINK_LOCAL, ip_version)
+                self._add_destination_net_filter(gnp_config["spec"]["ingress"], LINK_LOCAL_MC, ip_version)
+
+            if (ip_version == 4):
+                self._add_destination_net_filter(gnp_config["spec"]["ingress"], LOCAL_MULTICAST_IPV4, ip_version,
+                                                exclude_protocols=["ICMP", ESP])
+
+                # add rule to allow DHCP requests (dhcp-offer have src addr == 0.0.0.0)
+                rule = self._get_dhcp_rule(host.personality, "UDP", ip_version)
+                gnp_config["spec"]["ingress"].append(rule)
+
+            self._add_multicast_destination_filter(gnp_config["spec"]["ingress"], ip_version, multicast_pools,
+                                                   exclude_protocols=[ICMP, ESP, DHCP_PROTO])
 
     def _add_source_net_filter(self, rule_list, source_net, ip_version):
         """ Add source network in the rule list
@@ -531,14 +621,30 @@ class PlatformFirewallPuppet(base.BasePuppet):
             else:
                 rule.update({"source": {"nets": [source_net]}})
 
-    def _add_destination_net_filter(self, rule_list, destination_net):
+    def _add_destination_net_filter(self, rule_list, destination_net, ip_version, exclude_protocols=None):
         """ Add destination network in the rule list
 
         :param rule_list: the list containing the firewall rules that need to receive the
                           destination network value
         :param destination_net: the string containing the value
+        :param ip_version: the IP version to filter
+        :param exclude_protocols: list of protocols to exclude from this filter
         """
+        if exclude_protocols is None:
+            exclude_protocols = []
+
         for rule in rule_list:
+            if rule["ipVersion"] != ip_version:
+                continue
+            if rule.get("protocol") in exclude_protocols:
+                continue
+
+            # check if DHCP is present and if it must be ignored
+            if DHCP_PROTO in exclude_protocols:
+                rule_name = rule.get("metadata", {}).get("annotations", {}).get("name", "")
+                if "dhcp" in rule_name.lower():
+                    continue
+
             if ("destination" in rule.keys()):
                 if ("nets" in rule["destination"].keys()):
                     rule["destination"]["nets"].append(destination_net)
@@ -546,6 +652,20 @@ class PlatformFirewallPuppet(base.BasePuppet):
                     rule["destination"].update({"nets": [destination_net]})
             else:
                 rule.update({"destination": {"nets": [destination_net]}})
+
+    def _add_multicast_destination_filter(self, rule_list, ip_version, multicast_pools, exclude_protocols=None):
+        """ Add multicast network destination if exists for the address family
+
+        :param rule_list: the list containing the firewall rules
+        :param ip_version: the IP version (4 or 6)
+        :param multicast_pools: dict with IP family as key and multicast pool as value
+        """
+        mcast_pool = multicast_pools.get(ip_version)
+        if mcast_pool:
+            self._add_destination_net_filter(
+                rule_list,
+                f"{mcast_pool.network}/{mcast_pool.prefix}",
+                ip_version, exclude_protocols)
 
     def _set_rules_subcloud_admin(self, gnp_config, gns_config, network, host_personality):
         """ Add filtering rules for admin network in a subcloud installation
@@ -583,6 +703,12 @@ class PlatformFirewallPuppet(base.BasePuppet):
                 if gns_config["spec"]["nets"]:
                     subnets = gns_config["metadata"]["labels"]["subnets"]
                     rule.update({"source": {"selector": f"subnets == '{subnets}'"}})
+
+                if "destination" in rule:
+                    rule["destination"]["nets"] = [f"{addr_pool.network}/{addr_pool.prefix}"]
+                else:
+                    rule.update({"destination": {"nets": [f"{addr_pool.network}/{addr_pool.prefix}"]}})
+
                 rules.append(rule)
 
             for rule in rules:
@@ -627,6 +753,12 @@ class PlatformFirewallPuppet(base.BasePuppet):
                 if gns_config["spec"]["nets"]:
                     subnets = gns_config["metadata"]["labels"]["subnets"]
                     rule.update({"source": {"selector": f"subnets == '{subnets}'"}})
+
+                if "destination" in rule:
+                    rule["destination"]["nets"] = [f"{addr_pool.network}/{addr_pool.prefix}"]
+                else:
+                    rule.update({"destination": {"nets": [f"{addr_pool.network}/{addr_pool.prefix}"]}})
+
                 gnp_config["spec"]["ingress"].append(rule)
                 rules.append(rule)
 
@@ -682,7 +814,14 @@ class PlatformFirewallPuppet(base.BasePuppet):
                 if gns_config["spec"]["nets"]:
                     subnets = gns_config["metadata"]["labels"]["subnets"]
                     rule.update({"source": {"selector": f"subnets == '{subnets}'"}})
+
+                if "destination" in rule:
+                    rule["destination"]["nets"] = [f"{addr_pool.network}/{addr_pool.prefix}"]
+                else:
+                    rule.update({"destination": {"nets": [f"{addr_pool.network}/{addr_pool.prefix}"]}})
+
                 gnp_config["spec"]["ingress"].append(rule)
+
                 rules.append(rule)
 
     def _set_extra_rules(self, config):
@@ -801,6 +940,9 @@ class PlatformFirewallPuppet(base.BasePuppet):
         igmp_egr_rule["protocol"] = igmp_proto
         igmp_egr_rule["metadata"]["annotations"]["name"] = \
             f"stx-egr-{host.personality}-{network.type}-igmp{ip_version}"
+        # Remove Destination config
+        if "destination" in igmp_egr_rule:
+            del igmp_egr_rule["destination"]
         gnp_config["spec"]["egress"].append(igmp_egr_rule)
 
         # ingress
@@ -810,6 +952,9 @@ class PlatformFirewallPuppet(base.BasePuppet):
             f"stx-ingr-{host.personality}-{network.type}-igmp{constants.IPV4_FAMILY}"
         # Allow for all sources (0.0.0.0/0) as IGMPv3 query does not have a mandatory source address
         igmp_ingr_rule["source"]["nets"] = ["0.0.0.0/0"]
+        # Remove Destination config
+        if "destination" in igmp_ingr_rule:
+            del igmp_ingr_rule["destination"]
 
         gnp_config["spec"]["ingress"].append(igmp_ingr_rule)
 

@@ -14,7 +14,6 @@ from sysinv.objects import base as objbase
 from sysinv.tests.db import base as dbbase
 from sysinv.common import constants
 from sysinv.common import platform_firewall as firewall
-from sysinv.common import utils as cutils
 from sysinv.tests.db import utils as dbutils
 from sysinv.db import api as db_api
 from sysinv.puppet import interface as puppet_intf
@@ -301,7 +300,10 @@ class PlatformFirewallTestCaseMixin(base.PuppetTestCaseMixin):
         self.assertEqual(gnp['metadata']['name'],
                          f"{self.host.personality}-{net_type}-if-gnp")
         self.assertEqual(gnp['spec']['applyOnForward'], False)
-        self.assertEqual(gnp['spec']['order'], 100)
+        if net_type == constants.NETWORK_TYPE_OAM:
+            self.assertEqual(gnp['spec']['order'], 101)
+        else:
+            self.assertEqual(gnp['spec']['order'], 100)
 
         self.assertEqual(gnp['spec']['types'], ["Ingress", "Egress"])
         self.assertEqual(len(gnp['spec']['egress']), egress_size)
@@ -365,6 +367,21 @@ class PlatformFirewallTestCaseMixin(base.PuppetTestCaseMixin):
                                  f"{addr_pool.network}/{addr_pool.prefix}")
                 self.assertEqual(filtered_rules['ingress'][2]['source']['nets'][0],
                                  f"{addr_pool.network}/{addr_pool.prefix}")
+
+            # Check destination nets for mgmt and admin networks
+            if net_type in [constants.NETWORK_TYPE_MGMT, constants.NETWORK_TYPE_ADMIN]:
+                self.assertIn('destination', filtered_rules['ingress'][0].keys())
+                self.assertIn('nets', filtered_rules['ingress'][0]['destination'].keys())
+                self.assertIn(f"{addr_pool.network}/{addr_pool.prefix}",
+                             filtered_rules['ingress'][0]['destination']['nets'])
+                self.assertIn('destination', filtered_rules['ingress'][1].keys())
+                self.assertIn('nets', filtered_rules['ingress'][1]['destination'].keys())
+                self.assertIn(f"{addr_pool.network}/{addr_pool.prefix}",
+                             filtered_rules['ingress'][1]['destination']['nets'])
+                self.assertIn('destination', filtered_rules['ingress'][2].keys())
+                self.assertIn('nets', filtered_rules['ingress'][2]['destination'].keys())
+                self.assertIn(f"{addr_pool.network}/{addr_pool.prefix}",
+                             filtered_rules['ingress'][2]['destination']['nets'])
 
             if net_type == constants.NETWORK_TYPE_MGMT:
                 self.assertEqual(filtered_rules['ingress'][3]['metadata']['annotations']['name'],
@@ -488,6 +505,10 @@ class PlatformFirewallTestCaseMixin(base.PuppetTestCaseMixin):
                 self.assertEqual(filtered_rules['ingress'][0]['source']['nets'][1], "fe80::/64")
                 self.assertEqual(filtered_rules['ingress'][1]['source']['nets'][1], "fe80::/64")
                 self.assertEqual(filtered_rules['ingress'][2]['source']['nets'][1], "fe80::/64")
+                # Check destination nets for IPv6 mgmt and admin networks
+                if net_type in [constants.NETWORK_TYPE_MGMT, constants.NETWORK_TYPE_ADMIN]:
+                    self.assertIn("fe80::/64", filtered_rules['ingress'][0]['destination']['nets'])
+                    self.assertIn("ff02::/16", filtered_rules['ingress'][2]['destination']['nets'])
 
     def _check_he_values(self, hep, intf, network_list):
 
@@ -498,9 +519,6 @@ class PlatformFirewallTestCaseMixin(base.PuppetTestCaseMixin):
         iftype = '.'.join(network_list)
 
         hep_name = f'{nodename}-{ifname}-if-hep'
-        if constants.NETWORK_TYPE_OAM in iftype:
-            # to keep compatible with current implementation
-            hep_name = f'{nodename}-oam-if-hep'
         self.assertTrue(hep_name in hep.keys())
 
         self.assertEqual(hep[hep_name]["apiVersion"], "crd.projectcalico.org/v1")
@@ -511,19 +529,6 @@ class PlatformFirewallTestCaseMixin(base.PuppetTestCaseMixin):
         self.assertEqual(hep[hep_name]['metadata']['name'], hep_name)
         self.assertEqual(hep[hep_name]['spec']['interfaceName'], os_ifname)
         self.assertEqual(hep[hep_name]['spec']['node'], nodename)
-
-    def _check_oam_expected_IPs(self, db_api, hep):
-        nodename = self.host.hostname
-        hep_name = f'{nodename}-oam-if-hep'
-        if cutils.is_aio_simplex_system(db_api):
-            addr_name = cutils.format_address_name(constants.CONTROLLER_HOSTNAME,
-                                                   constants.NETWORK_TYPE_OAM)
-        else:
-            addr_name = cutils.format_address_name(nodename, constants.NETWORK_TYPE_OAM)
-        addresses = self.dbapi.address_get_by_name(addr_name)
-        address_texts = [str(address.address) for address in addresses]
-        self.assertTrue(address_texts)
-        self.assertEqual(hep[hep_name]["spec"]["expectedIPs"], address_texts)
 
     def _create_service_parameter_test_set(self):
         service_parameter_data = [
@@ -646,18 +651,33 @@ class PlatformFirewallTestCaseMixin(base.PuppetTestCaseMixin):
             self.assertEqual(filtered_rules['ingress'][idx]['metadata']['annotations']['name'],
                     f"stx-ingr-{self.host.personality}-admin-tcp{ip_version}")
             self.assertEqual(filtered_rules['ingress'][idx]['ipVersion'], ip_version)
+            # Check destination nets for admin network
+            self.assertIn('destination', filtered_rules['ingress'][idx].keys())
+            self.assertIn('nets', filtered_rules['ingress'][idx]['destination'].keys())
+            self.assertIn(f"{addr_pool.network}/{addr_pool.prefix}",
+                         filtered_rules['ingress'][idx]['destination']['nets'])
 
             idx += 1
             self.assertEqual(filtered_rules['ingress'][idx]['protocol'], "UDP")
             self.assertEqual(filtered_rules['ingress'][idx]['metadata']['annotations']['name'],
                     f"stx-ingr-{self.host.personality}-admin-udp{ip_version}")
             self.assertEqual(filtered_rules['ingress'][idx]['ipVersion'], ip_version)
+            # Check destination nets for admin network
+            self.assertIn('destination', filtered_rules['ingress'][idx].keys())
+            self.assertIn('nets', filtered_rules['ingress'][idx]['destination'].keys())
+            self.assertIn(f"{addr_pool.network}/{addr_pool.prefix}",
+                         filtered_rules['ingress'][idx]['destination']['nets'])
 
             idx += 1
             self.assertEqual(filtered_rules['ingress'][idx]['protocol'], ICMP)
             self.assertEqual(filtered_rules['ingress'][idx]['metadata']['annotations']['name'],
                     f"stx-ingr-{self.host.personality}-admin-{ICMP.lower()}{ip_version}")
             self.assertEqual(filtered_rules['ingress'][idx]['ipVersion'], ip_version)
+            # Check destination nets for admin network
+            self.assertIn('destination', filtered_rules['ingress'][idx].keys())
+            self.assertIn('nets', filtered_rules['ingress'][idx]['destination'].keys())
+            self.assertIn(f"{addr_pool.network}/{addr_pool.prefix}",
+                         filtered_rules['ingress'][idx]['destination']['nets'])
 
             if (ip_version == 4):
                 idx += 1
@@ -805,8 +825,6 @@ class PlatformFirewallTestCaseControllerNonDc_Setup01(PlatformFirewallTestCaseMi
         self._check_he_values(hiera_data['platform::firewall::calico::hostendpoint::config'],
                               self.test_interfaces[constants.NETWORK_TYPE_OAM],
                               [constants.NETWORK_TYPE_OAM])
-        self._check_oam_expected_IPs(self.dbapi,
-                                     hiera_data['platform::firewall::calico::hostendpoint::config'])
 
 
 # Controller, non-DC, IPv4
@@ -1242,8 +1260,6 @@ class PlatformFirewallTestCaseControllerNonDc_Setup05(PlatformFirewallTestCaseMi
         self._check_he_values(hiera_data['platform::firewall::calico::hostendpoint::config'],
                               self.test_interfaces[constants.NETWORK_TYPE_OAM],
                               [constants.NETWORK_TYPE_OAM])
-        self._check_oam_expected_IPs(self.dbapi,
-                                     hiera_data['platform::firewall::calico::hostendpoint::config'])
 
 
 # Controller, non-DC, IPv6
