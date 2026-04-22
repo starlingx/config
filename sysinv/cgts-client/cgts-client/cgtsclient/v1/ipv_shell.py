@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2022 Wind River Systems, Inc.
+# Copyright (c) 2013-2022,2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -81,6 +81,9 @@ def do_host_pv_list(cc, args):
 
     # Adjust state to be more user friendly
     for pv in ipvs:
+        if pv.capabilities \
+           and pv.capabilities.get('lvm_function', None) == "lvm-csi":
+            continue
         pv.pv_state = _adjust_state_data(pv.lvm_vg_name, pv.pv_state)
 
     field_labels = ['uuid', 'lvm_pv_name', 'disk_or_part_uuid',

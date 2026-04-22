@@ -16,9 +16,10 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2021,2024 Wind River Systems, Inc.
+# Copyright (c) 2013-2021,2024,2026 Wind River Systems, Inc.
 #
 
+import math
 import jsonpatch
 import pecan
 from pecan import rest
@@ -41,7 +42,6 @@ from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils as cutils
 from sysinv import objects
-from sysinv.common.storage_backend_conf import StorageBackendConfig
 
 LOG = log.getLogger(__name__)
 
@@ -100,6 +100,17 @@ class LVG(base.APIBase):
     lvm_vg_free_pe = int
     "LVM Volume Group's free PEs"
 
+    # lvm_function parameter: [API-only field]
+    lvm_function = str
+    "LVM Function"
+
+    # lvm_type parameter: [API-only field]
+    lvm_type = str
+    "LVM Type (thin or thick)"
+
+    lvm_pool_size = int
+    "LVM Thin Pool Size (in GB)"
+
     capabilities = {wtypes.text: utils.ValidTypes(wtypes.text,
                                                   six.integer_types)}
     "This lvg's meta data"
@@ -138,6 +149,8 @@ class LVG(base.APIBase):
                                      'lvm_vg_size', 'lvm_vg_avail_size',
                                      'lvm_vg_total_pe',
                                      'lvm_vg_free_pe', 'capabilities',
+                                     'lvm_function', 'lvm_type',
+                                     'lvm_pool_size',
                                      'created_at', 'updated_at',
                                      'ihost_uuid', 'forihostid'])
 
@@ -318,9 +331,6 @@ class LVGController(rest.RestController):
             elif p['path'] == '/capabilities':
                 p['value'] = jsonutils.loads(p['value'])
 
-        # perform checks based on the current vs.requested modifications
-        _lvg_pre_patch_checks(rpc_lvg, patch_obj)
-
         try:
             lvg = LVG(**jsonpatch.apply_patch(rpc_lvg.as_dict(),
                                               patch_obj))
@@ -328,12 +338,34 @@ class LVGController(rest.RestController):
             raise exception.PatchError(patch=patch, reason=e)
 
         # Semantic Checks
-        _check("modify", lvg.as_dict())
+        _check("modify", lvg.as_dict(), rpc_lvg.as_dict())
+        lvm_csi_resizing = False
+
         try:
             # Update only the fields that have changed
             for field in objects.lvg.fields:
                 if rpc_lvg[field] != getattr(lvg, field):
-                    rpc_lvg[field] = getattr(lvg, field)
+                    if lvg.lvm_vg_name != constants.LVG_CGTS_VG:
+                        rpc_lvg[field] = getattr(lvg, field)
+                        continue
+
+                    # CGTS VG only supports lvm_function and lvm_thin_size
+                    # changes. Any other changes should be rejected.
+                    if field != 'capabilities':
+                        raise wsme.exc.ClientSideError(
+                            _("%s volume group does not support changes "
+                              "to %s." % (lvg.lvm_vg_name, field)))
+
+                    if not lvg.capabilities:
+                        continue
+                    # Analyze if the change is a resize
+                    lvg_ps = lvg.capabilities.get('lvm_pool_size', None)
+                    rpc_ps = rpc_lvg['capabilities'].get('lvm_pool_size', None)
+                    if lvg_ps and rpc_ps and lvg_ps != rpc_ps:
+                        lvm_csi_resizing = True
+
+                    # Updates capabilities dictionary
+                    rpc_lvg['capabilities'].update(lvg.capabilities)
 
             # Update mate controller LVG type for cinder-volumes
             if lvg.lvm_vg_name == constants.LVG_CINDER_VOLUMES:
@@ -349,6 +381,17 @@ class LVGController(rest.RestController):
 
             # Save
             rpc_lvg.save()
+            # Save method doesn't detect changes on second level parameters
+            pecan.request.dbapi.ilvg_update(
+                                rpc_lvg.uuid,
+                                {'capabilities': rpc_lvg['capabilities']})
+            if lvg.lvm_vg_name == constants.LVG_CGTS_VG:
+                pecan.request.rpcapi.update_cgts_vg_lvm_csi_capabilities(
+                    pecan.request.context,
+                    rpc_lvg['ihost_uuid'],
+                    rpc_lvg['uuid'],
+                    lvm_csi_resizing)
+
             return LVG.convert_with_links(rpc_lvg)
         except exception.HTTPNotFound:
             msg = _("LVG update failed: host %s vg %s : patch %s"
@@ -365,65 +408,6 @@ class LVGController(rest.RestController):
         lvg = objects.lvg.get_by_uuid(pecan.request.context,
                                       lvg_uuid).as_dict()
         _delete(lvg)
-
-
-def _cinder_volumes_patch_semantic_checks(caps_dict):
-    # make sure that only valid capabilities are provided
-    valid_caps = set([constants.LVG_CINDER_PARAM_LVM_TYPE])
-    invalid_caps = set(caps_dict.keys()) - valid_caps
-
-    # Do we have something unexpected?
-    if len(invalid_caps) > 0:
-        raise wsme.exc.ClientSideError(
-            _("Invalid parameter(s) for volume group %s: %s " %
-              (constants.LVG_CINDER_VOLUMES,
-               ", ".join(str(i) for i in invalid_caps))))
-
-    # make sure that we are modifying something
-    elif len(caps_dict) == 0:
-        msg = _('No parameter specified. No action taken')
-        raise wsme.exc.ClientSideError(msg)
-
-    # Reject modifications of cinder volume provisioning type if
-    # lvm storage backend is enabled
-    if (constants.LVG_CINDER_PARAM_LVM_TYPE in caps_dict and
-        StorageBackendConfig.has_backend(pecan.request.dbapi,
-                                         constants.CINDER_BACKEND_LVM)):
-        msg = _('Cinder volumes LVM type modification denied. '
-                'LVM Storage Backend is added.')
-        raise wsme.exc.ClientSideError(msg)
-
-    # Make sure that cinder volumes provisioning type is a valid value
-    if constants.LVG_CINDER_PARAM_LVM_TYPE in caps_dict and \
-       caps_dict[constants.LVG_CINDER_PARAM_LVM_TYPE] not in \
-       [constants.LVG_CINDER_LVM_TYPE_THIN,
-            constants.LVG_CINDER_LVM_TYPE_THICK]:
-        msg = _('Invalid parameter: %s must be %s or %s' %
-                (constants.LVG_CINDER_PARAM_LVM_TYPE,
-                 constants.LVG_CINDER_LVM_TYPE_THIN,
-                 constants.LVG_CINDER_LVM_TYPE_THICK))
-        raise wsme.exc.ClientSideError(msg)
-
-
-def _lvg_pre_patch_checks(lvg_obj, patch_obj):
-    lvg_dict = lvg_obj.as_dict()
-
-    if lvg_dict['lvm_vg_name'] == constants.LVG_CINDER_VOLUMES:
-        for p in patch_obj:
-            if p['path'] == '/capabilities':
-                patch_caps_dict = p['value']
-
-                # Make sure we've been handed a valid patch
-                _cinder_volumes_patch_semantic_checks(patch_caps_dict)
-
-                # Update the patch with the current capabilities that aren't
-                # being patched
-                current_caps_dict = lvg_dict['capabilities']
-                for k in (set(current_caps_dict.keys()) -
-                          set(patch_caps_dict.keys())):
-                    patch_caps_dict[k] = current_caps_dict[k]
-
-                p['value'] = patch_caps_dict
 
 
 def _set_defaults(lvg):
@@ -451,6 +435,11 @@ def _set_defaults(lvg):
         if key not in lvg_merged:
             lvg_merged[key] = defaults[key]
 
+    caps = lvg_merged['capabilities']
+    if caps.get('lvm_function', '') == constants.LVM_CSI_PROVISIONING_FUNCTION:
+        if not caps.get('lvm_type', ''):
+            caps['lvm_type'] = constants.LVM_CSI_PROVISIONING_MODE_THICK
+
     return lvg_merged
 
 
@@ -472,12 +461,6 @@ def _check_host(lvg):
                                          "has a %s subfunction.") %
                                        (constants.LVG_NOVA_LOCAL,
                                         constants.WORKER))
-    elif (ihost.personality in [constants.WORKER, constants.STORAGE] and
-          lvg['lvm_vg_name'] == constants.LVG_CINDER_VOLUMES):
-        raise wsme.exc.ClientSideError(_("%s can only be provisioned for %s "
-                                         "hosts.") % (constants.LVG_CINDER_VOLUMES,
-                                                      constants.CONTROLLER))
-
     if (constants.WORKER in ihost['subfunctions'] and
             lvg['lvm_vg_name'] == constants.LVG_NOVA_LOCAL and
             (ihost['administrative'] != constants.ADMIN_LOCKED or
@@ -505,81 +488,125 @@ def _get_mate_ctrl_lvg(lvg):
     return None
 
 
-def _check(op, lvg):
+def _check(op, lvg, rpc_lvg=None):
     # Semantic checks
     LOG.debug("Semantic check for %s operation" % op)
 
     # Check host and host state
     _check_host(lvg)
 
+    lvg['lvm_function'] = lvg['capabilities'].get('lvm_function', None)
+    lvg['lvm_type'] = lvg['capabilities'].get('lvm_type', None)
+    lvg['lvm_pool_size'] = lvg['capabilities'].get('lvm_pool_size', None)
+
     # Check for required volume group name
-    if lvg['lvm_vg_name'] not in constants.LVG_ALLOWED_VGS:
-        grp = "'%s', '%s', or '%s'" % (constants.LVG_NOVA_LOCAL,
-                                       constants.LVG_CINDER_VOLUMES,
-                                       constants.LVG_CGTS_VG)
+    if not lvg['lvm_function'] \
+       and lvg['lvm_vg_name'] not in constants.LVG_ALLOWED_VGS:
+        grp = "'%s' or '%s'" % (constants.LVG_NOVA_LOCAL,
+                                constants.LVG_CGTS_VG)
         raise wsme.exc.ClientSideError(
             _("Volume Group name (%s) must be \"%s\"") % (lvg['lvm_vg_name'],
                                                           grp))
-    lvg_caps = lvg['capabilities']
+
     if op == "add":
-        if lvg['lvm_vg_name'] == constants.LVG_CINDER_VOLUMES:
-            # Cinder VG type must be the same on both controllers
-            mate_lvg = _get_mate_ctrl_lvg(lvg)
-            lvm_type = lvg_caps.get(constants.LVG_CINDER_PARAM_LVM_TYPE)
-            if mate_lvg and lvm_type:
-                # lvm_type may be None & we avoid setting defaults in a _check function
-                mate_type = mate_lvg['capabilities'][constants.LVG_CINDER_PARAM_LVM_TYPE]
-                if lvm_type != mate_type:
-                    raise wsme.exc.ClientSideError(
-                        _("LVG %(lvm_type)s for %(vg_name)s must be %(type)s, the same on"
-                          " both controllers." % {'lvm_type': constants.LVG_CINDER_PARAM_LVM_TYPE,
-                                                  'vg_name': lvg['lvm_vg_name'],
-                                                  'type': mate_type}))
         if lvg['lvm_vg_name'] == constants.LVG_CGTS_VG:
-            raise wsme.exc.ClientSideError(_("%s volume group already exists") %
-                                           constants.LVG_CGTS_VG)
-        elif lvg['lvm_vg_name'] == constants.LVG_CINDER_VOLUMES:
-            pass
-        elif lvg['lvm_vg_name'] == constants.LVG_NOVA_LOCAL:
-            pass
+            raise wsme.exc.ClientSideError(
+                _("%s volume group already exists") % constants.LVG_CGTS_VG)
+
+        # Check if lvm-csi parameters are correctly configured
+        if (lvg['lvm_function'] == constants.LVM_CSI_PROVISIONING_FUNCTION
+           and not lvg['lvm_type']):
+            raise wsme.exc.ClientSideError(
+                _("When %s function is set, the type is required") %
+                constants.LVM_CSI_PROVISIONING_FUNCTION)
+        if lvg['lvm_type'] and not lvg['lvm_function']:
+            raise wsme.exc.ClientSideError(
+                _("%s provisioning requires to set the function as %s") %
+                (lvg['lvm_type'], constants.LVM_CSI_PROVISIONING_FUNCTION))
+        if lvg['lvm_pool_size']:
+            raise wsme.exc.ClientSideError(
+                _("The pool size option is reserved to %s volume group.") %
+                constants.LVG_CGTS_VG)
 
     elif op == "modify":
+        rpc_lvg['lvm_function'] = rpc_lvg['capabilities'] \
+            .get('lvm_function', None)
+        rpc_lvg['lvm_type'] = rpc_lvg['capabilities'].get('lvm_type', None)
+        rpc_lvg['lvm_pool_size'] = rpc_lvg['capabilities'] \
+            .get('lvm_pool_size', None)
+
         # Sanity check: parameters
-
-        if lvg['lvm_vg_name'] in [constants.LVG_CGTS_VG,
-                                  constants.LVG_NOVA_LOCAL]:
+        if lvg['lvm_vg_name'] == constants.LVG_NOVA_LOCAL:
             raise wsme.exc.ClientSideError(_("%s volume group does not have "
-                                             "any parameters to modify") %
+                                           "any parameters to modify") %
                                            lvg['lvm_vg_name'])
-        elif lvg['lvm_vg_name'] == constants.LVG_CINDER_VOLUMES:
-            if constants.LVG_CINDER_PARAM_LVM_TYPE not in lvg_caps:
+        if lvg['lvm_pool_size']:
+            if (not rpc_lvg['lvm_function'] or rpc_lvg['lvm_function'] !=
+               constants.LVM_CSI_PROVISIONING_FUNCTION) \
+               and not lvg['lvm_function']:
                 raise wsme.exc.ClientSideError(
-                    _('Internal Error: %s parameter missing for volume '
-                      'group.') % constants.LVG_CINDER_PARAM_LVM_TYPE)
-            else:
-                # Make sure that cinder volumes provisioning type is a valid value
-                if constants.LVG_CINDER_PARAM_LVM_TYPE in lvg_caps and \
-                   lvg_caps[constants.LVG_CINDER_PARAM_LVM_TYPE] not in \
-                   [constants.LVG_CINDER_LVM_TYPE_THIN,
-                        constants.LVG_CINDER_LVM_TYPE_THICK]:
-                    msg = _('Invalid parameter: %s must be %s or %s' %
-                            (constants.LVG_CINDER_PARAM_LVM_TYPE,
-                             constants.LVG_CINDER_LVM_TYPE_THIN,
-                             constants.LVG_CINDER_LVM_TYPE_THICK))
-                    raise wsme.exc.ClientSideError(msg)
+                    _("It's not possible to resize thin pool without LVM "
+                      "function properly configured"))
+            if lvg['lvm_function'] and lvg['lvm_function'] != constants \
+               .LVM_CSI_PROVISIONING_FUNCTION:
+                raise wsme.exc.ClientSideError(
+                    _("It's not possible to resize the thin pool and change "
+                      "the function to %s") %
+                    lvg['lvm_function'])
 
+            _check_pool_resize(rpc_lvg, lvg)
+
+        if lvg['lvm_function']:
+            if lvg['lvm_function'] == 'none':
+                if lvg['lvm_pool_size']:
+                    raise wsme.exc.ClientSideError(
+                        _("It's not possible to set pool size parameter "
+                          "when the function is set to none"))
+                rpc_lvg['capabilities'].pop('lvm_function', None)
+                rpc_lvg['capabilities'].pop('lvm_pool_size', None)
+                rpc_lvg['capabilities'].pop('lvm_type', None)
+                lvg['vg_state'] = constants.PROVISIONING
+
+            if lvg['lvm_vg_name'] == constants.LVG_CGTS_VG:
+                if not lvg['lvm_pool_size'] and lvg['lvm_function'] == \
+                   constants.LVM_CSI_PROVISIONING_FUNCTION:
+                    lvg['lvm_vg_avail_size'] = \
+                        (lvg['lvm_vg_size'] * lvg['lvm_vg_free_pe'] //
+                         lvg['lvm_vg_total_pe'])
+                    if lvg['lvm_vg_avail_size'] < 1:
+                        raise wsme.exc.ClientSideError(
+                            _("There is no space available to create a "
+                              "thin pool for %s") %
+                            constants.LVG_CGTS_VG)
+                    lvg['lvm_pool_size'] = int(math.floor(
+                                            float(lvg['lvm_vg_avail_size'] / 2) /  # pylint: disable=old-division
+                                            (1024 ** 3) * 1000) / 1000.0)
+
+                    lvg['capabilities']['lvm_pool_size'] = lvg['lvm_pool_size']
+                    lvg['vg_state'] = constants.PROVISIONING
+                if lvg['lvm_function'] == constants\
+                        .LVM_CSI_PROVISIONING_FUNCTION:
+                    lvg['capabilities']['lvm_type'] = constants\
+                        .LVM_CSI_PROVISIONING_MODE_THIN
+                    lvg['lvm_type'] = lvg['capabilities']['lvm_type']
+            else:
+                if lvg['lvm_pool_size']:
+                    raise wsme.exc.ClientSideError(
+                        _("Its only possible to set the pool size for %s "
+                          "volume group") %
+                        constants.LVG_CGTS_VG)
+                lvg['vg_state'] = constants.PROVISIONING
+        else:
+            if rpc_lvg['lvm_function'] and rpc_lvg['lvm_function'] == 'none' \
+               and lvg['lvm_pool_size']:
+                raise wsme.exc.ClientSideError(
+                    _("It's not possible to set any other parameter when the "
+                      "function is set to none"))
+            lvg['vg_state'] = constants.PROVISIONING
     elif op == "delete":
         if lvg['lvm_vg_name'] == constants.LVG_CGTS_VG:
             raise wsme.exc.ClientSideError(_("%s volume group cannot be deleted") %
                                            constants.LVG_CGTS_VG)
-        elif lvg['lvm_vg_name'] == constants.LVG_CINDER_VOLUMES:
-            if ((lvg['vg_state'] in
-                [constants.PROVISIONED, constants.LVG_ADD]) and
-                StorageBackendConfig.has_backend(
-                    pecan.request.dbapi, constants.CINDER_BACKEND_LVM)):
-                raise wsme.exc.ClientSideError(
-                    _("cinder-volumes LVG cannot be removed once it is "
-                      "provisioned and LVM backend is added."))
         elif lvg['lvm_vg_name'] == constants.LVG_NOVA_LOCAL:
             # We never have more than 1 LV in nova-local VG
             pass
@@ -588,6 +615,41 @@ def _check(op, lvg):
             _("Internal Error: Invalid Volume Group operation: %s" % op))
 
     return lvg
+
+
+def _check_pool_resize(current_lvg, new_lvg):
+    current_pool_size = current_lvg['capabilities'].get('lvm_pool_size', None)
+    new_pool_size = new_lvg['capabilities'].get('lvm_pool_size', None)
+
+    if new_pool_size is None or current_pool_size is None:
+        return
+
+    try:
+        old_value = int(current_pool_size)
+        new_value = int(new_pool_size)
+
+        if old_value > new_value:
+            raise wsme.exc.ClientSideError(
+                _("It's not possible to reduce the size of a thin pool"))
+
+        current_lvg['lvm_vg_avail_size'] = \
+            (current_lvg['lvm_vg_size'] * current_lvg['lvm_vg_free_pe'] //
+                current_lvg['lvm_vg_total_pe'])
+
+        available_space = int(math.floor(float(
+                                     current_lvg['lvm_vg_avail_size']) /  # pylint: disable=old-division
+                                     (1024 ** 3) * 1000) / 1000.0)
+        if (new_value - old_value) > available_space:
+            raise wsme.exc.ClientSideError(
+                _("There is no sufficient space on VG to resize the pool."
+                  "%s GB are needed, but the VG has only %s GB") %
+                (new_value - old_value, available_space))
+
+        new_lvg['vg_state'] = constants.PROVISIONING
+    except ValueError:
+        raise wsme.exc.ClientSideError(
+            _("Please only use integer values for the pool size: %s") %
+            new_pool_size)
 
 
 def _create(lvg):
@@ -647,34 +709,6 @@ def _create(lvg):
             break
 
     if not lvg_in_db:
-        # Add the default volume group parameters
-        if lvg['lvm_vg_name'] == constants.LVG_CINDER_VOLUMES:
-            lvg_caps = lvg['capabilities']
-
-            if (constants.LVG_CINDER_PARAM_LVM_TYPE in lvg_caps):
-                # defined from create or inherit the capabilities
-                LOG.info("%s defined from create %s" %
-                         (constants.LVG_CINDER_PARAM_LVM_TYPE, lvg_caps))
-            else:
-                # Default LVM type
-                lvg_caps_dict = {
-                        constants.LVG_CINDER_PARAM_LVM_TYPE:
-                        constants.LVG_CINDER_LVM_TYPE_THIN
-                }
-                # Get the VG type from mate controller if present or set default
-                # as Cinder type must be the same on both controllers.
-                mate_lvg = _get_mate_ctrl_lvg(lvg)
-                if mate_lvg:
-                    lvm_type = mate_lvg['capabilities'].get(constants.LVG_CINDER_PARAM_LVM_TYPE)
-                    if lvm_type:
-                        mate_type = mate_lvg['capabilities'][constants.LVG_CINDER_PARAM_LVM_TYPE]
-                        lvg_caps_dict = {
-                            constants.LVG_CINDER_PARAM_LVM_TYPE: mate_type
-                        }
-
-                lvg_caps.update(lvg_caps_dict)
-                LOG.info("Updated lvg capabilities=%s" % lvg_caps)
-
         # Create the new volume group entry
         ret_lvg = pecan.request.dbapi.ilvg_create(forihostid, lvg)
 
@@ -685,7 +719,7 @@ def _delete(lvg):
 
     # Semantic checks
     lvg = _check("delete", lvg)
-
+    cap_function = lvg['capabilities'].get('lvm_function')
     # Update physical volumes
     ihost = pecan.request.dbapi.ihost_get(lvg['forihostid']).as_dict()
     ipvs = pecan.request.dbapi.ipv_get_all(forihostid=ihost['id'])
@@ -744,6 +778,21 @@ def _delete(lvg):
             ihost.get('invprovision') != constants.PROVISIONED):
         try:
             pecan.request.dbapi.ilvg_destroy(lvg['id'])
+        except exception.HTTPNotFound:
+            msg = _("Deleting LVG failed: host %s lvg %s"
+                    % (ihost['hostname'], lvg['lvm_vg_name']))
+            raise wsme.exc.ClientSideError(msg)
+    elif cap_function == constants.LVM_CSI_PROVISIONING_FUNCTION:
+        try:
+            pecan.request.dbapi.ilvg_update(lvg['id'],
+                                            {'vg_state': constants.LVG_DEL})
+            if (cap_function == constants.LVM_CSI_PROVISIONING_FUNCTION
+               and ihost.get('invprovision') == constants.PROVISIONED):
+                pecan.request.rpcapi.delete_lvm_csi_lvg_pv(
+                    pecan.request.context,
+                    lvg['ihost_uuid'],
+                    lvg,
+                    pv)
         except exception.HTTPNotFound:
             msg = _("Deleting LVG failed: host %s lvg %s"
                     % (ihost['hostname'], lvg['lvm_vg_name']))

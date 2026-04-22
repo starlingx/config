@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2014 Wind River Systems, Inc.
+# Copyright (c) 2013-2014,2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -12,6 +12,7 @@ from cgtsclient import exc
 
 
 CREATION_ATTRIBUTES = ['lvm_vg_name', 'ihost_uuid']
+CAPABILITY_ATTRIBUTES = ['lvm_function', 'lvm_type', 'lvm_pool_size']
 
 
 class ilvg(base.Resource):
@@ -39,6 +40,10 @@ class ilvgManager(base.Manager):
         for (key, value) in kwargs.items():
             if key in CREATION_ATTRIBUTES:
                 new[key] = value
+            elif key in CAPABILITY_ATTRIBUTES:
+                if 'capabilities' not in new:
+                    new['capabilities'] = {}
+                new['capabilities'][key] = value
             else:
                 raise exc.InvalidAttribute('%s' % key)
 

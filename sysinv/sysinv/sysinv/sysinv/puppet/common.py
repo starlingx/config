@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2017,2024 Wind River Systems, Inc.
+# Copyright (c) 2017,2024,2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -34,6 +34,9 @@ REPORT_UPGRADE_ACTIONS = 'upgrade_actions'
 REPORT_AIO_CINDER_CONFIG = 'aio_cinder_config'
 REPORT_DISK_PARTITON_CONFIG = 'manage_disk_partitions'
 REPORT_LVM_BACKEND_CONFIG = 'lvm_config'
+REPORT_LVM_CSI_BACKEND_CONFIG = 'lvm_csi_config'
+REPORT_LVM_CSI_THIN_POOL_CONFIG = 'lvm_csi_thin_pool_config'
+REPORT_LVM_CSI_PV_DELETION = 'lvm_csi_pv_deletion'
 REPORT_EXTERNAL_BACKEND_CONFIG = 'external_config'
 REPORT_CEPH_BACKEND_CONFIG = 'ceph_config'
 REPORT_CEPH_EXTERNAL_BACKEND_CONFIG = 'ceph_external_config'

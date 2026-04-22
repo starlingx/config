@@ -2420,6 +2420,74 @@ class ConductorManager(service.PeriodicService):
                                             config_dict,
                                             force=force)
 
+    def create_lvm_csi(self, context, host_uuid, pv, lvg_lvm_type):
+        personalities = [constants.CONTROLLER,
+                         constants.WORKER,
+                         constants.STORAGE]
+
+        config_uuid = self._config_update_hosts(context, personalities)
+
+        config_dict = {
+            "personalities": personalities,
+            "classes": [f'platform::lvm::csi::{lvg_lvm_type}::runtime'],
+            "host_uuid": host_uuid,
+            "lvm_vg_name": pv.lvm_vg_name,
+            "lvm_vg_uuid": pv.ilvg_uuid,
+            "lvm_pv_uuid": pv.uuid,
+            "lvm_pv_device_path": pv.disk_or_part_device_path,
+            puppet_common.REPORT_STATUS_CFG: puppet_common.REPORT_LVM_CSI_BACKEND_CONFIG
+        }
+
+        self._config_apply_runtime_manifest(context,
+                                            config_uuid,
+                                            config_dict)
+
+    def delete_lvm_csi_lvg_pv(self, context, host_uuid, lvg, pv):
+        personalities = [constants.CONTROLLER,
+                         constants.WORKER]
+
+        config_uuid = self._config_update_hosts(context, personalities,
+                                                [host_uuid])
+
+        config_dict = {
+            "personalities": personalities,
+            "classes": ['platform::lvm::csi::remove_pv::runtime'],
+            "host_uuid": host_uuid,
+            "lvm_lvg_uuid": lvg['uuid'],
+            "lvm_pv_uuid": pv.uuid,
+            puppet_common.REPORT_STATUS_CFG:
+                puppet_common.REPORT_LVM_CSI_PV_DELETION
+        }
+
+        self._config_apply_runtime_manifest(context,
+                                            config_uuid,
+                                            config_dict)
+
+    def update_cgts_vg_lvm_csi_capabilities(self, context, host_uuid, vg_uuid,
+                                            resizing=False):
+        personalities = [constants.CONTROLLER,
+                         constants.WORKER]
+
+        config_uuid = self._config_update_hosts(context, personalities)
+
+        config_dict = {
+            "personalities": personalities,
+            "host_uuid": host_uuid,
+            "lvm_vg_uuid": vg_uuid,
+            puppet_common.REPORT_STATUS_CFG:
+                puppet_common.REPORT_LVM_CSI_THIN_POOL_CONFIG
+        }
+        if resizing:
+            config_dict["classes"] = \
+                ['platform::lvm::vg::cgts_vg::resizing::runtime']
+        else:
+            config_dict["classes"] = \
+                ['platform::lvm::vg::cgts_vg::thinpool::runtime']
+
+        self._config_apply_runtime_manifest(context,
+                                            config_uuid,
+                                            config_dict)
+
     def _configure_controller_host(self, context, host):
         """Configure a controller host with the supplied data.
 
@@ -10949,6 +11017,32 @@ class ConductorManager(service.PeriodicService):
                 self.report_lvm_cinder_config_success, [context, host_uuid],
                 self.report_lvm_cinder_config_failure, [host_uuid, error]
             )
+        elif reported_cfg == puppet_common.REPORT_LVM_CSI_BACKEND_CONFIG:
+            lvm_vg_uuid = iconfig['lvm_vg_uuid']
+            lvm_pv_uuid = iconfig['lvm_pv_uuid']
+            success = _process_config_report(
+                self.report_lvm_csi_config_success,
+                [context, host_uuid, lvm_vg_uuid, lvm_pv_uuid],
+                self.report_lvm_csi_config_failure,
+                [host_uuid, lvm_vg_uuid, lvm_pv_uuid, error]
+            )
+        elif reported_cfg == puppet_common.REPORT_LVM_CSI_PV_DELETION:
+            lvm_pv_uuid = iconfig['lvm_pv_uuid']
+            lvm_lvg_uuid = iconfig['lvm_lvg_uuid']
+            success = _process_config_report(
+                self.report_lvm_csi_lvg_pv_deletion_success,
+                [context, host_uuid, lvm_lvg_uuid, lvm_pv_uuid],
+                self.report_lvm_csi_lvg_pv_deletion_failure,
+                [host_uuid, lvm_lvg_uuid, lvm_pv_uuid, error]
+            )
+        elif reported_cfg == puppet_common.REPORT_LVM_CSI_THIN_POOL_CONFIG:
+            lvm_vg_uuid = iconfig['lvm_vg_uuid']
+            success = _process_config_report(
+                self.report_lvm_csi_thin_pool_cfg_success,
+                [context, host_uuid, lvm_vg_uuid],
+                self.report_lvm_csi_thin_pool_cfg_failure,
+                [host_uuid, lvm_vg_uuid, error]
+            )
         elif reported_cfg == puppet_common.REPORT_OPENSTACK_ENDPOINTS_CONFIG_REQUESTED:
             if status == puppet_common.REPORT_SUCCESS:
                 success = True
@@ -11329,6 +11423,146 @@ class ConductorManager(service.PeriodicService):
         for host in hosts:
             rpcapi.update_host_lvm(context, host.uuid)
             self._update_host_lvm_config(context, host)
+
+    def report_lvm_csi_config_success(self, context, host_uuid, lvm_vg_uuid,
+                                      lvm_pv_uuid):
+        """ Callback for Sysinv Agent
+
+        Configuring LVM CSI backend was successful, finalize operation.
+        The Agent calls this if LVM CSI manifests are applied correctly.
+        Both controllers have to get their manifests applied before accepting
+        the entire operation as successful.
+        """
+        args = {'host': host_uuid, 'vg': lvm_vg_uuid, 'pv': lvm_pv_uuid}
+        LOG.info("LVM CSI manifests success on host %(host)s provisioning "
+                  "VG %(vg)s and PV %(pv)s." % args)
+
+        self.dbapi.ipv_update(lvm_pv_uuid, {"pv_state": constants.PROVISIONED})
+        self.dbapi.ilvg_update(lvm_vg_uuid, {"vg_state": constants.PROVISIONED})
+
+        self.evaluate_apps_reapply(context, trigger={
+                    'type': constants.APP_EVALUATE_REAPPLY_TYPE_HOST_MODIFY})
+        rpcapi = agent_rpcapi.AgentAPI()
+        rpcapi.agent_update(
+            context,
+            host_uuid,
+            [constants.LVG_AUDIT_REQUEST, constants.PV_AUDIT_REQUEST]
+        )
+
+    def report_lvm_csi_config_failure(self, host_uuid, lvm_vg_uuid,
+                                      lvm_pv_uuid, error):
+        """ Callback for Sysinv Agent
+
+        Configuring LVM CSI backend failed, set backend to err and raise alarm
+        The agent calls this if LVM CSI manifests failed to apply
+        """
+        args = {
+            'host': host_uuid,
+            'vg': lvm_vg_uuid,
+            'pv': lvm_pv_uuid,
+            'error': error
+        }
+        LOG.error("LVM CSI manifests failed on host %(host)s provisioning "
+                  "VG %(vg)s and PV %(pv)s. Error: %(error)s" % args)
+
+        try:
+            self.dbapi.ipv_update(lvm_pv_uuid,
+                                  {"pv_state": constants.PV_ERR})
+            self.dbapi.ilvg_update(lvm_vg_uuid,
+                                   {"vg_state": constants.LVG_ADD})
+        except exception.LvmLvgNotFound:
+            pass
+        except exception.LvmPvNotFound:
+            pass
+
+    def report_lvm_csi_thin_pool_cfg_success(self, context, host_uuid,
+                                             lvm_vg_uuid):
+        """ Callback for Sysinv Agent
+
+        Configuring LVM CSI thin pool was successful, finalize operation.
+        The Agent calls this if LVM CSI manifests are applied correctly.
+        Both controllers have to get their manifests applied before accepting
+        the entire operation as successful.
+        """
+        args = {'host': host_uuid, 'vg': lvm_vg_uuid}
+        LOG.info("LVM CSI Thin pool successfully configured on host %(host)s "
+                  "VG %(vg)s." % args)
+
+        self.dbapi.ilvg_update(lvm_vg_uuid, {"vg_state":
+                                             constants.PROVISIONED})
+
+        self.evaluate_apps_reapply(context, trigger={
+                    'type': constants.APP_EVALUATE_REAPPLY_TYPE_HOST_MODIFY})
+        rpcapi = agent_rpcapi.AgentAPI()
+        rpcapi.agent_update(
+            context,
+            host_uuid,
+            [constants.LVG_AUDIT_REQUEST, constants.PV_AUDIT_REQUEST]
+        )
+
+    def report_lvm_csi_thin_pool_cfg_failure(self, host_uuid, lvm_vg_uuid,
+                                             error):
+        """ Callback for Sysinv Agent
+
+        Configuring LVM CSI thin pool failed, set to err and raise alarm
+        The agent calls this if LVM CSI manifests failed to apply
+        """
+        args = {'host': host_uuid, 'vg': lvm_vg_uuid, 'error': error}
+        LOG.error("LVM CSI Thin pool failed to be configured on host %(host)s "
+                  "VG %(vg)s. Error: %(error)s" % args)
+
+        self.dbapi.ilvg_update(lvm_vg_uuid, {"vg_state": constants.LVG_ADD})
+
+    def report_lvm_csi_lvg_pv_deletion_success(self, context, host_uuid,
+                                              lvm_lvg_uuid, lvm_pv_uuid):
+        """ Callback for Sysinv Agent
+
+        Deleting LVM CSI LVG and PV was successful, finalize operation.
+        The Agent calls this if LVM CSI manifests are applied correctly.
+        Both controllers have to get their manifests applied before accepting
+        the entire operation as successful.
+        """
+        args = {'host': host_uuid, 'pv': lvm_pv_uuid, 'vg': lvm_lvg_uuid}
+
+        try:
+            pv = self.dbapi.ipv_get(lvm_pv_uuid)
+            if pv:
+                if pv.pv_type == constants.PV_TYPE_DISK:
+                    idisks = self.dbapi.idisk_get_all(foripvid=pv.id)
+                    for d in idisks:
+                        if d['uuid'] == pv['disk_or_part_uuid']:
+                            values = {'foripvid': None}
+                            self.dbapi.idisk_update(d.id, values)
+                elif pv.pv_type == constants.PV_TYPE_PARTITION:
+                    partitions = self.dbapi.partition_get_all(foripvid=pv.id)
+                    for p in partitions:
+                        if p['uuid'] == pv['disk_or_part_uuid']:
+                            values = {'foripvid': None}
+                            self.dbapi.partition_update(p.id, values)
+
+                self.dbapi.ipv_destroy(lvm_pv_uuid)
+                self.dbapi.ilvg_destroy(lvm_lvg_uuid)
+        except Exception as ex:
+            args['error'] = ex
+            LOG.error("LVM CSI PV was successfully deleted on host %(host)s "
+                      "VG %(vg)s and PV %(pv)s, but an error happened during "
+                      "the database update" % args)
+            return
+
+        LOG.info("LVM CSI pv successfully deleted on host %(host)s "
+                 "VG %(vg)s and PV %(pv)s." % args)
+
+    def report_lvm_csi_lvg_pv_deletion_failure(self, host_uuid, lvm_lvg_uuid,
+                                               lvm_pv_uuid, error):
+        """ Callback for Sysinv Agent
+
+        Deleting LVM CSI VG and PV failed, set to err and raise alarm
+        The agent calls this if LVM CSI manifests failed to apply
+        """
+        args = {'host': host_uuid, 'pv': lvm_pv_uuid, 'vg': lvm_lvg_uuid,
+                'error': error}
+        LOG.error("LVM CSI failed to delete VG/PV on host %(host)s "
+                  "PV %(pv)s and VG %(vg)s. Error: %(error)s" % args)
 
     def report_lvm_cinder_config_success(self, context, host_uuid):
         """ Callback for Sysinv Agent

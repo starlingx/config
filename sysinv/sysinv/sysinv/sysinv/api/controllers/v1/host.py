@@ -4264,28 +4264,6 @@ class HostController(rest.RestController):
                           vsc_ip_str))
 
     @staticmethod
-    def _semantic_check_cinder_volumes(ihost):
-        """
-        Perform semantic checking for cinder volumes storage
-        :param ihost_uuid: uuid of host with controller functionality
-        """
-        # deny unlock if cinder-volumes is not configured on a controller host
-        if StorageBackendConfig.has_backend(pecan.request.dbapi,
-                                            constants.CINDER_BACKEND_LVM):
-            msg = _("Cinder's LVM backend is enabled. "
-                    "A configured cinder-volumes PV is required "
-                    "on host %s prior to unlock.") % ihost['hostname']
-
-            host_pvs = pecan.request.dbapi.ipv_get_by_ihost(ihost['uuid'])
-            for pv in host_pvs:
-                if pv.lvm_vg_name == constants.LVG_CINDER_VOLUMES:
-                    if pv.pv_state not in [constants.PV_ADD, constants.PROVISIONED]:
-                        raise wsme.exc.ClientSideError(msg)
-                    break
-            else:
-                raise wsme.exc.ClientSideError(msg)
-
-    @staticmethod
     def _semantic_check_filesystem_sizes(ihost):
         """
         Perform checks for filesystem consistency across controllers
@@ -5792,7 +5770,6 @@ class HostController(rest.RestController):
         LOG.info("%s ihost check_unlock_controller" % hostupdate.displayid)
         self._semantic_check_unlock_kube_upgrade(hostupdate.ihost_orig, force_unlock)
         self._semantic_check_oam_interface(hostupdate.ihost_orig)
-        self._semantic_check_cinder_volumes(hostupdate.ihost_orig)
         self._semantic_check_filesystem_sizes(hostupdate.ihost_orig)
         self._semantic_check_storage_backend(hostupdate.ihost_orig)
         self._semantic_check_controllerfs(hostupdate.ihost_orig, force_unlock)
