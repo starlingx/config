@@ -285,32 +285,54 @@ def retrieve_etcd_version():
     return etcd_version
 
 
+def _use_etcdutl_for_restore():
+    """Determine whether to use etcdutl for snapshot restore.
+
+    Starting from etcd 3.6, 'etcdctl snapshot restore' has been removed.
+    The offline tool 'etcdutl snapshot restore' must be used instead.
+
+    :returns: True if etcdutl should be used, False for etcdctl
+    """
+    etcd_version = get_etcd_version_from_symlink()
+    if etcd_version and LooseVersion(etcd_version) >= LooseVersion("3.6.0"):
+        return True
+    return False
+
+
 def restore_etcd_snapshot(snapshot_file, restore_to_file):
     """"Restore an etcd snapshot
 
     :param snapshot_file: Full path of the snapshot file
     :param restore_to_file: Full path of the restore to file
     """
-    etcd_config = None
+    command = None
     try:
-        etcd_config = get_cluster_information()
-
-        ca_cert = etcd_config[ETCD_CONFIG_CA_FILE]
-        cert_file = etcd_config[ETCD_CONFIG_CERT_FILE]
-        key_file = etcd_config[ETCD_CONFIG_KEY_FILE]
-        endpoints = etcd_config[ETCD_CONFIG_ENDPOINTS]
-        if len(endpoints) < 1:
-            raise exception.SysinvException("Endpoints not found in the etcd cluster details: %s"
-                                            % (etcd_config))
-        endpoint = endpoints[0]
-
         restore_path = os.path.dirname(restore_to_file)
         if not os.path.exists(restore_path):
             os.makedirs(restore_path)
 
-        command = ["etcdctl", "--cert", cert_file, "--key", key_file, "--cacert", ca_cert,
-                   "--endpoints", endpoint, "snapshot", "restore", snapshot_file, "--data-dir",
-                   restore_to_file]
+        if _use_etcdutl_for_restore():
+            # etcd 3.6+: use etcdutl (offline utility, no TLS/endpoint flags)
+            command = ["etcdutl", "snapshot", "restore", snapshot_file,
+                       "--data-dir", restore_to_file]
+        else:
+            # etcd 3.5 and earlier: use etcdctl with cluster credentials
+            etcd_config = get_cluster_information()
+
+            ca_cert = etcd_config[ETCD_CONFIG_CA_FILE]
+            cert_file = etcd_config[ETCD_CONFIG_CERT_FILE]
+            key_file = etcd_config[ETCD_CONFIG_KEY_FILE]
+            endpoints = etcd_config[ETCD_CONFIG_ENDPOINTS]
+            if len(endpoints) < 1:
+                raise exception.SysinvException(
+                    "Endpoints not found in the etcd cluster details: %s"
+                    % (etcd_config))
+            endpoint = endpoints[0]
+
+            command = ["etcdctl", "--cert", cert_file, "--key", key_file,
+                       "--cacert", ca_cert, "--endpoints", endpoint,
+                       "snapshot", "restore", snapshot_file,
+                       "--data-dir", restore_to_file]
         utils.execute(*command, check_exit_code=0, timeout=60)
     except FileExistsError as ex:
         # Restore file already exists
