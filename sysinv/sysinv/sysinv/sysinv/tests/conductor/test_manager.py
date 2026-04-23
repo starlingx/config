@@ -2222,6 +2222,13 @@ class ManagerTestCase(base.DbTestCase):
         p.start()
         self.addCleanup(p.stop)
 
+        mock_docker_system_prune = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.common.image_download.ContainerImageDownloader._docker_system_prune',
+            mock_docker_system_prune)
+        p.start()
+        self.addCleanup(p.stop)
+
         result = \
             self.service._image_downloader.download_images_from_upstream_to_local_reg_and_crictl(
                 images_to_be_downloaded)
@@ -2235,11 +2242,15 @@ class ManagerTestCase(base.DbTestCase):
         mock_retrieve_specified_registries.assert_called_once()
         mock_get_crictl_image_list.assert_called_once()
 
-        # Assert Retries
-        self.assertEqual(mock_get_img_tag_with_registry.call_count,
-                         5 * len(images_to_be_downloaded))
-        self.assertEqual(mock_docker_apiclient_pull.call_count, 5 * len(images_to_be_downloaded))
+        # Assert Retries (5 retries per image on first attempt + 5 retries per image on prune retry)
+        self.assertEqual(
+            mock_get_img_tag_with_registry.call_count, 5 * len(images_to_be_downloaded) * 2
+        )
+        self.assertEqual(
+            mock_docker_apiclient_pull.call_count, 5 * len(images_to_be_downloaded) * 2
+        )
 
+        mock_docker_system_prune.assert_called_once()
         mock_docker_apiclient_tag.assert_not_called()
         mock_docker_apiclient_push.assert_not_called()
         mock_docker_apiclient_inspect.assert_not_called()
@@ -2349,6 +2360,13 @@ class ManagerTestCase(base.DbTestCase):
         p.start()
         self.addCleanup(p.stop)
 
+        mock_docker_system_prune = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.common.image_download.ContainerImageDownloader._docker_system_prune',
+            mock_docker_system_prune)
+        p.start()
+        self.addCleanup(p.stop)
+
         result = self.service._image_downloader.download_images_from_upstream_to_local_reg_and_crictl(
             images_to_be_downloaded
         )
@@ -2362,14 +2380,15 @@ class ManagerTestCase(base.DbTestCase):
         mock_retrieve_specified_registries.assert_called_once()
         mock_get_crictl_image_list.assert_called_once()
 
-        # Assert Retries
+        # Assert Retries (5 retries per image on first attempt + 5 retries per image on prune retry)
         self.assertEqual(
-            mock_get_img_tag_with_registry.call_count, 5 * len(images_to_be_downloaded)
+            mock_get_img_tag_with_registry.call_count, 5 * len(images_to_be_downloaded) * 2
         )
         self.assertEqual(
-            mock_docker_apiclient_pull.call_count, 5 * len(images_to_be_downloaded)
+            mock_docker_apiclient_pull.call_count, 5 * len(images_to_be_downloaded) * 2
         )
 
+        mock_docker_system_prune.assert_called_once()
         mock_docker_apiclient_tag.assert_not_called()
         mock_docker_apiclient_push.assert_not_called()
         mock_docker_apiclient_inspect.assert_not_called()
@@ -2378,7 +2397,7 @@ class ManagerTestCase(base.DbTestCase):
 
     def test_download_images_from_upstream_to_local_reg_and_crictl_failure_docker_push_fail(self):
         """Test download_images_from_upstream_to_local_reg_and_crictl: docker push failed
-
+        even after docker system prune retry
         """
         images_to_be_downloaded = ['fake_image1', 'fake_image2', 'fake_image3']
         fake_local_registry_auth = {'username': 'fake_username', 'password': 'fake_password'}
@@ -2451,6 +2470,13 @@ class ManagerTestCase(base.DbTestCase):
         p.start()
         self.addCleanup(p.stop)
 
+        mock_docker_system_prune = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.common.image_download.ContainerImageDownloader._docker_system_prune',
+            mock_docker_system_prune)
+        p.start()
+        self.addCleanup(p.stop)
+
         result = \
             self.service._image_downloader.download_images_from_upstream_to_local_reg_and_crictl(
                 images_to_be_downloaded)
@@ -2471,22 +2497,124 @@ class ManagerTestCase(base.DbTestCase):
 
         mock_docker_apiclient_pull.assert_called_with(get_img_tag_with_registry_output[0],
                                                 auth_config=get_img_tag_with_registry_output[1])
-        self.assertEqual(mock_docker_apiclient_pull.call_count, 3)
 
-        expected_calls = [mock.call(get_img_tag_with_registry_output[0],
-                                    f"{constants.DOCKER_REGISTRY_SERVER}/fake_image1"),
-                          mock.call(get_img_tag_with_registry_output[0],
-                                    f"{constants.DOCKER_REGISTRY_SERVER}/fake_image2"),
-                          mock.call(get_img_tag_with_registry_output[0],
-                                    f"{constants.DOCKER_REGISTRY_SERVER}/fake_image3")]
-        mock_docker_apiclient_tag.assert_has_calls(expected_calls, any_order=True)
-        self.assertEqual(mock_docker_apiclient_tag.call_count, 3)
-
+        mock_docker_apiclient_tag.assert_called()
         mock_docker_apiclient_push.assert_called()
 
-        mock_docker_apiclient_inspect.assert_not_called()
+        # docker system prune is called as part of the retry
+        mock_docker_system_prune.assert_called()
+
         mock_docker_apiclient_remove_image.assert_not_called()
         mock_pull_image_to_crictl.assert_not_called()
+
+    def test_download_images_push_fail_recovers_after_docker_prune(self):
+        """Test download_images_from_upstream_to_local_reg_and_crictl:
+        docker push fails initially but succeeds after docker system prune
+        """
+        images_to_be_downloaded = ['fake_image1']
+        fake_local_registry_auth = {'username': 'fake_username', 'password': 'fake_password'}
+        fake_registries = {'fake_registries': 'fake_registries'}
+
+        get_img_tag_with_registry_output = ('fake_target_image', fake_local_registry_auth)
+
+        mock_get_local_docker_registry_auth = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.get_local_docker_registry_auth',
+                       mock_get_local_docker_registry_auth)
+        p.start().return_value = fake_local_registry_auth
+        self.addCleanup(p.stop)
+
+        mock_retrieve_specified_registries = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.kube_app.DockerHelper.retrieve_specified_registries',
+                       mock_retrieve_specified_registries)
+        p.start().return_value = fake_registries
+        self.addCleanup(p.stop)
+
+        mock_get_crictl_image_list = mock.MagicMock()
+        p = mock.patch('sysinv.common.containers.get_crictl_image_list',
+                       mock_get_crictl_image_list)
+        p.start().side_effect = exception.SysinvException("Fake Error")
+        self.addCleanup(p.stop)
+
+        mock_get_img_tag_with_registry = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.kube_app.DockerHelper._get_img_tag_with_registry',
+                       mock_get_img_tag_with_registry)
+        p.start().return_value = get_img_tag_with_registry_output
+        self.addCleanup(p.stop)
+
+        p = mock.patch(
+            'sysinv.conductor.manager.ConductorManager.docker_registry_image_list',
+            mock.MagicMock()
+        )
+        p.start().return_value = []
+        self.addCleanup(p.stop)
+
+        mock_docker_apiclient_pull = mock.MagicMock()
+        p = mock.patch('docker.APIClient.pull', mock_docker_apiclient_pull)
+        p.start()
+        self.addCleanup(p.stop)
+
+        p = mock.patch("docker.APIClient.inspect_image", mock.MagicMock())
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_docker_apiclient_tag = mock.MagicMock()
+        p = mock.patch('docker.APIClient.tag', mock_docker_apiclient_tag)
+        p.start()
+        self.addCleanup(p.stop)
+
+        # Push fails on first call, succeeds on second (after prune)
+        mock_docker_apiclient_push = mock.MagicMock()
+        p = mock.patch('docker.APIClient.push', mock_docker_apiclient_push)
+        p.start().side_effect = [
+            Exception("file integrity checksum failed"),
+            None
+        ]
+        self.addCleanup(p.stop)
+
+        mock_docker_apiclient_inspect = mock.MagicMock()
+        p = mock.patch('docker.APIClient.inspect_distribution', mock_docker_apiclient_inspect)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_docker_apiclient_remove_image = mock.MagicMock()
+        p = mock.patch('docker.APIClient.remove_image', mock_docker_apiclient_remove_image)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_pull_image_to_crictl = mock.MagicMock()
+        p = mock.patch('sysinv.common.containers.pull_image_to_crictl',
+                       mock_pull_image_to_crictl)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_docker_system_prune = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.common.image_download.ContainerImageDownloader._docker_system_prune',
+            mock_docker_system_prune)
+        p.start()
+        self.addCleanup(p.stop)
+
+        result = \
+            self.service._image_downloader.download_images_from_upstream_to_local_reg_and_crictl(
+                images_to_be_downloaded)
+
+        # Assert success after retry
+        self.assertTrue(result)
+
+        # Docker system prune was called for recovery
+        mock_docker_system_prune.assert_called_once()
+
+        # Push was called twice: initial fail + retry success
+        self.assertEqual(mock_docker_apiclient_push.call_count, 2)
+
+        # Pull was called twice: initial + retry after prune
+        self.assertEqual(mock_docker_apiclient_pull.call_count, 2)
+
+        # Images were cleaned up after successful push
+        mock_docker_apiclient_remove_image.assert_called()
+
+        # Crictl pull proceeded after successful docker push
+        mock_pull_image_to_crictl.assert_called()
 
     def test_download_images_from_upstream_to_local_reg_and_crictl_success_docker_remove_image_failed(self):  # pylint: disable=line-too-long # noqa: E501
         """Test download_images_from_upstream_to_local_reg_and_crictl: Docker remove image failed

@@ -114,6 +114,49 @@ class ContainerImageDownloader(object):
                 images.append({'name': image})
         return images
 
+    def _docker_system_prune(self):
+        """Run 'docker system prune -a --force' to clean up corrupted
+        docker data that may result from an abrupt system reboot.
+        """
+        try:
+            LOG.info("Running docker system prune to clean up "
+                     "potentially corrupted data.")
+            cutils.execute('docker', 'system', 'prune', '-a', '--force',
+                           check_exit_code=0)
+            LOG.info("Docker system prune completed successfully.")
+        except Exception as e:
+            LOG.warning("Docker system prune failed with error: [%s]" % e)
+
+    def _pull_tag_push_image(self, docker_client, local_registry_auth,
+                            registries_info, image, local_image):
+        """Pull image from upstream, tag and push to local registry.
+
+        :param: docker_client: docker's client object
+        :param: local_registry_auth: authentication for the local registry
+        :param: registries_info: registries information from service parameters
+        :param: image: upstream image name
+        :param: local_image: local registry image name
+
+        :returns: the target_image name on success
+        :raises: Exception on failure
+        """
+        # A retry error might be raised when reaching the max attempts
+        target_image = self._pull_image_to_docker(
+            image, registries_info, docker_client)
+        if target_image is None:
+            raise Exception("Failed to pull image [%s] after retries" % image)
+        LOG.info("Image tag and push started for [%s]" % (local_image))
+        # After pulling the image, it needs to be sent to the system's local
+        # registry, so it needs to be tagged to registry.local:9000
+        docker_client.tag(target_image, local_image)
+        docker_client.push(local_image, auth_config=local_registry_auth)
+        # Test inspecting the image. This avoids a scenario where the push command
+        # returns a false positive result during docker service restarts.
+        docker_client.inspect_distribution(
+            local_image, auth_config=local_registry_auth)
+        LOG.info("Image tag and push successful for [%s]" % (local_image))
+        return target_image
+
     def _pull_image_from_upstream_tag_and_push_to_local_reg(
         self, docker_client, local_registry_auth, registries_info, image
     ):
@@ -129,26 +172,13 @@ class ContainerImageDownloader(object):
         local_image = None
 
         if not image.startswith(constants.DOCKER_REGISTRY_SERVER):
-            try:
-                # A retry error might be raised when reaching the max attempts
-                target_image = self._pull_image_to_docker(image, registries_info, docker_client)
-            except Exception as e:
-                LOG.error(f"Image pull failed for [{image}] with error {e}")
-                return False
-
             local_image = f"{constants.DOCKER_REGISTRY_SERVER}/{image}"
             try:
-                LOG.info("Image tag and push started for [%s]" % (local_image))
-                # After pulling the image, it needs to be sent to the system's local
-                # registry, so it needs to be tagged to registry.local:9000
-                docker_client.tag(target_image, local_image)
-                docker_client.push(local_image, auth_config=local_registry_auth)
-                # Test inspecting the image. This avoids a scenario where the push command
-                # returns a false positive result during docker service restarts.
-                docker_client.inspect_distribution(local_image, auth_config=local_registry_auth)
-                LOG.info("Image tag and push successful for [%s]" % (local_image))
+                target_image = self._pull_tag_push_image(
+                    docker_client, local_registry_auth, registries_info,
+                    image, local_image)
             except Exception as e:
-                LOG.error("Image tag and push failed for [%s] with error [%s]"
+                LOG.error("Failed to pull, tag, or push image [%s]: [%s]"
                          % (local_image, e))
                 return False
 
@@ -254,18 +284,43 @@ class ContainerImageDownloader(object):
             return False
 
         # Pull all necessary images to docker first
-        docker_tasks = []
+        docker_tasks = {}
         with ThreadPoolExecutor() as executor:
             for image in docker_images_to_pull:
-                docker_tasks.append(executor.submit(
+                docker_tasks[image] = executor.submit(
                     self._pull_image_from_upstream_tag_and_push_to_local_reg,
                     docker_client, local_registry_auth, registries, image
-                ))
+                )
 
-        # No need to log the results again as we have already logged them inside the
-        # worker method. Simply check for any failures.
-        if not all([task.result() for task in as_completed(docker_tasks)]):
-            return False
+        # Collect images that failed the first attempt
+        failed_images = [
+            image for image, task in docker_tasks.items()
+            if not task.result()
+        ]
+
+        # An abrupt reboot (e.g. during a previous upgrade attempt) can leave
+        # corrupted layers in docker storage, causing "file integrity checksum
+        # failed" on push. Prune all docker data once and retry all failed
+        # images together.
+        if failed_images:
+            LOG.info("Attempting recovery: pruning docker data and "
+                     "retrying pull/tag/push for %s" % failed_images)
+            self._docker_system_prune()
+            retry_tasks = {}
+            with ThreadPoolExecutor() as executor:
+                for image in failed_images:
+                    retry_tasks[image] = executor.submit(
+                        self._pull_image_from_upstream_tag_and_push_to_local_reg,
+                        docker_client, local_registry_auth, registries, image
+                    )
+            still_failed = [
+                image for image, task in retry_tasks.items()
+                if not task.result()
+            ]
+            if still_failed:
+                LOG.error("Image pull/tag/push retry failed for: %s"
+                          % still_failed)
+                return False
 
         # Pull all necessary images to crictl if docker pull was successfull
         crictl_tasks = []
