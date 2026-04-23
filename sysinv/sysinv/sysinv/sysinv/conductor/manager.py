@@ -19249,7 +19249,17 @@ class ConductorManager(service.PeriodicService):
             'controller_0_cluster_host_secondary': controller_0_cluster_host_secondary,
             'kubelet_cni_bin_dir': constants.KUBELET_CNI_BIN_DIR,
             'calico_kube_controllers_img': images[CALICO_KUBE_CONTROLLERS_KEY],
-            'calico_chain_insert_mode': constants.CALICO_CHAIN_INSERT_MODE
+            'calico_chain_insert_mode': constants.CALICO_CHAIN_INSERT_MODE,
+            'calico_ip4_autodetect_host': (
+                controller_0_cluster_host
+                if netaddr.valid_ipv4(str(controller_0_cluster_host))
+                else (controller_0_cluster_host_secondary or controller_0_cluster_host)
+            ),
+            'calico_ip6_autodetect_host': (
+                controller_0_cluster_host
+                if netaddr.valid_ipv6(str(controller_0_cluster_host))
+                else (controller_0_cluster_host_secondary or controller_0_cluster_host)
+            ),
         }
 
         multus_cni_template_variables = {
