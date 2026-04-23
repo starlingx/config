@@ -21399,52 +21399,6 @@ class ConductorManager(service.PeriodicService):
             LOG.info('Successfully updated %s feature-gates service param.' % section)
             return 0
 
-    def sanitize_image_repository_kubeadm_configmap(self, target_version):
-        """
-        Update the imageRepository field of kubeadm configmap if it contains
-        an incompatible  value for a given version of k8s.
-        """
-
-        configmap_name = 'kubeadm-config'
-        OLD_IMAGE_REPOSITORY = "registry.local:9001/k8s.gcr.io"
-        NEW_IMAGE_REPOSITORY = "registry.local:9001/registry.k8s.io"
-        NEW_DNS_IMAGE_REPOSITORY = "registry.local:9001/registry.k8s.io/coredns"
-
-        try:
-            configmap = self._kube.kube_read_config_map(configmap_name, 'kube-system')
-            # Parse the configmap to get the imageRepository
-            stream = StringIO(configmap.data['ClusterConfiguration'])
-            if cutils.is_debian_bullseye():
-                kubeadm_config = yaml.safe_load(stream)
-            else:
-                local_yaml = YAML(typ='safe')
-                kubeadm_config = local_yaml.load(stream)
-            image_repository = kubeadm_config.get('imageRepository', None)
-
-            if image_repository:
-                minor_k8s_version = int(target_version.split('.')[1])
-                if minor_k8s_version >= 25 and image_repository == OLD_IMAGE_REPOSITORY:
-                    # Update the imageRepository with the new value
-                    kubeadm_config['imageRepository'] = NEW_IMAGE_REPOSITORY
-                    kubeadm_config['dns']['imageRepository'] = NEW_DNS_IMAGE_REPOSITORY
-                    LOG.info('Setting imageRepository=%s, dns imageRepository=%s \
-                             in kubeadm-config.' % (NEW_IMAGE_REPOSITORY, NEW_DNS_IMAGE_REPOSITORY))
-                    outstream = StringIO()
-                    if cutils.is_debian_bullseye():
-                        yaml.dump(kubeadm_config, outstream)
-                    else:
-                        yaml_dumper = YAML()
-                        yaml_dumper.dump(kubeadm_config, outstream)
-                    configmap = {'data': {'ClusterConfiguration': outstream.getvalue()}}
-                    self._kube.kube_patch_config_map(configmap_name, 'kube-system', configmap)
-
-        except Exception:
-            LOG.exception("Error updating imageRepository in kubeadm configmap")
-            return 1
-
-        LOG.info('Successfully updated imageRepository in kubeadm configmap.')
-        return 0
-
     @periodic_task.periodic_task(spacing=CONF.conductor_periodic_task_intervals.kube_upgrade_states)
     def _audit_kube_upgrade_states(self, context):
         # A Kubernetes upgrade state can be stuck in upgrading-* state.
