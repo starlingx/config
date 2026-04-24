@@ -1726,7 +1726,9 @@ class TestDelete(NetworkAddrpoolTestCase):
             ifname='c0-mgmt0', id=1,
             ifclass=constants.INTERFACE_CLASS_PLATFORM,
             forihostid=controller0.id,
-            ihost_uuid=controller0.uuid)
+            ihost_uuid=controller0.uuid,
+            ipv4_mode=constants.IPV4_STATIC,
+            ipv6_mode=constants.IPV6_STATIC)
 
         mgmt_net = self.networks[constants.NETWORK_TYPE_MGMT]
         mgmt_ipv4 = self.address_pools['management-ipv4']
@@ -1781,6 +1783,14 @@ class TestDelete(NetworkAddrpoolTestCase):
         self.assertEqual(','.join([mgmt_ipv4.floating_address,
                                    mgmt_ipv4.controller0_address]),
                          no_proxy_entry.value)
+
+        # check that the ipv6 address mode is deleted and the ipv4 address mode still exists
+        intf_addr_mode_list = dbutils.get_interface_address_mode(c0_mgmt0.id)
+        self.assertEqual(1, len(intf_addr_mode_list))  # only one remains
+        for intf_addr_mode in intf_addr_mode_list:
+            self.assertEqual(intf_addr_mode.family, constants.IPV4_FAMILY)
+            self.assertEqual(intf_addr_mode.interface_uuid, c0_mgmt0.uuid)
+            self.assertEqual(intf_addr_mode.mode, constants.IPV4_STATIC)
 
         self.mock_rpcapi_set_mgmt_network_reconfig_flag.assert_called_once()
 

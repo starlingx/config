@@ -424,6 +424,9 @@ class NetworkAddresspoolController(rest.RestController):
         for addr in pool_addresses:
             if addr.interface_id:
                 pecan.request.dbapi.address_update(addr.uuid, {'interface_id': None})
+                # Since the adddress is disassociated with an interface, remove the address mode entry
+                addr_mode = pecan.request.dbapi.address_mode_query(addr.interface_id, pool.family)
+                pecan.request.dbapi.address_mode_destroy(addr_mode.uuid)
 
         pecan.request.dbapi.network_addrpool_destroy(to_delete.uuid)
 
