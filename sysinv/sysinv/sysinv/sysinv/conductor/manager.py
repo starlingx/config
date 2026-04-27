@@ -12880,6 +12880,17 @@ class ConductorManager(service.PeriodicService):
                 # _config_update_hosts() above. Node needs a reboot to clear it.
                 config_uuid = self._config_clear_reboot_required(config_uuid)
                 self._config_apply_runtime_manifest(context, config_uuid, config_dict, force=True)
+            elif section == constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG and \
+                    name in [constants.SERVICE_PARAM_NAME_PLATFORM_TLS_MIN_VERSION,
+                             constants.SERVICE_PARAM_NAME_PLATFORM_TLS_CIPHER_SUITE]:
+                personalities = [constants.CONTROLLER]
+                config_uuid = self._config_update_hosts(context, personalities)
+                config_dict = {
+                    'personalities': personalities,
+                    'classes': ['platform::haproxy::runtime']
+                }
+                self._config_apply_runtime_manifest(
+                    context, config_uuid, config_dict)
             elif section == constants.SERVICE_PARAM_SECTION_PLATFORM_COREDUMP:
                 personalities = [constants.CONTROLLER,
                                  constants.WORKER,
@@ -13035,7 +13046,8 @@ class ConductorManager(service.PeriodicService):
             elif service == constants.SERVICE_TYPE_PLATFORM:
                 config_dict = {
                     "personalities": personalities,
-                    "classes": ['platform::mtce::runtime']
+                    "classes": ['platform::mtce::runtime',
+                                'platform::haproxy::runtime']
                 }
                 self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
