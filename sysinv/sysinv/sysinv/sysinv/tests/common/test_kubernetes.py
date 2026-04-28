@@ -53,6 +53,12 @@ FAKE_KUBE_VERSIONS = [
      'applied_patches': ['KUBE.1', 'KUBE.2'],
      'available_patches': ['KUBE.3'],
      },
+    {'version': 'v1.42.11',
+     'upgrade_from': ['v1.42.4'],
+     'downgrade_to': [],
+     'applied_patches': ['KUBE.1', 'KUBE.2'],
+     'available_patches': ['KUBE.3'],
+     },
     {'version': 'v1.43.1',
      'upgrade_from': ['v1.42.2'],
      'downgrade_to': [],
@@ -1060,7 +1066,7 @@ class TestKubeOperator(base.TestCase):
         self.addCleanup(p.stop)
 
         result = self.kube_operator.kube_get_higher_patch_version('v1.41.3', 'v1.43.1')
-        assert result == ['v1.42.4', 'v1.43.1']
+        assert result == ['v1.42.11', 'v1.43.1']
 
     def test_kube_get_higher_patch_version_increment_check(self):
 
@@ -1072,7 +1078,7 @@ class TestKubeOperator(base.TestCase):
         self.addCleanup(p.stop)
 
         result = self.kube_operator.kube_get_higher_patch_version('v1.41.3', 'v1.45.1')
-        assert result == ['v1.42.4', 'v1.43.1', 'v1.44.0', 'v1.45.1']
+        assert result == ['v1.42.11', 'v1.43.1', 'v1.44.0', 'v1.45.1']
 
     def test_kube_get_higher_patch_version_check_same_minor(self):
 
@@ -1097,6 +1103,22 @@ class TestKubeOperator(base.TestCase):
 
         result = self.kube_operator.kube_get_higher_patch_version('v1.43.1', 'v1.42.4')
         assert result == []
+
+    def test_kube_get_higher_patch_version_multi_digit_patch(self):
+        """Test that multi-digit patch versions (e.g. v1.42.11) are
+        correctly compared as version string, not simple string."""
+
+        self.list_node_result = self.single_node_result
+
+        p = mock.patch('sysinv.common.kubernetes.get_kube_versions',
+                        mock_get_kube_versions)
+        p.start()
+        self.addCleanup(p.stop)
+
+        # Check for version-sort: "v1.42.11" is lower than "v1.42.4"
+        # if string sorted, but greater if version sorted.
+        result = self.kube_operator.kube_get_higher_patch_version('v1.42.3', 'v1.42.11')
+        assert result == ['v1.42.11']
 
     def test_kube_get_kubelet_versions_multi_node(self):
 
@@ -1123,6 +1145,7 @@ class TestKubeOperator(base.TestCase):
                           'v1.42.1': 'partial',
                           'v1.42.3': 'unavailable',
                           'v1.42.4': 'partial',
+                          'v1.42.11': 'unavailable',
                           'v1.43.1': 'unavailable',
                           'v1.44.0': 'unavailable',
                           'v1.45.1': 'unavailable',
@@ -1141,6 +1164,7 @@ class TestKubeOperator(base.TestCase):
                           'v1.42.1': 'active',
                           'v1.42.3': 'available',
                           'v1.42.4': 'available',
+                          'v1.42.11': 'available',
                           'v1.43.1': 'active',
                           'v1.44.0': 'active',
                           'v1.45.1': 'active',
@@ -1165,6 +1189,7 @@ class TestKubeOperator(base.TestCase):
                           'v1.42.1': 'active',
                           'v1.42.3': 'available',
                           'v1.42.4': 'available',
+                          'v1.42.11': 'available',
                           'v1.43.1': 'available',
                           'v1.44.0': 'available',
                           'v1.45.1': 'available',
@@ -1186,6 +1211,7 @@ class TestKubeOperator(base.TestCase):
                           'v1.42.1': 'partial',
                           'v1.42.3': 'partial',
                           'v1.42.4': 'partial',
+                          'v1.42.11': 'unavailable',
                           'v1.43.1': 'unavailable',
                           'v1.44.0': 'unavailable',
                           'v1.45.1': 'unavailable',
@@ -1211,6 +1237,7 @@ class TestKubeOperator(base.TestCase):
                           'v1.42.1': 'active',
                           'v1.42.3': 'available',
                           'v1.42.4': 'available',
+                          'v1.42.11': 'available',
                           'v1.43.1': 'available',
                           'v1.44.0': 'available',
                           'v1.45.1': 'available',
@@ -2258,3 +2285,21 @@ class TestKubernetesUtilities(base.TestCase):
         self.assertFalse(kube.is_kube_version_supported('v1.42.3', 'v1.42.2', 'v1.42.2'))
         self.assertFalse(kube.is_kube_version_supported('v1.42.3', 'v1.43.1', None))
         self.assertFalse(kube.is_kube_version_supported('v1.42.3', None, 'v1.41.5'))
+
+
+class TestFilterHighestPatchVersions(base.TestCase):
+    def test_filter_highest_patch_versions(self):
+        ver_list = ['v1.42.0', 'v1.42.1', 'v1.42.3', 'v1.42.4', 'v1.42.11', 'v1.43.1']
+        self.assertEqual(
+            kube.filter_highest_patch_versions(ver_list, 'v1.41.3', 'v1.43.1'),
+            ['v1.42.11', 'v1.43.1'])
+        self.assertEqual(
+            kube.filter_highest_patch_versions(['v1.42.4'], 'v1.41.3', 'v1.42.4'),
+            ['v1.42.4'])
+        self.assertEqual(
+            len(kube.filter_highest_patch_versions(
+                ['1.42.3', '1.42.11'], '1.41.3', '1.42.11')),
+            2)
+        self.assertEqual(
+            kube.filter_highest_patch_versions([], 'v1.41.3', 'v1.43.1'),
+            [])

@@ -527,6 +527,27 @@ def get_max_kube_version():
     return kubernetes_version
 
 
+def filter_highest_patch_versions(ver_list, current_version, target_version):
+    """Filter a list of strings with major.minor.patch and return a list
+    containing the highest patch version for each major.minor where
+    version is greater than current_version and less than or equal to
+    target_version.
+    """
+    if not ver_list:
+        return []
+    ver_dict = {}
+    for v in ver_list:
+        if not (LooseVersion(v) > LooseVersion(current_version) and
+                LooseVersion(v) <= LooseVersion(target_version)):
+            continue
+        # Version strings include 'v' prefix (e.g., "v1.28.3")
+        # LooseVersion("v1.28.3").version = ['v', 1, 28, 3]; [1:3] extracts [major, minor]
+        key = tuple(LooseVersion(v).version[1:3])
+        if key not in ver_dict or LooseVersion(v) > LooseVersion(ver_dict[key]):
+            ver_dict[key] = v
+    return sorted(ver_dict.values(), key=LooseVersion)
+
+
 def get_kube_versions():
     """Provides a list of supported kubernetes versions in
        increasing order."""
@@ -1970,28 +1991,8 @@ class KubeOperator(object):
                         % (target_version, current_version))
         # Get version lists
         kube_versions = get_kube_versions()
-        kube_versions = sorted(kube_versions, key=lambda v: LooseVersion(v['version']))
-        major_minor_version = set()
-        final_versions = list()
-        intermediate_versions = list()
-
-        # loop over all k8s versions in minor.major.patch version sorted order
-        # Include versions: > the current version, and <= target_version
-        for version in kube_versions:
-            major_minor = ".".join(version['version'].split(".")[:2])
-            if ((LooseVersion(version['version']) > LooseVersion(current_version)) and
-                    (LooseVersion(version['version']) <= LooseVersion(target_version))):
-                intermediate_versions.append(version['version'])
-                major_minor_version.add(major_minor)
-
-        # Get Max patch version list of all intermediate versions
-        for ver_list in major_minor_version:
-            result = [v for v in intermediate_versions if ver_list in v]
-            final_versions.append(max(result, key=lambda x: LooseVersion(x)))
-
-        final_versions = sorted(final_versions, key=lambda v: LooseVersion(v))
-
-        return final_versions
+        ver_list = [ver['version'] for ver in kube_versions]
+        return filter_highest_patch_versions(ver_list, current_version, target_version)
 
     def kube_get_lower_equal_versions(self, target_version):
         """This function returns list with versions
