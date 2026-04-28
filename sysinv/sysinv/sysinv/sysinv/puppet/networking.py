@@ -39,6 +39,7 @@ class NetworkingPuppet(base.BasePuppet):
         config.update(self._get_cluster_pod_config())
         config.update(self._get_cluster_service_config())
         config.update(self._get_blackhole_address())
+        config.update(self._get_multicast_network_config())
         return config
 
     def get_host_config(self, host):
@@ -115,6 +116,13 @@ class NetworkingPuppet(base.BasePuppet):
         config = self._get_network_config(networktype)
 
         config = self._get_network_gateway_config(networktype, config)
+
+        return config
+
+    def _get_multicast_network_config(self):
+        networktype = constants.NETWORK_TYPE_MULTICAST
+
+        config = self._get_network_config(networktype)
 
         return config
 

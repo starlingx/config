@@ -1,4 +1,4 @@
-# Copyright (c) 2024 Wind River Systems, Inc.
+# Copyright (c) 2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -61,6 +61,27 @@ class NetworkingTestCaseMixin(base.PuppetTestCaseMixin):
             network = self._find_network_by_type(network_type)
             networks.append(str(network['id']))
         return networks
+
+    def _create_multicast_network(self):
+        """Create the multicast network and address pool in the DB.
+
+        The base test setup creates multicast addresses but does not create
+        the network object itself.  This helper creates the network so that
+        _get_multicast_network_config() can find it via network_get_by_type.
+        """
+        multicast_subnet = self.multicast_subnets[0]
+        pool = self._create_test_address_pool(
+            name='multicast-subnet',
+            subnet=multicast_subnet)
+        network = dbutils.create_test_network(
+            type=constants.NETWORK_TYPE_MULTICAST,
+            address_pool_id=pool.id,
+            primary_pool_family=constants.IP_FAMILIES[multicast_subnet.version])
+        network_addrpool = dbutils.create_test_network_addrpool(
+            address_pool_id=pool.id,
+            network_id=network.id)
+        self.network_addrpools.append(network_addrpool)
+        return network, pool
 
     def _create_ethernet_test(self, ifname=None, ifclass=None,
                               networktype=None, host_id=None, **kwargs):
@@ -343,6 +364,43 @@ class NetworkingTestTestCaseControllerDualStackIPv4Primary(NetworkingTestCaseMix
                 test_key = f'platform::network::{type}::params::{field}'
                 self.assertEqual(constants.IPV4_FAMILY, hiera_data[test_key])
 
+    def test_generate_networking_system_config_multicast(self):
+        """Verify that _get_multicast_network_config produces the expected
+        hieradata keys when the multicast network exists in the DB."""
+        self._create_multicast_network()
+
+        hieradata_directory = self._create_hieradata_directory()
+        config_filename = self._get_config_filename(hieradata_directory)
+        with open(config_filename, 'w') as config_file:
+            config = self.operator.networking.get_system_config()  # pylint: disable=no-member
+            yaml.dump(config, config_file, default_flow_style=False)
+
+        hiera_data = dict()
+        with open(config_filename, 'r') as config_file:
+            hiera_data = yaml.safe_load(config_file)
+
+        # The multicast network is IPv4-only in this test case
+        net_type = constants.NETWORK_TYPE_MULTICAST
+        for field in ["subnet_end", "subnet_netmask", "subnet_network",
+                       "subnet_network_url", "subnet_prefixlen", "subnet_start",
+                       "subnet_version"]:
+            test_key = f'platform::network::{net_type}::params::{field}'
+            self.assertIn(test_key, hiera_data.keys(),
+                          f"Missing key {test_key} in system hieradata")
+
+        # Verify the primary pool subnet_version matches IPv4
+        self.assertEqual(
+            constants.IPV4_FAMILY,
+            hiera_data[f'platform::network::{net_type}::params::subnet_version'])
+
+        # Verify the family-qualified keys are also present
+        for field in ["subnet_end", "subnet_netmask", "subnet_network",
+                       "subnet_network_url", "subnet_prefixlen", "subnet_start",
+                       "subnet_version"]:
+            test_key = f'platform::network::{net_type}::ipv4::params::{field}'
+            self.assertIn(test_key, hiera_data.keys(),
+                          f"Missing key {test_key} in system hieradata")
+
 
 class NetworkingTestTestCaseControllerDualStackIPv6Primary(NetworkingTestCaseMixin,
                                                            dbbase.BaseIPv6Mixin,
@@ -535,6 +593,43 @@ class NetworkingTestTestCaseControllerDualStackIPv6Primary(NetworkingTestCaseMix
             for field in ["subnet_version"]:
                 test_key = f'platform::network::{type}::params::{field}'
                 self.assertEqual(constants.IPV6_FAMILY, hiera_data[test_key])
+
+    def test_generate_networking_system_config_multicast(self):
+        """Verify that _get_multicast_network_config produces the expected
+        hieradata keys when the multicast network exists in the DB (IPv6 primary)."""
+        self._create_multicast_network()
+
+        hieradata_directory = self._create_hieradata_directory()
+        config_filename = self._get_config_filename(hieradata_directory)
+        with open(config_filename, 'w') as config_file:
+            config = self.operator.networking.get_system_config()  # pylint: disable=no-member
+            yaml.dump(config, config_file, default_flow_style=False)
+
+        hiera_data = dict()
+        with open(config_filename, 'r') as config_file:
+            hiera_data = yaml.safe_load(config_file)
+
+        # The multicast network is IPv6-only in this test case (BaseIPv6Mixin)
+        net_type = constants.NETWORK_TYPE_MULTICAST
+        for field in ["subnet_end", "subnet_netmask", "subnet_network",
+                       "subnet_network_url", "subnet_prefixlen", "subnet_start",
+                       "subnet_version"]:
+            test_key = f'platform::network::{net_type}::params::{field}'
+            self.assertIn(test_key, hiera_data.keys(),
+                          f"Missing key {test_key} in system hieradata")
+
+        # Verify the primary pool subnet_version matches IPv6
+        self.assertEqual(
+            constants.IPV6_FAMILY,
+            hiera_data[f'platform::network::{net_type}::params::subnet_version'])
+
+        # Verify the family-qualified keys are also present
+        for field in ["subnet_end", "subnet_netmask", "subnet_network",
+                       "subnet_network_url", "subnet_prefixlen", "subnet_start",
+                       "subnet_version"]:
+            test_key = f'platform::network::{net_type}::ipv6::params::{field}'
+            self.assertIn(test_key, hiera_data.keys(),
+                          f"Missing key {test_key} in system hieradata")
 
     def test_generate_networking_system_config_no_net_pool_object(self):
         """This test aims to validate if a system can operate without network-addrpool
