@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2019 Wind River Systems, Inc.
+# Copyright (c) 2019-2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -20,7 +20,8 @@ def do_kube_version_list(cc, args):
     versions = cc.kube_version.list()
     labels = ['version', 'target', 'state']
     fields = ['version', 'target', 'state']
-    utils.print_list(versions, fields, labels, sortby=0)
+    # sortby=None: expect the API to return values in sorted order
+    utils.print_list(versions, fields, labels, sortby=None)
 
 
 @utils.arg('version', metavar='<kubernetes version>',
