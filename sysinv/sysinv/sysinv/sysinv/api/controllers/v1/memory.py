@@ -15,7 +15,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2022 Wind River Systems, Inc.
+# Copyright (c) 2013-2026 Wind River Systems, Inc.
 #
 
 import jsonpatch
@@ -462,7 +462,7 @@ class MemoryController(rest.RestController):
             except wsme.exc.ClientSideError as e:
                 inode = pecan.request.dbapi.inode_get(inode_id=rpc_port.forinodeid)
                 numa_node = inode.numa_node
-                msg = _('Processor {0}:'.format(numa_node)) + six.text_type(e)
+                msg = _('Processor %(numa_node)s: %(error)s') % {'numa_node': numa_node, 'error': e}
                 raise wsme.exc.ClientSideError(msg)
         else:
             # Standard/system controller or storage node
