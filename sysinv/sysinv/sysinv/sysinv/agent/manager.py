@@ -38,6 +38,7 @@ from eventlet.green import subprocess
 from eventlet import greenthread
 import fileinput
 import inspect
+import json
 import os
 import pickle  # nosec B403
 import retrying
@@ -129,6 +130,8 @@ LOCK_AGENT_ACTION = 'agent-exclusive-action'
 
 K8S_UPGRADE_IN_PROGRESS_FILE_PATH = os.path.join(
     tsc.PLATFORM_CONF_PATH, '.sysinv_agent_k8s_upgrade_in_progress.pkl')
+
+KUBELET_VERSION_FILE = '/etc/kubernetes/kubelet_version'
 
 
 class FakeGlobalSectionHead(object):
@@ -241,6 +244,11 @@ class AgentManager(service.PeriodicService):
 
         if tsc.system_mode == constants.SYSTEM_MODE_SIMPLEX:
             utils.touch(SYSINV_READY_FLAG)
+            # Kubelet version update and its status reporting is done only when USM upgrade is in
+            # progress. Note that this method only applies in case of combined USM + k8s upgrade
+            # and not classic k8s upgrade.
+            if os.path.exists(constants.USM_UPGRADE_IN_PROGRESS):
+                greenthread.spawn(self._report_kubelet_version_update_status)
 
         greenthread.spawn(self._unfinished_kube_upgrade_check)
 
@@ -290,22 +298,12 @@ class AgentManager(service.PeriodicService):
             LOG.info("No unfinished kubernetes upgrade process found in sysinv-agent ...")
             return
 
-        # Following block waits for the service to be completely up
-        tries = 120
-        while not self._ihost_uuid and tries:
-            time.sleep(5)
-            tries -= 1
-        if not self._ihost_uuid:
-            # Although host_uuid is available in the pickled data, operation like pull images
-            # require it for the validation with self._ihost_uuid.
-            # So unfinished k8s upgrade cannot be completed before self.ihost_uuid is set.
-            # Without self._ihost_uuid set, do nothing. Neither continue, nor report the unfinished
-            # k8s upgrade. Practically, this condition will never occur.
-            LOG.error("Host uuid not set after 10 minutes wait, cannot report unfinished "
-                      "kubernetes upgrade.")
-            return
-
         try:
+            if not self._is_host_uuid_set():
+                LOG.error("Host UUID is not set. "
+                          "Cannot proceed with the unfinished kubernetes upgrade check.")
+                return
+
             context = mycontext.get_admin_context()
             k8s_upgrade_data = None
             with open(K8S_UPGRADE_IN_PROGRESS_FILE_PATH, 'rb') as file:
@@ -2824,3 +2822,114 @@ class AgentManager(service.PeriodicService):
                 operator._pin_unpin_control_plane_images(pin_images_version=version)
             except Exception as ex:
                 LOG.warning("Failed to pin kubernetes control-plane images. Error: [%s]" % (ex))
+
+    def _is_host_uuid_set(self, timeout=600):
+        """Check if self._ihost_uuid is set upon startup
+
+        :param: timeout (int) in seconds
+        """
+        if not isinstance(timeout, int):
+            raise exception.SysinvException("Invalid data type for timeout %s" % (type(timeout)))
+
+        wait = 2
+        tries = int(timeout / wait)
+        while not self._ihost_uuid and tries:
+            time.sleep(wait)
+            tries -= 1
+        if not self._ihost_uuid:
+            # Without self._ihost_uuid set, do nothing.
+            # Practically, this condition will never occur.
+            LOG.error("Timed-out waiting for host_uuid to be set.")
+            return False
+        return True
+
+    def _report_kubelet_version_update_status(self):
+        """Report kubelet upgrade/downgrade status
+
+        This method reports kubelet version update status to sysinv-conductor which
+        updates the database. It waits for sysinv-conductor to be completely up and running
+        before doing so and also waits for kubelet service to be "active"/"failed" which
+        implies that ExecStartPre scripts have been executed. This method is actually only
+        supposed to do this on first bootup after the new release has been installed during
+        USM upgrade.
+        """
+        try:
+            if tsc.system_mode != constants.SYSTEM_MODE_SIMPLEX:
+                return
+
+            if not self._is_host_uuid_set():
+                LOG.error("Host UUID is not set. "
+                          "Cannot proceed with kubelet version update status.")
+                return
+
+            def _read_version_details():
+                """Parse the kubelet_version file and return version details
+
+                """
+                version_details = None
+                try:
+                    if not os.path.exists(KUBELET_VERSION_FILE):
+                        LOG.warning("File: %s not found. This may be a classic USM upgrade."
+                                    % (KUBELET_VERSION_FILE))
+                        return version_details
+                    with open(KUBELET_VERSION_FILE, "r") as file:
+                        version_details = json.load(file)
+                except Exception as ex:
+                    LOG.warning("Failed to get version details from file %s. Error: %s"
+                                % (KUBELET_VERSION_FILE, ex))
+                return version_details
+
+            version_details = _read_version_details()
+            if not version_details:
+                LOG.warning("Skipping reporting kubelet version update...")
+                return
+
+            to_release = version_details.get('to_release', None)
+            if tsc.SW_VERSION != to_release:
+                LOG.warning("Current release [%s] not same as to_release [%s] in file %s."
+                            "Skipping reporting kubelet version update..."
+                            % (tsc.SW_VERSION, to_release, KUBELET_VERSION_FILE))
+                return
+
+            retries = 200
+            wait = 3
+            kubelet_started = False
+            while retries:
+                try:
+                    # This implies Kubelet ExecStartPre script has been executed.
+                    kubelet_status = utils.systemctl_is_active_service_status(
+                        kubernetes.KUBELET_SYSTEMD_SERVICE_NAME)
+                    if kubelet_status in ['active', 'failed']:
+                        LOG.info("Kubelet status: [%s]. Proceeding with reporting kubelet "
+                                 "version update status." % (kubelet_status))
+                        kubelet_started = True
+                        break
+                except Exception as ex:
+                    LOG.warning("Error checking kubelet active status: %s. Retrying..." % (ex))
+                time.sleep(wait)
+                retries = retries - 1
+
+            if not kubelet_started:
+                LOG.warning("Timed-out waiting for kubelet service to be active. Failed to report "
+                            "kubelet version update status.")
+                return
+
+            context = mycontext.get_admin_context()
+
+            to_kubelet_version = version_details.get('to_kubelet_version', None)
+            if not to_kubelet_version:
+                raise Exception("'to_kubelet_version' not found in the additional data.")
+
+            success = True
+            link2_symlink_version = kubernetes.get_kube_version_from_symlink(stage_number=2)
+            if link2_symlink_version != to_kubelet_version.strip('v'):
+                success = False
+
+            conductor_api = conductor_rpcapi.ConductorAPI(topic=conductor_rpcapi.MANAGER_TOPIC)
+            conductor_api.report_kube_upgrade_kubelet_result(
+                context, self._ihost_uuid, to_kubelet_version, success)
+            LOG.info("Kubelet version update status (%s) reported."
+                     % ("Success" if success else "Failed"))
+        except Exception as ex:
+            LOG.error("Failed to report kubelet version update status to sysinv-conductor. "
+                      "Error: %s" % (ex))
