@@ -13,12 +13,10 @@ import socket
 import subprocess
 
 from cryptography import x509
-from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.x509.oid import NameOID
 
 from oslo_log import log as logging
@@ -125,6 +123,9 @@ class Client(object):
         LOG.info("Encrypt AK1 and IV w/ PUK1")
         eak1 = utils.asymmetric_encrypt_data(puk1_data, ak1)
         eiv = utils.asymmetric_encrypt_data(puk1_data, iv)
+        if not eak1 or not eiv:
+            LOG.error('Failed to encrypt AK1 or IV')
+            return None
 
         LOG.info("Hash OTS Token, eAK1 and eCSR.")
         hash_algorithm = hashes.SHA256()
@@ -135,6 +136,9 @@ class Client(object):
         hash_value = hasher.finalize()
 
         ehash_data = utils.asymmetric_encrypt_data(puc_data, hash_value, True)
+        if not ehash_data:
+            LOG.error('Failed to encrypt Hash')
+            return None
 
         message['token'] = self.ots_token
         message['eiv'] = base64.b64encode(eiv).decode('utf-8')
@@ -186,14 +190,11 @@ class Client(object):
                                                       self.hostname[constants.UNIT_HOSTNAME])
                 ipsec_cert = utils.load_data(ipsec_cert_file)
                 leaf_cert = x509.load_pem_x509_certificate(ipsec_cert)
-                try:
-                    pub_local_key = local_cert.public_key()
-                    pub_local_key.verify(leaf_cert.signature, leaf_cert.tbs_certificate_bytes,
-                                          padding.PKCS1v15(), leaf_cert.signature_hash_algorithm)
-                except InvalidSignature:
+                pub_local_key = local_cert.public_key()
+                if not utils.verify_cert_signature(leaf_cert, pub_local_key):
                     return False
-                else:
-                    LOG.info("Cert Signature validation OK")
+
+                LOG.info("Cert Signature validation OK")
 
                 date_now = datetime.datetime.now()
                 if date_now > leaf_cert.not_valid_after or date_now < leaf_cert.not_valid_before:
@@ -377,9 +378,14 @@ class Client(object):
 
                 if mask & selectors.EVENT_WRITE:
                     msg = self._handle_send_data(self.data)
-                    sock.sendall(bytes(msg, 'utf-8'))
-                    sel.modify(sock, selectors.EVENT_READ)
-                    self.state = State.get_next_state(self.state, self.op_code)
+                    if msg:
+                        sock.sendall(bytes(msg, 'utf-8'))
+                        sel.modify(sock, selectors.EVENT_READ)
+                        self.state = State.get_next_state(self.state, self.op_code)
+                    else:
+                        exit_code = 1
+                        self.status_code = StatusCode.IPSEC_OP_FAILURE_GENERAL
+                        self.state = State.END_STAGE
 
                 if self.state == State.END_STAGE:
                     self._finish_operation(sock)

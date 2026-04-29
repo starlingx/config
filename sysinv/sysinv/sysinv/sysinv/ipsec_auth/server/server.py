@@ -207,6 +207,8 @@ class IPsecConnection(object):
                     pub_key = self._generate_tmp_key_pair()
                     token = self.ots_token.get_content()
                     hash_payload = utils.hash_and_sign_payload(self.ca_key, token + pub_key)
+                    if not hash_payload:
+                        raise ValueError('Failed to hash and sign payload')
 
                     payload["token"] = repr(self.ots_token)
                     payload["hostname"] = self.hostname
@@ -242,6 +244,9 @@ class IPsecConnection(object):
 
                 iv = utils.asymmetric_decrypt_data(self.tmp_priv_key, eiv)
                 aes_key = utils.asymmetric_decrypt_data(self.tmp_priv_key, eak1)
+                if not iv or not aes_key:
+                    raise ValueError('Failed to decrypt AK1 or IV')
+
                 cert_request = utils.symmetric_decrypt_data(aes_key, iv, ecsr)
 
                 self.signed_cert = self._sign_cert_request(cert_request)
@@ -258,6 +263,9 @@ class IPsecConnection(object):
                                         self.floating_ip, 'utf-8')
 
                 hash_payload = utils.hash_and_sign_payload(self.ca_key, data)
+                if not hash_payload:
+                    raise ValueError('Failed to hash and sign payload')
+
                 self.status_code = StatusCode.IPSEC_OP_SUCCESS
 
                 payload["cert"] = self.signed_cert
