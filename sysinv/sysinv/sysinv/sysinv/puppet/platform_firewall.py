@@ -1,4 +1,3 @@
-
 # Copyright (c) 2017-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
@@ -93,8 +92,17 @@ class PlatformFirewallPuppet(base.BasePuppet):
             LOG.info("Do not add calico firewall to storage nodes (they do not run k8s)")
             return config
 
+        non_oam_network_types = {
+            constants.NETWORK_TYPE_MGMT,
+            constants.NETWORK_TYPE_ADMIN,
+            constants.NETWORK_TYPE_CLUSTER_HOST,
+            constants.NETWORK_TYPE_PXEBOOT,
+            constants.NETWORK_TYPE_STORAGE,
+        }
+
         firewall_networks = set()
         intf_ep = dict()
+        oam_intf_shared = False
         for ifname in self.context['interfaces'].keys():
             intf = self.context['interfaces'][ifname]
             if (intf.ifclass == constants.INTERFACE_CLASS_PLATFORM
@@ -102,6 +110,7 @@ class PlatformFirewallPuppet(base.BasePuppet):
                     and intf.iftype != constants.INTERFACE_TYPE_VF):
                 intf_networks = self.dbapi.interface_network_get_by_interface(intf.id)
                 iftype_lbl = list()
+                intf_net_types = set()
                 for intf_network in intf_networks:
                     network = self.dbapi.network_get(intf_network.network_uuid)
                     if (network.type == constants.NETWORK_TYPE_OAM and network.pool_uuid
@@ -109,10 +118,16 @@ class PlatformFirewallPuppet(base.BasePuppet):
                         iftype_lbl.append(network.type)
                         firewall_networks.add(network)
                         intf_ep[intf.uuid] = [intf, ""]
+                        intf_net_types.add(network.type)
                     elif network.pool_uuid:
                         iftype_lbl.append(network.type)
                         firewall_networks.add(network)
                         intf_ep[intf.uuid] = [intf, ""]
+                        intf_net_types.add(network.type)
+                # check if oam shares the same interface with other networks
+                if (constants.NETWORK_TYPE_OAM in intf_net_types and
+                        any(net in intf_net_types for net in non_oam_network_types)):
+                    oam_intf_shared = True
                 iftype_lbl.sort()
                 if (intf.uuid in intf_ep.keys()):
                     intf_ep[intf.uuid][1] = '.'.join(iftype_lbl)
@@ -152,23 +167,27 @@ class PlatformFirewallPuppet(base.BasePuppet):
 
             if (config[FIREWALL_GNP_MGMT_CFG]):
                 self._set_rules_mgmt(config[FIREWALL_GNP_MGMT_CFG],
-                                    networks[constants.NETWORK_TYPE_MGMT], host, multicast_pools)
+                                    networks[constants.NETWORK_TYPE_MGMT], host, multicast_pools,
+                                    oam_intf_shared)
 
             if (config[FIREWALL_GNP_ADMIN_CFG]):
                 self._set_rules_admin(config[FIREWALL_GNP_ADMIN_CFG],
-                                      networks[constants.NETWORK_TYPE_ADMIN], host, multicast_pools)
+                                      networks[constants.NETWORK_TYPE_ADMIN], host, multicast_pools,
+                                      oam_intf_shared)
 
             if (config[FIREWALL_GNP_CLUSTER_HOST_CFG]):
                 self._set_rules_cluster_host(config[FIREWALL_GNP_CLUSTER_HOST_CFG],
-                                    networks[constants.NETWORK_TYPE_CLUSTER_HOST], host, multicast_pools)
+                                    networks[constants.NETWORK_TYPE_CLUSTER_HOST], host, multicast_pools,
+                                    oam_intf_shared)
 
             if (config[FIREWALL_GNP_PXEBOOT_CFG]):
                 self._set_rules_pxeboot(config[FIREWALL_GNP_PXEBOOT_CFG],
-                                    networks[constants.NETWORK_TYPE_PXEBOOT], host)
+                                    networks[constants.NETWORK_TYPE_PXEBOOT], host, oam_intf_shared)
 
             if (config[FIREWALL_GNP_STORAGE_CFG]):
                 self._set_rules_storage(config[FIREWALL_GNP_STORAGE_CFG],
-                                    networks[constants.NETWORK_TYPE_STORAGE], host, multicast_pools)
+                                    networks[constants.NETWORK_TYPE_STORAGE], host, multicast_pools,
+                                    oam_intf_shared)
 
             if (host.personality == constants.CONTROLLER):
                 if (dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD):
@@ -177,7 +196,8 @@ class PlatformFirewallPuppet(base.BasePuppet):
                         self._set_rules_subcloud_admin(config[FIREWALL_GNP_ADMIN_CFG],
                                                     config[FIREWALL_GNSET_ADMIN_CFG],
                                                     networks[constants.NETWORK_TYPE_ADMIN],
-                                                    host.personality)
+                                                    host.personality,
+                                                    oam_intf_shared)
                         if not config[FIREWALL_GNSET_ADMIN_CFG]["spec"]["nets"]:
                             # there is nothing to configure
                             config[FIREWALL_GNSET_ADMIN_CFG] = {}
@@ -187,7 +207,8 @@ class PlatformFirewallPuppet(base.BasePuppet):
                         self._set_rules_subcloud_mgmt(config[FIREWALL_GNP_MGMT_CFG],
                                                     config[FIREWALL_GNSET_MGMT_CFG],
                                                     networks[constants.NETWORK_TYPE_MGMT],
-                                                    host.personality)
+                                                    host.personality,
+                                                    oam_intf_shared)
                         if not config[FIREWALL_GNSET_MGMT_CFG]["spec"]["nets"]:
                             # there is nothing to configure
                             config[FIREWALL_GNSET_MGMT_CFG] = {}
@@ -198,7 +219,8 @@ class PlatformFirewallPuppet(base.BasePuppet):
                     self._set_rules_systemcontroller(config[FIREWALL_GNP_MGMT_CFG],
                                                     config[FIREWALL_GNSET_MGMT_CFG],
                                                     networks[constants.NETWORK_TYPE_MGMT],
-                                                    host.personality)
+                                                    host.personality,
+                                                    oam_intf_shared)
                     if not config[FIREWALL_GNSET_MGMT_CFG]["spec"]["nets"]:
                         # there is nothing to configure
                         config[FIREWALL_GNSET_MGMT_CFG] = {}
@@ -402,21 +424,24 @@ class PlatformFirewallPuppet(base.BasePuppet):
             if rule["protocol"] == "TCP" and rule["ipVersion"] == ip_version:
                 return copy.deepcopy(rule)
 
-    def _set_rules_mgmt(self, gnp_config, network, host, multicast_pools):
+    def _set_rules_mgmt(self, gnp_config, network, host, multicast_pools,
+                        oam_intf_shared):
         """ Fill the management network specific filtering data
 
         :param gnp_config: the dict containing the hiera data to be filled
         :param network: the sysinv.object.network object for this network
         :param host: a sysinv.object.host class object
         :param multicast_pools: dict with IP family as key and multicast pool as value
+        :param oam_intf_shared: oam shares the same intf with other networks
         """
         addr_pools = self._address_pools_get_by_network(network.id)
         for addr_pool in addr_pools:
             ip_version = addr_pool.family
             self._add_source_net_filter(gnp_config["spec"]["ingress"],
                                         f"{addr_pool.network}/{addr_pool.prefix}", ip_version)
-            self._add_destination_net_filter(gnp_config["spec"]["ingress"],
-                                            f"{addr_pool.network}/{addr_pool.prefix}", ip_version)
+            if oam_intf_shared:
+                self._add_destination_net_filter(gnp_config["spec"]["ingress"],
+                                                f"{addr_pool.network}/{addr_pool.prefix}", ip_version)
 
             ICMP = "ICMP"
             # ESP protocol uses the proto_id 50
@@ -425,12 +450,14 @@ class PlatformFirewallPuppet(base.BasePuppet):
             if (ip_version == 6):
                 ICMP = "ICMPv6"
                 self._add_source_net_filter(gnp_config["spec"]["ingress"], LINK_LOCAL, ip_version)
-                self._add_destination_net_filter(gnp_config["spec"]["ingress"], LINK_LOCAL, ip_version)
-                self._add_destination_net_filter(gnp_config["spec"]["ingress"], LINK_LOCAL_MC, ip_version)
+                if oam_intf_shared:
+                    self._add_destination_net_filter(gnp_config["spec"]["ingress"], LINK_LOCAL, ip_version)
+                    self._add_destination_net_filter(gnp_config["spec"]["ingress"], LINK_LOCAL_MC, ip_version)
 
             if (ip_version == 4):
-                self._add_destination_net_filter(gnp_config["spec"]["ingress"], LOCAL_MULTICAST_IPV4, ip_version,
-                                                exclude_protocols=[ICMP, ESP])
+                if oam_intf_shared:
+                    self._add_destination_net_filter(gnp_config["spec"]["ingress"], LOCAL_MULTICAST_IPV4, ip_version,
+                                                    exclude_protocols=[ICMP, ESP])
 
                 # add rule to allow DHCP requests (dhcp-offer have src addr == 0.0.0.0)
                 # worker/storage nodes request IP dynamically
@@ -439,24 +466,28 @@ class PlatformFirewallPuppet(base.BasePuppet):
 
                 self._create_igmp_rule(gnp_config, host, network, ip_version)
 
-            self._add_multicast_destination_filter(gnp_config["spec"]["ingress"], ip_version, multicast_pools,
-                                                   exclude_protocols=[ICMP, ESP, DHCP_PROTO, IGMP_PROTO])
+            if (oam_intf_shared):
+                self._add_multicast_destination_filter(gnp_config["spec"]["ingress"], ip_version, multicast_pools,
+                                                       exclude_protocols=[ICMP, ESP, DHCP_PROTO, IGMP_PROTO])
 
-    def _set_rules_admin(self, gnp_config, network, host, multicast_pools):
+    def _set_rules_admin(self, gnp_config, network, host, multicast_pools,
+                         oam_intf_shared):
         """ Fill the admin network specific filtering data
 
         :param gnp_config: the dict containing the hiera data to be filled
         :param network: the sysinv.object.network object for this network
         :param host: a sysinv.object.host class object
         :param multicast_pools: dict with IP family as key and multicast pool as value
+        :param oam_intf_shared: oam shares the same intf with other networks
         """
         addr_pools = self._address_pools_get_by_network(network.id)
         for addr_pool in addr_pools:
             ip_version = addr_pool.family
             self._add_source_net_filter(gnp_config["spec"]["ingress"],
                                         f"{addr_pool.network}/{addr_pool.prefix}", ip_version)
-            self._add_destination_net_filter(gnp_config["spec"]["ingress"],
-                                            f"{addr_pool.network}/{addr_pool.prefix}", ip_version)
+            if oam_intf_shared:
+                self._add_destination_net_filter(gnp_config["spec"]["ingress"],
+                                                f"{addr_pool.network}/{addr_pool.prefix}", ip_version)
             ICMP = "ICMP"
             # ESP protocol uses the proto_id 50
             ESP = 50
@@ -464,23 +495,28 @@ class PlatformFirewallPuppet(base.BasePuppet):
             if (ip_version == 6):
                 ICMP = "ICMPv6"
                 self._add_source_net_filter(gnp_config["spec"]["ingress"], LINK_LOCAL, ip_version)
-                self._add_destination_net_filter(gnp_config["spec"]["ingress"], LINK_LOCAL, ip_version)
-                self._add_destination_net_filter(gnp_config["spec"]["ingress"], LINK_LOCAL_MC, ip_version)
+                if oam_intf_shared:
+                    self._add_destination_net_filter(gnp_config["spec"]["ingress"], LINK_LOCAL, ip_version)
+                    self._add_destination_net_filter(gnp_config["spec"]["ingress"], LINK_LOCAL_MC, ip_version)
 
             if (ip_version == 4):
-                self._add_destination_net_filter(gnp_config["spec"]["ingress"], LOCAL_MULTICAST_IPV4, ip_version,
-                                                exclude_protocols=[ICMP, ESP])
+                if (oam_intf_shared):
+                    self._add_destination_net_filter(gnp_config["spec"]["ingress"], LOCAL_MULTICAST_IPV4, ip_version,
+                                                    exclude_protocols=[ICMP, ESP])
 
                 self._create_igmp_rule(gnp_config, host, network, ip_version)
 
-            self._add_multicast_destination_filter(gnp_config["spec"]["ingress"], ip_version, multicast_pools,
-                                                   exclude_protocols=[ICMP, ESP, IGMP_PROTO])
+            if (oam_intf_shared):
+                self._add_multicast_destination_filter(gnp_config["spec"]["ingress"], ip_version, multicast_pools,
+                                                       exclude_protocols=[ICMP, ESP, IGMP_PROTO])
 
-    def _set_rules_cluster_host(self, gnp_config, network, host, multicast_pools):
+    def _set_rules_cluster_host(self, gnp_config, network, host, multicast_pools,
+                                oam_intf_shared):
         """ Fill the cluster-host network specific filtering data
 
         :param gnp_config: the dict containing the hiera data to be filled
         :param network: the sysinv.object.network object for this network
+        :param oam_intf_shared: oam shares the same intf with other networks
         """
 
         cpod_pool_index = {}
@@ -497,8 +533,9 @@ class PlatformFirewallPuppet(base.BasePuppet):
             ip_version = addr_pool.family
             self._add_source_net_filter(gnp_config["spec"]["ingress"],
                                         f"{addr_pool.network}/{addr_pool.prefix}", ip_version)
-            self._add_destination_net_filter(gnp_config["spec"]["ingress"],
-                                            f"{addr_pool.network}/{addr_pool.prefix}", ip_version)
+            if oam_intf_shared:
+                self._add_destination_net_filter(gnp_config["spec"]["ingress"],
+                                                f"{addr_pool.network}/{addr_pool.prefix}", ip_version)
 
             # add cluster-pod to cover the cases where there is no tunneling, the pod traffic goes
             # directly in the cluster-host interface
@@ -506,8 +543,9 @@ class PlatformFirewallPuppet(base.BasePuppet):
             if cpod_pool:
                 self._add_source_net_filter(gnp_config["spec"]["ingress"],
                                             f"{cpod_pool.network}/{cpod_pool.prefix}", ip_version)
-                self._add_destination_net_filter(gnp_config["spec"]["ingress"],
-                                            f"{cpod_pool.network}/{cpod_pool.prefix}", ip_version)
+                if oam_intf_shared:
+                    self._add_destination_net_filter(gnp_config["spec"]["ingress"],
+                                                f"{cpod_pool.network}/{cpod_pool.prefix}", ip_version)
 
             # copy the TCP rule and do the same for SCTP
             sctp_egr_rule = self._copy_tcp_rule(gnp_config["spec"], "egress", ip_version)
@@ -529,11 +567,13 @@ class PlatformFirewallPuppet(base.BasePuppet):
                 ICMP = "ICMPv6"
                 # add link-local network too
                 self._add_source_net_filter(gnp_config["spec"]["ingress"], LINK_LOCAL, ip_version)
-                self._add_destination_net_filter(gnp_config["spec"]["ingress"], LINK_LOCAL, ip_version)
-                self._add_destination_net_filter(gnp_config["spec"]["ingress"], LINK_LOCAL_MC, ip_version)
+                if oam_intf_shared:
+                    self._add_destination_net_filter(gnp_config["spec"]["ingress"], LINK_LOCAL, ip_version)
+                    self._add_destination_net_filter(gnp_config["spec"]["ingress"], LINK_LOCAL_MC, ip_version)
 
             if (ip_version == 4):
-                self._add_destination_net_filter(gnp_config["spec"]["ingress"], LOCAL_MULTICAST_IPV4, ip_version,
+                if (oam_intf_shared):
+                    self._add_destination_net_filter(gnp_config["spec"]["ingress"], LOCAL_MULTICAST_IPV4, ip_version,
                                                 exclude_protocols=[ICMP, ESP])
 
                 # add rule to allow DHCP requests (dhcp-offer have src addr == 0.0.0.0)
@@ -542,14 +582,17 @@ class PlatformFirewallPuppet(base.BasePuppet):
 
                 self._create_igmp_rule(gnp_config, host, network, ip_version)
 
-            self._add_multicast_destination_filter(gnp_config["spec"]["ingress"], ip_version, multicast_pools,
-                                                   exclude_protocols=[ICMP, ESP, DHCP_PROTO, IGMP_PROTO])
+            if (oam_intf_shared):
+                self._add_multicast_destination_filter(gnp_config["spec"]["ingress"], ip_version, multicast_pools,
+                                                       exclude_protocols=[ICMP, ESP, DHCP_PROTO, IGMP_PROTO])
 
-    def _set_rules_pxeboot(self, gnp_config, network, host):
+    def _set_rules_pxeboot(self, gnp_config, network, host,
+                           oam_intf_shared):
         """ Fill the pxeboot network specific filtering data
 
         :param gnp_config: the dict containing the hiera data to be filled
         :param network: the sysinv.object.network object for this network
+        :param oam_intf_shared: oam shares the same intf with other networks
         """
 
         addr_pools = self._address_pools_get_by_network(network.id)
@@ -557,7 +600,8 @@ class PlatformFirewallPuppet(base.BasePuppet):
             ip_version = addr_pool.family
             self._add_source_net_filter(gnp_config["spec"]["ingress"],
                                         f"{addr_pool.network}/{addr_pool.prefix}", ip_version)
-            self._add_destination_net_filter(gnp_config["spec"]["ingress"],
+            if oam_intf_shared:
+                self._add_destination_net_filter(gnp_config["spec"]["ingress"],
                                         f"{addr_pool.network}/{addr_pool.prefix}", ip_version)
             if (ip_version == 6):
                 self._add_source_net_filter(gnp_config["spec"]["ingress"], LINK_LOCAL, ip_version)
@@ -566,13 +610,15 @@ class PlatformFirewallPuppet(base.BasePuppet):
                 rule = self._get_dhcp_rule(host.personality, "UDP", ip_version)
                 gnp_config["spec"]["ingress"].append(rule)
 
-    def _set_rules_storage(self, gnp_config, network, host, multicast_pools):
+    def _set_rules_storage(self, gnp_config, network, host, multicast_pools,
+                            oam_intf_shared):
         """ Fill the storage network specific filtering data
 
         :param gnp_config: the dict containing the hiera data to be filled
         :param network: the sysinv.object.network object for this network
         :param host: a sysinv.object.host class object
         :param multicast_pools: dict with IP family as key and multicast pool as value
+        :param oam_intf_shared: oam shares the same intf with other networks
         """
 
         addr_pools = self._address_pools_get_by_network(network.id)
@@ -580,7 +626,8 @@ class PlatformFirewallPuppet(base.BasePuppet):
             ip_version = addr_pool.family
             self._add_source_net_filter(gnp_config["spec"]["ingress"],
                                         f"{addr_pool.network}/{addr_pool.prefix}", ip_version)
-            self._add_destination_net_filter(gnp_config["spec"]["ingress"],
+            if oam_intf_shared:
+                self._add_destination_net_filter(gnp_config["spec"]["ingress"],
                                             f"{addr_pool.network}/{addr_pool.prefix}", ip_version)
 
             ICMP = "ICMP"
@@ -589,18 +636,21 @@ class PlatformFirewallPuppet(base.BasePuppet):
             if (ip_version == 6):
                 ICMP = "ICMPv6"
                 self._add_source_net_filter(gnp_config["spec"]["ingress"], LINK_LOCAL, ip_version)
-                self._add_destination_net_filter(gnp_config["spec"]["ingress"], LINK_LOCAL, ip_version)
-                self._add_destination_net_filter(gnp_config["spec"]["ingress"], LINK_LOCAL_MC, ip_version)
+                if oam_intf_shared:
+                    self._add_destination_net_filter(gnp_config["spec"]["ingress"], LINK_LOCAL, ip_version)
+                    self._add_destination_net_filter(gnp_config["spec"]["ingress"], LINK_LOCAL_MC, ip_version)
 
             if (ip_version == 4):
-                self._add_destination_net_filter(gnp_config["spec"]["ingress"], LOCAL_MULTICAST_IPV4, ip_version,
-                                                exclude_protocols=["ICMP", ESP])
+                if (oam_intf_shared):
+                    self._add_destination_net_filter(gnp_config["spec"]["ingress"], LOCAL_MULTICAST_IPV4, ip_version,
+                                                    exclude_protocols=["ICMP", ESP])
 
                 # add rule to allow DHCP requests (dhcp-offer have src addr == 0.0.0.0)
                 rule = self._get_dhcp_rule(host.personality, "UDP", ip_version)
                 gnp_config["spec"]["ingress"].append(rule)
 
-            self._add_multicast_destination_filter(gnp_config["spec"]["ingress"], ip_version, multicast_pools,
+            if (oam_intf_shared):
+                self._add_multicast_destination_filter(gnp_config["spec"]["ingress"], ip_version, multicast_pools,
                                                    exclude_protocols=[ICMP, ESP, DHCP_PROTO])
 
     def _add_source_net_filter(self, rule_list, source_net, ip_version):
@@ -667,12 +717,13 @@ class PlatformFirewallPuppet(base.BasePuppet):
                 f"{mcast_pool.network}/{mcast_pool.prefix}",
                 ip_version, exclude_protocols)
 
-    def _set_rules_subcloud_admin(self, gnp_config, gns_config, network, host_personality):
+    def _set_rules_subcloud_admin(self, gnp_config, gns_config, network, host_personality, oam_intf_shared):
         """ Add filtering rules for admin network in a subcloud installation
 
         :param gnp_config: the dict containing the hiera data to be filled
         :param network: the sysinv.object.network object for this network
         :param host_personality: the node personality (controller, storage, or worker)
+        :param oam_intf_shared: oam shares the same intf with other networks
         """
 
         routes_networks = self._get_routes_networks(network.type)
@@ -704,17 +755,18 @@ class PlatformFirewallPuppet(base.BasePuppet):
                     subnets = gns_config["metadata"]["labels"]["subnets"]
                     rule.update({"source": {"selector": f"subnets == '{subnets}'"}})
 
-                if "destination" in rule:
-                    rule["destination"]["nets"] = [f"{addr_pool.network}/{addr_pool.prefix}"]
-                else:
-                    rule.update({"destination": {"nets": [f"{addr_pool.network}/{addr_pool.prefix}"]}})
+                if oam_intf_shared:
+                    if "destination" in rule:
+                        rule["destination"]["nets"] = [f"{addr_pool.network}/{addr_pool.prefix}"]
+                    else:
+                        rule.update({"destination": {"nets": [f"{addr_pool.network}/{addr_pool.prefix}"]}})
 
                 rules.append(rule)
 
             for rule in rules:
                 gnp_config["spec"]["ingress"].append(rule)
 
-    def _set_rules_subcloud_mgmt(self, gnp_config, gns_config, network, host_personality):
+    def _set_rules_subcloud_mgmt(self, gnp_config, gns_config, network, host_personality, oam_intf_shared):
         """ Add filtering rules for mgmt network in a subcloud installation
 
         If the subcloud keeps using the mgmt network to communicate with the system controller
@@ -723,6 +775,7 @@ class PlatformFirewallPuppet(base.BasePuppet):
         :param gnp_config: the dict containing the hiera data to be filled
         :param network: the sysinv.object.network object for this network
         :param host_personality: the node personality (controller, storage, or worker)
+        :param oam_intf_shared: oam shares the same intf with other networks
         """
 
         routes_networks = self._get_routes_networks(network.type)
@@ -754,10 +807,11 @@ class PlatformFirewallPuppet(base.BasePuppet):
                     subnets = gns_config["metadata"]["labels"]["subnets"]
                     rule.update({"source": {"selector": f"subnets == '{subnets}'"}})
 
-                if "destination" in rule:
-                    rule["destination"]["nets"] = [f"{addr_pool.network}/{addr_pool.prefix}"]
-                else:
-                    rule.update({"destination": {"nets": [f"{addr_pool.network}/{addr_pool.prefix}"]}})
+                if oam_intf_shared:
+                    if "destination" in rule:
+                        rule["destination"]["nets"] = [f"{addr_pool.network}/{addr_pool.prefix}"]
+                    else:
+                        rule.update({"destination": {"nets": [f"{addr_pool.network}/{addr_pool.prefix}"]}})
 
                 gnp_config["spec"]["ingress"].append(rule)
                 rules.append(rule)
@@ -776,12 +830,13 @@ class PlatformFirewallPuppet(base.BasePuppet):
             networks[family] = net_list
         return networks
 
-    def _set_rules_systemcontroller(self, gnp_config, gns_config, network, host_personality):
+    def _set_rules_systemcontroller(self, gnp_config, gns_config, network, host_personality, oam_intf_shared):
         """ Add filtering rules for mgmt network in a system controller installation
 
         :param gnp_config: the dict containing the hiera data to be filled
         :param network: the sysinv.object.network object for this network
         :param host_personality: the node personality (controller, storage, or worker)
+        :param oam_intf_shared: oam shares the same intf with other networks
         """
 
         routes_networks = self._get_routes_networks(network.type)
@@ -815,10 +870,11 @@ class PlatformFirewallPuppet(base.BasePuppet):
                     subnets = gns_config["metadata"]["labels"]["subnets"]
                     rule.update({"source": {"selector": f"subnets == '{subnets}'"}})
 
-                if "destination" in rule:
-                    rule["destination"]["nets"] = [f"{addr_pool.network}/{addr_pool.prefix}"]
-                else:
-                    rule.update({"destination": {"nets": [f"{addr_pool.network}/{addr_pool.prefix}"]}})
+                if oam_intf_shared:
+                    if "destination" in rule:
+                        rule["destination"]["nets"] = [f"{addr_pool.network}/{addr_pool.prefix}"]
+                    else:
+                        rule.update({"destination": {"nets": [f"{addr_pool.network}/{addr_pool.prefix}"]}})
 
                 gnp_config["spec"]["ingress"].append(rule)
 
