@@ -47,12 +47,16 @@ class KeystonePuppet(openstack.OpenstackBasePuppet):
 
             'platform::client::params::admin_username': admin_username,
 
-            'platform::client::credentials::params::keyring_base':
-                os.path.dirname(tsconfig.KEYRING_PATH),
-            'platform::client::credentials::params::keyring_directory':
+            'platform::client::credentials::params::keyring_script_base':
+                os.path.dirname(tsconfig.KEYRING_SCRIPT_PATH),
+            'platform::client::credentials::params::keyring_script_directory':
+                tsconfig.KEYRING_SCRIPT_PATH,
+            'platform::client::credentials::params::keyring_script_file':
+                os.path.join(tsconfig.KEYRING_SCRIPT_PATH, '.CREDENTIAL'),
+
+            # For services to access actual keyring data on LUKS
+            'platform::params::keyring_directory':
                 tsconfig.KEYRING_PATH,
-            'platform::client::credentials::params::keyring_file':
-                os.path.join(tsconfig.KEYRING_PATH, '.CREDENTIAL'),
         }
 
     def get_secure_static_config(self):

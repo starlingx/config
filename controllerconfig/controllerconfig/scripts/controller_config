@@ -23,7 +23,6 @@
 
 PLATFORM_DIR=/opt/platform
 ETC_PLATFORM_DIR=/etc/platform
-VAULT_DIR=$PLATFORM_DIR/.keyring/${SW_VERSION}/python_keyring
 CONFIG_DIR=$CONFIG_PATH
 VOLATILE_CONFIG_PASS="/var/run/.config_pass"
 VOLATILE_CONFIG_FAIL="/var/run/.config_fail"
@@ -46,6 +45,8 @@ SWANCTL_STANDBY_CONF_FILE=/etc/swanctl/swanctl_standby.conf
 IPSEC_SERVER_PORT=64764
 SYSINV_CONF_DIR="/etc/sysinv"
 SYSINV_CONF_FILE="${SYSINV_CONF_DIR}/sysinv.conf"
+LUKS_MOUNT="/var/luks/stx/luks_fs"
+LUKS_KEYRING_PATH="$LUKS_MOUNT/controller/.keyring/${SW_VERSION}/python_keyring"
 
 OS_ID=$(grep '^ID=' /etc/os-release | cut -f2- -d= | sed -e 's/\"//g')
 if [ "$OS_ID" == "debian" ]
@@ -875,12 +876,29 @@ start()
             fatal_error "Failed to rename puppet temp cache directory ${PUPPET_CACHE_TMP} to cache directory ${PUPPET_CACHE}"
         fi
 
-        # Copy the staging secured vault
-        cp -RL $VAULT_DIR /tmp
-        if [ $? -ne 0 ]
-        then
+        # Handle secured vault based on controller type
+        if [ "$HOST" = "controller-0" ]; then
+            err_msg="copy"
+            # Wait for LUKS filesystem to be mounted
+            while ! /usr/bin/mountpoint -q "$LUKS_MOUNT"; do
+                echo "Waiting for LUKS mount point: $LUKS_MOUNT"
+                sleep 1
+            done
+            echo "Mount point is now mounted: $LUKS_MOUNT, copying ${LUKS_KEYRING_PATH} to /tmp"
+            # Copy the keyring from LUKS filesystem
+            cp -RL $LUKS_KEYRING_PATH /tmp
+            RC=$?
+        elif [ "$HOST" = "controller-1" ]; then
+            err_msg="rsync"
+            echo "Syncing keyring from controller-0 via rsync: .keyring/${SW_VERSION}/python_keyring to /tmp"
+            # Sync the keyring from LUKS filesystem
+            /usr/bin/rsync -v -acv --delete rsync://controller/luksdata/.keyring/${SW_VERSION}/python_keyring /tmp
+            RC=$?
+        fi
+
+        if [ $RC -ne 0 ]; then
             umount_platform_dir
-            fatal_error "Failed to copy vault directory $VAULT_DIR"
+            fatal_error "Failed to ${err_msg} keyring dir ${LUKS_KEYRING_PATH} to /tmp"
         fi
     fi
 
