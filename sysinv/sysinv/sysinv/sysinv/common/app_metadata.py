@@ -75,6 +75,48 @@ def _locate_metadata_file(directory):
     return glob.glob(directory + '/**/metadata.yaml', recursive=True)
 
 
+def is_version_match(version, version_patterns):
+    """Return whether a version matches any supported version pattern.
+
+    :param version: The version string to check (e.g. "1.0").
+    :param version_patterns: A list of version patterns (literal or regex)
+        to match against.
+    :returns: True if version matches any pattern via re.fullmatch,
+        False otherwise.
+    """
+    for pattern in version_patterns:
+        if not isinstance(pattern, str):
+            return False
+        try:
+            if re.fullmatch(pattern, version) is not None:
+                return True
+        except (TypeError, re.error):
+            return False
+
+    return False
+
+
+def is_update_path_supported(metadata, current_version):
+    """Return whether the current version is allowed by upgrades.from_versions.
+
+    :param metadata: The application metadata dictionary from the target
+        tarball.
+    :param current_version: The currently applied app version string.
+    :returns: True if from_versions is not defined (backward compatible),
+        or if current_version matches any entry. False otherwise.
+    """
+
+    upgrades = metadata.get(constants.APP_METADATA_UPGRADES, {}) or {}
+    if constants.APP_METADATA_FROM_VERSIONS not in upgrades:
+        return True
+
+    from_versions = upgrades.get(constants.APP_METADATA_FROM_VERSIONS)
+    if not isinstance(from_versions, list) or not from_versions:
+        return False
+
+    return is_version_match(current_version, from_versions)
+
+
 def validate_metadata_file(path, metadata_file, upgrade_from_release=None):
     """ Find and validate the metadata file in a given directory.
 
@@ -517,6 +559,15 @@ def validate_metadata_file(path, metadata_file, upgrade_from_release=None):
             if from_versions:
                 for version in from_versions:
                     validate_string(version)
+                    try:
+                        re.compile(version)
+                    except re.error:
+                        raise exception.SysinvException(_(
+                            "Invalid {}: {} entry {!r} should be a valid "
+                            "regular expression."
+                            .format(metadata_file,
+                                    constants.APP_METADATA_FROM_VERSIONS,
+                                    version)))
 
         # Downgrades section validation
         downgrades = validate_dict_field(doc, constants.APP_METADATA_DOWNGRADES)

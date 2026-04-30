@@ -17796,6 +17796,60 @@ class ConductorManager(service.PeriodicService):
 
         return app_applied
 
+    def _validate_from_versions(self, to_app_metadata, from_rpc_app,
+                                to_rpc_app):
+        """Reject the update if from_versions is defined and does not match.
+
+        :param to_app_metadata: Metadata dictionary from the target tarball.
+        :param from_rpc_app: The currently applied application object.
+        :param to_rpc_app: The target application object being updated to.
+        :raises KubeAppUpdateFailure: If the current version is not in
+            the from_versions list.
+        """
+        if app_metadata.is_update_path_supported(
+                to_app_metadata, from_rpc_app.app_version):
+            return
+
+        from_versions = to_app_metadata.get(
+            constants.APP_METADATA_UPGRADES, {}).get(
+            constants.APP_METADATA_FROM_VERSIONS, []) or []
+
+        reason = ("Current version {} does not match any supported "
+                  "{} entry: {}.".format(
+                      from_rpc_app.app_version,
+                      constants.APP_METADATA_FROM_VERSIONS,
+                      from_versions))
+        LOG.error("Application %s update from version %s to version "
+                  "%s rejected: %s",
+                  to_rpc_app.name, from_rpc_app.app_version,
+                  to_rpc_app.app_version, reason)
+
+        cutils.update_app_status(to_rpc_app, constants.APP_INACTIVE_STATE)
+
+        progress_msg = (
+            constants.APP_PROGRESS_UPDATE_ABORTED.format(
+                from_rpc_app.app_version, to_rpc_app.app_version
+            ) + constants.APP_PROGRESS_RECOVER_COMPLETED.format(
+                from_rpc_app.app_version
+            ) + reason
+        )
+        cutils.update_app_status(
+            from_rpc_app,
+            constants.APP_APPLY_SUCCESS,
+            progress_msg
+        )
+
+        self.dbapi.kube_app_destroy(to_rpc_app.name,
+                                    version=to_rpc_app.app_version,
+                                    inactive=True)
+
+        raise exception.KubeAppUpdateFailure(
+            name=to_rpc_app.name,
+            from_version=from_rpc_app.app_version,
+            to_version=to_rpc_app.app_version,
+            reason=reason
+        )
+
     def perform_app_update(self, context, from_rpc_app, to_rpc_app, tarfile,
                            lifecycle_hook_info_app_update, reuse_user_overrides=None,
                            reuse_attributes=None, k8s_version=None):
@@ -17815,7 +17869,10 @@ class ConductorManager(service.PeriodicService):
         lifecycle_hook_info_app_update.operation = constants.APP_UPDATE_OP
 
         # get the app metadata from the tarfile
-        to_app_metadata = cutils.get_app_metadata_from_tarfile(tarfile)
+        to_app_metadata = cutils.get_app_metadata_from_tarfile(tarfile) or {}
+
+        self._validate_from_versions(
+            to_app_metadata, from_rpc_app, to_rpc_app)
 
         # Update the apps_metadata registry with the new application metadata
         # This ensures the circular dependency detection list is current for validation checks

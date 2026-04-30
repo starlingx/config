@@ -413,6 +413,28 @@ class Validate_metadata_file(testtools.TestCase):
 
     @mock.patch.object(io, 'open')
     @mock.patch.object(os.path, 'isfile')
+    def test_file_validation_with_upgrade_key_invalid_regex(self,
+                                                            _mock_isfile,
+                                                            _mock_open):
+        """Validate that from_versions entries accept only valid regex patterns."""
+
+        _mock_isfile.return_value = "True"
+
+        contents = self.get_metadata_yaml_sample('sample_metadata_upgrades.yaml')
+        contents = yaml.safe_load(contents)
+        contents[constants.APP_METADATA_UPGRADES][
+            constants.APP_METADATA_FROM_VERSIONS] = ['[']
+
+        bad_contents = yaml.dump(contents)
+        _mock_open.return_value = io.StringIO(bad_contents)
+
+        self.assertRaises(exception.SysinvException,
+                          app_metadata.validate_metadata_file,
+                          "valid_path",
+                          "valid_file")
+
+    @mock.patch.object(io, 'open')
+    @mock.patch.object(os.path, 'isfile')
     def test_file_validation_repo_key(self,
                                       _mock_isfile,
                                       _mock_open):
@@ -726,6 +748,59 @@ class FakeYaml(object):
 
 
 FAKE_PATH = '/temp/path'
+
+
+class TestUpdatePathSupport(testtools.TestCase):
+
+    def test_is_update_path_supported_without_from_versions(self):
+        metadata = {}
+
+        self.assertTrue(app_metadata.is_update_path_supported(metadata, '1.2-3'))
+
+    def test_is_update_path_supported_empty_from_versions(self):
+        metadata = {
+            constants.APP_METADATA_UPGRADES: {
+                constants.APP_METADATA_FROM_VERSIONS: []
+            }
+        }
+
+        self.assertFalse(app_metadata.is_update_path_supported(metadata, '1.2-3'))
+
+    def test_is_update_path_supported_exact_match(self):
+        metadata = {
+            constants.APP_METADATA_UPGRADES: {
+                constants.APP_METADATA_FROM_VERSIONS: ['1.2-3']
+            }
+        }
+
+        self.assertTrue(app_metadata.is_update_path_supported(metadata, '1.2-3'))
+
+    def test_is_update_path_supported_regex_match(self):
+        metadata = {
+            constants.APP_METADATA_UPGRADES: {
+                constants.APP_METADATA_FROM_VERSIONS: [r'1\.2-\d+']
+            }
+        }
+
+        self.assertTrue(app_metadata.is_update_path_supported(metadata, '1.2-3'))
+
+    def test_is_update_path_supported_rejects_mismatch(self):
+        metadata = {
+            constants.APP_METADATA_UPGRADES: {
+                constants.APP_METADATA_FROM_VERSIONS: [r'2\.0-\d+']
+            }
+        }
+
+        self.assertFalse(app_metadata.is_update_path_supported(metadata, '1.2-3'))
+
+    def test_is_update_path_supported_rejects_invalid_item_type(self):
+        metadata = {
+            constants.APP_METADATA_UPGRADES: {
+                constants.APP_METADATA_FROM_VERSIONS: [123]
+            }
+        }
+
+        self.assertFalse(app_metadata.is_update_path_supported(metadata, '1.2-3'))
 
 
 class TestLoadMetadata(testtools.TestCase):

@@ -674,6 +674,95 @@ class ManagerTestCase(base.DbTestCase):
         ihost = self.dbapi.ihost_create(ihost_dict)
         return ihost
 
+    @mock.patch('sysinv.common.utils.get_app_metadata_from_tarfile')
+    def test_perform_app_update_rejects_unsupported_from_versions(self, mock_get_metadata):
+        from_rpc_app = dbutils.create_test_app(
+            name='test-app',
+            app_version='1.0-1',
+            status=constants.APP_APPLY_SUCCESS,
+            active=True)
+        from_rpc_app = self.dbapi.kube_app_get_by_id(from_rpc_app.id)
+        from_rpc_app._context = self.context
+        to_rpc_app = dbutils.create_test_app(
+            name='test-app',
+            app_version='2.0-1',
+            status=constants.APP_UPDATE_IN_PROGRESS,
+            active=True)
+        to_rpc_app = self.dbapi.kube_app_get_by_id(to_rpc_app.id)
+        to_rpc_app._context = self.context
+        lifecycle_hook_info = mock.Mock()
+        mock_get_metadata.return_value = {
+            constants.APP_METADATA_UPGRADES: {
+                constants.APP_METADATA_FROM_VERSIONS: [r'2\.0-\d+']
+            }
+        }
+        self.service._app = mock.Mock()
+
+        with mock.patch.object(self.service._app, 'perform_app_update') as mock_perform_update:
+            self.assertRaises(
+                exception.KubeAppUpdateFailure,
+                self.service.perform_app_update,
+                self.context,
+                from_rpc_app,
+                to_rpc_app,
+                '/tmp/test-app-2.0-1.tgz',
+                lifecycle_hook_info)
+
+        from_rpc_app = self.dbapi.kube_app_get_by_id(from_rpc_app.id)
+        from_rpc_app._context = self.context
+        self.assertEqual(constants.APP_APPLY_SUCCESS, from_rpc_app.status)
+        self.assertIn('does not match any supported', from_rpc_app.progress)
+        self.assertEqual(constants.APP_INACTIVE_STATE, to_rpc_app.status)
+        mock_perform_update.assert_not_called()
+        self.assertRaises(
+            exception.KubeAppInactiveNotFound,
+            self.dbapi.kube_app_get_inactive_by_name_version,
+            to_rpc_app.name,
+            to_rpc_app.app_version)
+
+    @mock.patch('sysinv.common.utils.get_app_metadata_from_tarfile')
+    def test_perform_app_update_allows_regex_from_versions(self, mock_get_metadata):
+        from_rpc_app = dbutils.create_test_app(
+            name='test-app',
+            app_version='1.0-1',
+            status=constants.APP_APPLY_SUCCESS,
+            active=True)
+        from_rpc_app = self.dbapi.kube_app_get_by_id(from_rpc_app.id)
+        from_rpc_app._context = self.context
+        to_rpc_app = dbutils.create_test_app(
+            name='test-app',
+            app_version='2.0-1',
+            status=constants.APP_UPDATE_IN_PROGRESS,
+            active=True)
+        to_rpc_app = self.dbapi.kube_app_get_by_id(to_rpc_app.id)
+        to_rpc_app._context = self.context
+        lifecycle_hook_info = mock.Mock()
+        mock_get_metadata.return_value = {
+            constants.APP_METADATA_UPGRADES: {
+                constants.APP_METADATA_FROM_VERSIONS: [r'1\.0-\d+']
+            }
+        }
+        self.service._app = mock.Mock()
+
+        with mock.patch.object(self.service._app, 'perform_app_update',
+                               return_value=True) as mock_perform_update:
+            result = self.service.perform_app_update(
+                self.context,
+                from_rpc_app,
+                to_rpc_app,
+                '/tmp/test-app-2.0-1.tgz',
+                lifecycle_hook_info)
+
+        self.assertTrue(result)
+        mock_perform_update.assert_called_once_with(
+            from_rpc_app,
+            to_rpc_app,
+            '/tmp/test-app-2.0-1.tgz',
+            lifecycle_hook_info,
+            None,
+            None,
+            None)
+
     def test_create_ihost(self):
         ihost_dict = {'mgmt_mac': '00:11:22:33:44:55'}
 

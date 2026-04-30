@@ -8267,7 +8267,7 @@ class Connection(api.Connection):
                 raise exception.KubeAppAlreadyExists(
                     name=values['name'],
                     version=values['app_version'])
-            return self.kube_app_get(values['name'])
+            return self.kube_app_get_by_id(app.id)
 
     @db_objects.objectify(objects.kube_app)
     def kube_app_get_all(self):
