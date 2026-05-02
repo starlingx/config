@@ -12807,6 +12807,30 @@ class ConductorManager(service.PeriodicService):
             LOG.exception("Failed to update nginx-ingress "
                           "ConfigMap with TLS settings")
 
+    def _update_oidc_tls_config(self, context):
+        """Trigger OIDC app reapply to pick up TLS parameter changes.
+
+        When TLS service parameters change, the OIDC app's helm override
+        classes (dex.py, oidc_client.py) will regenerate system_overrides
+        with the updated TLS configuration on the next app-apply.
+        """
+        try:
+            app = self.dbapi.kube_app_get(constants.HELM_APP_OIDC_AUTH)
+            if app.status == constants.APP_APPLY_SUCCESS:
+                self.evaluate_apps_reapply(
+                    context,
+                    trigger={'type':
+                             constants.APP_EVALUATE_REAPPLY_TYPE_RUNTIME_APPLY_PUPPET})
+                LOG.info("Triggered OIDC app reapply for TLS update")
+            else:
+                LOG.info("OIDC app not in applied state (%s), "
+                         "skipping TLS reapply" % app.status)
+        except exception.KubeAppNotFound:
+            LOG.info("OIDC app not installed, skipping TLS update")
+        except Exception:
+            LOG.exception("Failed to trigger OIDC app reapply "
+                          "for TLS update")
+
     def update_service_config(self, context, service=None, do_apply=False,
                               section=None, name=None):
         """Update the service parameter configuration"""
@@ -12997,6 +13021,7 @@ class ConductorManager(service.PeriodicService):
                 self._config_apply_runtime_manifest(
                     context, config_uuid, config_dict)
                 self._update_nginx_ingress_tls_config()
+                self._update_oidc_tls_config(context)
             elif section == constants.SERVICE_PARAM_SECTION_PLATFORM_COREDUMP:
                 personalities = [constants.CONTROLLER,
                                  constants.WORKER,
