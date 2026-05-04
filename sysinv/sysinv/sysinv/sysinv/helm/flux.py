@@ -22,7 +22,6 @@ CONF_FILE = os.path.join(CONFIG_DIR, 'vars', 'main.yml')
 TEMPLATE_PATH = os.path.join(CONFIG_DIR, 'templates')
 TEMPLATE_FILENAME = 'values.yaml.j2'
 OCI_REPO_CRD = "ocirepositories.source.toolkit.fluxcd.io"
-HELM_RELEASE_CRD = "helmreleases.helm.toolkit.fluxcd.io"
 
 # Chart paths
 BASE_CHART_DIR = "/usr/local/share/flux2-charts/"
@@ -72,29 +71,6 @@ class FluxDeploymentManager(object):
         versions 2.17 and 2.18.
         """
         return self.delete_crd(OCI_REPO_CRD)
-
-    def remove_v2beta1_from_helmrelease(self):
-        """
-            Check if the Helm Release CRD has the v2beta1 version and remove it.
-        """
-        kubernetes_operator = kubernetes.KubeOperator()
-        helm_crd = kubernetes_operator.get_custom_resource_definition(HELM_RELEASE_CRD)
-
-        if not helm_crd:
-            LOG.error("Helm Release CRD not found.")
-            return
-
-        if "v2beta1" in helm_crd.status.stored_versions:
-            LOG.info("Helm Release CRD has v2beta1 version.")
-            stored_versions = [
-                version for version in helm_crd.status.stored_versions
-                if version != "v2beta1"
-            ]
-            kubernetes_operator.patch_custom_resource_definition_stored_status(
-                HELM_RELEASE_CRD,
-                stored_versions
-            )
-            LOG.info("Sucessfully removed v2beta1 version from Helm Release")
 
     def get_image_list(self):
         """ Retrieve list of required images for controllers
@@ -196,7 +172,6 @@ class FluxDeploymentManager(object):
             LOG.error("Unable to locate Flux chart for upgrade")
             return False
 
-        self.remove_v2beta1_from_helmrelease()
         self.delete_oci_repository_crd()
 
         success = False
@@ -207,6 +182,10 @@ class FluxDeploymentManager(object):
             LOG.info("Upgrading Flux release")
 
             try:
+                # Ensure that no legacy keys are present in the storedVersion CRDs.
+                migrate_cmd = ["flux", "migrate", "--kubeconfig", KUBECONFIG]
+                subprocess.run(migrate_cmd, check=True, capture_output=True, text=True)
+
                 subprocess.run(
                     ["helm", "upgrade",
                      "--namespace", self.conf_dict['fluxcd_namespace'],
