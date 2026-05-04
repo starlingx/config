@@ -1997,6 +1997,11 @@ class AgentManager(service.PeriodicService):
                 with open(tsc.PLATFORM_CONF_FILE, "a") as fd:
                     fd.write("UUID=" + self._ihost_uuid)
 
+        if self._zmq_rpc_service:
+            if not self._zmq_rpc_service.is_running():
+                LOG.info("ZMQ RPC server is not running, restarting.")
+                self._zmq_rpc_service.run()
+
     def configure_lldp_systemname(self, context, systemname):
         """Configure the systemname into the lldp agent with the supplied data.
 
