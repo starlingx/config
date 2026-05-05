@@ -593,9 +593,12 @@ class Health(object):
 
             health_ok = health_ok and success
 
-        if StorageBackendConfig.has_backend(
-                self._dbapi,
-                constants.CINDER_BACKEND_CEPH):
+        has_ceph = StorageBackendConfig.has_backend(self._dbapi,
+                                                    constants.SB_TYPE_CEPH)
+        has_rook_ceph = StorageBackendConfig.has_backend(self._dbapi,
+                                                         constants.SB_TYPE_CEPH_ROOK)
+
+        if has_ceph or has_rook_ceph:
             success = self._check_ceph()
             output += _('Ceph Storage Healthy: [%s]\n') \
                 % (Health.SUCCESS_MSG if success else Health.FAIL_MSG)

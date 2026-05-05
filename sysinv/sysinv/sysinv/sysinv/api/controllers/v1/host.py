@@ -6460,19 +6460,22 @@ class HostController(rest.RestController):
                       "at this upgrade stage '%s'.") %
                     (hostupdate.displayid, upgrade_state))
 
-        # Worker node with a Ceph Monitor service? Make sure at least
-        # two monitors will remain up after lock.
-        host_id = hostupdate.ihost_orig.get('id')
-        ceph_mon = pecan.request.dbapi.ceph_mon_get_by_ihost(host_id)
-        if ceph_mon:
-            if (hostupdate.ihost_orig['personality'] ==
-                    constants.WORKER and
-                    hostupdate.ihost_orig['administrative'] ==
-                    constants.ADMIN_UNLOCKED and
-                    hostupdate.ihost_orig['operational'] ==
-                    constants.OPERATIONAL_ENABLED):
-                utils.check_node_lock_ceph_mon(
-                    hostupdate.ihost_orig, unsafe=unsafe, ceph_helper=self._ceph)
+        if StorageBackendConfig.has_backend(
+                pecan.request.dbapi,
+                target=constants.SB_TYPE_CEPH):
+            # Worker node with a Ceph Monitor service? Make sure at least
+            # two monitors will remain up after lock.
+            host_id = hostupdate.ihost_orig.get('id')
+            ceph_mon = pecan.request.dbapi.ceph_mon_get_by_ihost(host_id)
+            if ceph_mon:
+                if (hostupdate.ihost_orig['personality'] ==
+                        constants.WORKER and
+                        hostupdate.ihost_orig['administrative'] ==
+                        constants.ADMIN_UNLOCKED and
+                        hostupdate.ihost_orig['operational'] ==
+                        constants.OPERATIONAL_ENABLED):
+                    utils.check_node_lock_ceph_mon(
+                        hostupdate.ihost_orig, unsafe=unsafe, ceph_helper=self._ceph)
 
     def check_unlock_interfaces(self, hostupdate):
         """Semantic check for interfaces on host-unlock."""
@@ -6976,11 +6979,14 @@ class HostController(rest.RestController):
 
     def _handle_unlock_worker_host(self, hostupdate):
         # Update crushmap if we unlocked the worker with a ceph monitor.
-        monitor_list = pecan.request.dbapi.ceph_mon_get_list()
-        for mon in monitor_list:
-            ihost = pecan.request.dbapi.ihost_get(mon['forihostid'])
-            if ihost.id == hostupdate.ihost_orig['id']:
-                self._ceph.update_crushmap(hostupdate)
+        if StorageBackendConfig.has_backend(
+                pecan.request.dbapi,
+                target=constants.SB_TYPE_CEPH):
+            monitor_list = pecan.request.dbapi.ceph_mon_get_list()
+            for mon in monitor_list:
+                ihost = pecan.request.dbapi.ihost_get(mon['forihostid'])
+                if ihost.id == hostupdate.ihost_orig['id']:
+                    self._ceph.update_crushmap(hostupdate)
 
     @staticmethod
     def _handle_lock_action(hostupdate):

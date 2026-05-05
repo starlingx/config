@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2019, 2021, 2025 Wind River Systems, Inc.
+# Copyright (c) 2013-2019, 2021, 2025-2026 Wind River Systems, Inc.
 #
 
 import copy
@@ -331,7 +331,10 @@ class StorageTierController(rest.RestController):
                     raise wsme.exc.ClientSideError(
                         _("Cannot modify tier '%s'. Name '%s' is used "
                           "by the default tier" % (otier.name, rpc_tier.name)))
-                self._ceph.crushmap_tier_rename(otier.name, rpc_tier.name)
+                if StorageBackendConfig.has_backend(
+                        pecan.request.dbapi,
+                        target=constants.SB_TYPE_CEPH):
+                    self._ceph.crushmap_tier_rename(otier.name, rpc_tier.name)
 
             # Save and return
             rpc_tier.save()
