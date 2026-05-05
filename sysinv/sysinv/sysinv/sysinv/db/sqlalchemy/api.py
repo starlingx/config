@@ -1501,7 +1501,7 @@ class Connection(api.Connection):
             count = query.update(values, synchronize_session='fetch')
             if count != 1:
                 raise exception.ServerNotFound(server=server)
-        return self._host_get(server)
+        return self._host_get(values.get('uuid', server))
 
     def ihost_destroy(self, server):
         with _session_for_write() as session:

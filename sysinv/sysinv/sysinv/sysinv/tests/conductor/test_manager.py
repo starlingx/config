@@ -37,6 +37,7 @@ from cryptography.hazmat.backends import default_backend
 
 from fm_api import constants as fm_constants
 from oslo_context import context
+from oslo_db import exception as oslo_db_exception
 from oslo_serialization import base64
 from sysinv.agent import rpcapi as agent_rpcapi
 from sysinv.common import constants
@@ -11123,3 +11124,119 @@ class ManagerTestCaseInternal(base.BaseHostTestCase):
             thr.join()
 
         self.assertEqual(0, collisions)
+
+
+class TestGetActiveControllerUuid(base.DbTestCase):
+    """Tests for ConductorManager._get_active_controller_uuid().
+
+    Validates that the conductor syncs the host UUID from platform.conf
+    (tsc.host_uuid) to the database when they differ, and returns the
+    DB value when platform.conf UUID is not available.
+    """
+
+    def setUp(self):
+        super(TestGetActiveControllerUuid, self).setUp()
+
+        self.service = manager.ConductorManager('test-host', 'test-topic')
+        self.service.dbapi = dbapi.get_instance()
+        self.context = context.get_admin_context()
+        self.system = utils.create_test_isystem()
+
+        # Create controller-0 host in DB
+        self.host_uuid = str(uuid.uuid4())
+        self.host = utils.create_test_ihost(
+            hostname='controller-0',
+            uuid=self.host_uuid,
+            personality=constants.CONTROLLER,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_AVAILABLE,
+            forisystemid=self.system.id,
+        )
+
+        # Mock socket.gethostname to match controller-0
+        p = mock.patch('socket.gethostname')
+        self.mock_gethostname = p.start()
+        self.mock_gethostname.return_value = 'controller-0'
+        self.addCleanup(p.stop)
+
+    @mock.patch('tsconfig.tsconfig.host_uuid', None)
+    def test_platform_conf_uuid_not_set(self):
+        """When tsc.host_uuid is None (first unlock), return DB value."""
+        result = self.service._get_active_controller_uuid()
+        self.assertEqual(self.host_uuid, result)
+
+    def test_platform_conf_uuid_empty_string(self):
+        """When tsc.host_uuid is empty string, return DB value."""
+        with mock.patch('tsconfig.tsconfig.host_uuid', ''):
+            result = self.service._get_active_controller_uuid()
+            self.assertEqual(self.host_uuid, result)
+
+    def test_platform_conf_uuid_matches_db(self):
+        """When tsc.host_uuid matches DB, return DB value unchanged."""
+        with mock.patch('tsconfig.tsconfig.host_uuid', self.host_uuid):
+            result = self.service._get_active_controller_uuid()
+            self.assertEqual(self.host_uuid, result)
+
+    def test_platform_conf_uuid_differs_from_db(self):
+        """When tsc.host_uuid differs from DB, update DB and return
+        platform.conf value."""
+        new_uuid = str(uuid.uuid4())
+        with mock.patch('tsconfig.tsconfig.host_uuid', new_uuid):
+            result = self.service._get_active_controller_uuid()
+            self.assertEqual(new_uuid, result)
+
+            # Verify DB was updated
+            updated_host = self.service.dbapi.ihost_get(new_uuid)
+            self.assertEqual(new_uuid, updated_host.uuid)
+            self.assertEqual('controller-0', updated_host.hostname)
+
+    def test_platform_conf_uuid_update_fails_raises(self):
+        """When DB update fails, exception propagates (conductor fails)."""
+        new_uuid = str(uuid.uuid4())
+        with mock.patch('tsconfig.tsconfig.host_uuid', new_uuid):
+            with mock.patch.object(
+                self.service.dbapi, 'ihost_update',
+                side_effect=oslo_db_exception.DBDuplicateEntry()
+            ):
+                self.assertRaises(
+                    oslo_db_exception.DBDuplicateEntry,
+                    self.service._get_active_controller_uuid)
+
+    def test_no_active_controller_in_db(self):
+        """When no active controller found, return None."""
+        self.mock_gethostname.return_value = 'controller-99'
+        result = self.service._get_active_controller_uuid()
+        self.assertIsNone(result)
+
+
+class TestIhostUpdateUuid(base.DbTestCase):
+    """Tests for ihost_update returning correct object after UUID change."""
+
+    def setUp(self):
+        super(TestIhostUpdateUuid, self).setUp()
+
+        self.dbapi = dbapi.get_instance()
+        self.system = utils.create_test_isystem()
+
+        self.old_uuid = str(uuid.uuid4())
+        self.host = utils.create_test_ihost(
+            hostname='controller-0',
+            uuid=self.old_uuid,
+            personality=constants.CONTROLLER,
+            forisystemid=self.system.id,
+        )
+
+    def test_update_uuid_returns_updated_host(self):
+        """ihost_update with new uuid should return host with new uuid."""
+        new_uuid = str(uuid.uuid4())
+        result = self.dbapi.ihost_update(self.old_uuid, {'uuid': new_uuid})
+        self.assertEqual(new_uuid, result.uuid)
+        self.assertEqual('controller-0', result.hostname)
+
+    def test_update_non_uuid_field_returns_host(self):
+        """ihost_update for non-uuid field still works normally."""
+        result = self.dbapi.ihost_update(
+            self.old_uuid, {'task': 'some-task'})
+        self.assertEqual(self.old_uuid, result.uuid)
+        self.assertEqual('some-task', result.task)

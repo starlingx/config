@@ -9,6 +9,7 @@
 .*.swp
 .coverage
 .installed.cfg
+.kiro
 .stestr
 .testrepository
 .tox
