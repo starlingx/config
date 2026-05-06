@@ -1,7 +1,8 @@
-# Copyright (c) 2022-2025 Wind River Systems, Inc.
+# Copyright (c) 2022-2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 
+import contextlib
 import dns.resolver
 import zerorpc
 import eventlet
@@ -86,9 +87,13 @@ class ZmqRpcServer(object):
         self.port = port
         self.endpoint = get_tcp_endpoint(host, port)
         self.server = None
+        self._thread = None
 
     def run(self):
         def _run_in_thread():
+            if self.server:
+                with contextlib.suppress(Exception):
+                    self.server.close()
             try:
                 if self.host in [constants.CONTROLLER_FQDN,
                                  constants.CONTROLLER_0_FQDN,
@@ -124,6 +129,7 @@ class ZmqRpcServer(object):
                                              encoder=encode,
                                              decoder=decode)
                 self.server.bind(self.endpoint)
+                LOG.info(f"Successfully started zmq server at {self.endpoint}")
                 self.server.run()
             except eventlet.greenlet.GreenletExit:
                 return
@@ -132,7 +138,11 @@ class ZmqRpcServer(object):
                           "{}".format(self.endpoint, str(e)))
                 return
 
-        return greenthread.spawn(_run_in_thread)
+        self._thread = greenthread.spawn(_run_in_thread)
+        return self._thread
+
+    def is_running(self):
+        return self._thread and not self._thread.dead
 
     def stop(self):
         if self.server:
