@@ -4,7 +4,9 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
+import base64
 import glob
+import json
 import os
 import subprocess
 import yaml
@@ -99,7 +101,6 @@ class FluxDeploymentManager(object):
         Returns:
             bool: True if all images were downloaded. False otherwise.
         """
-
         image_list = self.get_image_list()
         LOG.info(f"Downloading the following Flux images: {', '.join(image_list)}")
 
@@ -113,10 +114,110 @@ class FluxDeploymentManager(object):
 
         return result
 
-    def deploy_controllers(self):
-        """ Deploy Flux controllers from scratch """
+    def deploy_controllers(self, download_images=True):
+        """ Deploy Flux controllers from scratch
 
-        raise NotImplementedError
+        Args:
+            download_images (bool, optional): If True, downloads the required controller images
+                before deployment. Set to False to skip image downloads when they have already
+                been downloaded previously.
+        Returns:
+            bool: True if the deploy is successful. False otherwise.
+        """
+
+        LOG.info("Starting Flux controllers deployment")
+
+        chart_path = self.get_chart_path(BASE_CHART_DIR)
+        if not chart_path:
+            LOG.error("Unable to locate Flux chart for deploy")
+            return False
+
+        success = False
+
+        if download_images and not self.download_images():
+            return success
+
+        overrides = self.generate_overrides()
+
+        local_registry_credentials = utils.get_local_docker_registry_auth()
+
+        k8s_operator = kubernetes.KubeOperator()
+
+        LOG.info(f"Creating {self.conf_dict['fluxcd_namespace']} namespace")
+        k8s_operator.kube_create_namespace(self.conf_dict['fluxcd_namespace'])
+        LOG.info(f"{self.conf_dict['fluxcd_namespace']} namespace successfully created")
+
+        # Apply Flux namespace labels.
+        LOG.info(f"Adding required labels to namespace {self.conf_dict['fluxcd_namespace']}")
+        ns_labels_body = {
+            "metadata": {
+                "labels": {
+                    "app.starlingx.io/component": "platform",
+                    "pod-security.kubernetes.io/audit-version": "latest",
+                    "pod-security.kubernetes.io/enforce-version": "latest",
+                    "pod-security.kubernetes.io/warn-version": "latest",
+                    "pod-security.kubernetes.io/audit": "privileged",
+                    "pod-security.kubernetes.io/enforce": "privileged",
+                    "pod-security.kubernetes.io/warn": "privileged",
+                }
+            }
+        }
+        k8s_operator.kube_patch_namespace(self.conf_dict['fluxcd_namespace'], ns_labels_body)
+        LOG.info(f"Namespace {self.conf_dict['fluxcd_namespace']} successfully labelled")
+
+        # Create registry secret.
+        docker_config = {
+            "auths": {
+                self.conf_dict['local_registry']: {
+                    "username": local_registry_credentials['username'],
+                    "password": local_registry_credentials['password']
+                }
+            }
+        }
+
+        docker_config_json = base64.b64encode(
+            json.dumps(docker_config).encode('utf-8')
+        ).decode('utf-8')
+
+        registry_secret_body = {
+            "apiVersion": "v1",
+            "kind": "Secret",
+            "metadata": {
+                "name": self.conf_dict['fluxcd_secret_name']
+            },
+            "type": "kubernetes.io/dockerconfigjson",
+            "data": {
+                ".dockerconfigjson": docker_config_json
+            }
+        }
+
+        LOG.info(
+            f"Creating {self.conf_dict['fluxcd_secret_name']} secret "
+            f"in namespace {self.conf_dict['fluxcd_namespace']}"
+        )
+        k8s_operator.kube_create_secret(self.conf_dict['fluxcd_namespace'], registry_secret_body)
+        LOG.info(f"Secret {self.conf_dict['fluxcd_secret_name']} successfully created")
+
+        # Install Flux controllers
+        LOG.info("Installing Flux controllers")
+        try:
+            subprocess.run(
+                ['helm', 'upgrade', '--install',
+                '--namespace', self.conf_dict['fluxcd_namespace'],
+                '--kubeconfig', KUBECONFIG, '--wait', '--wait-for-jobs',
+                '--values', '-', self.conf_dict['flux_helm_release_name'], chart_path],
+                check=True,
+                capture_output=True,
+                text=True,
+                input=overrides
+            )
+            success = True
+            LOG.info("Flux release successfully deployed")
+        except subprocess.CalledProcessError as e:
+            LOG.error(f"Error while deploying flux controllers: {e.stderr}")
+        except Exception as e:
+            LOG.error(f"Cannot deploy flux controllers: {e}")
+        return success
 
     def generate_overrides(self):
         """ Generate Helm overrides from Jinja template.

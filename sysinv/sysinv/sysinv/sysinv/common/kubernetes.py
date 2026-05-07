@@ -1318,6 +1318,13 @@ class KubeOperator(object):
         c = self._get_kubernetesclient_core()
         try:
             c.create_namespaced_secret(namespace, body)
+        except ApiException as e:
+            if e.status == httplib.CONFLICT:
+                # Already exist
+                secret_name = body['metadata']['name']
+                LOG.warn(f"Secret {secret_name} under Namespace {namespace} already exist.")
+                return
+            raise e
         except Exception as e:
             LOG.error("Failed to create Secret %s under Namespace %s: "
                       "%s" % (body['metadata']['name'], namespace, e))

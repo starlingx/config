@@ -21,6 +21,21 @@ CONF = cfg.CONF
 LOG = log.getLogger(__name__)
 
 
+def deploy_controllers(download_images=True):
+    """ Deploy Flux controllers
+
+    Args:
+        download_images (bool, optional): If True, downloads the required controller images before
+            deployment. Set to False to skip image downloads when they have already been downloaded
+            previously.
+    Returns:
+        bool: True if the deploy is successful. False otherwise.
+    """
+    dbapi = api.get_instance()
+    flux_deployment = flux.FluxDeploymentManager(dbapi)
+    return flux_deployment.deploy_controllers(download_images)
+
+
 def upgrade_controllers():
     """ Upgrade Flux controllers
 
@@ -54,6 +69,15 @@ def add_action_parsers(subparsers):
     parser = subparsers.add_parser('rollback-controllers')
     parser.set_defaults(func=rollback_controllers)
 
+    parser = subparsers.add_parser('deploy-controllers')
+    parser.set_defaults(func=deploy_controllers)
+    parser.add_argument(
+        '--skip-download-images',
+        dest='download_images',
+        action='store_false',
+        default=True
+    )
+
 
 CONF.register_cli_opt(
     cfg.SubCommandOpt('action',
@@ -69,6 +93,8 @@ def main():
         success = CONF.action.func()
     elif CONF.action.name == "rollback-controllers":
         success = CONF.action.func()
+    elif CONF.action.name == "deploy-controllers":
+        success = CONF.action.func(download_images=CONF.action.download_images)
     else:
         print(f"Unsupported action verb: {CONF.action.name}", file=sys.stderr)
 

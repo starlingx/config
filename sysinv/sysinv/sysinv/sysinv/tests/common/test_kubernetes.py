@@ -2376,6 +2376,71 @@ class TestKubeOperator(base.TestCase):
         mock_get_installed_kube_versions.assert_called()
         self.assertEqual(expected_output, actual_output)
 
+    def test_kube_create_secret_already_exists(self):
+        """
+        Test kube_create_secret when secret already exists
+        """
+        fake_namespace = "fake-namespace"
+        fake_body = {'metadata': {'name': 'fake-secret'}, 'data': {'key': 'value'}}
+
+        mock_create_namespaced_secret = mock.MagicMock()
+        p = mock.patch(
+            'kubernetes.client.CoreV1Api.create_namespaced_secret',
+            mock_create_namespaced_secret
+        )
+        p.start().side_effect = kubernetes.client.rest.ApiException(status=409)
+        self.addCleanup(p.stop)
+        result = self.kube_operator.kube_create_secret(  # pylint: disable=assignment-from-none
+            fake_namespace, fake_body
+        )
+        self.assertIsNone(result)
+        mock_create_namespaced_secret.assert_called_once_with(fake_namespace, fake_body)
+
+    def test_kube_create_secret_api_exception(self):
+        """
+        Test kube_create_secret raises ApiException for non-conflict errors
+        """
+        fake_namespace = "fake-namespace"
+        fake_body = {'metadata': {'name': 'fake-secret'}, 'data': {'key': 'value'}}
+
+        mock_create_namespaced_secret = mock.MagicMock()
+        p = mock.patch(
+            'kubernetes.client.CoreV1Api.create_namespaced_secret',
+            mock_create_namespaced_secret
+        )
+        p.start().side_effect = kubernetes.client.rest.ApiException(status=500)
+        self.addCleanup(p.stop)
+        self.assertRaises(
+            kubernetes.client.rest.ApiException,
+            self.kube_operator.kube_create_secret,
+            fake_namespace,
+            fake_body
+        )
+        mock_create_namespaced_secret.assert_called_once_with(fake_namespace, fake_body)
+
+    def test_kube_create_secret_general_exception(self):
+        """
+        Test kube_create_secret raises on general Exception
+        """
+        fake_namespace = "fake-namespace"
+        fake_body = {'metadata': {'name': 'fake-secret'}, 'data': {'key': 'value'}}
+
+        mock_create_namespaced_secret = mock.MagicMock()
+        p = mock.patch(
+            'kubernetes.client.CoreV1Api.create_namespaced_secret',
+            mock_create_namespaced_secret
+        )
+        p.start().side_effect = Exception("Fake error")
+        self.addCleanup(p.stop)
+
+        self.assertRaises(  # noqa: H202
+            Exception,
+            self.kube_operator.kube_create_secret,
+            fake_namespace,
+            fake_body
+        )
+        mock_create_namespaced_secret.assert_called_once_with(fake_namespace, fake_body)
+
 
 class TestKubernetesUtilities(base.TestCase):
     def test_is_kube_version_supported(self):
