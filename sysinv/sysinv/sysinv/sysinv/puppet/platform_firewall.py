@@ -92,17 +92,16 @@ class PlatformFirewallPuppet(base.BasePuppet):
             LOG.info("Do not add calico firewall to storage nodes (they do not run k8s)")
             return config
 
-        non_oam_network_types = {
-            constants.NETWORK_TYPE_MGMT,
-            constants.NETWORK_TYPE_ADMIN,
-            constants.NETWORK_TYPE_CLUSTER_HOST,
-            constants.NETWORK_TYPE_PXEBOOT,
-            constants.NETWORK_TYPE_STORAGE,
-        }
-
         firewall_networks = set()
         intf_ep = dict()
-        oam_intf_shared = False
+        # Per-network flag: True if OAM shares the same interface as that network
+        oam_shares_intf_with = {
+            constants.NETWORK_TYPE_MGMT: False,
+            constants.NETWORK_TYPE_ADMIN: False,
+            constants.NETWORK_TYPE_CLUSTER_HOST: False,
+            constants.NETWORK_TYPE_PXEBOOT: False,
+            constants.NETWORK_TYPE_STORAGE: False,
+        }
         for ifname in self.context['interfaces'].keys():
             intf = self.context['interfaces'][ifname]
             if (intf.ifclass == constants.INTERFACE_CLASS_PLATFORM
@@ -124,10 +123,11 @@ class PlatformFirewallPuppet(base.BasePuppet):
                         firewall_networks.add(network)
                         intf_ep[intf.uuid] = [intf, ""]
                         intf_net_types.add(network.type)
-                # check if oam shares the same interface with other networks
-                if (constants.NETWORK_TYPE_OAM in intf_net_types and
-                        any(net in intf_net_types for net in non_oam_network_types)):
-                    oam_intf_shared = True
+                # check if oam shares the same interface with each specific network
+                if constants.NETWORK_TYPE_OAM in intf_net_types:
+                    for net_type in oam_shares_intf_with:
+                        if net_type in intf_net_types:
+                            oam_shares_intf_with[net_type] = True
                 iftype_lbl.sort()
                 if (intf.uuid in intf_ep.keys()):
                     intf_ep[intf.uuid][1] = '.'.join(iftype_lbl)
@@ -149,6 +149,10 @@ class PlatformFirewallPuppet(base.BasePuppet):
                     if (intf.iftype == constants.INTERFACE_TYPE_ETHERNET) \
                             or (intf.iftype == constants.INTERFACE_TYPE_AE):
                         intf_ep[intf_uuid][1] = iftype + "." + constants.NETWORK_TYPE_PXEBOOT
+                        # pxeboot is now on the mgmt interface; if OAM shares
+                        # that interface, pxeboot shares it too
+                        if oam_shares_intf_with[constants.NETWORK_TYPE_MGMT]:
+                            oam_shares_intf_with[constants.NETWORK_TYPE_PXEBOOT] = True
             # second, add the pxeboot network object to the list of firewalls
             pxe_net = self.dbapi.network_get_by_type(constants.NETWORK_TYPE_PXEBOOT)
             firewall_networks.add(pxe_net)
@@ -168,26 +172,27 @@ class PlatformFirewallPuppet(base.BasePuppet):
             if (config[FIREWALL_GNP_MGMT_CFG]):
                 self._set_rules_mgmt(config[FIREWALL_GNP_MGMT_CFG],
                                     networks[constants.NETWORK_TYPE_MGMT], host, multicast_pools,
-                                    oam_intf_shared)
+                                    oam_shares_intf_with[constants.NETWORK_TYPE_MGMT])
 
             if (config[FIREWALL_GNP_ADMIN_CFG]):
                 self._set_rules_admin(config[FIREWALL_GNP_ADMIN_CFG],
                                       networks[constants.NETWORK_TYPE_ADMIN], host, multicast_pools,
-                                      oam_intf_shared)
+                                      oam_shares_intf_with[constants.NETWORK_TYPE_ADMIN])
 
             if (config[FIREWALL_GNP_CLUSTER_HOST_CFG]):
                 self._set_rules_cluster_host(config[FIREWALL_GNP_CLUSTER_HOST_CFG],
                                     networks[constants.NETWORK_TYPE_CLUSTER_HOST], host, multicast_pools,
-                                    oam_intf_shared)
+                                    oam_shares_intf_with[constants.NETWORK_TYPE_CLUSTER_HOST])
 
             if (config[FIREWALL_GNP_PXEBOOT_CFG]):
                 self._set_rules_pxeboot(config[FIREWALL_GNP_PXEBOOT_CFG],
-                                    networks[constants.NETWORK_TYPE_PXEBOOT], host, oam_intf_shared)
+                                    networks[constants.NETWORK_TYPE_PXEBOOT], host,
+                                    oam_shares_intf_with[constants.NETWORK_TYPE_PXEBOOT])
 
             if (config[FIREWALL_GNP_STORAGE_CFG]):
                 self._set_rules_storage(config[FIREWALL_GNP_STORAGE_CFG],
                                     networks[constants.NETWORK_TYPE_STORAGE], host, multicast_pools,
-                                    oam_intf_shared)
+                                    oam_shares_intf_with[constants.NETWORK_TYPE_STORAGE])
 
             if (host.personality == constants.CONTROLLER):
                 if (dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD):
@@ -197,7 +202,7 @@ class PlatformFirewallPuppet(base.BasePuppet):
                                                     config[FIREWALL_GNSET_ADMIN_CFG],
                                                     networks[constants.NETWORK_TYPE_ADMIN],
                                                     host.personality,
-                                                    oam_intf_shared)
+                                                    oam_shares_intf_with[constants.NETWORK_TYPE_ADMIN])
                         if not config[FIREWALL_GNSET_ADMIN_CFG]["spec"]["nets"]:
                             # there is nothing to configure
                             config[FIREWALL_GNSET_ADMIN_CFG] = {}
@@ -208,7 +213,7 @@ class PlatformFirewallPuppet(base.BasePuppet):
                                                     config[FIREWALL_GNSET_MGMT_CFG],
                                                     networks[constants.NETWORK_TYPE_MGMT],
                                                     host.personality,
-                                                    oam_intf_shared)
+                                                    oam_shares_intf_with[constants.NETWORK_TYPE_MGMT])
                         if not config[FIREWALL_GNSET_MGMT_CFG]["spec"]["nets"]:
                             # there is nothing to configure
                             config[FIREWALL_GNSET_MGMT_CFG] = {}
@@ -220,7 +225,7 @@ class PlatformFirewallPuppet(base.BasePuppet):
                                                     config[FIREWALL_GNSET_MGMT_CFG],
                                                     networks[constants.NETWORK_TYPE_MGMT],
                                                     host.personality,
-                                                    oam_intf_shared)
+                                                    oam_shares_intf_with[constants.NETWORK_TYPE_MGMT])
                     if not config[FIREWALL_GNSET_MGMT_CFG]["spec"]["nets"]:
                         # there is nothing to configure
                         config[FIREWALL_GNSET_MGMT_CFG] = {}
