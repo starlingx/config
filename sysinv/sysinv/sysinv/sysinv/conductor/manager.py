@@ -13437,7 +13437,7 @@ class ConductorManager(service.PeriodicService):
 
         config_dict = {
             'personalities': personalities,
-            'classes': ['platform::grub::runtime']
+            'classes': ['platform::grub::security_features::runtime']
         }
 
         # Apply runtime config but keep reboot required flag set in
