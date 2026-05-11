@@ -18,6 +18,7 @@ from sysinv.api.controllers.v1 import types
 from sysinv.api.controllers.v1 import collection
 from sysinv.api.controllers.v1 import utils
 from sysinv.common import constants
+from sysinv.common import exception
 from sysinv.common import utils as cutils
 from sysinv.common import address_pool as caddress_pool
 from sysinv import objects
@@ -425,8 +426,11 @@ class NetworkAddresspoolController(rest.RestController):
             if addr.interface_id:
                 pecan.request.dbapi.address_update(addr.uuid, {'interface_id': None})
                 # Since the adddress is disassociated with an interface, remove the address mode entry
-                addr_mode = pecan.request.dbapi.address_mode_query(addr.interface_id, pool.family)
-                pecan.request.dbapi.address_mode_destroy(addr_mode.uuid)
+                try:
+                    addr_mode = pecan.request.dbapi.address_mode_query(addr.interface_id, pool.family)
+                    pecan.request.dbapi.address_mode_destroy(addr_mode.uuid)
+                except exception.AddressModeNotFoundByFamily:
+                    pass
 
         pecan.request.dbapi.network_addrpool_destroy(to_delete.uuid)
 
