@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2025 Wind River Systems, Inc.
+# Copyright (c) 2025, 2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -9,7 +9,7 @@ Tests for app_dependents.py
 """
 
 import testtools
-
+from unittest import mock
 from unittest.mock import MagicMock
 from sysinv.common import app_dependents
 from sysinv.common import constants
@@ -602,6 +602,16 @@ class HasCircularDependencyTestCase(BaseAppTestCase):
         self.rpc_app = self.make_mock_app(self.APP_NAME, self.CURRENT_VERSION)
         self.upload_apps_succeeded_list = [{"name": "bar"}, {"name": "baz"}]
 
+        self._patch_missing = mock.patch(
+            'sysinv.common.app_dependents.get_dependent_apps_missing')
+        self.mock_get_missing = self._patch_missing.start()
+        self.addCleanup(self._patch_missing.stop)
+
+        self._patch_by_action = mock.patch(
+            'sysinv.common.app_dependents.get_dependent_apps_by_action')
+        self.mock_get_by_action = self._patch_by_action.start()
+        self.addCleanup(self._patch_by_action.stop)
+
     def test_no_dependent_apps_metadata(self):
         # db_app.app_metadata does not contain dependent apps
         db_app = self.make_mock_app("bar", "25.09-2", {})
@@ -623,14 +633,11 @@ class HasCircularDependencyTestCase(BaseAppTestCase):
             },
         )
         self.dbapi.kube_app_get.return_value = db_app
-        # Patch get_dependent_apps_missing to return []
-        orig = app_dependents.get_dependent_apps_missing
-        app_dependents.get_dependent_apps_missing = MagicMock(return_value=[])
+        self.mock_get_missing.return_value = []
         result = app_dependents.has_circular_dependency(
             self.rpc_app, self.upload_apps_succeeded_list, self.dbapi
         )
         assert result is False
-        app_dependents.get_dependent_apps_missing = orig
 
     def test_no_apply_type_dependencies(self):
         # get_dependent_apps_by_action returns []
@@ -644,10 +651,10 @@ class HasCircularDependencyTestCase(BaseAppTestCase):
             },
         )
         self.dbapi.kube_app_get.return_value = db_app
-        app_dependents.get_dependent_apps_missing = MagicMock(
-            return_value=[{"name": "foo", "version": r"25\.09-\d+"}]
-        )
-        app_dependents.get_dependent_apps_by_action = MagicMock(return_value=[])
+        self.mock_get_missing.return_value = [
+            {"name": "foo", "version": r"25\.09-\d+"}
+        ]
+        self.mock_get_by_action.return_value = []
         result = app_dependents.has_circular_dependency(
             self.rpc_app, self.upload_apps_succeeded_list, self.dbapi
         )
@@ -669,18 +676,16 @@ class HasCircularDependencyTestCase(BaseAppTestCase):
             },
         )
         self.dbapi.kube_app_get.return_value = db_app
-        app_dependents.get_dependent_apps_missing = MagicMock(
-            return_value=[
-                {
-                    "name": "foo",
-                    "version": r"25\.09-1",
-                    "action": app_dependents.constants.APP_METADATA_DEPENDENT_APPS_ACTION_APPLY,
-                }
-            ]
-        )
-        app_dependents.get_dependent_apps_by_action = MagicMock(
-            return_value=[{"name": "foo", "version": r"25\.09-1"}]
-        )
+        self.mock_get_missing.return_value = [
+            {
+                "name": "foo",
+                "version": r"25\.09-1",
+                "action": app_dependents.constants.APP_METADATA_DEPENDENT_APPS_ACTION_APPLY,
+            }
+        ]
+        self.mock_get_by_action.return_value = [
+            {"name": "foo", "version": r"25\.09-1"}
+        ]
         result = app_dependents.has_circular_dependency(
             self.rpc_app, self.upload_apps_succeeded_list, self.dbapi
         )
@@ -702,18 +707,16 @@ class HasCircularDependencyTestCase(BaseAppTestCase):
             },
         )
         self.dbapi.kube_app_get.return_value = db_app
-        app_dependents.get_dependent_apps_missing = MagicMock(
-            return_value=[
-                {
-                    "name": "foo",
-                    "version": r"99\.99-1",
-                    "action": app_dependents.constants.APP_METADATA_DEPENDENT_APPS_ACTION_APPLY,
-                }
-            ]
-        )
-        app_dependents.get_dependent_apps_by_action = MagicMock(
-            return_value=[{"name": "foo", "version": r"99\.99-1"}]
-        )
+        self.mock_get_missing.return_value = [
+            {
+                "name": "foo",
+                "version": r"99\.99-1",
+                "action": app_dependents.constants.APP_METADATA_DEPENDENT_APPS_ACTION_APPLY,
+            }
+        ]
+        self.mock_get_by_action.return_value = [
+            {"name": "foo", "version": r"99\.99-1"}
+        ]
         result = app_dependents.has_circular_dependency(
             self.rpc_app, self.upload_apps_succeeded_list, self.dbapi
         )
