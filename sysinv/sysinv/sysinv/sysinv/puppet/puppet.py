@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2017-2024 Wind River Systems, Inc.
+# Copyright (c) 2017-2024, 2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -24,6 +24,7 @@ from sysinv.common import usm_service as usm_service
 from sysinv.common import utils
 from sysinv.common.plugin_manager import PluginManager
 from sysinv.common.plugin_manager import PLUGIN_NS_PUPPET_OPS
+from sysinv.puppet import quoted_str
 
 
 LOG = logging.getLogger(__name__)
@@ -314,6 +315,8 @@ class PuppetOperator(object):
             host_config = yaml.load(yaml_file, Loader=yaml.FullLoader)
 
         host_config.update(config)
+
+        host_config = {k: quoted_str(v) if isinstance(v, str) else v for k, v in host_config.items()}
 
         self._write_host_config(host, host_config, path, filename)
 
