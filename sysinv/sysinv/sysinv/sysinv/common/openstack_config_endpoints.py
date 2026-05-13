@@ -51,6 +51,15 @@ ADDITIONAL_SUBCLOUD_USERS = [
     'dcagent'
 ]
 
+# Options to set on all platform service users to exempt them from
+# password expiry and lockout policies. These are machine accounts
+# that authenticate programmatically and should never be subject to
+# human-oriented security policies.
+SERVICE_USER_OPTIONS = {
+    'ignore_lockout_failure_attempts': True,
+    'ignore_password_expiry': True,
+}
+
 # Services that should exist in every system independently of its system type
 BASE_SERVICES = [
     {
@@ -211,6 +220,45 @@ def update_users(keystone, users_to_update):
         for user_to_update in users_to_update:
             if user_to_update["name"] == user.name:
                 keystone.users.update(user.id, **user_to_update)
+
+
+@retry(stop_max_attempt_number=3, wait_fixed=1000)
+def set_service_user_options(keystone, usernames):
+    """Set ignore_password_expiry and ignore_lockout_failure_attempts
+    options on all platform service users.
+
+    This ensures service users are exempt from password expiry and lockout
+    policies that are intended for human users. This is idempotent — safe
+    to call on users that already have the options set.
+
+    :param keystone: keystone's client
+    :param usernames: list of service user names to update
+    """
+    if not usernames:
+        LOG.info('No service users to update options for')
+        return
+
+    keystone_users = keystone.users.list()
+    users_dict = {user.name: user for user in keystone_users}
+
+    for username in usernames:
+        user = users_dict.get(username)
+        if not user:
+            LOG.warning(f"Service user {username} not found, "
+                        f"skipping options update")
+            continue
+        current_options = getattr(user, 'options', {}) or {}
+        needs_update = False
+        for key, value in SERVICE_USER_OPTIONS.items():
+            if current_options.get(key) != value:
+                needs_update = True
+                break
+        if needs_update:
+            keystone.users.update(user.id, options=SERVICE_USER_OPTIONS)
+            LOG.info(f"Set service user options for {username}: "
+                     f"{SERVICE_USER_OPTIONS}")
+        else:
+            LOG.info(f"Service user {username} already has correct options")
 
 
 @retry(stop_max_attempt_number=3, wait_fixed=1000)
@@ -522,6 +570,13 @@ def run_endpoint_config(puppet_operator: puppet.PuppetOperator,
         os.remove(ENDPONTS_RECONFIGURED_FLAG_PATH)
 
     create_users(keystone, users_to_create)
+    # Set ignore_password_expiry and ignore_lockout_failure_attempts on all
+    # service users. This protects against password expiry for service accounts
+    # regardless of when they were created relative to the password policy.
+    # Includes sysinv which is not in users_to_create but is a service user.
+    # Excludes admin which is a human-facing account.
+    all_service_usernames = [u['name'] for u in users_to_create] + ['sysinv']
+    set_service_user_options(keystone, all_service_usernames)
     grant_admin_role(keystone,
                      users_to_create,
                      default_service_project_name)
