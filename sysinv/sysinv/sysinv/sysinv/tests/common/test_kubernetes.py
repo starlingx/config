@@ -36,31 +36,31 @@ FAKE_KUBE_VERSIONS = [
      'available_patches': [],
      },
     {'version': 'v1.42.1',
-     'upgrade_from': ['v1.42.0'],
+     'upgrade_from': ['v1.41.3', 'v1.42.0'],
      'downgrade_to': ['v1.42.0'],
      'applied_patches': [],
      'available_patches': [],
      },
     {'version': 'v1.42.3',
-     'upgrade_from': ['v1.42.1'],
+     'upgrade_from': ['v1.41.3', 'v1.42.0', 'v1.42.1'],
      'downgrade_to': [],
      'applied_patches': ['KUBE.1', 'KUBE.2'],
      'available_patches': ['KUBE.3'],
      },
     {'version': 'v1.42.4',
-     'upgrade_from': ['v1.42.1'],
+     'upgrade_from': ['v1.41.3', 'v1.42.0', 'v1.42.1', 'v1.42.3'],
      'downgrade_to': [],
      'applied_patches': ['KUBE.1', 'KUBE.2'],
      'available_patches': ['KUBE.3'],
      },
     {'version': 'v1.42.11',
-     'upgrade_from': ['v1.42.4'],
+     'upgrade_from': ['v1.41.3', 'v1.42.0', 'v1.42.1', 'v1.42.3', 'v1.42.4'],
      'downgrade_to': [],
      'applied_patches': ['KUBE.1', 'KUBE.2'],
      'available_patches': ['KUBE.3'],
      },
     {'version': 'v1.43.1',
-     'upgrade_from': ['v1.42.2'],
+     'upgrade_from': ['v1.42.0', 'v1.42.1', 'v1.42.3', 'v1.42.4', 'v1.42.11'],
      'downgrade_to': [],
      'applied_patches': ['KUBE.11', 'KUBE.12'],
      'available_patches': ['KUBE.13'],
@@ -78,7 +78,7 @@ FAKE_KUBE_VERSIONS = [
      'available_patches': ['KUBE.13'],
      },
     {'version': 'v1.45.3',
-     'upgrade_from': ['v1.45.1'],
+     'upgrade_from': ['v1.44.0', 'v1.45.1'],
      'downgrade_to': [],
      'applied_patches': ['KUBE.11', 'KUBE.12'],
      'available_patches': ['KUBE.13'],
@@ -1091,6 +1091,65 @@ class TestKubeOperator(base.TestCase):
 
         result = self.kube_operator.kube_get_higher_patch_version('v1.42.0', 'v1.42.3')
         assert result == ['v1.42.3']
+
+    def test_kube_get_higher_patch_version_skip_same_minor_on_cross_minor(self):
+        """Test that same-minor patches are skipped when upgrading across minors.
+        """
+
+        self.list_node_result = self.single_node_result
+
+        p = mock.patch('sysinv.common.kubernetes.get_kube_versions',
+                        mock_get_kube_versions)
+        p.start()
+        self.addCleanup(p.stop)
+
+        result = self.kube_operator.kube_get_higher_patch_version('v1.42.1', 'v1.44.0')
+        assert result == ['v1.43.1', 'v1.44.0']
+
+    def test_kube_get_higher_patch_version_skip_intermediate_patches(self):
+        """Test that only the highest patch version is returned for a
+        same-minor upgrade with multiple patch versions available.
+        """
+
+        self.list_node_result = self.single_node_result
+
+        p = mock.patch('sysinv.common.kubernetes.get_kube_versions',
+                        mock_get_kube_versions)
+        p.start()
+        self.addCleanup(p.stop)
+
+        result = self.kube_operator.kube_get_higher_patch_version('v1.42.1', 'v1.42.11')
+        assert result == ['v1.42.11']
+
+    def test_kube_get_higher_patch_version_multiple_target_minor_patches(self):
+        """Test that only the highest patch of the target minor is returned
+        when the target minor has multiple patch versions.
+        """
+
+        self.list_node_result = self.single_node_result
+
+        p = mock.patch('sysinv.common.kubernetes.get_kube_versions',
+                        mock_get_kube_versions)
+        p.start()
+        self.addCleanup(p.stop)
+
+        result = self.kube_operator.kube_get_higher_patch_version('v1.43.1', 'v1.45.3')
+        assert result == ['v1.44.0', 'v1.45.3']
+
+    def test_kube_get_higher_patch_version_multiple_intermediate_minor_patches(self):
+        """Test that only the highest patch of an intermediate minor is
+        returned when it has multiple patch versions.
+        """
+
+        self.list_node_result = self.single_node_result
+
+        p = mock.patch('sysinv.common.kubernetes.get_kube_versions',
+                        mock_get_kube_versions)
+        p.start()
+        self.addCleanup(p.stop)
+
+        result = self.kube_operator.kube_get_higher_patch_version('v1.41.3', 'v1.43.1')
+        assert result == ['v1.42.11', 'v1.43.1']
 
     def test_kube_get_higher_patch_version_check_nohigher(self):
 
@@ -2273,6 +2332,50 @@ class TestKubeOperator(base.TestCase):
         mock_get_installed_kube_versions.assert_called()
         self.assertEqual(expected_output, actual_output)
 
+    def test_get_kube_versions_multiple_patches_per_minor(self):
+        """Test get_kube_versions with multiple patch versions per minor.
+        Verifies upgrade_from includes all previous minor patches and
+        all lower same-minor patches.
+        """
+        installed_versions = ['1.41.3', '1.42.0', '1.42.1', '1.43.1']
+
+        expected_output = [{
+                    "version": "v1.41.3",
+                    "upgrade_from": [],
+                    "downgrade_to": [],
+                    "applied_patches": [],
+                    "available_patches": [],
+        }, {
+                    "version": "v1.42.0",
+                    "upgrade_from": ["v1.41.3"],
+                    "downgrade_to": [],
+                    "applied_patches": [],
+                    "available_patches": [],
+        }, {
+                    "version": "v1.42.1",
+                    "upgrade_from": ["v1.41.3", "v1.42.0"],
+                    "downgrade_to": [],
+                    "applied_patches": [],
+                    "available_patches": [],
+        }, {
+                    "version": "v1.43.1",
+                    "upgrade_from": ["v1.42.0", "v1.42.1"],
+                    "downgrade_to": [],
+                    "applied_patches": [],
+                    "available_patches": [],
+        }]
+
+        mock_get_installed_kube_versions = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.get_installed_kube_versions',
+                       mock_get_installed_kube_versions)
+        p.start().return_value = installed_versions
+        self.addCleanup(p.stop)
+
+        actual_output = kube.get_kube_versions()
+
+        mock_get_installed_kube_versions.assert_called()
+        self.assertEqual(expected_output, actual_output)
+
 
 class TestKubernetesUtilities(base.TestCase):
     def test_is_kube_version_supported(self):
@@ -2303,3 +2406,23 @@ class TestFilterHighestPatchVersions(base.TestCase):
         self.assertEqual(
             kube.filter_highest_patch_versions([], 'v1.41.3', 'v1.43.1'),
             [])
+
+    def test_filter_highest_patch_versions_multiple_target_minor(self):
+        """Test with multiple patch versions of the target minor.
+        Should return only the highest patch of the target minor,
+        skipping same-minor-as-current patches on cross-minor upgrade.
+        """
+        ver_list = ['v1.42.0', 'v1.42.1', 'v1.42.3', 'v1.43.1', 'v1.43.2']
+        self.assertEqual(
+            kube.filter_highest_patch_versions(ver_list, 'v1.42.1', 'v1.43.2'),
+            ['v1.43.2'])
+
+    def test_filter_highest_patch_versions_multiple_intermediate_minor(self):
+        """Test with multiple patch versions of an intermediate minor.
+        Should return only the highest patch of the intermediate minor,
+        skipping same-minor-as-current patches on cross-minor upgrade.
+        """
+        ver_list = ['v1.42.0', 'v1.42.1', 'v1.42.3', 'v1.43.1', 'v1.43.2', 'v1.44.0']
+        self.assertEqual(
+            kube.filter_highest_patch_versions(ver_list, 'v1.42.1', 'v1.44.0'),
+            ['v1.43.2', 'v1.44.0'])
