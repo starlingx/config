@@ -4350,7 +4350,8 @@ class HostController(rest.RestController):
         backends = pecan.request.dbapi.storage_backend_get_list()
         for bk in backends:
             # TODO(rchurch): revisit. Do nothing for now
-            if bk['backend'] == constants.SB_TYPE_CEPH_ROOK:
+            if bk['backend'] in [constants.SB_TYPE_CEPH_ROOK,
+                                 constants.SB_TYPE_LVM]:
                 continue
 
             if (bk['state'] not in {constants.SB_STATE_CONFIGURED,

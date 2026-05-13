@@ -2445,7 +2445,8 @@ class ConductorManager(service.PeriodicService):
 
         self._config_apply_runtime_manifest(context,
                                             config_uuid,
-                                            config_dict)
+                                            config_dict,
+                                            force=True)
 
     def delete_lvm_csi_lvg_pv(self, context, host_uuid, lvg, pv):
         personalities = [constants.CONTROLLER,
