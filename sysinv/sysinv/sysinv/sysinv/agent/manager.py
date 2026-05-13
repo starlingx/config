@@ -1889,9 +1889,6 @@ class AgentManager(service.PeriodicService):
                 if self._ihost_personality == constants.CONTROLLER:
                     self.host_disk_update(icontext, rpcapi)
 
-                self._report_to_conductor_iplatform_avail()
-                self._iconfig_read_config_reported = config_uuid
-
             iscsi_initiator_name = self.get_host_iscsi_initiator_name()
             nvme_host_id = self.get_host_nvme_host_id()
             nvme_host_nqn = self.get_host_nvme_host_nqn()
@@ -1906,6 +1903,10 @@ class AgentManager(service.PeriodicService):
             self.platform_update_by_host(rpcapi, icontext,
                                          self._ihost_uuid,
                                          imsg_dict)
+
+            if 'availability' in imsg_dict:
+                self._report_to_conductor_iplatform_avail()
+                self._iconfig_read_config_reported = config_uuid
 
         LOG.debug("SysInv Agent Inventory Audit running.")
 
