@@ -68,7 +68,7 @@ class AuthTokenMiddlewareTestCase(dbbase.DbTestCase):
         # Verify result
         self.assertEqual(result['username'], 'testuser')
         self.assertEqual(result['roles'], ['admin', 'user'])
-        mock_get_claims.assert_called_once_with('test-token', self.middleware.oidc_middleware._oidc_token_cache)
+        mock_get_claims.assert_called_once_with('test-token')
         mock_parse.assert_called_once()
 
     def test_oidc_auth_missing_token(self):

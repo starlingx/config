@@ -84,7 +84,7 @@ class OIDCMiddleware(object):
 
         try:
             oidc_claims = oidc_utils.get_oidc_token_claims(
-                oidc_token, self._oidc_token_cache)
+                oidc_token)
 
             return oidc_utils.parse_oidc_token_claims(
                 oidc_claims, self.default_domain, self.default_project)
