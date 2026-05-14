@@ -1628,6 +1628,195 @@ class PlatformFirewallTestCaseControllerNonDc_Setup08(PlatformFirewallTestCaseMi
                                constants.NETWORK_TYPE_OAM, constants.NETWORK_TYPE_PXEBOOT])
 
 
+# Controller, non-DC, oam shares interface with mgmt only
+#   eth0:oam+mgmt  [oam] [mgmt]
+#   eth1:cluster0  [cluster-host]
+# Expected: mgmt gets destination_check=True, cluster-host gets destination_check=False
+class PlatformFirewallTestCaseControllerNonDc_Setup09(PlatformFirewallTestCaseMixin,
+                                                      dbbase.BaseHostTestCase):
+
+    def __init__(self, *args, **kwargs):
+        super(PlatformFirewallTestCaseControllerNonDc_Setup09, self).__init__(*args, **kwargs)
+        self.test_interfaces = dict()
+
+    def setUp(self):
+        super(PlatformFirewallTestCaseControllerNonDc_Setup09, self).setUp()
+        self.dbapi = db_api.get_instance()
+        self._setup_context()
+
+    def _update_context(self):
+        self.host.save(self.admin_context)
+        super(PlatformFirewallTestCaseControllerNonDc_Setup09, self)._update_context()
+
+    def _setup_configuration(self):
+        self.host = self._create_test_host(constants.CONTROLLER)
+
+        # OAM and mgmt share the same interface
+        port, iface = self._create_ethernet_test("oam0",
+            constants.INTERFACE_CLASS_PLATFORM,
+            [constants.NETWORK_TYPE_OAM, constants.NETWORK_TYPE_MGMT])
+        self.test_interfaces.update({constants.NETWORK_TYPE_OAM: iface})
+        self.test_interfaces.update({constants.NETWORK_TYPE_MGMT: iface})
+
+        # cluster-host on a separate interface
+        port, iface = self._create_ethernet_test("cluster0",
+            constants.INTERFACE_CLASS_PLATFORM,
+            constants.NETWORK_TYPE_CLUSTER_HOST)
+        self.test_interfaces.update({constants.NETWORK_TYPE_CLUSTER_HOST: iface})
+
+        self._create_service_parameter_test_set()
+
+    def test_generate_firewall_config(self):
+        hieradata_directory = self._create_hieradata_directory()
+        config_filename = self._get_config_filename(hieradata_directory)
+        with open(config_filename, 'w') as config_file:
+            config = self.operator.platform_firewall.get_host_config(self.host)  # pylint: disable=no-member
+            yaml.dump(config, config_file, default_flow_style=False)
+
+        hiera_data = dict()
+        with open(config_filename, 'r') as config_file:
+            hiera_data = yaml.safe_load(config_file)
+
+        self.assertTrue('platform::firewall::calico::oam::config' in hiera_data.keys())
+        self.assertTrue('platform::firewall::calico::cluster_host::config' in hiera_data.keys())
+        self.assertTrue('platform::firewall::calico::mgmt::config' in hiera_data.keys())
+        self.assertTrue('platform::firewall::calico::pxeboot::config' in hiera_data.keys())
+
+        # these GNPs are empty (not used in the current test database)
+        self.assertFalse(hiera_data['platform::firewall::calico::admin::config'])
+        self.assertFalse(hiera_data['platform::firewall::calico::storage::config'])
+
+        # mgmt shares interface with OAM -> destination_check=True
+        self.assertTrue(hiera_data['platform::firewall::calico::mgmt::config'])
+        self._check_gnp_values(hiera_data['platform::firewall::calico::mgmt::config'],
+                               constants.NETWORK_TYPE_MGMT, self.dbapi,
+                               egress_size=5, ingress_size=6, destination_check=True)
+
+        # cluster-host does NOT share interface with OAM -> destination_check=False
+        self.assertTrue(hiera_data['platform::firewall::calico::cluster_host::config'])
+        self._check_gnp_values(hiera_data['platform::firewall::calico::cluster_host::config'],
+                               constants.NETWORK_TYPE_CLUSTER_HOST, self.dbapi,
+                               egress_size=6, ingress_size=7, destination_check=False)
+
+        # pxeboot does NOT share interface with OAM -> destination_check=False
+        self.assertTrue(hiera_data['platform::firewall::calico::pxeboot::config'])
+        self._check_gnp_values(hiera_data['platform::firewall::calico::pxeboot::config'],
+                               constants.NETWORK_TYPE_PXEBOOT, self.dbapi,
+                               egress_size=3, ingress_size=4, destination_check=False)
+
+        self.assertTrue(hiera_data['platform::firewall::calico::oam::config'])
+        self._check_gnp_values(hiera_data['platform::firewall::calico::oam::config'],
+                               constants.NETWORK_TYPE_OAM, self.dbapi,
+                               egress_size=3, ingress_size=3)
+        self._check_tcp_port(hiera_data['platform::firewall::calico::oam::config'],
+                             constants.SERVICE_PARAM_HTTP_PORT_HTTP_DEFAULT)
+
+        # the HE is filled
+        self.assertTrue(hiera_data['platform::firewall::calico::hostendpoint::config'])
+        self.assertEqual(len(hiera_data['platform::firewall::calico::hostendpoint::config']), 2)
+        self._check_he_values(hiera_data['platform::firewall::calico::hostendpoint::config'],
+                              self.test_interfaces[constants.NETWORK_TYPE_OAM],
+                              [constants.NETWORK_TYPE_MGMT, constants.NETWORK_TYPE_OAM,
+                               constants.NETWORK_TYPE_PXEBOOT])
+        self._check_he_values(hiera_data['platform::firewall::calico::hostendpoint::config'],
+                              self.test_interfaces[constants.NETWORK_TYPE_CLUSTER_HOST],
+                              [constants.NETWORK_TYPE_CLUSTER_HOST])
+
+
+# Controller, non-DC, oam shares interface with cluster-host only
+#   eth0:oam+cluster [oam] [cluster-host]
+#   eth1:mgmt0       [mgmt]
+# Expected: cluster-host gets destination_check=True, mgmt gets destination_check=False
+class PlatformFirewallTestCaseControllerNonDc_Setup10(PlatformFirewallTestCaseMixin,
+                                                      dbbase.BaseHostTestCase):
+
+    def __init__(self, *args, **kwargs):
+        super(PlatformFirewallTestCaseControllerNonDc_Setup10, self).__init__(*args, **kwargs)
+        self.test_interfaces = dict()
+
+    def setUp(self):
+        super(PlatformFirewallTestCaseControllerNonDc_Setup10, self).setUp()
+        self.dbapi = db_api.get_instance()
+        self._setup_context()
+
+    def _update_context(self):
+        self.host.save(self.admin_context)
+        super(PlatformFirewallTestCaseControllerNonDc_Setup10, self)._update_context()
+
+    def _setup_configuration(self):
+        self.host = self._create_test_host(constants.CONTROLLER)
+
+        # OAM and cluster-host share the same interface
+        port, iface = self._create_ethernet_test("oam0",
+            constants.INTERFACE_CLASS_PLATFORM,
+            [constants.NETWORK_TYPE_OAM, constants.NETWORK_TYPE_CLUSTER_HOST])
+        self.test_interfaces.update({constants.NETWORK_TYPE_OAM: iface})
+        self.test_interfaces.update({constants.NETWORK_TYPE_CLUSTER_HOST: iface})
+
+        # mgmt on a separate interface
+        port, iface = self._create_ethernet_test("mgmt0",
+            constants.INTERFACE_CLASS_PLATFORM,
+            constants.NETWORK_TYPE_MGMT)
+        self.test_interfaces.update({constants.NETWORK_TYPE_MGMT: iface})
+
+        self._create_service_parameter_test_set()
+
+    def test_generate_firewall_config(self):
+        hieradata_directory = self._create_hieradata_directory()
+        config_filename = self._get_config_filename(hieradata_directory)
+        with open(config_filename, 'w') as config_file:
+            config = self.operator.platform_firewall.get_host_config(self.host)  # pylint: disable=no-member
+            yaml.dump(config, config_file, default_flow_style=False)
+
+        hiera_data = dict()
+        with open(config_filename, 'r') as config_file:
+            hiera_data = yaml.safe_load(config_file)
+
+        self.assertTrue('platform::firewall::calico::oam::config' in hiera_data.keys())
+        self.assertTrue('platform::firewall::calico::cluster_host::config' in hiera_data.keys())
+        self.assertTrue('platform::firewall::calico::mgmt::config' in hiera_data.keys())
+        self.assertTrue('platform::firewall::calico::pxeboot::config' in hiera_data.keys())
+
+        # these GNPs are empty (not used in the current test database)
+        self.assertFalse(hiera_data['platform::firewall::calico::admin::config'])
+        self.assertFalse(hiera_data['platform::firewall::calico::storage::config'])
+
+        # mgmt does NOT share interface with OAM -> destination_check=False
+        self.assertTrue(hiera_data['platform::firewall::calico::mgmt::config'])
+        self._check_gnp_values(hiera_data['platform::firewall::calico::mgmt::config'],
+                               constants.NETWORK_TYPE_MGMT, self.dbapi,
+                               egress_size=5, ingress_size=6, destination_check=False)
+
+        # cluster-host shares interface with OAM -> destination_check=True
+        self.assertTrue(hiera_data['platform::firewall::calico::cluster_host::config'])
+        self._check_gnp_values(hiera_data['platform::firewall::calico::cluster_host::config'],
+                               constants.NETWORK_TYPE_CLUSTER_HOST, self.dbapi,
+                               egress_size=6, ingress_size=7, destination_check=True)
+
+        # pxeboot does NOT share interface with OAM -> destination_check=False
+        self.assertTrue(hiera_data['platform::firewall::calico::pxeboot::config'])
+        self._check_gnp_values(hiera_data['platform::firewall::calico::pxeboot::config'],
+                               constants.NETWORK_TYPE_PXEBOOT, self.dbapi,
+                               egress_size=3, ingress_size=4, destination_check=False)
+
+        self.assertTrue(hiera_data['platform::firewall::calico::oam::config'])
+        self._check_gnp_values(hiera_data['platform::firewall::calico::oam::config'],
+                               constants.NETWORK_TYPE_OAM, self.dbapi,
+                               egress_size=3, ingress_size=3)
+        self._check_tcp_port(hiera_data['platform::firewall::calico::oam::config'],
+                             constants.SERVICE_PARAM_HTTP_PORT_HTTP_DEFAULT)
+
+        # the HE is filled
+        self.assertTrue(hiera_data['platform::firewall::calico::hostendpoint::config'])
+        self.assertEqual(len(hiera_data['platform::firewall::calico::hostendpoint::config']), 2)
+        self._check_he_values(hiera_data['platform::firewall::calico::hostendpoint::config'],
+                              self.test_interfaces[constants.NETWORK_TYPE_OAM],
+                              [constants.NETWORK_TYPE_CLUSTER_HOST, constants.NETWORK_TYPE_OAM])
+        self._check_he_values(hiera_data['platform::firewall::calico::hostendpoint::config'],
+                              self.test_interfaces[constants.NETWORK_TYPE_MGMT],
+                              [constants.NETWORK_TYPE_MGMT, constants.NETWORK_TYPE_PXEBOOT])
+
+
 # Controller, DC, Subcloud
 #   eth0:              oam
 #   eth1:              pxeboot
