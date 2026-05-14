@@ -114,13 +114,14 @@ class PlatformPuppet(base.BasePuppet):
         except Exception:
             LOG.warning("Unable to retrieve etcd version from symlink")
 
-        # Get the minimum installed etcd binary version. When this is
-        # called during USM upgrade, this will be the to_side.
+        # Determines the etcd version by querying the current kubernetes
+        # version and its associated etcd image version, then selecting
+        # the highest installed etcd version matching that major.minor.
         if etcd_version is None:
             try:
-                etcd_version = etcd.get_min_etcd_version()
+                etcd_version = etcd.get_supported_etcd_version()
             except Exception:
-                LOG.warning("Unable to retrieve minimum etcd version")
+                LOG.warning("Unable to retrieve supported etcd version")
                 return config
 
         if etcd_version is not None:
