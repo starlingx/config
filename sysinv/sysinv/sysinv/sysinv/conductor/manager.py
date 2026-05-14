@@ -12895,7 +12895,8 @@ class ConductorManager(service.PeriodicService):
                     'personalities': personalities,
                     'classes': ['platform::haproxy::runtime',
                                 'platform::dockerdistribution::runtime',
-                                'platform::ldap::tls::runtime']
+                                'platform::ldap::tls::runtime',
+                                'openstack::lighttpd::runtime']
                 }
                 self._config_apply_runtime_manifest(
                     context, config_uuid, config_dict)
@@ -13061,10 +13062,7 @@ class ConductorManager(service.PeriodicService):
             elif service == constants.SERVICE_TYPE_PLATFORM:
                 config_dict = {
                     "personalities": personalities,
-                    "classes": ['platform::mtce::runtime',
-                                'platform::haproxy::runtime',
-                                'platform::dockerdistribution::runtime',
-                                'platform::ldap::tls::runtime']
+                    "classes": ['platform::mtce::runtime']
                 }
                 self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 

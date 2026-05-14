@@ -62,16 +62,6 @@ class TestUpdateServiceConfigTLS(base.DbTestCase):
         self.assertIn('platform::haproxy::runtime',
                        config_dict['classes'])
 
-    def test_apply_platform_includes_haproxy_runtime(self):
-        self._call_update_service_config(do_apply=True)
-
-        self.mock_config_apply.assert_called_once()
-        config_dict = self.mock_config_apply.call_args[0][2]
-        self.assertIn('platform::haproxy::runtime',
-                       config_dict['classes'])
-        self.assertIn('platform::mtce::runtime',
-                       config_dict['classes'])
-
     def test_tls_handler_targets_controller_only(self):
         self._call_update_service_config(
             section=constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG,
