@@ -2931,6 +2931,16 @@ class AgentManager(service.PeriodicService):
                 context, self._ihost_uuid, to_kubelet_version, success)
             LOG.info("Kubelet version update status (%s) reported."
                      % ("Success" if success else "Failed"))
+
+            # When multi-node/software-based rollback is added, this file will be needed until
+            # "software deploy delete" and a cleanup API will be needed to remove the file.
+            # At this moment, no new sysinv-agent RPC API is needed for cleanup since only LVM
+            # rollback is supported. So the file removal is added within this routine itself.
+            #
+            # Also, in case of failure, leaving the file in place is harmless and aids failure
+            # recovery workaround.
+            if success:
+                os.remove(KUBELET_VERSION_FILE)
         except Exception as ex:
             LOG.error("Failed to report kubelet version update status to sysinv-conductor. "
                       "Error: %s" % (ex))
