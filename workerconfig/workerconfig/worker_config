@@ -21,6 +21,8 @@
 . /usr/bin/tsconfig
 . /etc/platform/platform.conf
 
+LOGGER_TAG="worker_config"
+
 PLATFORM_DIR=/opt/platform
 CONFIG_DIR=$CONFIG_PATH
 VOLATILE_CONFIG_PASS="/var/run/.config_pass"
@@ -55,7 +57,7 @@ $1
 *****************************************************
 EOF
     touch $VOLATILE_CONFIG_FAIL
-    logger "Error: $1"
+    logger -t ${LOGGER_TAG} -p daemon.err "Error: $1"
     echo "Pausing for 5 seconds..."
     sleep 5
     exit 1
@@ -72,7 +74,7 @@ $1
 EOF
     if [ -e /usr/bin/logger ]
     then
-        logger "Warning error: $1"
+        logger -t ${LOGGER_TAG} -p daemon.warn "Warning error: $1"
     fi
 
     echo "Pausing for 5 seconds..."
@@ -81,20 +83,21 @@ EOF
 
 check_mgmt_connectivity()
 {
-    local TIMEOUT=70
+    local DURATION=70
+    local TIMEOUT=$((SECONDS + DURATION))
     local INTERVAL=1
     local mgmt_host=$1
     local mgmt_port=$2
 
-    logger -t $0 -p info "Checking IPsec protected mgmt network connectivity to $mgmt_host:$mgmt_port for up to $TIMEOUT seconds."
+    logger -t ${LOGGER_TAG} -p daemon.info "Checking IPsec protected mgmt network connectivity to ${mgmt_host}:${mgmt_port} for up to ${DURATION} seconds."
 
-    while [ "$SECONDS" -le "$TIMEOUT" ]; do
-        nc -zv $mgmt_host $mgmt_port > /dev/null 2>&1
+    while [ "${SECONDS}" -le "${TIMEOUT}" ]; do
+        nc -zv ${mgmt_host} ${mgmt_port} > /dev/null 2>&1
         if [ $? -eq 0 ]; then
             return 0
         fi
-        logger -t $0 -p info "Retry in $INTERVAL second ..."
-        sleep $INTERVAL
+        logger -t ${LOGGER_TAG} -p daemon.info "Retry in ${INTERVAL} second ..."
+        sleep ${INTERVAL}
     done
     return 1
 }
@@ -123,23 +126,23 @@ get_ip()
         ipaddr=$(dig +short ANY $host|tail -1)
         if [[ "$ipaddr" =~ ^[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*$ ]]
         then
-             let -i DURATION=$SECONDS-$START
-            logger -t $0 -p info "DNS query resolved to $ipaddr (took ${DURATION} secs)"
+            let -i DURATION=$SECONDS-$START
+            logger -t ${LOGGER_TAG} -p daemon.info "DNS query resolved to $ipaddr (took ${DURATION} secs)"
             echo $ipaddr
             return
         fi
         if [[ "$ipaddr" =~ ^[0-9a-z]*\:[0-9a-z\:]*$ ]]
         then
             let -i DURATION=$SECONDS-$START
-            logger -t $0 -p info "DNS query resolved to $ipaddr (took ${DURATION} secs)"
+            logger -t ${LOGGER_TAG} -p daemon.info "DNS query resolved to $ipaddr (took ${DURATION} secs)"
             echo $ipaddr
             return
         fi
-        logger -t $0 -p warn "DNS query failed for $host"
+        logger -t ${LOGGER_TAG} -p daemon.warn "DNS query failed for $host"
         sleep 5
     done
     let -i DURATION=$SECONDS-$START
-    logger -t $0 -p warn "DNS query failed after max retries for $host (${DURATION} secs)"
+    logger -t ${LOGGER_TAG} -p daemon.warn "DNS query failed after max retries for $host (${DURATION} secs)"
 }
 
 wait_for_controller_services()
@@ -150,12 +153,12 @@ wait_for_controller_services()
         OUTPUT=`sm-query service-group cloud-services`
         if [ "$OUTPUT" == "cloud-services active" ]
         then
-           return 0
+            return 0
         fi
         # Not running  Let's wait a couple of seconds and check again
         sleep 2
-   done
-   return 1
+    done
+    return 1
 }
 
 validate_ca_cert_update()
@@ -172,7 +175,7 @@ validate_ca_cert_update()
                 ipsec_update_failed=0
                 break
             fi
-            logger -t $0 -p warn "Updating IPsec cetificates failed (${retry}), retry in ${IPSEC_DELAY} seconds ..."
+            logger -t ${LOGGER_TAG} -p daemon.warn "Updating IPsec cetificates failed (${retry}), retry in ${IPSEC_DELAY} seconds ..."
             sleep ${IPSEC_DELAY}
         done
         if [ ${ipsec_update_failed} -ne 0 ]
@@ -188,24 +191,24 @@ check_pxe_connectivity() {
     local paylod_size="8992" # resulting in an ICMP packet of 9000 bytes (9kB jumbo frame test)
 
     if timeout 10 getent hosts "$pxe_host" > /dev/null 2>&1; then
-        logger -t $0 -p info "$log_prefix PASS: resolved $pxe_host."
+        logger -t ${LOGGER_TAG} -p daemon.info "$log_prefix PASS: resolved $pxe_host."
     else
-        logger -t $0 -p warn  "$log_prefix cannot resolve $pxe_host"
+        logger -t ${LOGGER_TAG} -p daemon.warn  "$log_prefix cannot resolve $pxe_host"
         return 1
     fi
 
     if timeout 10 ping -s $paylod_size -i 0.1 -c3 "$pxe_host" > /dev/null 2>&1; then
-        logger -t $0 -p info "$log_prefix PASS: test of jumbo frame (9kB) to $pxe_host."
+        logger -t ${LOGGER_TAG} -p daemon.info "$log_prefix PASS: test of jumbo frame (9kB) to $pxe_host."
         return 0
     else
-        logger -t $0 -p warn "$log_prefix cannot send/receive jumbo frame (9kB) to $pxe_host."
+        logger -t ${LOGGER_TAG} -p daemon.warn "$log_prefix cannot send/receive jumbo frame (9kB) to $pxe_host."
     fi
 
     if timeout 10 ping -i 0.1 -c3 "$pxe_host" > /dev/null 2>&1; then
-        logger -t $0 -p info "$log_prefix PASS: Ping to $pxe_host successful."
+        logger -t ${LOGGER_TAG} -p daemon.info "$log_prefix PASS: Ping to $pxe_host successful."
         return 0
     else
-        logger -t $0 -p warn "$log_prefix cannot ping to $pxe_host"
+        logger -t ${LOGGER_TAG} -p daemon.warn "$log_prefix cannot ping to $pxe_host"
         return 1
     fi
 }
@@ -219,20 +222,20 @@ start()
     function=`echo "$subfunction" | cut -f 2 -d','`
 
     if [ "$nodetype" != "worker" -a "$function" != "worker" ] ; then
-        logger -t $0 -p warn "exiting because this is not worker node"
+        logger -t ${LOGGER_TAG} -p daemon.warn "exiting because this is not worker node"
         exit 0
     fi
 
     # If we're on a controller, ensure we only run if the controller config is complete
     if [ "$nodetype" = "controller" -a ! -f /etc/platform/.initial_controller_config_complete ]
     then
-        logger -t $0 -p warn "exiting because this is controller that has not completed initial config"
+        logger -t ${LOGGER_TAG} -p daemon.warn "exiting because this is controller that has not completed initial config"
         exit 0
     fi
 
     # Exit in error if called while the fail flag file is present
     if [ -e $VOLATILE_CONFIG_FAIL ] ; then
-        logger -t $0 -p warn "exiting due to presence of $VOLATILE_CONFIG_FAIL file"
+        logger -t ${LOGGER_TAG} -p daemon.warn "exiting due to presence of $VOLATILE_CONFIG_FAIL file"
         exit 1
     fi
 
@@ -266,7 +269,7 @@ start()
             # malformed then audit logs will indicate this,
             # and customer will need to load policy manually
             cat $IMA_POLICY > ${IMA_LOAD_PATH}
-            [ $? -eq 0 ] || logger -t $0 -p warn "IMA Policy could not be loaded, see audit.log"
+            [ $? -eq 0 ] || logger -t ${LOGGER_TAG} -p daemon.warn "IMA Policy could not be loaded, see audit.log"
         else
             # the securityfs mount should have been
             # created had the IMA module loaded properly.
@@ -282,7 +285,7 @@ start()
     # Call ipsec-auth-client to config and enable IPsec for the node
     if [ -e ${FIRST_BOOT} ]
     then
-        logger -t $0 -p info "Config and enable IPsec ......"
+        logger -t ${LOGGER_TAG} -p daemon.info "Config and enable IPsec ......"
 
         ipsec_enable_failed=1
         for retry in $( seq 1 ${IPSEC_RETRIES} )
@@ -293,7 +296,7 @@ start()
                 ipsec_enable_failed=0
                 break
             fi
-            logger -t $0 -p warn "Enabling IPsec failed (${retry}), retry in ${IPSEC_DELAY} seconds ..."
+            logger -t ${LOGGER_TAG} -p daemon.warn "Enabling IPsec failed (${retry}), retry in ${IPSEC_DELAY} seconds ..."
             sleep ${IPSEC_DELAY}
         done
         # Fail if retried maximum times
@@ -302,7 +305,7 @@ start()
             warning_error "WARNING: Failed to config and enable IPsec for the node"
         fi
     else
-        logger -t $0 -p info "Checking if IPsec Certificates is updated......"
+        logger -t ${LOGGER_TAG} -p daemon.info "Checking if IPsec Certificates is updated......"
 
         #Verify if ipsec server is running
         nc -z pxecontroller $IPSEC_SERVER_PORT
@@ -331,19 +334,19 @@ start()
     # since ping the loopback interface always returns ok
     if [ -e "${PLATFORM_SIMPLEX_FLAG}" ]
     then
-         echo "Wait for the controller services"
-         wait_for_controller_services
-         if [ $? -ne 0 ]
-         then
-              fatal_error "Controller services are not ready"
-         fi
+        echo "Wait for the controller services"
+        wait_for_controller_services
+        if [ $? -ne 0 ]
+        then
+            fatal_error "Controller services are not ready"
+        fi
     else
-         /usr/local/bin/connectivity_test -t ${DELAY_SEC} -i ${IPADDR} controller-platform-nfs
-         if [ $? -ne 0 ]
-         then
-              # 'controller-platform-nfs' is not available from management address
-              fatal_error "Unable to contact active controller (controller-platform-nfs) from management address"
-         fi
+        /usr/local/bin/connectivity_test -t ${DELAY_SEC} -i ${IPADDR} controller-platform-nfs
+        if [ $? -ne 0 ]
+        then
+            # 'controller-platform-nfs' is not available from management address
+            fatal_error "Unable to contact active controller (controller-platform-nfs) from management address"
+        fi
 
         # verify IPsec-protected mgmt network is ready before NFS mount
         check_mgmt_connectivity controller-platform-nfs 2049
@@ -366,7 +369,7 @@ start()
             mount_retries=5
             for retry in $(seq 1 ${mount_retries}); do
                 nfs-mount controller-platform-nfs:$PLATFORM_DIR $PLATFORM_DIR > /dev/null 2>&1 && break
-                logger -t $0 -p warn "NFS mount failed (${retry}/${mount_retries}), retrying in 1s..."
+                logger -t ${LOGGER_TAG} -p daemon.warn "NFS mount failed (${retry}/${mount_retries}), retrying in 1s..."
                 sleep 1
             done
             RC=$?
@@ -376,7 +379,7 @@ start()
             fi
             # restart sysinv-agent to obtain sysinv.conf now that NFS is available
             if [ ! -f ${SYSINV_CONF_FILE} ]; then
-                logger -t $0 -p info "Restarting sysinv-agent to obtain sysinv.conf"
+                logger -t ${LOGGER_TAG} -p daemon.info "Restarting sysinv-agent to obtain sysinv.conf"
                 /etc/init.d/sysinv-agent restart
             fi
         fi
@@ -479,7 +482,7 @@ start()
     if [ $? -ne 0 ]
     then
         echo "WARNING: Unable to load kernel module: nbd."
-        logger "WARNING: Unable to load kernel module: nbd."
+        logger -t ${LOGGER_TAG} -p daemon.warn "WARNING: Unable to load kernel module: nbd."
     fi
 
     #Run mount command to mount any NFS filesystems that required network access
