@@ -1531,7 +1531,7 @@ class AppOperator(object):
                             chart_version=chart_version,
                             helm_repo_name=helm_repo_name
                         )
-                        LOG.info(f"_get_list_of_charts: Adding Chart: {chart_name}")
+                        LOG.info(f"Retrieving info from Helm release {metadata_name}")
                         charts.append(chart_obj)
         return charts
 
