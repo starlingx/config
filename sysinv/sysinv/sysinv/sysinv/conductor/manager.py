@@ -849,14 +849,19 @@ class ConductorManager(service.PeriodicService):
          'value': constants.SERVICE_PARAM_NAME_SECURITY_COMPLIANCE_INACTIVE_SESSION_TERM_TIMEOUT_DEFAULT,
          },
         {'service': constants.SERVICE_TYPE_IDENTITY,
-         'section': constants.SERVICE_PARAM_SECTION_IDENTITY_LDAP,
+         'section': constants.SERVICE_PARAM_SECTION_IDENTITY_LDAP_LINUX,
          'name': constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_LOCKOUT_DURATION,
          'value': constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_LOCKOUT_DURATION_DEFAULT,
          },
         {'service': constants.SERVICE_TYPE_IDENTITY,
-         'section': constants.SERVICE_PARAM_SECTION_IDENTITY_LDAP,
+         'section': constants.SERVICE_PARAM_SECTION_IDENTITY_LDAP_LINUX,
          'name': constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_LOCKOUT_FAILURE_ATTEMPTS,
          'value': constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_LOCKOUT_FAILURE_ATTEMPTS_DEFAULT,
+         },
+        {'service': constants.SERVICE_TYPE_IDENTITY,
+         'section': constants.SERVICE_PARAM_SECTION_IDENTITY_LDAP_LINUX,
+         'name': constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_INACTIVE_SESSION_TERM_TIMEOUT,
+         'value': constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_INACTIVE_SESSION_TERM_TIMEOUT_DEFAULT,
          },
         {'service': constants.SERVICE_TYPE_PLATFORM,
          'section': constants.SERVICE_PARAM_SECTION_PLATFORM_MAINTENANCE,
@@ -13061,7 +13066,7 @@ class ConductorManager(service.PeriodicService):
             remote_ldap_domains = [constants.SERVICE_PARAM_SECTION_IDENTITY_LDAP_DOMAIN1,
                                     constants.SERVICE_PARAM_SECTION_IDENTITY_LDAP_DOMAIN2,
                                     constants.SERVICE_PARAM_SECTION_IDENTITY_LDAP_DOMAIN3]
-            ldap_users_lockout = [constants.SERVICE_PARAM_SECTION_IDENTITY_LDAP]
+            ldap_users_lockout = [constants.SERVICE_PARAM_SECTION_IDENTITY_LDAP_LINUX]
             if section in remote_ldap_domains or section in ldap_users_lockout:
                 personalities = [constants.CONTROLLER,
                                     constants.WORKER,
@@ -13108,7 +13113,6 @@ class ConductorManager(service.PeriodicService):
                                        constants.SERVICE_PARAM_SECTION_IDENTITY_LDAP_DOMAIN2,
                                        constants.SERVICE_PARAM_SECTION_IDENTITY_LDAP_DOMAIN3]
                 local_openldap = [constants.SERVICE_PARAM_SECTION_IDENTITY_LOCAL_OPENLDAP]
-                ldap_users_lockout = [constants.SERVICE_PARAM_SECTION_IDENTITY_LDAP]
 
                 if section in remote_ldap_domains:
                     personalities = [
@@ -13128,16 +13132,16 @@ class ConductorManager(service.PeriodicService):
                         "classes": ['platform::ldap::insecure::runtime']
                     }
                     self._config_apply_runtime_manifest(context, config_uuid, config_dict)
-                elif section in ldap_users_lockout:
+                elif section == constants.SERVICE_PARAM_SECTION_IDENTITY_LDAP_LINUX:
                     personalities = [
                             constants.CONTROLLER,
                             constants.WORKER,
                             constants.STORAGE]
                     config_dict = {
                         "personalities": personalities,
-                        "classes": ['platform::faillock::runtime']
+                        "classes": ['platform::faillock::runtime',
+                                    'platform::customsh::runtime']
                     }
-                    LOG.info("Applying faillock runtime manifest")
                     self._config_apply_runtime_manifest(context, config_uuid, config_dict)
                 elif section == constants.SERVICE_PARAM_SECTION_IDENTITY_STX:
                     personalities = [constants.CONTROLLER]
