@@ -553,6 +553,13 @@ def _check(op, lvg, rpc_lvg=None):
                     _("It's not possible to resize the thin pool and change "
                       "the function to %s") %
                     lvg['lvm_function'])
+            if ((lvg['lvm_type'] and lvg['lvm_type'] != constants
+                .LVM_CSI_PROVISIONING_MODE_THIN) or (rpc_lvg['lvm_type']
+               and rpc_lvg['lvm_type'] != constants
+               .LVM_CSI_PROVISIONING_MODE_THIN)):
+                raise wsme.exc.ClientSideError(
+                    _("%s mode does not support pool resizing") %
+                    lvg['lvm_type'])
 
             _check_pool_resize(rpc_lvg, lvg)
 
@@ -597,12 +604,20 @@ def _check(op, lvg, rpc_lvg=None):
                         constants.LVG_CGTS_VG)
                 lvg['vg_state'] = constants.PROVISIONING
         else:
-            if rpc_lvg['lvm_function'] and rpc_lvg['lvm_function'] == 'none' \
-               and lvg['lvm_pool_size']:
+            if ((rpc_lvg['lvm_function'] and rpc_lvg['lvm_function'] == 'none'
+                 and lvg['lvm_pool_size']) or not rpc_lvg['lvm_function']):
                 raise wsme.exc.ClientSideError(
                     _("It's not possible to set any other parameter when the "
                       "function is set to none"))
             lvg['vg_state'] = constants.PROVISIONING
+
+        # Validate type change
+        if lvg['lvm_type'] and rpc_lvg['lvm_type'] and \
+           lvg['lvm_type'] != rpc_lvg['lvm_type']:
+            raise wsme.exc.ClientSideError(
+                _("It's not possible to change the type of a volume group."
+                  "To proceed, delete and recreate the volume group with "
+                  "the desired type."))
     elif op == "delete":
         if lvg['lvm_vg_name'] == constants.LVG_CGTS_VG:
             raise wsme.exc.ClientSideError(_("%s volume group cannot be deleted") %
