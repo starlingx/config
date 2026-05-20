@@ -24,6 +24,7 @@ import requests
 import shutil
 import subprocess
 import sys
+import threading
 import time
 import urllib3
 
@@ -940,6 +941,48 @@ class KubeOperator(object):
         self._kube_client_rbac_authorization = None
         self._kube_client_extensions = None
         self._kube_client_storage = None
+        self._config_mtime = 0
+        self._kube_client_lock = threading.Lock()
+
+    def _config_has_changed(self):
+        """Check if the kubernetes config file has been modified on disk.
+
+        This detects certificate renewals so that cached clients are
+        invalidated and recreated with the current credentials.
+        """
+        try:
+            current_mtime = os.path.getmtime(KUBERNETES_ADMIN_CONF)
+            if current_mtime != self._config_mtime:
+                self._config_mtime = current_mtime
+                return True
+        except OSError:
+            pass
+        return False
+
+    def _invalidate_clients(self):
+        """Clear all cached kubernetes clients so they are recreated
+        with current credentials on next access."""
+        LOG.info("Kubernetes config has changed on disk, invalidating cached clients.")
+        self._kube_client_apps_v1 = None
+        self._kube_client_batch = None
+        self._kube_client_core = None
+        self._kube_client_policy = None
+        self._kube_client_custom_objects = None
+        self._kube_client_admission_registration = None
+        self._kube_client_rbac_authorization = None
+        self._kube_client_extensions = None
+        self._kube_client_storage = None
+
+    def _refresh_on_config_change(func):  # pylint: disable=no-self-argument
+        """Decorator that invalidates cached clients if kubernetes
+        config has changed on disk."""
+        @wraps(func)
+        def wrapper(self, *args, **kwargs):
+            with self._kube_client_lock:
+                if self._config_has_changed():
+                    self._invalidate_clients()
+                return func(self, *args, **kwargs)  # pylint: disable=not-callable
+        return wrapper
 
     def _load_kube_config(self):
         if not is_k8s_configured():
@@ -958,54 +1001,63 @@ class KubeOperator(object):
         Configuration.set_default(c)
         return c
 
+    @_refresh_on_config_change
     def _get_kubernetesclient_apps_v1_api(self):
         if not self._kube_client_apps_v1:
             self._load_kube_config()
             self._kube_client_apps_v1 = client.AppsV1Api()
         return self._kube_client_apps_v1
 
+    @_refresh_on_config_change
     def _get_kubernetesclient_batch(self):
         if not self._kube_client_batch:
             self._load_kube_config()
             self._kube_client_batch = client.BatchV1Api()
         return self._kube_client_batch
 
+    @_refresh_on_config_change
     def _get_kubernetesclient_core(self):
         if not self._kube_client_core:
             self._load_kube_config()
             self._kube_client_core = client.CoreV1Api()
         return self._kube_client_core
 
+    @_refresh_on_config_change
     def _get_kubernetesclient_policy(self):
         if not self._kube_client_policy:
             self._load_kube_config()
             self._kube_client_policy = client.PolicyV1beta1Api()
         return self._kube_client_policy
 
+    @_refresh_on_config_change
     def _get_kubernetesclient_custom_objects(self):
         if not self._kube_client_custom_objects:
             self._load_kube_config()
             self._kube_client_custom_objects = client.CustomObjectsApi()
         return self._kube_client_custom_objects
 
+    @_refresh_on_config_change
     def _get_kubernetesclient_admission_registration(self):
         if not self._kube_client_admission_registration:
             self._load_kube_config()
             self._kube_client_admission_registration = client.AdmissionregistrationV1Api()
         return self._kube_client_admission_registration
 
+    @_refresh_on_config_change
     def _get_kubernetesclient_rbac_authorization(self):
         if not self._kube_client_rbac_authorization:
             self._load_kube_config()
             self._kube_client_rbac_authorization = client.RbacAuthorizationV1Api()
         return self._kube_client_rbac_authorization
 
+    @_refresh_on_config_change
     def _get_kubernetesclient_extensions(self):
         if not self._kube_client_extensions:
             self._load_kube_config()
             self._kube_client_extensions = client.ApiextensionsV1Api()
         return self._kube_client_extensions
 
+    @_refresh_on_config_change
     def _get_kubernetesclient_storage(self):
         if not self._kube_client_storage:
             self._load_kube_config()
