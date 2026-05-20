@@ -532,10 +532,14 @@ def filter_highest_patch_versions(ver_list, current_version, target_version):
     """Filter a list of strings with major.minor.patch and return a list
     containing the highest patch version for each major.minor where
     version is greater than current_version and less than or equal to
-    target_version.
+    target_version. Excludes same-minor versions as current_version
+    when the target is a higher minor, since patch upgrades are not
+    required as intermediate steps for cross-minor upgrades.
     """
     if not ver_list:
         return []
+    current_minor = tuple(LooseVersion(current_version).version[1:3])
+    target_minor = tuple(LooseVersion(target_version).version[1:3])
     ver_dict = {}
     for v in ver_list:
         if not (LooseVersion(v) > LooseVersion(current_version) and
@@ -544,6 +548,9 @@ def filter_highest_patch_versions(ver_list, current_version, target_version):
         # Version strings include 'v' prefix (e.g., "v1.28.3")
         # LooseVersion("v1.28.3").version = ['v', 1, 28, 3]; [1:3] extracts [major, minor]
         key = tuple(LooseVersion(v).version[1:3])
+        # Skip same-minor patches when upgrading to a higher minor
+        if key == current_minor and target_minor > current_minor:
+            continue
         if key not in ver_dict or LooseVersion(v) > LooseVersion(ver_dict[key]):
             ver_dict[key] = v
     return sorted(ver_dict.values(), key=LooseVersion)
@@ -555,16 +562,34 @@ def get_kube_versions():
     return_list = []
     try:
         all_versions = get_installed_kube_versions()
+        # Group versions by minor: {(major, minor): [versions]}
+        minor_groups = {}
+        for v in all_versions:
+            version_parts = LooseVersion(v).version  # [major, minor, patch]
+            key = (version_parts[0], version_parts[1])
+            minor_groups.setdefault(key, []).append(v)
+
         for index, value in enumerate(all_versions):
+            version_parts = LooseVersion(value).version
+            cur_minor = (version_parts[0], version_parts[1])
+            prev_minor = (version_parts[0], version_parts[1] - 1)
+
+            # Versions that can upgrade directly to this version:
+            # - all patches from the previous minor
+            # - all lower patches from the same minor
+            # e.g. v1.43.0 upgrade_from: [v1.42.0, v1.42.1, v1.42.3]
+            #      v1.42.3 upgrade_from: [v1.41.x, v1.42.0, v1.42.1]
+            upgrade_from = [f"v{v}" for v in minor_groups.get(prev_minor, [])]
+            upgrade_from += [f"v{v}" for v in minor_groups[cur_minor]
+                            if LooseVersion(v) < LooseVersion(value)]
+
             return_list.append({
                     "version": f"v{value}",
-                    "upgrade_from": [f"v{all_versions[index-1]}"],
+                    "upgrade_from": upgrade_from,
                     "downgrade_to": [],
                     "applied_patches": [],
                     "available_patches": [],
             })
-        # Manually remove first version's "upgrade_from"
-        return_list[0]["upgrade_from"] = []
     except Exception as ex:
         LOG.error("Error getting kubernetes versions: %s" % (ex))
     return return_list
