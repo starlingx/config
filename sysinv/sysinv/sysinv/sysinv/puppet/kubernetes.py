@@ -1,11 +1,10 @@
 #
-# Copyright (c) 2018-2025 Wind River Systems, Inc.
+# Copyright (c) 2018-2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
 
 from __future__ import absolute_import
-from distutils.version import LooseVersion
 from eventlet.green import subprocess
 import json
 import keyring
@@ -51,7 +50,6 @@ API_RETRY_ATTEMPT_NUMBER = 20
 API_RETRY_INTERVAL = 10 * 1000
 
 # Kubeadm API reference
-KUBEADM_API_V1BETA3 = "kubeadm.k8s.io/v1beta3"
 KUBEADM_API_V1BETA4 = "kubeadm.k8s.io/v1beta4"
 
 
@@ -381,13 +379,7 @@ class KubernetesPuppet(base.BasePuppet):
                     ):
                         kubeadm_version = kube_version.kubelet_version
 
-                # Update API reference to kubeadm.k8s.io/v1beta3 when k8s
-                # version is less than 1.31
-                api_version = (
-                    KUBEADM_API_V1BETA3
-                    if LooseVersion(kubeadm_version) < LooseVersion("1.31.5")
-                    else KUBEADM_API_V1BETA4
-                )
+                api_version = KUBEADM_API_V1BETA4
 
                 with open(temp_kubeadm_config_view, "a") as f:
                     f.write(

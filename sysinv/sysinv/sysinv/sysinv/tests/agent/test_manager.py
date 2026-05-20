@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2023 Wind River Systems, Inc.
+# Copyright (c) 2023, 2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -1380,7 +1380,7 @@ class TestHostKubernetesOperations(base.TestCase):
         #  [Failed to save kubernetes upgrade method name and arguments.
         #  Error: [[Errno 2] No such file or directory:
         #  '/etc/platform/.sysinv_agent_k8s_upgrade_in_progress.pkl']]. Continuing...
-        # Unable to find etcd version in symlink target /usr/local/kubernetes/1.29.2/stage1
+        # Unable to find etcd version in symlink target /usr/local/kubernetes/1.32.2/stage1
         # etcd binary upgrade not required from: None
         # Kubernetes control-plane upgrade to version vfake_to_kube_version started on this host. Attempt: 1
         # Kubernetes control-plane upgrade to version vfake_to_kube_version successful on this host.
@@ -1390,7 +1390,7 @@ class TestHostKubernetesOperations(base.TestCase):
         target_etcd_version = '3.5.26'
         to_kube_version = 'vfake_to_kube_version'
         current_link_etcd = '/usr/local/etcd/3.4.37/stage0'
-        current_link_kube = '/usr/local/kubernetes/1.29.2/stage1'
+        current_link_kube = '/usr/local/kubernetes/1.32.2/stage1'
         upgrade_result = True
         is_first_master = True
 
@@ -1438,7 +1438,7 @@ class TestHostKubernetesOperations(base.TestCase):
             target_etcd_version, is_first_master)
 
         mock_upgrade_control_plane.assert_called_once_with(
-            'v1.29.2', to_kube_version, is_first_master)
+            'v1.32.2', to_kube_version, is_first_master)
 
         mock_os_readlink_etcd.assert_called_once()
 
@@ -1460,7 +1460,7 @@ class TestHostKubernetesOperations(base.TestCase):
         target_etcd_version = 'vfake_target_etcd_version'
         to_kube_version = 'vfake_to_kube_version'
         current_link_etcd = '/usr/local/etcd/3.4.37/stage0'
-        current_link_kube = '/usr/local/kubernetes/1.29.2/stage1'
+        current_link_kube = '/usr/local/kubernetes/1.32.2/stage1'
         upgrade_result = True
         is_first_master = True
 
@@ -1511,7 +1511,7 @@ class TestHostKubernetesOperations(base.TestCase):
         target_etcd_version = 'vfake_target_etcd_version'
         to_kube_version = 'vfake_to_kube_version'
         current_link_etcd = '/usr/local/etcd/3.4.37/stage0'
-        current_link_kube = '/usr/local/kubernetes/1.29.2/stage1'
+        current_link_kube = '/usr/local/kubernetes/1.32.2/stage1'
         is_first_master = True
 
         for personality in personalities:
@@ -1557,7 +1557,7 @@ class TestHostKubernetesOperations(base.TestCase):
         target_etcd_version = 'vfake_target_etcd_version'
         to_kube_version = 'vfake_to_kube_version'
         current_link_etcd = '/usr/local/etcd/3.4.37/stage0'
-        current_link_kube = '/usr/local/kubernetes/1.29.2/stage1'
+        current_link_kube = '/usr/local/kubernetes/1.32.2/stage1'
         upgrade_result = False
         is_first_master = True
 
@@ -1600,7 +1600,7 @@ class TestHostKubernetesOperations(base.TestCase):
     def test_pin_kubernetes_control_plane_images_success(self):
         """ Test successful execution of pin kubernetes control plane images
         """
-        FAKE_KUBE_VERSION = 'v1.29.2'
+        FAKE_KUBE_VERSION = 'v1.32.2'
 
         mock_pin_unpin_control_plane_images = mock.MagicMock()
         p = mock.patch(
@@ -1618,7 +1618,7 @@ class TestHostKubernetesOperations(base.TestCase):
     def test_pin_kubernetes_control_plane_images_failed(self):
         """ Test failed execution of pin kubernetes control plane images
         """
-        FAKE_KUBE_VERSION = 'v1.29.2'
+        FAKE_KUBE_VERSION = 'v1.32.2'
 
         mock_pin_unpin_control_plane_images = mock.MagicMock()
         p = mock.patch(

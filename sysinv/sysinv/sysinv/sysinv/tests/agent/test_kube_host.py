@@ -1773,7 +1773,7 @@ class TestKubernetesOperator(base.TestCase):
     def test_pin_control_plane_images_success(self):
         """Test successful execution of _pin_unpin_control_plane_images: pin images
         """
-        version = "v1.29.2"
+        version = "v1.32.2"
         images = {
             "kube-apiserver": f"registry.k8s.io/kube-apiserver:{version}",
             "kube-scheduler": f"registry.k8s.io/kube-scheduler:{version}",
@@ -1804,7 +1804,7 @@ class TestKubernetesOperator(base.TestCase):
     def test_unpin_control_plane_images_success(self):
         """Test successful execution of _pin_unpin_control_plane_images: unpin images
         """
-        version = "v1.29.2"
+        version = "v1.32.2"
         images = {
             "kube-apiserver": f"registry.k8s.io/kube-apiserver:{version}",
             "kube-scheduler": f"registry.k8s.io/kube-scheduler:{version}",
@@ -1835,8 +1835,8 @@ class TestKubernetesOperator(base.TestCase):
     def test_pin_unpin_control_plane_images_success(self):
         """Test successful execution of _pin_unpin_control_plane_images: pin-unpin images
         """
-        pin_version = "v1.32.2"
-        unpin_version = "v1.29.2"
+        pin_version = "v1.33.0"
+        unpin_version = "v1.32.2"
         images = [
             {
                 "kube-apiserver": f"registry.k8s.io/kube-apiserver:{pin_version}",
@@ -1902,8 +1902,8 @@ class TestKubernetesOperator(base.TestCase):
     def test_pin_unpin_control_plane_images_failure_same_version(self):
         """Test failed execution of _pin_unpin_control_plane_images: same versions specified
         """
-        pin_version = "v1.29.2"
-        unpin_version = "v1.29.2"
+        pin_version = "v1.32.2"
+        unpin_version = "v1.32.2"
 
         mock_pin_ctr_image = mock.MagicMock()
         p = mock.patch('sysinv.common.containers.pin_ctr_image', mock_pin_ctr_image)
@@ -1990,8 +1990,8 @@ class TestKubernetesOperator(base.TestCase):
     def test_pin_unpin_control_plane_images_failure_operation_error(self):
         """Test failed execution of _pin_unpin_control_plane_images: operation error
         """
-        pin_version = "v1.29.2"
-        unpin_version = "v1.32.2"
+        pin_version = "v1.32.2"
+        unpin_version = "v1.33.0"
 
         mock_pin_ctr_image = mock.MagicMock()
         p = mock.patch('sysinv.common.containers.pin_ctr_image', mock_pin_ctr_image)

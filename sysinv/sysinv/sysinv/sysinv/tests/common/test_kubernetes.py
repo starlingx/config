@@ -618,7 +618,7 @@ class TestKubeOperator(base.TestCase):
                   "  certSANs:\n"
                   "  - 127.0.0.1\n"
                   "  - 192.168.206.2\n"
-                  "apiVersion: kubeadm.k8s.io/v1beta3\n"
+                  "apiVersion: kubeadm.k8s.io/v1beta4\n"
                   "kubernetesVersion: v1.42.4\n"
                   "kind: ClusterStatus\n"
                   },
@@ -634,7 +634,7 @@ class TestKubeOperator(base.TestCase):
                   "  certSANs:\n"
                   "  - 127.0.0.1\n"
                   "  - 192.168.206.2\n"
-                  "apiVersion: kubeadm.k8s.io/v1beta3\n"
+                  "apiVersion: kubeadm.k8s.io/v1beta4\n"
                   "kind: ClusterStatus\n"
                   },
             metadata=kubernetes.client.V1ObjectMeta(
