@@ -16,6 +16,7 @@ etc/update-motd.d/10-system
 usr/bin/cert-alarm
 usr/bin/cert-mon
 usr/bin/check-ipsec-luks-dir.sh
+etc/systemd/system/strongswan.service.d/strongswan-stx-boot-override.conf
 usr/bin/ipsec-server
 usr/bin/ipsec-client
 usr/bin/kube-cert-rotation.sh

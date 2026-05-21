@@ -27,6 +27,7 @@ override_dh_install:
 	install -p -D -m 700 $(CURDIR)/scripts/ipsec-cert-renew.sh $(CURDIR)/debian/tmp/usr/bin/ipsec-cert-renew.sh
 	install -p -D -m 700 $(CURDIR)/scripts/ipsec-swap-certificates.py $(CURDIR)/debian/tmp/usr/bin/ipsec-swap-certificates
 	install -p -D -m 700 $(CURDIR)/scripts/check-ipsec-luks-dir.sh $(CURDIR)/debian/tmp/usr/bin/check-ipsec-luks-dir.sh
+	install -p -D -m 644 $(CURDIR)/scripts/strongswan-stx-boot-override.conf $(CURDIR)/debian/tmp/etc/systemd/system/strongswan.service.d/strongswan-stx-boot-override.conf
 	dh_install
 
 override_dh_python3:
