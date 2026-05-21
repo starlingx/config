@@ -17,7 +17,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2020-2022 Wind River Systems, Inc.
+# Copyright (c) 2020-2022, 2026 Wind River Systems, Inc.
 #
 
 
@@ -311,8 +311,8 @@ class FpgaOperator(object):
 
     def get_n3000_devices(self):
         # First get the PCI addresses of each supported FPGA device
-        cmd = ["lspci", "-Dm", "-d " + fpga_constants.N3000_VENDOR + ":" +
-            fpga_constants.N3000_DEVICE]
+        cmd = ["lspci", "-Dm", "-d",
+            fpga_constants.N3000_VENDOR + ":" + fpga_constants.N3000_DEVICE]
 
         try:
             output = subprocess.check_output(  # pylint: disable=not-callable

@@ -178,7 +178,11 @@ def reset_n3000_fpgas():
         # TODO: make this run in parallel if there are multiple devices.
         LOG.info("Resetting N3000 FPGAs.")
         got_exception = False
-        fpga_addrs = fpga.FpgaOperator().get_n3000_devices()
+        try:
+            fpga_addrs = fpga.FpgaOperator().get_n3000_devices()
+        except Exception as e:
+            LOG.error("Failed to get N3000 devices: %s" % e)
+            return False
         opae_img = n3000_img_accessible()
         if opae_img is None:
             LOG.info("n3000 opae image is not ready, exit...")
