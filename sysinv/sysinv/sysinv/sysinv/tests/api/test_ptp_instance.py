@@ -96,6 +96,11 @@ class TestCreatePtpInstance(BasePtpInstanceTestCase):
             "fake-instance-gnss-monitor", constants.PTP_INSTANCE_TYPE_GNSS_MONITOR
         )
 
+    def test_create_ptp_instance_dpll_mgr_ok(self):
+        self._create_ptp_instance_success(
+            "fake-instance-dpll-mgr", constants.PTP_INSTANCE_TYPE_DPLL_MGR
+        )
+
 
 class TestHostPtpInstance(BasePtpInstanceTestCase):
     def setUp(self):
@@ -193,6 +198,57 @@ class TestHostPtpInstance(BasePtpInstanceTestCase):
         self.assertEqual(response.status_code, http_client.BAD_REQUEST)
         self.assertIn(
             "gnss-monitor ptp instance already exists on host",
+            response.json["error_message"]
+        )
+
+    def _assign_host_ptp_instance_dpll_mgr_success(self):
+        ptp_instance = dbutils.create_test_ptp_instance(
+            name="test-instance-dpll", service=constants.PTP_INSTANCE_TYPE_DPLL_MGR
+        )
+        ptp_instance_id = ptp_instance["id"]
+        response = self.patch_json(
+            self.get_host_url(self.controller.uuid),
+            [
+                {
+                    "path": constants.PTP_INSTANCE_ARRAY_PATH,
+                    "value": ptp_instance_id,
+                    "op": constants.PTP_PATCH_OPERATION_ADD
+                }
+            ],
+            headers=self.API_HEADERS,
+        )
+        self.assertEqual(response.content_type, "application/json")
+        self.assertEqual(response.status_code, http_client.OK)
+
+        return ptp_instance_id
+
+    def test_host_ptp_instance_dpll_mgr_assign_ok(self):
+        self._assign_host_ptp_instance_dpll_mgr_success()
+
+    def test_host_second_ptp_instance_dpll_mgr_assign_failed(self):
+        self._assign_host_ptp_instance_dpll_mgr_success()
+
+        ptp_instance = dbutils.create_test_ptp_instance(
+            name="test-instance-dpll2", service=constants.PTP_INSTANCE_TYPE_DPLL_MGR
+        )
+        ptp_instance_id = ptp_instance["id"]
+        response = self.patch_json(
+            self.get_host_url(self.controller.uuid),
+            [
+                {
+                    "path": constants.PTP_INSTANCE_ARRAY_PATH,
+                    "value": ptp_instance_id,
+                    "op": constants.PTP_PATCH_OPERATION_ADD
+                }
+            ],
+            headers=self.API_HEADERS,
+            expect_errors=True,
+        )
+
+        self.assertEqual("application/json", response.content_type)
+        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+        self.assertIn(
+            "dpll-mgr ptp instance already exists on host",
             response.json["error_message"]
         )
 

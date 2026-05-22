@@ -133,6 +133,18 @@ class TestCreatePtpInterface(BasePtpInterfaceTestCase):
             status_code=http_client.CONFLICT,
             error_message=error_message)
 
+    def test_create_ptp_interface_dpll_mgr_rejected(self):
+        dpll_instance = dbutils.create_test_ptp_instance(
+            name='test-dpll', service=constants.PTP_INSTANCE_TYPE_DPLL_MGR)
+        error_message = \
+            "dpll-mgr instance does not support PTP interfaces"
+        self._create_ptp_interface_failed(
+            'fake-if',
+            dpll_instance.id,
+            dpll_instance.uuid,
+            status_code=http_client.BAD_REQUEST,
+            error_message=error_message)
+
 
 class TestUpdatePtpInterface(BasePtpInterfaceTestCase):
     uuid = None

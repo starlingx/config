@@ -2052,14 +2052,9 @@ class HostController(rest.RestController):
                                                         constants.NETWORK_TYPE_MGMT, True)
             return address.address
 
-    def _exists_gnss_monitor_instance_on_host(self, host_uuid):
+    def _exists_instance_type_on_host(self, host_uuid, service_type):
         ptp_instances = pecan.request.dbapi.ptp_instances_get_list(host_uuid)
-
-        for instance in ptp_instances:
-            if instance["service"] == constants.PTP_INSTANCE_TYPE_GNSS_MONITOR:
-                return True
-
-        return False
+        return any(inst["service"] == service_type for inst in ptp_instances)
 
     def _patch(self, uuid, patch):
         log_start = cutils.timestamped("ihost_patch_start")
@@ -2082,11 +2077,19 @@ class HostController(rest.RestController):
                     # Check constraint: single gnss-monitor ptp instance on host
                     if ptp_instance[
                         "service"
-                    ] == constants.PTP_INSTANCE_TYPE_GNSS_MONITOR and self._exists_gnss_monitor_instance_on_host(
-                        uuid
+                    ] == constants.PTP_INSTANCE_TYPE_GNSS_MONITOR and self._exists_instance_type_on_host(
+                        uuid, constants.PTP_INSTANCE_TYPE_GNSS_MONITOR
                     ):
                         raise wsme.exc.ClientSideError(
                             _("gnss-monitor ptp instance already exists on host")
+                        )
+
+                    # Check constraint: single dpll-mgr ptp instance on host
+                    if ptp_instance["service"] == constants.PTP_INSTANCE_TYPE_DPLL_MGR \
+                            and self._exists_instance_type_on_host(
+                                uuid, constants.PTP_INSTANCE_TYPE_DPLL_MGR):
+                        raise wsme.exc.ClientSideError(
+                            _("dpll-mgr ptp instance already exists on host")
                         )
 
                     pecan.request.dbapi.ptp_instance_assign(values)

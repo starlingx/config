@@ -49,7 +49,8 @@ def do_ptp_instance_list(cc, args):
            metavar='<service type>',
            choices=[
                'ptp4l', 'phc2sys', 'ts2phc', 'clock', 'synce4l',
-               constants.PTP_INSTANCE_TYPE_GNSS_MONITOR
+               constants.PTP_INSTANCE_TYPE_GNSS_MONITOR,
+               constants.PTP_INSTANCE_TYPE_DPLL_MGR
            ],
            help="Service type [REQUIRED]")
 def do_ptp_instance_add(cc, args):

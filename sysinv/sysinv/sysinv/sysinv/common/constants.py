@@ -2623,6 +2623,7 @@ PTP_INSTANCE_TYPE_TS2PHC = 'ts2phc'
 PTP_INSTANCE_TYPE_CLOCK = 'clock'
 PTP_INSTANCE_TYPE_SYNCE4L = 'synce4l'
 PTP_INSTANCE_TYPE_GNSS_MONITOR = "gnss-monitor"
+PTP_INSTANCE_TYPE_DPLL_MGR = "dpll-mgr"
 
 # PTP instances created during migration
 PTP_INSTANCE_LEGACY_PTP4L = 'ptp4l-legacy'

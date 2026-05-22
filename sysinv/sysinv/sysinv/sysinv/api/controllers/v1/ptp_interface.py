@@ -216,6 +216,13 @@ class PtpInterfaceController(rest.RestController):
         ptp_instance_uuid = ptp_interface_dict.pop('ptp_instance_uuid', None)
         ptp_instance = objects.ptp_instance.get_by_uuid(pecan.request.context,
                                                         ptp_instance_uuid)
+
+        # Reject interface assignment for instance types that don't use them
+        if ptp_instance['service'] == constants.PTP_INSTANCE_TYPE_DPLL_MGR:
+            raise wsme.exc.ClientSideError(
+                _("%s instance does not support PTP interfaces"
+                  % ptp_instance['service']))
+
         ptp_interface_dict['ptp_instance_id'] = ptp_instance['id']
 
         return PtpInterface.convert_with_links(
