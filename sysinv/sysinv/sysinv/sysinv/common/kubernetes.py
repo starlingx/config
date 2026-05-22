@@ -624,6 +624,9 @@ def get_installed_kube_versions():
 def get_k8s_images(kube_version):
     """Provides a list of images for a kubernetes version.
 
+    Excludes etcd container images since etcd runs as a bare metal service
+    and does not use the container image reported by kubeadm.
+
     :param: kube_version: kubernetes version string.
     :returns: nested dictionary component name as a key and upstream (public) image name:tag as
               value.
@@ -632,9 +635,11 @@ def get_k8s_images(kube_version):
                     'kube-scheduler': 'registry.k8s.io/kube-scheduler:v1.29.2',
                     'kube-proxy': 'registry.k8s.io/kube-proxy:v1.29.2',
                     'coredns': 'registry.k8s.io/coredns/coredns:v1.11.1',
-                    'pause': 'registry.k8s.io/pause:3.9',
-                    'etcd': 'registry.k8s.io/etcd:3.5.10-0'}
+                    'pause': 'registry.k8s.io/pause:3.9'}
     """
+    # etcd runs as a bare metal service; its container image from kubeadm is unused.
+    EXCLUDED_IMAGES = {'etcd'}
+
     try:
         kubeadm_path = constants.KUBEADM_PATH_FORMAT_STR.format(kubeadm_ver=kube_version)
         cmd = [kubeadm_path, 'config', 'images', 'list', '--kubernetes-version', kube_version]
@@ -646,7 +651,8 @@ def get_k8s_images(kube_version):
         image_dict = {}
         for image in images:
             key = image.split('/')[1].split(':')[0]
-            image_dict.update({key: image})
+            if key not in EXCLUDED_IMAGES:
+                image_dict.update({key: image})
         LOG.info("List of images for kubernetes version %s: %s" % (kube_version, image_dict))
     except Exception as ex:
         raise exception.SysinvException("Error getting all kubernetes images: %s" % (ex))
@@ -656,6 +662,8 @@ def get_k8s_images(kube_version):
 def get_k8s_images_for_all_versions():
     """Provides a list of images for supported kubernetes versions.
 
+    Excludes etcd container images (see get_k8s_images).
+
     :returns: nested dictionary containing kubernetes version and component name
               as a key and upstream (public) image name:tag as value.
               e.g. {'1.29.2': {
@@ -664,8 +672,7 @@ def get_k8s_images_for_all_versions():
                     'kube-scheduler': 'registry.k8s.io/kube-scheduler:v1.29.2',
                     'kube-proxy': 'registry.k8s.io/kube-proxy:v1.29.2',
                     'coredns': 'registry.k8s.io/coredns/coredns:v1.11.1',
-                    'pause': 'registry.k8s.io/pause:3.9',
-                    'etcd': 'registry.k8s.io/etcd:3.5.10-0'}, '1.30.6': {...},}
+                    'pause': 'registry.k8s.io/pause:3.9'}, '1.30.6': {...},}
     """
     try:
         all_images = {}
