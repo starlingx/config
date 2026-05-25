@@ -5065,3 +5065,42 @@ def get_debian_release_codename():
     except Exception:
         pass
     return None
+
+
+def parse_alarm_ignore_list(value):
+    """Normalize an ``alarm_ignore_list`` value coming from a request body.
+
+    Older clients send the list as a string-serialized Python literal
+    (e.g. ``"['900.401',]"``), while newer clients may send a real JSON
+    array. Both forms must be accepted and converted to a Python list of
+    alarm-id strings. Invalid input is logged and returned as an empty
+    list so callers can treat it as a soft default.
+
+    :param value: raw value read from the request body, or ``None``.
+    :returns: list of alarm-id strings (possibly empty).
+    """
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple, set)):
+        return [str(a) for a in value]
+    if isinstance(value, str):
+        value = value.strip()
+        if not value:
+            return []
+        try:
+            parsed = ast.literal_eval(value)
+        except (ValueError, SyntaxError):
+            LOG.warning(
+                "Could not parse alarm_ignore_list value %r, ignoring it",
+                value)
+            return []
+        if isinstance(parsed, (list, tuple, set)):
+            return [str(a) for a in parsed]
+        LOG.warning(
+            "alarm_ignore_list parsed value is not a list (%r), ignoring it",
+            parsed)
+        return []
+    LOG.warning(
+        "alarm_ignore_list has unexpected type %s, ignoring it",
+        type(value).__name__)
+    return []

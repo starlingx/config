@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2019 Wind River Systems, Inc.
+# Copyright (c) 2019, 2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -10,12 +10,14 @@ Tests for the API /kube_upgrade/ methods.
 
 import mock
 from six.moves import http_client
+import testtools
 
 from sysinv.common import constants
 from sysinv.common import health
 from sysinv.common import kubernetes
 from sysinv.common import exception
 from sysinv.common.usm_service import UsmUpgrade
+from sysinv.common.utils import parse_alarm_ignore_list
 from sysinv.conductor.manager import ConductorManager
 
 from sysinv.tests.api import base
@@ -62,7 +64,7 @@ class FakeAlarm(object):
         self.mgmt_affecting = mgmt_affecting
 
 
-FAKE_MGMT_AFFECTING_ALARM = FakeAlarm('900.401', "True")
+FAKE_MGMT_AFFECTING_ALARM = FakeAlarm('750.005', "True")
 FAKE_NON_MGMT_AFFECTING_ALARM = FakeAlarm('900.400', "False")
 
 
@@ -534,7 +536,7 @@ class TestPostKubeUpgrade(TestKubeUpgrade,
         create_dict = dbutils.post_get_test_kube_upgrade(
             to_version='v1.43.2')
         # ignore the alarm_id for the mgmt affecting alarm
-        create_dict['alarm_ignore_list'] = "['900.401',]"
+        create_dict['alarm_ignore_list'] = "['750.005',]"
         with mock.patch('sysinv.common.usm_service.get_platform_upgrade',
                         side_effect=exception.NotFound()):
             result = self.post_json('/kube_upgrade', create_dict,
@@ -545,6 +547,85 @@ class TestPostKubeUpgrade(TestKubeUpgrade,
         self.assertEqual(result.json['to_version'], 'v1.43.2')
         self.assertEqual(result.json['state'],
                          kubernetes.KUBE_UPGRADE_STARTED)
+
+    @mock.patch('sysinv.common.health.Health._check_trident_compatibility', lambda x: True)
+    def test_create_alarm_in_server_side_ignore_list_is_ignored(self):
+        """Test that an alarm listed in the server-side ignore list is
+        automatically ignored during kube-upgrade-start, even when the
+        client does not send any alarm_ignore_list. This validates the
+        server-side default list defined in sysinv.conf
+        [kube_upgrade] alarm_ignore_list.
+        """
+        # 900.023 (Software release deploy operation in progress) is in
+        # DEFAULT_KUBE_UPGRADE_ALARM_IGNORE_LIST. It is non-mgmt-affecting,
+        # so without server-side merge it would block the upgrade unless
+        # --force was used.
+        ignored_alarm = FakeAlarm('900.023', "False")
+        self.fake_fm_client.alarm.list.return_value = [ignored_alarm]
+
+        create_dict = dbutils.post_get_test_kube_upgrade(to_version='v1.43.2')
+        # Note: no alarm_ignore_list and no force from the client
+        with mock.patch('sysinv.common.usm_service.get_platform_upgrade',
+                        side_effect=exception.NotFound()):
+            result = self.post_json('/kube_upgrade', create_dict,
+                                    headers={'User-Agent': 'sysinv-test'})
+
+        # Upgrade should succeed because 900.023 is in the server-side list
+        self.assertEqual(result.json['from_version'], 'v1.43.1')
+        self.assertEqual(result.json['to_version'], 'v1.43.2')
+        self.assertEqual(result.json['state'],
+                         kubernetes.KUBE_UPGRADE_STARTED)
+
+    @mock.patch('sysinv.common.health.Health._check_trident_compatibility', lambda x: True)
+    def test_create_alarm_ignore_list_merges_client_and_server(self):
+        """Test that the server-side and client-supplied alarm_ignore_list
+        are merged. Server-side ignored alarms should not block the upgrade
+        even if the client also passes its own list.
+        """
+        # Two non-mgmt-affecting alarms:
+        # - 900.023: in DEFAULT_KUBE_UPGRADE_ALARM_IGNORE_LIST
+        # - 999.999: not in any list, must come from the client
+        server_side_alarm = FakeAlarm('900.023', "False")
+        client_side_alarm = FakeAlarm('999.999', "False")
+        self.fake_fm_client.alarm.list.return_value = [
+            server_side_alarm, client_side_alarm]
+
+        create_dict = dbutils.post_get_test_kube_upgrade(to_version='v1.43.2')
+        # Client only passes 999.999; server-side list should still cover
+        # 900.023 via the merge.
+        create_dict['alarm_ignore_list'] = "['999.999',]"
+        with mock.patch('sysinv.common.usm_service.get_platform_upgrade',
+                        side_effect=exception.NotFound()):
+            result = self.post_json('/kube_upgrade', create_dict,
+                                    headers={'User-Agent': 'sysinv-test'})
+
+        self.assertEqual(result.json['from_version'], 'v1.43.1')
+        self.assertEqual(result.json['to_version'], 'v1.43.2')
+        self.assertEqual(result.json['state'],
+                         kubernetes.KUBE_UPGRADE_STARTED)
+
+    @mock.patch('sysinv.common.health.Health._check_trident_compatibility', lambda x: True)
+    def test_create_alarm_not_in_any_ignore_list_blocks_upgrade(self):
+        """Test that an alarm not in either the server-side default list
+        nor in the client-supplied list still blocks the upgrade. This
+        guards against the merge accidentally swallowing arbitrary alarms.
+        """
+        # 999.999 is not in DEFAULT_KUBE_UPGRADE_ALARM_IGNORE_LIST and
+        # is not passed by the client either.
+        unknown_alarm = FakeAlarm('999.999', "False")
+        self.fake_fm_client.alarm.list.return_value = [unknown_alarm]
+
+        create_dict = dbutils.post_get_test_kube_upgrade(to_version='v1.43.2')
+        with mock.patch('sysinv.common.usm_service.get_platform_upgrade',
+                        side_effect=exception.NotFound()):
+            result = self.post_json('/kube_upgrade', create_dict,
+                                    headers={'User-Agent': 'sysinv-test'},
+                                    expect_errors=True)
+
+        self.assertEqual(result.content_type, 'application/json')
+        self.assertEqual(http_client.BAD_REQUEST, result.status_int)
+        self.assertIn("System is not in a valid state",
+                      result.json['error_message'])
 
     @mock.patch('sysinv.common.health.Health._check_trident_compatibility', lambda x: True)
     def test_create_system_unhealthy_from_bad_apps(self):
@@ -1220,3 +1301,75 @@ class TestDelete(TestKubeUpgrade,
                       result.json['error_message'])
         self.fake_conductor_api.\
             remove_kube_control_plane_backup.assert_not_called()
+
+
+class TestParseAlarmIgnoreList(testtools.TestCase):
+    """Unit tests for sysinv.common.utils.parse_alarm_ignore_list.
+
+    The helper accepts the alarm_ignore_list value coming from the request
+    body, which may be: None, an already-parsed list, a string-serialized
+    Python literal (legacy clients), or unexpected types. All cases must
+    be normalized to a list of alarm-id strings.
+    """
+
+    def test_none_returns_empty_list(self):
+        result = parse_alarm_ignore_list(None)
+        self.assertEqual(result, [])
+
+    def test_empty_string_returns_empty_list(self):
+        result = parse_alarm_ignore_list('')
+        self.assertEqual(result, [])
+
+    def test_whitespace_string_returns_empty_list(self):
+        result = parse_alarm_ignore_list('   ')
+        self.assertEqual(result, [])
+
+    def test_python_list_passes_through(self):
+        result = parse_alarm_ignore_list(
+            ['900.023', '900.401'])
+        self.assertEqual(result, ['900.023', '900.401'])
+
+    def test_legacy_string_serialized_list_is_parsed(self):
+        # cgts-client used to send the list as repr of a Python list
+        result = parse_alarm_ignore_list(
+            "['900.023', '900.401']")
+        self.assertEqual(result, ['900.023', '900.401'])
+
+    def test_legacy_string_with_trailing_comma_is_parsed(self):
+        # cgts-client formatted the list with a trailing comma
+        result = parse_alarm_ignore_list(
+            "['900.401',]")
+        self.assertEqual(result, ['900.401'])
+
+    def test_tuple_is_normalized_to_list(self):
+        result = parse_alarm_ignore_list(
+            ('900.023', '900.401'))
+        self.assertEqual(sorted(result), ['900.023', '900.401'])
+
+    def test_set_is_normalized_to_list(self):
+        result = parse_alarm_ignore_list(
+            {'900.023', '900.401'})
+        self.assertEqual(sorted(result), ['900.023', '900.401'])
+
+    def test_invalid_string_returns_empty_list(self):
+        # Unparseable garbage must not raise; just log and ignore
+        result = parse_alarm_ignore_list(
+            'not-a-list')
+        self.assertEqual(result, [])
+
+    def test_string_parsing_to_non_list_returns_empty_list(self):
+        # The string parses to a dict, which is not list-like
+        result = parse_alarm_ignore_list(
+            "{'foo': 'bar'}")
+        self.assertEqual(result, [])
+
+    def test_unexpected_type_returns_empty_list(self):
+        # Any non-string/non-iterable type is rejected gracefully
+        result = parse_alarm_ignore_list(42)
+        self.assertEqual(result, [])
+
+    def test_numeric_alarm_ids_are_stringified(self):
+        # If a caller passes integers, they should be converted to str
+        result = parse_alarm_ignore_list(
+            [900, 901])
+        self.assertEqual(result, ['900', '901'])
