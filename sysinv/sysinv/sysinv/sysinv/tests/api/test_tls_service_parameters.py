@@ -9,6 +9,8 @@ API-level tests for TLS service parameters.
 Tests POST/PATCH/DELETE through the service_parameter API endpoint.
 """
 
+import mock
+
 from sysinv.common import constants
 from sysinv.tests.api import base
 from sysinv.tests.api.test_service_parameters import \
@@ -189,6 +191,37 @@ class TLSServiceParameterTestMixin(ApiServiceParameterTestCaseMixin):
             constants.SERVICE_PARAM_NAME_PLATFORM_TLS_CIPHER_SUITE,
             'TLS_AES_256_GCM_SHA384')
         self.assertEqual(response['value'], 'TLS_AES_256_GCM_SHA384')
+
+    # --- Tests verifying name is passed to conductor on add/delete ---
+
+    @mock.patch('sysinv.conductor.rpcapi.ConductorAPI.update_service_config')
+    def test_tls_post_passes_name_to_conductor(self, mock_update):
+        """POST (add) should pass parameter name to conductor."""
+        self._tls_post(
+            constants.SERVICE_PARAM_NAME_PLATFORM_TLS_MIN_VERSION,
+            'VersionTLS12')
+        mock_update.assert_called_once()
+        call_kwargs = mock_update.call_args
+        # name is passed as keyword arg
+        self.assertEqual(
+            call_kwargs[1].get('name') or call_kwargs[0][3] if len(call_kwargs[0]) > 3 else call_kwargs[1].get('name'),
+            constants.SERVICE_PARAM_NAME_PLATFORM_TLS_MIN_VERSION)
+
+    @mock.patch('sysinv.conductor.rpcapi.ConductorAPI.update_service_config')
+    def test_tls_delete_passes_name_to_conductor(self, mock_update):
+        """DELETE should pass parameter name to conductor."""
+        mock_update.return_value = None
+        response = self._tls_post(
+            constants.SERVICE_PARAM_NAME_PLATFORM_TLS_CIPHER_SUITE,
+            'TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384')
+        uuid = response['uuid']
+        mock_update.reset_mock()
+        self.delete(self.get_single_url(uuid), headers=self.API_HEADERS)
+        mock_update.assert_called_once()
+        call_kwargs = mock_update.call_args
+        self.assertEqual(
+            call_kwargs[1].get('name') or call_kwargs[0][3] if len(call_kwargs[0]) > 3 else call_kwargs[1].get('name'),
+            constants.SERVICE_PARAM_NAME_PLATFORM_TLS_CIPHER_SUITE)
 
 
 class PlatformIPv4ControllerTLSServiceParameterTestCase(
