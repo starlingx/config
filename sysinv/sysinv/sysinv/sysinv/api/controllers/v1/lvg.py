@@ -597,12 +597,10 @@ def _check(op, lvg, rpc_lvg=None):
                         .LVM_CSI_PROVISIONING_MODE_THIN
                     lvg['lvm_type'] = lvg['capabilities']['lvm_type']
             else:
-                if lvg['lvm_pool_size']:
-                    raise wsme.exc.ClientSideError(
-                        _("Its only possible to set the pool size for %s "
-                          "volume group") %
-                        constants.LVG_CGTS_VG)
-                lvg['vg_state'] = constants.PROVISIONING
+                raise wsme.exc.ClientSideError(
+                    _("Its only possible to modify functions of %s "
+                        "volume group") %
+                    constants.LVG_CGTS_VG)
         else:
             if ((rpc_lvg['lvm_function'] and rpc_lvg['lvm_function'] == 'none'
                  and lvg['lvm_pool_size']) or not rpc_lvg['lvm_function']):
