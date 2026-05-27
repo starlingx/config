@@ -1633,6 +1633,386 @@ class TestHostKubernetesOperations(base.TestCase):
         mock_pin_unpin_control_plane_images.assert_called_once_with(
             pin_images_version=FAKE_KUBE_VERSION)
 
+    def test_report_kubelet_version_update_status_success(self):
+        """Test report kubelet version update status successful execution
+
+        """
+        mock_os_path_exists = mock.MagicMock()
+        p = mock.patch('os.path.exists', mock_os_path_exists)
+        p.start().return_value = True
+        self.addCleanup(p.stop)
+
+        version = '1.32.2'
+        to_kubelet_version = 'v' + version
+        link2_kube_version = version
+        expected_success = True
+        to_release = "TEST.SW.VERSION"
+        version_details = '{"from_release": "FROM_TEST.SW.VERSION", ' \
+                          '"to_release": "%s", ' \
+                          '"to_kubelet_version": "%s"}' \
+                          % (to_release, to_kubelet_version)
+        mock_file_open = mock.mock_open(read_data=version_details)
+        p = mock.patch('builtins.open', mock_file_open)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_systemctl_is_active_service_status = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.systemctl_is_active_service_status',
+                       mock_systemctl_is_active_service_status)
+        p.start().return_value = constants.SYSTEMD_SERVICE_ACTIVE
+        self.addCleanup(p.stop)
+
+        mock_get_kube_version_from_symlink = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.get_kube_version_from_symlink',
+                       mock_get_kube_version_from_symlink)
+        p.start().return_value = link2_kube_version
+        self.addCleanup(p.stop)
+
+        mock_report_kube_upgrade_kubelet_result = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.rpcapi.ConductorAPI.report_kube_upgrade_kubelet_result',
+                       mock_report_kube_upgrade_kubelet_result)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_os_remove = mock.MagicMock()
+        p = mock.patch('os.remove', mock_os_remove)
+        p.start()
+        self.addCleanup(p.stop)
+
+        tsconfig.system_mode = constants.SYSTEM_MODE_SIMPLEX
+
+        self.agent_manager._report_kubelet_version_update_status()
+
+        mock_os_path_exists.assert_called()
+        mock_file_open.assert_called()
+        mock_get_kube_version_from_symlink.assert_called()
+        mock_report_kube_upgrade_kubelet_result.assert_called_with(
+            mock.ANY, self.agent_manager._ihost_uuid, to_kubelet_version, expected_success)
+        mock_os_remove.assert_called()
+
+    def test_report_kubelet_version_update_status_success_non_aio_sx(self):
+        """Test _report_kubelet_version_update_status in case of non AIO-SX
+
+        """
+        mock_os_path_exists = mock.MagicMock()
+        p = mock.patch('os.path.exists', mock_os_path_exists)
+        p.start().return_value = True
+        self.addCleanup(p.stop)
+
+        to_kubelet_version = "v1.32.2"
+        to_release = "TEST.SW.VERSION"
+        version_details = '{"from_release": "FROM_TEST.SW.VERSION", ' \
+                          '"to_release": "%s", ' \
+                          '"to_kubelet_version": "%s"}' \
+                          % (to_release, to_kubelet_version)
+        mock_file_open = mock.mock_open(read_data=version_details)
+        p = mock.patch('builtins.open', mock_file_open)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_systemctl_is_active_service_status = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.systemctl_is_active_service_status',
+                       mock_systemctl_is_active_service_status)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_get_kube_version_from_symlink = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.get_kube_version_from_symlink',
+                       mock_get_kube_version_from_symlink)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_report_kube_upgrade_kubelet_result = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.rpcapi.ConductorAPI.report_kube_upgrade_kubelet_result',
+                       mock_report_kube_upgrade_kubelet_result)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_os_remove = mock.MagicMock()
+        p = mock.patch('os.remove', mock_os_remove)
+        p.start()
+        self.addCleanup(p.stop)
+
+        tsconfig.system_mode = constants.SYSTEM_MODE_DUPLEX
+
+        self.agent_manager._report_kubelet_version_update_status()
+
+        mock_os_path_exists.assert_not_called()
+        mock_file_open.assert_not_called()
+        mock_get_kube_version_from_symlink.assert_not_called()
+        mock_report_kube_upgrade_kubelet_result.assert_not_called()
+        mock_os_remove.assert_not_called()
+
+    def test_report_kubelet_version_update_status_version_details_unavailable(self):
+        """Test _report_kubelet_version_update_status when version details file does not exist
+
+        """
+        mock_os_path_exists = mock.MagicMock()
+        p = mock.patch('os.path.exists', mock_os_path_exists)
+        p.start().return_value = False  # version file doesn't exist
+        self.addCleanup(p.stop)
+
+        to_kubelet_version = "v1.32.2"
+        to_release = "TEST.SW.VERSION"
+        version_details = '{"from_release": "FROM_TEST.SW.VERSION", ' \
+                          '"to_release": "%s", ' \
+                          '"to_kubelet_version": "%s"}' \
+                          % (to_release, to_kubelet_version)
+        mock_file_open = mock.mock_open(read_data=version_details)
+        p = mock.patch('builtins.open', mock_file_open)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_systemctl_is_active_service_status = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.systemctl_is_active_service_status',
+                       mock_systemctl_is_active_service_status)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_get_kube_version_from_symlink = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.get_kube_version_from_symlink',
+                       mock_get_kube_version_from_symlink)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_report_kube_upgrade_kubelet_result = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.rpcapi.ConductorAPI.report_kube_upgrade_kubelet_result',
+                       mock_report_kube_upgrade_kubelet_result)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_os_remove = mock.MagicMock()
+        p = mock.patch('os.remove', mock_os_remove)
+        p.start()
+        self.addCleanup(p.stop)
+
+        tsconfig.system_mode = constants.SYSTEM_MODE_SIMPLEX
+
+        self.agent_manager._report_kubelet_version_update_status()
+
+        mock_os_path_exists.assert_called()
+        mock_file_open.assert_not_called()
+        mock_get_kube_version_from_symlink.assert_not_called()
+        mock_report_kube_upgrade_kubelet_result.assert_not_called()
+        mock_os_remove.assert_not_called()
+
+    def test_report_kubelet_version_update_status_version_read_details_error(self):
+        """Test _report_kubelet_version_update_status: error getting version details
+
+        """
+        mock_os_path_exists = mock.MagicMock()
+        p = mock.patch('os.path.exists', mock_os_path_exists)
+        p.start().return_value = True
+        self.addCleanup(p.stop)
+
+        to_kubelet_version = "v1.32.2"
+        to_release = "TEST.SW.VERSION"
+        version_details = '{"from_release": "FROM_TEST.SW.VERSION", ' \
+                          '"to_release": "%s", ' \
+                          '"to_kubelet_version": "%s"}' \
+                          % (to_release, to_kubelet_version)
+        mock_file_open = mock.mock_open(read_data=version_details)
+        p = mock.patch('builtins.open', mock_file_open)
+        p.start().side_effect = Exception("Some Error!")
+        self.addCleanup(p.stop)
+
+        mock_systemctl_is_active_service_status = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.systemctl_is_active_service_status',
+                       mock_systemctl_is_active_service_status)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_get_kube_version_from_symlink = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.get_kube_version_from_symlink',
+                       mock_get_kube_version_from_symlink)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_report_kube_upgrade_kubelet_result = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.rpcapi.ConductorAPI.report_kube_upgrade_kubelet_result',
+                       mock_report_kube_upgrade_kubelet_result)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_os_remove = mock.MagicMock()
+        p = mock.patch('os.remove', mock_os_remove)
+        p.start()
+        self.addCleanup(p.stop)
+
+        tsconfig.system_mode = constants.SYSTEM_MODE_SIMPLEX
+
+        self.agent_manager._report_kubelet_version_update_status()
+
+        mock_os_path_exists.assert_called()
+        mock_file_open.assert_called()
+        mock_get_kube_version_from_symlink.assert_not_called()
+        mock_report_kube_upgrade_kubelet_result.assert_not_called()
+        mock_os_remove.assert_not_called()
+
+    def test_report_kubelet_version_update_status_version_to_release_mismatch(self):
+        """Test _report_kubelet_version_update_status: "to_release" mismatch
+
+        """
+        mock_os_path_exists = mock.MagicMock()
+        p = mock.patch('os.path.exists', mock_os_path_exists)
+        p.start().return_value = True
+        self.addCleanup(p.stop)
+
+        to_kubelet_version = "v1.32.2"
+        from_release = "FROM_TEST.SW.VERSION"
+        to_release = "TEST.SW.VERSION"
+        version_details = '{"from_release": "%s", ' \
+                          '"to_release": "%s", ' \
+                          '"to_kubelet_version": "%s"}' \
+                          % (from_release, to_release, to_kubelet_version)
+        mock_file_open = mock.mock_open(read_data=version_details)
+        p = mock.patch('builtins.open', mock_file_open)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_systemctl_is_active_service_status = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.systemctl_is_active_service_status',
+                       mock_systemctl_is_active_service_status)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_get_kube_version_from_symlink = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.get_kube_version_from_symlink',
+                       mock_get_kube_version_from_symlink)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_report_kube_upgrade_kubelet_result = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.rpcapi.ConductorAPI.report_kube_upgrade_kubelet_result',
+                       mock_report_kube_upgrade_kubelet_result)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_os_remove = mock.MagicMock()
+        p = mock.patch('os.remove', mock_os_remove)
+        p.start()
+        self.addCleanup(p.stop)
+
+        tsconfig.SW_VERSION = from_release  # release mismatch
+        tsconfig.system_mode = constants.SYSTEM_MODE_SIMPLEX
+
+        self.agent_manager._report_kubelet_version_update_status()
+
+        mock_os_path_exists.assert_called()
+        mock_file_open.assert_called()
+        mock_get_kube_version_from_symlink.assert_not_called()
+        mock_report_kube_upgrade_kubelet_result.assert_not_called()
+        mock_os_remove.assert_not_called()
+
+    def test_report_kubelet_version_update_status_version_missing_to_kubelet_version(self):
+        """Test _report_kubelet_version_update_status: missing to_kubelet_version
+
+        """
+        mock_os_path_exists = mock.MagicMock()
+        p = mock.patch('os.path.exists', mock_os_path_exists)
+        p.start().return_value = True
+        self.addCleanup(p.stop)
+
+        to_release = "TEST.SW.VERSION"
+        version_details = '{"from_release": "FROM_TEST.SW.VERSION", ' \
+                          '"to_release": "%s", ' \
+                          '"to_kubelet_version": ""}' \
+                          % (to_release)
+        mock_file_open = mock.mock_open(read_data=version_details)
+        p = mock.patch('builtins.open', mock_file_open)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_systemctl_is_active_service_status = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.systemctl_is_active_service_status',
+                       mock_systemctl_is_active_service_status)
+        p.start().return_value = constants.SYSTEMD_SERVICE_ACTIVE
+        self.addCleanup(p.stop)
+
+        mock_get_kube_version_from_symlink = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.get_kube_version_from_symlink',
+                       mock_get_kube_version_from_symlink)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_report_kube_upgrade_kubelet_result = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.rpcapi.ConductorAPI.report_kube_upgrade_kubelet_result',
+                       mock_report_kube_upgrade_kubelet_result)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_os_remove = mock.MagicMock()
+        p = mock.patch('os.remove', mock_os_remove)
+        p.start()
+        self.addCleanup(p.stop)
+
+        tsconfig.system_mode = constants.SYSTEM_MODE_SIMPLEX
+
+        self.agent_manager._report_kubelet_version_update_status()
+
+        mock_os_path_exists.assert_called()
+        mock_file_open.assert_called()
+        mock_get_kube_version_from_symlink.assert_not_called()
+        mock_report_kube_upgrade_kubelet_result.assert_not_called()
+        mock_os_remove.assert_not_called()
+
+    def test_report_kubelet_version_update_status_failure(self):
+        """Test report kubelet version update status failed execution
+
+        """
+        mock_os_path_exists = mock.MagicMock()
+        p = mock.patch('os.path.exists', mock_os_path_exists)
+        p.start().return_value = True
+        self.addCleanup(p.stop)
+
+        version = '1.32.2'
+        to_kubelet_version = 'v' + version
+        link2_kube_version = '1.31.5'  # mismatched version, kubelet didn't update
+        expected_success = False
+        to_release = "TEST.SW.VERSION"
+        version_details = '{"from_release": "FROM_TEST.SW.VERSION", ' \
+                          '"to_release": "%s", ' \
+                          '"to_kubelet_version": "%s"}' \
+                          % (to_release, to_kubelet_version)
+        mock_file_open = mock.mock_open(read_data=version_details)
+        p = mock.patch('builtins.open', mock_file_open)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_systemctl_is_active_service_status = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.systemctl_is_active_service_status',
+                       mock_systemctl_is_active_service_status)
+        p.start().return_value = constants.SYSTEMD_SERVICE_ACTIVE
+        self.addCleanup(p.stop)
+
+        mock_get_kube_version_from_symlink = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.get_kube_version_from_symlink',
+                       mock_get_kube_version_from_symlink)
+        p.start().return_value = link2_kube_version
+        self.addCleanup(p.stop)
+
+        mock_report_kube_upgrade_kubelet_result = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.rpcapi.ConductorAPI.report_kube_upgrade_kubelet_result',
+                       mock_report_kube_upgrade_kubelet_result)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_os_remove = mock.MagicMock()
+        p = mock.patch('os.remove', mock_os_remove)
+        p.start()
+        self.addCleanup(p.stop)
+
+        tsconfig.system_mode = constants.SYSTEM_MODE_SIMPLEX
+
+        self.agent_manager._report_kubelet_version_update_status()
+
+        mock_os_path_exists.assert_called()
+        mock_file_open.assert_called()
+        mock_get_kube_version_from_symlink.assert_called()
+        mock_report_kube_upgrade_kubelet_result.assert_called_with(
+            mock.ANY, self.agent_manager._ihost_uuid, to_kubelet_version, expected_success)
+        mock_os_remove.assert_not_called()
+
 
 class TestCpuFrequencyConfigurable(base.TestCase):
     """Tests for CPU frequency configuration detection."""

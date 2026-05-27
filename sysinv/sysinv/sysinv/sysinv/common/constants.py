@@ -1658,6 +1658,8 @@ IS_ACTIVE_COMMAND = 'is-active'
 IS_ENABLED_COMMAND = 'is-enabled'
 SYSTEMCTL_RUNTIME_FLAG = '--runtime'
 SYSTEMCTL_NOW_FLAG = '--now'
+SYSTEMD_SERVICE_ACTIVE = 'active'
+SYSTEMD_SERVICE_FAILED = 'failed'
 
 # SM related
 SM_RESTART = '/usr/bin/sm-restart'

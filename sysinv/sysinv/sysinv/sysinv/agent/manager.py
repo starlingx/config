@@ -2900,7 +2900,8 @@ class AgentManager(service.PeriodicService):
                     # This implies Kubelet ExecStartPre script has been executed.
                     kubelet_status = utils.systemctl_is_active_service_status(
                         kubernetes.KUBELET_SYSTEMD_SERVICE_NAME)
-                    if kubelet_status in ['active', 'failed']:
+                    if kubelet_status in [constants.SYSTEMD_SERVICE_ACTIVE,
+                                          constants.SYSTEMD_SERVICE_FAILED]:
                         LOG.info("Kubelet status: [%s]. Proceeding with reporting kubelet "
                                  "version update status." % (kubelet_status))
                         kubelet_started = True
