@@ -12721,116 +12721,6 @@ class ConductorManager(service.PeriodicService):
                 data['name'], data['logical_volume'], data['size']))
             self.dbapi.controller_fs_create(data)
 
-    # IANA to OpenSSL cipher name mapping for nginx-ingress TLS config
-    NGINX_IANA_TO_OPENSSL_CIPHER_MAP = {
-        'TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384':
-            'ECDHE-RSA-AES256-GCM-SHA384',
-        'TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256':
-            'ECDHE-RSA-AES128-GCM-SHA256',
-        'TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384':
-            'ECDHE-ECDSA-AES256-GCM-SHA384',
-        'TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256':
-            'ECDHE-ECDSA-AES128-GCM-SHA256',
-        'TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256':
-            'ECDHE-RSA-CHACHA20-POLY1305',
-        'TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256':
-            'ECDHE-ECDSA-CHACHA20-POLY1305',
-    }
-
-    NGINX_CONFIGMAP_NAME = 'ic-nginx-ingress-ingress-nginx-controller'
-    NGINX_CONFIGMAP_NAMESPACE = 'kube-system'
-
-    def _update_nginx_ingress_tls_config(self):
-        """Update nginx-ingress ConfigMap with TLS settings.
-
-        Reads platform TLS service parameters and patches the
-        nginx-ingress-controller ConfigMap with ssl-protocols
-        and ssl-ciphers. nginx-ingress auto-reloads on ConfigMap
-        changes.
-        """
-        tls_min_version = \
-            constants.SERVICE_PARAM_PLATFORM_TLS_MIN_VERSION_DEFAULT
-        tls_cipher_suite = \
-            constants.SERVICE_PARAM_PLATFORM_TLS_CIPHER_SUITE_DEFAULT
-
-        try:
-            parms = self.dbapi.service_parameter_get_all(
-                service=constants.SERVICE_TYPE_PLATFORM,
-                section=constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG)
-            for p in parms:
-                if p.name == \
-                        constants.SERVICE_PARAM_NAME_PLATFORM_TLS_MIN_VERSION:
-                    tls_min_version = p.value
-                elif p.name == \
-                        constants.SERVICE_PARAM_NAME_PLATFORM_TLS_CIPHER_SUITE:
-                    tls_cipher_suite = p.value
-        except Exception:
-            LOG.warning("Failed to read TLS service parameters, "
-                        "using defaults for nginx-ingress")
-
-        # Build ssl-protocols
-        if tls_min_version == \
-                constants.SERVICE_PARAM_PLATFORM_TLS_VERSION_TLS13:
-            ssl_protocols = 'TLSv1.3'
-        else:
-            ssl_protocols = 'TLSv1.2 TLSv1.3'
-
-        # Build ssl-ciphers (OpenSSL format, colon-separated)
-        openssl_ciphers = []
-        for iana_name in tls_cipher_suite.split(','):
-            iana_name = iana_name.strip()
-            if not iana_name:
-                continue
-            openssl_name = self.NGINX_IANA_TO_OPENSSL_CIPHER_MAP.get(
-                iana_name, iana_name)
-            openssl_ciphers.append(openssl_name)
-        ssl_ciphers = ':'.join(openssl_ciphers)
-
-        try:
-            body = {
-                'metadata': {
-                    'name': self.NGINX_CONFIGMAP_NAME,
-                },
-                'data': {
-                    'ssl-protocols': ssl_protocols,
-                    'ssl-ciphers': ssl_ciphers,
-                }
-            }
-            self._kube.kube_patch_config_map(
-                self.NGINX_CONFIGMAP_NAME,
-                self.NGINX_CONFIGMAP_NAMESPACE,
-                body)
-            LOG.info("Updated nginx-ingress ConfigMap with "
-                     "ssl-protocols='%s', ssl-ciphers='%s'"
-                     % (ssl_protocols, ssl_ciphers))
-        except Exception:
-            LOG.exception("Failed to update nginx-ingress "
-                          "ConfigMap with TLS settings")
-
-    def _update_oidc_tls_config(self, context):
-        """Trigger OIDC app reapply to pick up TLS parameter changes.
-
-        When TLS service parameters change, the OIDC app's helm override
-        classes (dex.py, oidc_client.py) will regenerate system_overrides
-        with the updated TLS configuration on the next app-apply.
-        """
-        try:
-            app = self.dbapi.kube_app_get(constants.HELM_APP_OIDC_AUTH)
-            if app.status == constants.APP_APPLY_SUCCESS:
-                self.evaluate_apps_reapply(
-                    context,
-                    trigger={'type':
-                             constants.APP_EVALUATE_REAPPLY_TYPE_RUNTIME_APPLY_PUPPET})
-                LOG.info("Triggered OIDC app reapply for TLS update")
-            else:
-                LOG.info("OIDC app not in applied state (%s), "
-                         "skipping TLS reapply" % app.status)
-        except exception.KubeAppNotFound:
-            LOG.info("OIDC app not installed, skipping TLS update")
-        except Exception:
-            LOG.exception("Failed to trigger OIDC app reapply "
-                          "for TLS update")
-
     def update_service_config(self, context, service=None, do_apply=False,
                               section=None, name=None):
         """Update the service parameter configuration"""
@@ -13020,8 +12910,6 @@ class ConductorManager(service.PeriodicService):
                 }
                 self._config_apply_runtime_manifest(
                     context, config_uuid, config_dict)
-                self._update_nginx_ingress_tls_config()
-                self._update_oidc_tls_config(context)
             elif section == constants.SERVICE_PARAM_SECTION_PLATFORM_COREDUMP:
                 personalities = [constants.CONTROLLER,
                                  constants.WORKER,

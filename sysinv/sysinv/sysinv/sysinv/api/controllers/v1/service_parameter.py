@@ -695,6 +695,11 @@ class ServiceParameterController(rest.RestController):
                     name == constants.SERVICE_PARAM_NAME_KUBERNETES_LEADER_ELECT:
                 new_name = name
 
+            if section == constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG and \
+                    name in [constants.SERVICE_PARAM_NAME_PLATFORM_TLS_MIN_VERSION,
+                             constants.SERVICE_PARAM_NAME_PLATFORM_TLS_CIPHER_SUITE]:
+                new_name = name
+
             pecan.request.rpcapi.update_service_config(
                 pecan.request.context, service, section=section, name=new_name)
         except rpc_common.RemoteError as e:
@@ -873,6 +878,11 @@ class ServiceParameterController(rest.RestController):
             constants.SERVICE_PARAM_SECTION_KUBERNETES_CONTROLLER_MANAGER,
             constants.SERVICE_PARAM_SECTION_KUBERNETES_SCHEDULER) and \
                 parameter.name == constants.SERVICE_PARAM_NAME_KUBERNETES_LEADER_ELECT:
+            name = parameter.name
+
+        if parameter.section == constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG and \
+                parameter.name in [constants.SERVICE_PARAM_NAME_PLATFORM_TLS_MIN_VERSION,
+                                   constants.SERVICE_PARAM_NAME_PLATFORM_TLS_CIPHER_SUITE]:
             name = parameter.name
 
         try:
