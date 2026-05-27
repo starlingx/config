@@ -47,21 +47,24 @@ class HelmManager(base.Manager):
             return None
 
     def update_overrides(self, app, name, namespace,
-                         flag='reset', override_values=None):
+                         flags=None, override_values=None):
         """Update overrides for a given chart.
 
         :param app_name: name of application
         :param name: name of the chart
         :param namespace: namespace for the chart overrides
-        :param flag: 'reuse' or 'reset' to indicate how to handle existing
-                     user overrides for this chart
+        :param flags: a dict of boolean flags indicating how to handle
+                      existing user overrides and additional behaviors.
+                      Keys: 'reuse_values', 'reset_values', 'reapply', reapply_all'
         :param override_values: a dict representing the overrides
 
         This will return the end-user overrides for the specified chart.
         """
+        if flags is None:
+            flags = {}
         if override_values is None:
             override_values = {}
-        body = {'flag': flag, 'values': override_values, 'attributes': {}}
+        body = {'flags': flags, 'values': override_values, 'attributes': {}}
         return self._update(self._path(app) +
                             '?name=' + name +
                             '&namespace=' + namespace, body)
@@ -89,7 +92,7 @@ class HelmManager(base.Manager):
         """
         if not attributes:
             attributes = {}
-        body = {'flag': None, 'values': {}, 'attributes': attributes}
+        body = {'flags': {}, 'values': {}, 'attributes': attributes}
         return self._update(self._path(app) +
                             '?name=' + name +
                             '&namespace=' + namespace, body)

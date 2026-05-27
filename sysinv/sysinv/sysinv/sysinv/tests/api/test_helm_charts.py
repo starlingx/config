@@ -23,6 +23,7 @@ class FakeConductorAPI(object):
         self.get_active_helm_applications = mock.MagicMock()
         self.get_helm_chart_overrides = mock.MagicMock()
         self.merge_overrides = mock.MagicMock()
+        self.evaluate_apps_reapply = mock.MagicMock()
 
 
 class FakeException(Exception):
@@ -375,7 +376,8 @@ class ApiHelmChartPatchTestSuiteMixin(ApiHelmChartTestCaseMixin):
                                     'platform-integ-apps',
                                     'rbd-provisioner', 'kube-system'),
                                     {'attributes': {},
-                                    'flag': 'reuse',
+                                    'flags': {'reuse_values': True,
+                                              'reset_values': False},
                                     'values': {'files': [],
                                     'set': ['global.replicas=2']}},
                                     headers=self.API_HEADERS,
@@ -402,7 +404,7 @@ class ApiHelmChartPatchTestSuiteMixin(ApiHelmChartTestCaseMixin):
                                     'rbd-provisioner', 'kube-system')
         response = self.patch_json(url,
                                    {'attributes': {"enabled": "false"},
-                                   'flag': '',
+                                   'flags': {},
                                    'values': {}},
                                    headers=self.API_HEADERS,
                                    expect_errors=True)
@@ -418,7 +420,8 @@ class ApiHelmChartPatchTestSuiteMixin(ApiHelmChartTestCaseMixin):
                                    'rbd-provisioner', 'kube-system')
         response = self.patch_json(url,
                                    {'attributes': {},
-                                   'flag': 'reuse',
+                                   'flags': {'reuse_values': True,
+                                             'reset_values': False},
                                    'values': {'files': [],
                                    'set': ['global.replicas=2']}},
                                    headers=self.API_HEADERS,
@@ -435,7 +438,8 @@ class ApiHelmChartPatchTestSuiteMixin(ApiHelmChartTestCaseMixin):
                                                 'kube-system')
         response = self.patch_json(url,
                                    {'attributes': {},
-                                    'flag': 'reuse',
+                                    'flags': {'reuse_values': True,
+                                              'reset_values': False},
                                     'values': {'files': [],
                                     'set': ['global.replicas=2']}},
                                     headers=self.API_HEADERS,
@@ -451,7 +455,8 @@ class ApiHelmChartPatchTestSuiteMixin(ApiHelmChartTestCaseMixin):
                                                 '')
         response = self.patch_json(url,
                                    {'attributes': {},
-                                   'flag': 'reuse',
+                                   'flags': {'reuse_values': True,
+                                             'reset_values': False},
                                    'values': {'files': [],
                                    'set': ['global.replicas=2']}},
                                    headers=self.API_HEADERS,
@@ -467,7 +472,7 @@ class ApiHelmChartPatchTestSuiteMixin(ApiHelmChartTestCaseMixin):
                                    'rbd-provisioner', 'kube-system')
         response = self.patch_json(url,
                                    {'attributes': {"invalid_attr": "false"},
-                                   'flag': '',
+                                   'flags': {},
                                    'values': {}},
                                    headers=self.API_HEADERS,
                                    expect_errors=True)
@@ -478,12 +483,13 @@ class ApiHelmChartPatchTestSuiteMixin(ApiHelmChartTestCaseMixin):
                       "be one of [enabled]",
                       response.json['error_message'])
 
-    def test_patch_invalid_flag(self):
+    def test_patch_flags_mutually_exclusive(self):
         url = self.get_single_url_helm_override('platform-integ-apps',
                                     'rbd-provisioner', 'kube-system')
         response = self.patch_json(url,
                                    {'attributes': {},
-                                    'flag': 'invalid_flag',
+                                    'flags': {'reuse_values': True,
+                                              'reset_values': True},
                                     'values': {'files': [],
                                     'set': ['global.replicas=2']}},
                                     headers=self.API_HEADERS,
@@ -491,8 +497,8 @@ class ApiHelmChartPatchTestSuiteMixin(ApiHelmChartTestCaseMixin):
 
         # Verify appropriate exception is raised
         self.assertEqual(response.status_code, http_client.BAD_REQUEST)
-        self.assertIn("Invalid flag: invalid_flag must be either 'reuse' "
-                      "or 'reset'.",
+        self.assertIn("Invalid flags: 'reuse_values' and 'reset_values' "
+                      "cannot both be True.",
                        response.json['error_message'])
 
     def test_patch_invalid_helm_override(self):
@@ -500,7 +506,8 @@ class ApiHelmChartPatchTestSuiteMixin(ApiHelmChartTestCaseMixin):
                                    'invalid_name', 'invalid_namespace')
         response = self.patch_json(url,
                                    {'attributes': {},
-                                    'flag': 'reuse',
+                                    'flags': {'reuse_values': True,
+                                              'reset_values': False},
                                     'values': {'files': [],
                                     'set': ['global.replicas=2']}},
                                     headers=self.API_HEADERS,
@@ -519,7 +526,8 @@ class ApiHelmChartPatchTestSuiteMixin(ApiHelmChartTestCaseMixin):
                                     'rbd-provisioner', 'kube-system')
         response = self.patch_json(url,
                                     {'attributes': {},
-                                    'flag': 'reuse',
+                                    'flags': {'reuse_values': True,
+                                              'reset_values': False},
                                     'values': {'files': [],
                                     'set': ['global.replicas=2,'
                                     'global.defaultStorageClass=generic']}},
@@ -540,10 +548,11 @@ class ApiHelmChartPatchTestSuiteMixin(ApiHelmChartTestCaseMixin):
         url = self.get_single_url_helm_override('platform-integ-apps',
                                                 'rbd-provisioner',
                                                 'kube-system')
-        # Pass a non existant field to be patched by the API
+        # Pass reset_values=True to clear existing overrides
         response = self.patch_json(url,
                                    {'attributes': {},
-                                    'flag': 'reset',
+                                    'flags': {'reuse_values': False,
+                                              'reset_values': True},
                                     'values': {}},
                                     headers=self.API_HEADERS,
                                     expect_errors=True)
@@ -553,6 +562,54 @@ class ApiHelmChartPatchTestSuiteMixin(ApiHelmChartTestCaseMixin):
         # Verify that the helm override was updated
         response = self.get_json(url, expect_errors=True)
         self.assertEqual(response.json['user_overrides'], None)
+
+    def test_success_helm_override_patch_reapply(self):
+        # Return system apps
+        self.fake_helm_apps.return_value = ['platform-integ-apps']
+        # Return helm chart overrides
+        self.fake_override.return_value = {"enabled": True}
+        self.fake_merge_overrides.return_value = "global:\n  replicas: \"2\"\n"
+        url = self.get_single_url_helm_override('platform-integ-apps',
+                                                'rbd-provisioner',
+                                                'kube-system')
+        # Pass reapply=True to trigger evaluate apps reapply
+        response = self.patch_json(url,
+                                   {'attributes': {},
+                                    'flags': {'reuse_values': False,
+                                              'reset_values': True,
+                                              'reapply': True},
+                                    'values': {'files': [],
+                                    'set': ['global.replicas=2']}},
+                                    headers=self.API_HEADERS,
+                                    expect_errors=True)
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
+
+        # Verify that evaluate_apps_reapply was called
+        self.fake_conductor_api.evaluate_apps_reapply.assert_called_once()
+
+    def test_helm_override_patch_reapply_not_triggered_by_default(self):
+        # Return system apps
+        self.fake_helm_apps.return_value = ['platform-integ-apps']
+        # Return helm chart overrides
+        self.fake_override.return_value = {"enabled": True}
+        self.fake_merge_overrides.return_value = "global:\n  replicas: \"2\"\n"
+        url = self.get_single_url_helm_override('platform-integ-apps',
+                                                'rbd-provisioner',
+                                                'kube-system')
+        # Patch without reapply flag
+        response = self.patch_json(url,
+                                   {'attributes': {},
+                                    'flags': {'reuse_values': False,
+                                              'reset_values': True},
+                                    'values': {'files': [],
+                                    'set': ['global.replicas=2']}},
+                                    headers=self.API_HEADERS,
+                                    expect_errors=True)
+        self.assertEqual(response.status_code, http_client.OK)
+
+        # Verify that evaluate_apps_reapply was NOT called
+        self.fake_conductor_api.evaluate_apps_reapply.assert_not_called()
 
 
 class ApiHelmChartPatchTestSuiteQat(ApiHelmChartTestCaseMixin):
@@ -594,7 +651,7 @@ class ApiHelmChartPatchTestSuiteQat(ApiHelmChartTestCaseMixin):
                                                 'intel-device-plugins-qat',
                                                 'intel-device-plugins-operator')
         response = self.patch_json(url, {'attributes': {"enabled": "true"},
-                                   'flag': '', 'values': {}},
+                                   'flags': {}, 'values': {}},
                                    headers=self.API_HEADERS,
                                    expect_errors=True)
         self.assertEqual(response.content_type, 'application/json')
@@ -613,7 +670,7 @@ class ApiHelmChartPatchTestSuiteQat(ApiHelmChartTestCaseMixin):
                                                 'intel-device-plugins-qat',
                                                 'intel-device-plugins-operator')
         response = self.patch_json(url, {'attributes': {"enabled": "true"},
-                                   'flag': '', 'values': {}},
+                                   'flags': {}, 'values': {}},
                                    headers=self.API_HEADERS,
                                    expect_errors=True)
         self.assertEqual(response.content_type, 'application/json')

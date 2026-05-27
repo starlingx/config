@@ -154,18 +154,36 @@ class HelmChartsController(rest.RestController):
 
     @wsme_pecan.wsexpose(wtypes.text, wtypes.text, wtypes.text, wtypes.text,
                          wtypes.text, wtypes.text, wtypes.text)
-    def patch(self, app_name, name, namespace, attributes, flag, values):
+    def patch(self, app_name, name, namespace, attributes, flags, values):
         """ Update user overrides.
 
         :param app_name: name of application
         :param name: chart name
         :param namespace: namespace of chart overrides
-        :param flag: one of "reuse" or "reset", describes how to handle
-                     previous user overrides
+        :param flags: a dict of boolean flags describing how to handle
+                      previous user overrides and additional behaviors.
+                      Keys: 'reuse_values', 'reset_values', 'reapply', 'reapply_all'
         :param values: a dict of different types of user override values
         :param attributes: a dict of non-overrides related chart attributes
         """
         self.validate_name_and_namespace(name, namespace)
+
+        reuse_values = flags.get('reuse_values', False)
+        reset_values = flags.get('reset_values', True)
+        reapply = flags.get(constants.HELM_OVERRIDE_UPDATE_WITH_REAPPLY, False)
+        reapply_all = flags.get(constants.HELM_OVERRIDE_UPDATE_WITH_REAPPLY_ALL, False)
+
+        # reuse_values and reset_values cannot both be True
+        if reuse_values and reset_values:
+            raise wsme.exc.ClientSideError(
+                _("Invalid flags: 'reuse_values' and 'reset_values' "
+                  "cannot both be True."))
+
+        # reapply and reapply_all cannot both be True
+        if reapply and reapply_all:
+            raise wsme.exc.ClientSideError(
+                _("Invalid flags: 'reapply' and 'reapply_all' "
+                  "cannot both be True."))
 
         file_overrides = values.get('files', [])
         set_overrides = values.get('set', [])
@@ -196,14 +214,12 @@ class HelmChartsController(rest.RestController):
                 pecan.request.context, app.id, name, namespace)
 
         user_overrides = db_chart.user_overrides
-        if flag == 'reuse':
+        if reuse_values:
             if user_overrides is not None:
                 file_overrides.insert(0, user_overrides)
-        elif flag == 'reset':
+        else:
+            # Default behavior: reset existing user overrides
             user_overrides = None
-        elif values:
-            raise wsme.exc.ClientSideError(_("Invalid flag: %s must be either "
-                                             "'reuse' or 'reset'.") % flag)
 
         try:
             # Form the response
@@ -253,6 +269,26 @@ class HelmChartsController(rest.RestController):
             # save attributes back to DB
             db_chart.system_overrides = system_overrides
             db_chart.save()
+
+        if reapply or reapply_all:
+            trigger = {
+                'type': constants.APP_EVALUATE_REAPPLY_TYPE_ON_DEMAND_REAPPLY
+            }
+
+            try:
+                pecan.request.rpcapi.evaluate_apps_reapply(
+                    pecan.request.context,
+                    trigger=trigger,
+                    app_name=app_name,
+                    flag=constants.HELM_OVERRIDE_UPDATE_WITH_REAPPLY
+                    if reapply
+                    else constants.HELM_OVERRIDE_UPDATE_WITH_REAPPLY_ALL,
+                )
+            except Exception:
+                LOG.exception("Failed to evaluate apps reapply on demand.")
+                raise wsme.exc.ClientSideError(
+                    _("Failed to evaluate app/apps reapply on demand. "
+                      "Please check sysinv.log for details."))
 
         return chart
 
