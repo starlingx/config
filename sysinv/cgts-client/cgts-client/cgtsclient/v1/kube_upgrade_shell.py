@@ -1,8 +1,10 @@
 #
-# Copyright (c) 2019-2023 Wind River Systems, Inc.
+# Copyright (c) 2019-2023,2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
+import json
+import os
 
 from cgtsclient.common import utils
 from cgtsclient import exc
@@ -20,6 +22,9 @@ KUBE_UPGRADE_STATE_ABORTING = 'upgrade-aborting'
 KUBE_UPGRADE_STATE_CORDON = 'cordon-started'
 KUBE_UPGRADE_STATE_UNCORDON = 'uncordon-started'
 KUBE_UPGRADE_STATE_POST_UPDATING_APPS = 'post-updating-apps'
+
+SOFTWARE_STORAGE_DIR = "/opt/software"
+SYSTEM_DEPLOY_JSON_FILE = "%s/system_deploy.json" % SOFTWARE_STORAGE_DIR
 
 
 def _print_kube_upgrade_show(obj):
@@ -39,7 +44,10 @@ def do_kube_upgrade_show(cc, args):
         print('A kubernetes upgrade is not in progress')
 
 
-@utils.arg('to_version', metavar='<target kubernetes version>',
+@utils.arg('to_version',
+           metavar='<target kubernetes version>',
+           nargs='?',
+           const='',
            help="target Kubernetes version")
 @utils.arg('-f', '--force',
            action='store_true',
@@ -47,8 +55,40 @@ def do_kube_upgrade_show(cc, args):
            help="Ignore non management-affecting alarms")
 def do_kube_upgrade_start(cc, args):
     """Start a kubernetes upgrade. """
+    if not os.path.exists(SYSTEM_DEPLOY_JSON_FILE):
+        # This is a legacy k8s upgrade
+        if not args.to_version:
+            raise Exception('Missing <target kubernetes version>. '
+                            'To see help, run "system help kube-upgrade-start"')
+        to_version = args.to_version
+    else:
+        try:
+            with open(SYSTEM_DEPLOY_JSON_FILE) as file:
+                deploy_state = json.load(file)
+            to_k8s_version = deploy_state["system_deploy"]["to_k8s_version"]
+            to_k8s_version = to_k8s_version if to_k8s_version.startswith("v") \
+                else "v" + to_k8s_version
+        except Exception as ex:
+            print("Failed to get to_k8s_version from file %s. \nError: %s"
+                  % (SYSTEM_DEPLOY_JSON_FILE, ex))
+            to_k8s_version = ''
 
-    kube_upgrade = cc.kube_upgrade.create(args.to_version, args.force)
+        if args.to_version:
+            args_to_version = args.to_version if args.to_version.startswith("v") \
+                else "v" + args.to_version
+            if to_k8s_version and args_to_version != to_k8s_version:
+                raise Exception('Provided target kubernetes version: %s not same as the one '
+                                'provided to the software system-deploy init command: %s. '
+                                'Either provide same version or leave empty.'
+                                % (args_to_version, to_k8s_version))
+            to_version = args_to_version
+        else:
+            if not to_k8s_version:
+                raise Exception('Missing <target kubernetes version>. '
+                                'To see help, run "system help kube-upgrade-start"')
+            to_version = to_k8s_version
+
+    kube_upgrade = cc.kube_upgrade.create(to_version, args.force)
     uuid = getattr(kube_upgrade, 'uuid', '')
     try:
         kube_upgrade = cc.kube_upgrade.get(uuid)
