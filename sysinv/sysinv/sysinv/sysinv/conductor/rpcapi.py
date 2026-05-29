@@ -940,6 +940,16 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                           lvg_lvm_type=lvg_lvm_type)
         )
 
+    def update_lvm_storage_flag(self, context):
+        """Update OS LVM Storage Backend Flag.
+
+        :param context: request context.
+        """
+        return self.call(
+            context,
+            self.make_msg('update_lvm_storage_flag')
+        )
+
     def delete_lvm_csi_lvg_pv(self, context, host_uuid, lvg, pv):
         """Delete a LVM Volume Group for CSI-Provisioning usage.
 

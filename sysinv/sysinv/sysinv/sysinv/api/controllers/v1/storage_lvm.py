@@ -231,6 +231,7 @@ class StorageLVMController(rest.RestController):
             storage_lvm = storage_lvm.as_dict()
             new_storage_lvm = _create(storage_lvm)
 
+            pecan.request.rpcapi.update_lvm_storage_flag(pecan.request.context)
         except exception.SysinvException as e:
             LOG.exception(e)
             raise wsme.exc.ClientSideError(_("Invalid data: failed to create "
@@ -252,6 +253,7 @@ class StorageLVMController(rest.RestController):
         """Delete a backend."""
 
         _delete(storagelvm_uuid)
+        pecan.request.rpcapi.update_lvm_storage_flag(pecan.request.context)
 #
 # Common operation functions
 #
