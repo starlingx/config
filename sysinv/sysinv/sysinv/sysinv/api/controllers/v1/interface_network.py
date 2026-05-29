@@ -161,6 +161,7 @@ class InterfaceNetworkController(rest.RestController):
         self._check_network_type_and_interface_type(interface_obj, network.type)
         self._check_cluster_host_on_controller(host, interface_obj, network.type)
         self._check_new_pxeboot_interface_mac(host, interface_obj, network.type)
+        self._check_sriov_ovs_access(interface_obj, network.type)
 
         if network.type == constants.NETWORK_TYPE_MGMT:
             if (utils.get_system_mode() == constants.SYSTEM_MODE_SIMPLEX and
@@ -406,6 +407,24 @@ class InterfaceNetworkController(rest.RestController):
                     " network type %s can execute PXE boot before unlocking." %
                     (interface['ifname'], network_type))
             LOG.warn(msg)
+
+    def _check_sriov_ovs_access(self, interface, network_type):
+        """Reject assigning a platform network to a pci-sriov interface if
+        any ethernet interface that uses it has ovs_access=True.
+        """
+        if (interface.ifclass != constants.INTERFACE_CLASS_PCI_SRIOV or
+                network_type not in constants.PLATFORM_NETWORK_TYPES):
+            return
+        for used_by_name in interface.used_by:
+            upper_iface = pecan.request.dbapi.iinterface_get(
+                used_by_name, interface.ihost_uuid)
+            if (upper_iface.iftype == constants.INTERFACE_TYPE_ETHERNET and
+                    upper_iface.ovs_access):
+                msg = _("Cannot assign a platform network to pci-sriov "
+                        "interface '{}' because it is used by ethernet "
+                        "interface '{}' which has ovs-access enabled."
+                        .format(interface.ifname, upper_iface.ifname))
+                raise wsme.exc.ClientSideError(msg)
 
     def _get_interface_id(self, interface_uuid):
         interface = pecan.request.dbapi.iinterface_get(interface_uuid)

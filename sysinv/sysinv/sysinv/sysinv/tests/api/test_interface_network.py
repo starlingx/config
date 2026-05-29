@@ -1173,6 +1173,64 @@ class InterfaceNetworkCreateTestCase(InterfaceNetworkTestCase):
 
         self.mock_rpcapi_set_mgmt_network_reconfig_flag.assert_called_once()
 
+    def test_create_platform_network_on_sriov_with_ovs_access_upper_rejected(self):
+        """Reject assigning a platform network to a pci-sriov interface when
+        an ethernet interface using it has ovs_access=True.
+        """
+        # Create a pci-sriov base interface
+        sriov_iface = dbutils.create_test_interface(
+            ifname='base0',
+            ifclass=constants.INTERFACE_CLASS_PCI_SRIOV,
+            iftype=constants.INTERFACE_TYPE_ETHERNET,
+            forihostid=self.controller.id,
+            ihost_uuid=self.controller.uuid,
+            sriov_numvfs=4)
+
+        # Create an ethernet interface over the sriov with ovs_access=True
+        dbutils.create_test_interface(
+            ifname='mgmt0',
+            ifclass=constants.INTERFACE_CLASS_PLATFORM,
+            iftype=constants.INTERFACE_TYPE_ETHERNET,
+            uses=['base0'],
+            forihostid=self.controller.id,
+            ihost_uuid=self.controller.uuid,
+            ovs_access=True)
+
+        # Attempt to assign mgmt platform network to the sriov interface
+        controller_interface_network = dbutils.post_get_test_interface_network(
+            interface_uuid=sriov_iface.uuid,
+            network_uuid=self.mgmt_network.uuid)
+        self._post_and_check(controller_interface_network, expect_errors=True)
+
+    def test_create_platform_network_on_sriov_without_ovs_access_upper_accepted(self):
+        """Allow assigning a platform network to a pci-sriov interface when
+        no ethernet interface using it has ovs_access=True.
+        """
+        # Create a pci-sriov base interface
+        sriov_iface = dbutils.create_test_interface(
+            ifname='base0',
+            ifclass=constants.INTERFACE_CLASS_PCI_SRIOV,
+            iftype=constants.INTERFACE_TYPE_ETHERNET,
+            forihostid=self.controller.id,
+            ihost_uuid=self.controller.uuid,
+            sriov_numvfs=4)
+
+        # Create an ethernet interface over the sriov without ovs_access
+        dbutils.create_test_interface(
+            ifname='mgmt0',
+            ifclass=constants.INTERFACE_CLASS_PLATFORM,
+            iftype=constants.INTERFACE_TYPE_ETHERNET,
+            uses=['base0'],
+            forihostid=self.controller.id,
+            ihost_uuid=self.controller.uuid,
+            ovs_access=False)
+
+        # Attempt to assign mgmt platform network to the sriov interface
+        controller_interface_network = dbutils.post_get_test_interface_network(
+            interface_uuid=sriov_iface.uuid,
+            network_uuid=self.mgmt_network.uuid)
+        self._post_and_check(controller_interface_network, expect_errors=False)
+
 
 class InterfaceNetworkDeleteTestCase(InterfaceNetworkTestCase):
 

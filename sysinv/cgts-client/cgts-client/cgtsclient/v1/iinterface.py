@@ -17,7 +17,8 @@ CREATION_ATTRIBUTES = ['ifname', 'iftype', 'ihost_uuid', 'imtu', 'ifclass',
                        'providernetworks', 'datanetworks', 'ifcapabilities', 'ports', 'imac',
                        'vlan_id', 'uses', 'used_by', 'primary_reselect',
                        'ipv4_mode', 'ipv6_mode', 'ipv4_pool', 'ipv6_pool',
-                       'sriov_numvfs', 'sriov_vf_driver', 'ptp_role', 'max_tx_rate', 'max_rx_rate']
+                       'sriov_numvfs', 'sriov_vf_driver', 'ptp_role', 'max_tx_rate', 'max_rx_rate',
+                       'ovs_access']
 
 
 class iinterface(base.Resource):

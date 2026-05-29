@@ -94,8 +94,8 @@ class InterfaceTestCaseMixin(base.PuppetTestCaseMixin):
                      'ifname': ifname,
                      'iftype': constants.INTERFACE_TYPE_ETHERNET,
                      'imac': '02:11:22:33:44:' + str(10 + interface_id),
-                     'uses': [],
-                     'used_by': [],
+                     'uses': kwargs.get('uses', []),
+                     'used_by': kwargs.get('used_by', []),
                      'ifclass': ifclass,
                      'networks': networks,
                      'networktype': networktype,
@@ -107,7 +107,8 @@ class InterfaceTestCaseMixin(base.PuppetTestCaseMixin):
                      'ipv4_mode': kwargs.get('ipv4_mode', None),
                      'ipv6_mode': kwargs.get('ipv6_mode', None),
                      'ipv4_pool': kwargs.get('ipv4_pool', None),
-                     'ipv6_pool': kwargs.get('ipv6_pool', None)}
+                     'ipv6_pool': kwargs.get('ipv6_pool', None),
+                     'ovs_access': kwargs.get('ovs_access', None)}
         db_interface = dbutils.create_test_interface(**interface)
         for network in networks:
             dbutils.create_test_interface_network_assign(db_interface['id'], network)
@@ -2702,6 +2703,57 @@ class InterfaceControllerEthernetCfg3(InterfaceHostTestCase):
                        'stx-description': 'ifname:mgmt0,'
                                      f'net:{constants.NETWORK_TYPE_CLUSTER_HOST}',
                        'tc': False},
+            "lo": {'family': 'inet', 'method': 'loopback', 'stx-description': '',
+                   'tc': False},
+        }
+
+
+class InterfaceControllerEthernetCfg4(InterfaceHostTestCase):
+    def _setup_configuration(self):
+        # Setup a sample configuration where all platform interfaces are
+        # ethernet interfaces. In this case the management is assigned
+        # to management, pxeboot and cluster-host networks
+
+        self.host = self._create_test_host(constants.CONTROLLER)
+
+        self._create_ethernet_test('sriov', constants.INTERFACE_CLASS_PCI_SRIOV,
+                                    constants.NETWORK_TYPE_PCI_SRIOV,
+                                    hostname=self.host.hostname)
+
+        _, veth_intf = self._create_ethernet_test('veth0', constants.INTERFACE_CLASS_PLATFORM,
+                                    [constants.NETWORK_TYPE_MGMT,
+                                     constants.NETWORK_TYPE_OAM],
+                                    hostname=self.host.hostname,
+                                    **{"uses": ["sriov"], "ovs_access": True})
+
+        self._create_vlan_test('chost0', constants.INTERFACE_CLASS_PLATFORM,
+                               [constants.NETWORK_TYPE_CLUSTER_HOST], 55, veth_intf)
+
+    def setUp(self):
+        super(InterfaceControllerEthernetCfg4, self).setUp()
+        self.expected_bmc_interface = 'eth0'
+        self.expected_platform_interfaces = ['veth0', 'chost0']
+        self.exp_yaml_config = {
+            "veth0": {'family': 'inet', 'method': 'manual',
+                     'stx-description': f'ifname:veth0,net:{None},ovs-access=eth0',
+                     'tc': True},
+            "veth0:2": {'family': 'inet', 'method': 'static',
+                     'stx-description': f'ifname:veth0,net:{constants.NETWORK_TYPE_PXEBOOT}',
+                     'tc': False},
+            "veth0:2-7": {'family': 'inet', 'method': 'static',
+                     'stx-description': f'ifname:veth0,net:{constants.NETWORK_TYPE_MGMT}',
+                     'tc': False},
+            "veth0:3-11": {'family': 'inet', 'method': 'static',
+                     'stx-description': f'ifname:veth0,net:{constants.NETWORK_TYPE_OAM}',
+                     'tc': False},
+            "vlan55": {'family': 'inet', 'method': 'manual',
+                     'stx-description': f'ifname:chost0,net:{None}',
+                     'tc': False},
+            "vlan55:4-0": {'family': 'inet', 'method': 'static',
+                     'stx-description': f'ifname:chost0,net:{constants.NETWORK_TYPE_CLUSTER_HOST}',
+                     'tc': False},
+            "eth0": {'family': 'inet', 'method': 'manual',
+                     'stx-description': f'ifname:sriov,net:{None}', 'tc': False},
             "lo": {'family': 'inet', 'method': 'loopback', 'stx-description': '',
                    'tc': False},
         }

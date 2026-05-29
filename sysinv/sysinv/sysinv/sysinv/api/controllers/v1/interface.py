@@ -202,6 +202,9 @@ class Interface(base.APIBase):
     max_rx_rate = int
     "The value of configured max rx rate, Mbps"
 
+    ovs_access = types.boolean
+    "Whether OVS access is enabled for this interface"
+
     def __init__(self, **kwargs):
         self.fields = list(objects.interface.fields.keys())
         for k in self.fields:
@@ -228,6 +231,7 @@ class Interface(base.APIBase):
                                            'ipv4_mode', 'ipv6_mode', 'ipv4_pool', 'ipv6_pool',
                                            'sriov_numvfs', 'sriov_vf_driver', 'ptp_role',
                                            'max_tx_rate', 'max_rx_rate', 'primary_reselect',
+                                           'ovs_access',
                                            'created_at', 'updated_at'])
 
         # never expose the ihost_id attribute
@@ -465,6 +469,9 @@ class InterfaceController(rest.RestController):
                     pecan.request.dbapi.ptp_interface_remove(values)
             elif p['path'] in ['/max_tx_rate', '/max_rx_rate']:
                 rateLimitRequested = True
+            elif p['path'] == '/ovs_access':
+                if isinstance(p['value'], str):
+                    p['value'] = p['value'].lower() == 'true'
 
         if has_ptp_interfaces:
             return Interface.convert_with_links(rpc_interface)
@@ -719,7 +726,8 @@ def _set_defaults(interface):
                 'sriov_vf_driver': None,
                 'ptp_role': constants.INTERFACE_PTP_ROLE_NONE,
                 'max_tx_rate': None,
-                'max_rx_rate': None}
+                'max_rx_rate': None,
+                'ovs_access': None}
 
     if interface['ifclass'] == constants.INTERFACE_CLASS_DATA:
         defaults['ipv4_mode'] = constants.IPV4_DISABLED
@@ -1233,6 +1241,21 @@ def _check_interface_data(op, interface, ihost, existing_interface,
             msg = _("Data VLAN interface cannot be created over a platform "
                     "interface ")
             raise wsme.exc.ClientSideError(msg)
+        # Check if the lower interface has an upper ethernet interface with
+        # ovs_access=True. If so, VLANs should be created under that
+        # ovs-access interface instead.
+        for used_by_name in lower_iface['used_by']:
+            upper_iface = pecan.request.dbapi.iinterface_get(
+                used_by_name, ihost_uuid)
+            if (upper_iface['iftype'] == constants.INTERFACE_TYPE_ETHERNET
+                    and upper_iface['ovs_access']):
+                msg = _("Cannot create a VLAN interface over '{}' because "
+                        "it has an upper interface '{}' with ovs-access "
+                        "enabled. Create the VLAN under '{}' instead."
+                        .format(lower_iface['ifname'],
+                                upper_iface['ifname'],
+                                upper_iface['ifname']))
+                raise wsme.exc.ClientSideError(msg)
 
     # Check if the 'uses' interface is already used by another AE or VLAN
     # interface
@@ -1279,6 +1302,18 @@ def _check_interface_data(op, interface, ihost, existing_interface,
                         "'none' or 'pci-sriov'.")
             if msg:
                 raise wsme.exc.ClientSideError(msg)
+            # Check if the lower interface has an upper ethernet with
+            # ovs-access enabled
+            for used_by_name in iface_lower.used_by:
+                upper = pecan.request.dbapi.iinterface_get(
+                    used_by_name, ihost_uuid)
+                if (upper.iftype == constants.INTERFACE_TYPE_ETHERNET
+                        and upper.ovs_access):
+                    msg = _("Cannot add interface '{}' to an aggregated "
+                            "ethernet interface because it has an upper "
+                            "interface '{}' with ovs-access enabled."
+                            .format(iface_lower.ifname, upper.ifname))
+                    raise wsme.exc.ClientSideError(msg)
 
     if interface['used_by']:
         used_vfs = 0
@@ -1894,6 +1929,10 @@ def _create(interface):
             and interface['ifclass'] == constants.INTERFACE_CLASS_NONE:
         interface.update({'ifclass': None})
 
+    # Convert ovs_access from string to bool if needed
+    if 'ovs_access' in interface and isinstance(interface['ovs_access'], str):
+        interface['ovs_access'] = interface['ovs_access'].lower() == 'true'
+
     # Get ports
     ports = None
     uses_if = None
@@ -1998,6 +2037,7 @@ def _check(op, interface, ports=None, ifaces=None, existing_interface=None,
             elif (op == 'add' and interface['iftype'] == constants.INTERFACE_TYPE_VF):
                 # user can add interface SR-IOV VF without host lock in AIO-SX
                 check_host = False
+
     if op == 'modify' and patch is not None and \
             (interface['ifclass'] == constants.INTERFACE_CLASS_PLATFORM):
         if (interface['iftype'] in [constants.INTERFACE_TYPE_ETHERNET,
@@ -2019,11 +2059,13 @@ def _check(op, interface, ports=None, ifaces=None, existing_interface=None,
 
     if ifaces:
         interfaces = pecan.request.dbapi.iinterface_get_by_ihost(interface['ihost_uuid'])
+
         if len(ifaces) > 1 and \
                 interface['iftype'] == constants.INTERFACE_TYPE_VLAN:
             # Can only have one interface associated to vlan interface type
             raise wsme.exc.ClientSideError(
                 _("Can only have one interface for vlan type. (%s)" % ifaces))
+
         if interface['iftype'] == constants.INTERFACE_TYPE_ETHERNET:
             if len(ifaces) > 1:
                 raise wsme.exc.ClientSideError(
@@ -2032,8 +2074,7 @@ def _check(op, interface, ports=None, ifaces=None, existing_interface=None,
             lower = pecan.request.dbapi.iinterface_get(ifaces[0],
                     interface['ihost_uuid'])
             if not (lower['iftype'] == constants.INTERFACE_TYPE_ETHERNET
-                    and lower['ifclass'] ==
-                                    constants.INTERFACE_CLASS_PCI_SRIOV):
+                    and lower['ifclass'] == constants.INTERFACE_CLASS_PCI_SRIOV):
                 # Can only have pci_sriov ethernet type lower interface
                 # associated to ethernet interface type
                 raise wsme.exc.ClientSideError(
@@ -2063,6 +2104,63 @@ def _check(op, interface, ports=None, ifaces=None, existing_interface=None,
 
                     _check_interface_data(
                         "modify", iface, ihost, existing_iface, datanetworks)
+
+    # Validate ovs_access - must be on ethernet type interface with a
+    # pci-sriov ethernet lower interface
+    if interface['ovs_access']:
+        if interface['iftype'] != constants.INTERFACE_TYPE_ETHERNET:
+            raise wsme.exc.ClientSideError(
+                _("Can only set ovs-access to ethernet interface over a "
+                  "pci-sriov ethernet interface"))
+        # Check the lower interface is ethernet + pci-sriov
+        uses = ifaces if ifaces else interface.get('uses', [])
+        if not uses:
+            raise wsme.exc.ClientSideError(
+                _("Can only set ovs-access to ethernet interface over a "
+                  "pci-sriov ethernet interface"))
+        lower = pecan.request.dbapi.iinterface_get(
+            uses[0], interface['ihost_uuid'])
+        if not (lower['iftype'] == constants.INTERFACE_TYPE_ETHERNET
+                and lower['ifclass'] ==
+                constants.INTERFACE_CLASS_PCI_SRIOV):
+            raise wsme.exc.ClientSideError(
+                _("Can only set ovs-access to ethernet interface over a "
+                  "pci-sriov ethernet interface"))
+        # Check the lower pci-sriov interface does not have a platform
+        # network assigned
+        interface_networks = \
+            pecan.request.dbapi.interface_network_get_by_interface(
+                lower['uuid'])
+        for if_net in interface_networks:
+            if if_net.network_type in constants.PLATFORM_NETWORK_TYPES:
+                raise wsme.exc.ClientSideError(
+                    _("Cannot set ovs-access on interface '{}' because "
+                      "the lower pci-sriov interface '{}' already has a "
+                      "platform network '{}' assigned."
+                      .format(interface['ifname'], lower['ifname'],
+                              if_net.network_type)))
+        # Check the lower pci-sriov interface is not used by a bonding
+        # (AE) interface
+        for used_by_name in lower['used_by']:
+            upper = pecan.request.dbapi.iinterface_get(
+                used_by_name, interface['ihost_uuid'])
+            if upper['iftype'] == constants.INTERFACE_TYPE_AE:
+                raise wsme.exc.ClientSideError(
+                    _("Cannot set ovs-access on interface '{}' because "
+                      "the lower pci-sriov interface '{}' is part of "
+                      "an aggregated ethernet interface '{}'."
+                      .format(interface['ifname'], lower['ifname'],
+                              upper['ifname'])))
+        # Only one interface per host can have ovs_access enabled
+        host_interfaces = pecan.request.dbapi.iinterface_get_by_ihost(
+            interface['ihost_uuid'])
+        for host_iface in host_interfaces:
+            if (host_iface.ovs_access and
+                    host_iface.uuid != interface.get('uuid')):
+                raise wsme.exc.ClientSideError(
+                    _("Only one interface per host can have ovs-access "
+                      "enabled. Interface '{}' already has ovs-access "
+                      "enabled.".format(host_iface.ifname)))
 
     interface = _check_interface_data(
         op, interface, ihost, existing_interface, datanetworks)

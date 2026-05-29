@@ -21,7 +21,8 @@ def _print_iinterface_show(cc, iinterface):
               'uuid', 'ihost_uuid',
               'vlan_id', 'uses', 'used_by',
               'created_at', 'updated_at', 'sriov_numvfs',
-              'sriov_vf_driver', 'max_tx_rate', 'max_rx_rate']
+              'sriov_vf_driver', 'max_tx_rate', 'max_rx_rate',
+              'ovs_access']
     optional_fields = ['ipv4_mode', 'ipv6_mode', 'ipv4_pool', 'ipv6_pool']
     rename_fields = [{'field': 'dpdksupport', 'label': 'accelerated'}]
     data = [(f, getattr(iinterface, f, '')) for f in fields]
@@ -190,13 +191,19 @@ def do_host_if_delete(cc, args):
            metavar='<primary reselect>',
            choices=['always', 'better', 'failure'],
            help='The reselection policy for active standby bonded interface (always, better, failure)')
+@utils.arg('--ovs-access',
+           dest='ovs_access',
+           metavar='<ovs access>',
+           choices=['true', 'false'],
+           help='Whether OVS access is enabled for this interface (true/false)')
 def do_host_if_add(cc, args):
     """Add an interface."""
 
     field_list = ['ifname', 'iftype', 'imtu', 'ifclass', 'aemode',
                   'txhashpolicy', 'vlan_id', 'ptp_role', 'primary_reselect',
                   'ipv4_mode', 'ipv6_mode', 'ipv4_pool', 'ipv6_pool',
-                  'sriov_numvfs', 'sriov_vf_driver', 'max_tx_rate', 'max_rx_rate']
+                  'sriov_numvfs', 'sriov_vf_driver', 'max_tx_rate', 'max_rx_rate',
+                  'ovs_access']
 
     ihost = ihost_utils._find_ihost(cc, args.hostnameorid)
 
@@ -301,13 +308,19 @@ def do_host_if_add(cc, args):
            metavar='<primary reselect>',
            choices=['always', 'better', 'failure'],
            help='The reselection policy for active standby bonded interface (always, better, failure)')
+@utils.arg('--ovs-access',
+           dest='ovs_access',
+           metavar='<ovs access>',
+           choices=['true', 'false'],
+           help='Whether OVS access is enabled for this interface (true/false)')
 def do_host_if_modify(cc, args):
     """Modify interface attributes."""
 
     rwfields = ['iftype', 'ifname', 'imtu', 'aemode', 'txhashpolicy',
                 'ports', 'ifclass', 'ptp_role', 'primary_reselect',
                 'ipv4_mode', 'ipv6_mode', 'ipv4_pool', 'ipv6_pool',
-                'sriov_numvfs', 'sriov_vf_driver', 'max_tx_rate', 'max_rx_rate']
+                'sriov_numvfs', 'sriov_vf_driver', 'max_tx_rate', 'max_rx_rate',
+                'ovs_access']
 
     ihost = ihost_utils._find_ihost(cc, args.hostnameorid)
 

@@ -384,6 +384,7 @@ class Interfaces(Base):
     max_tx_rate = Column(Integer)
     max_rx_rate = Column(Integer)
     ptp_role = Column(String(255), default='none')  # TODO: deprecate it
+    ovs_access = Column(Boolean, default=False)
 
     used_by = relationship(
         "Interfaces",

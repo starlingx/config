@@ -2282,6 +2282,359 @@ class TestPostMixin(object):
                       f"device '{pdevice}' is not allowed.",
                       patch_result.json['error_message'])
 
+    # Expected message:
+    # Can only set ovs-access to ethernet interface over a pci-sriov
+    # ethernet interface
+    def test_create_ethernet_ovs_access_over_sriov_valid(self):
+        port, sriov_iface = self._create_sriov(
+            'sriov', host=self.worker)
+        interface = self._post_get_test_interface(
+            ifname='eth-ovs',
+            iftype=constants.INTERFACE_TYPE_ETHERNET,
+            ifclass=constants.INTERFACE_CLASS_DATA,
+            uses=[sriov_iface['ifname']],
+            forihostid=self.worker.id,
+            ihost_uuid=self.worker.uuid,
+            ovs_access=True)
+        self._post_and_check_success(interface)
+
+    def test_create_ethernet_ovs_access_false_over_sriov_valid(self):
+        port, sriov_iface = self._create_sriov(
+            'sriov', host=self.worker)
+        interface = self._post_get_test_interface(
+            ifname='eth-ovs',
+            iftype=constants.INTERFACE_TYPE_ETHERNET,
+            ifclass=constants.INTERFACE_CLASS_DATA,
+            uses=[sriov_iface['ifname']],
+            forihostid=self.worker.id,
+            ihost_uuid=self.worker.uuid,
+            ovs_access=False)
+        self._post_and_check_success(interface)
+
+    def test_create_vlan_ovs_access_invalid(self):
+        port, lower_iface = self._create_ethernet(host=self.worker)
+        interface = self._post_get_test_interface(
+            ifname='vlan-ovs',
+            iftype=constants.INTERFACE_TYPE_VLAN,
+            ifclass=constants.INTERFACE_CLASS_DATA,
+            vlan_id=100,
+            uses=[lower_iface['ifname']],
+            forihostid=self.worker.id,
+            ihost_uuid=self.worker.uuid,
+            ovs_access=True)
+        self._post_and_check(interface, expect_errors=True,
+                             error_message="Can only set ovs-access to "
+                             "ethernet interface over a pci-sriov "
+                             "ethernet interface")
+
+    def test_create_ae_ovs_access_invalid(self):
+        port1, iface1 = self._create_ethernet(host=self.worker)
+        port2, iface2 = self._create_ethernet(host=self.worker)
+        interface = self._post_get_test_interface(
+            ifname='ae-ovs',
+            iftype=constants.INTERFACE_TYPE_AE,
+            ifclass=constants.INTERFACE_CLASS_DATA,
+            uses=[iface1['ifname'], iface2['ifname']],
+            txhashpolicy='layer2',
+            aemode='balanced',
+            forihostid=self.worker.id,
+            ihost_uuid=self.worker.uuid,
+            ovs_access=True)
+        self._post_and_check(interface, expect_errors=True,
+                             error_message="Can only set ovs-access to "
+                             "ethernet interface over a pci-sriov "
+                             "ethernet interface")
+
+    def test_create_vlan_over_sriov_with_ovs_access_upper_rejected(self):
+        """Reject creating a VLAN over a pci-sriov interface that already
+        has an upper ethernet interface with ovs_access=True.
+        """
+        port, sriov_iface = self._create_sriov(
+            'sriov', host=self.worker)
+        # Create an ethernet interface with ovs_access=True over the sriov
+        eth_ovs = self._post_get_test_interface(
+            ifname='eth-ovs',
+            iftype=constants.INTERFACE_TYPE_ETHERNET,
+            ifclass=constants.INTERFACE_CLASS_DATA,
+            uses=[sriov_iface['ifname']],
+            forihostid=self.worker.id,
+            ihost_uuid=self.worker.uuid,
+            ovs_access=True)
+        self._post_and_check_success(eth_ovs)
+        # Attempt to create a VLAN over the sriov interface
+        vlan_iface = self._post_get_test_interface(
+            ifname='vlan100',
+            iftype=constants.INTERFACE_TYPE_VLAN,
+            ifclass=constants.INTERFACE_CLASS_PLATFORM,
+            vlan_id=100,
+            uses=[sriov_iface['ifname']],
+            forihostid=self.worker.id,
+            ihost_uuid=self.worker.uuid)
+        self._post_and_check(vlan_iface, expect_errors=True,
+                             error_message="Cannot create a VLAN interface "
+                                           "over")
+
+    def test_create_vlan_over_sriov_without_ovs_access_upper_valid(self):
+        """Allow creating a VLAN over a pci-sriov interface when no upper
+        ethernet interface has ovs_access=True.
+        """
+        port, sriov_iface = self._create_sriov(
+            'sriov', host=self.worker)
+        # Create an ethernet interface with ovs_access=False over the sriov
+        eth_no_ovs = self._post_get_test_interface(
+            ifname='eth-no-ovs',
+            iftype=constants.INTERFACE_TYPE_ETHERNET,
+            ifclass=constants.INTERFACE_CLASS_DATA,
+            uses=[sriov_iface['ifname']],
+            forihostid=self.worker.id,
+            ihost_uuid=self.worker.uuid,
+            ovs_access=False)
+        self._post_and_check_success(eth_no_ovs)
+        # Creating a VLAN over the sriov interface should succeed
+        vlan_iface = self._post_get_test_interface(
+            ifname='vlan100',
+            iftype=constants.INTERFACE_TYPE_VLAN,
+            ifclass=constants.INTERFACE_CLASS_PLATFORM,
+            vlan_id=100,
+            uses=[sriov_iface['ifname']],
+            forihostid=self.worker.id,
+            ihost_uuid=self.worker.uuid)
+        self._post_and_check_success(vlan_iface)
+
+    def test_create_ae_over_sriov_with_ovs_access_upper_rejected(self):
+        """Reject creating an AE (bonding) interface using a pci-sriov
+        interface that has an upper ethernet interface with ovs_access=True.
+        """
+        port1, sriov_iface1 = self._create_sriov(
+            'sriov0', host=self.worker)
+        port2, sriov_iface2 = self._create_sriov(
+            'sriov1', host=self.worker)
+        # Create an ethernet interface with ovs_access=True over sriov0
+        eth_ovs = self._post_get_test_interface(
+            ifname='eth-ovs',
+            iftype=constants.INTERFACE_TYPE_ETHERNET,
+            ifclass=constants.INTERFACE_CLASS_DATA,
+            uses=[sriov_iface1['ifname']],
+            forihostid=self.worker.id,
+            ihost_uuid=self.worker.uuid,
+            ovs_access=True)
+        self._post_and_check_success(eth_ovs)
+        # Attempt to create an AE using sriov0 (which has ovs-access upper)
+        ae_iface = self._post_get_test_interface(
+            ifname='bond0',
+            iftype=constants.INTERFACE_TYPE_AE,
+            ifclass=constants.INTERFACE_CLASS_PLATFORM,
+            uses=[sriov_iface1['ifname'], sriov_iface2['ifname']],
+            txhashpolicy='layer2',
+            aemode='balanced',
+            forihostid=self.worker.id,
+            ihost_uuid=self.worker.uuid)
+        self._post_and_check(ae_iface, expect_errors=True,
+                             error_message="Cannot add interface")
+
+    def test_create_ovs_access_over_sriov_in_ae_rejected(self):
+        """Reject setting ovs_access=True on an ethernet interface when
+        the lower pci-sriov interface is part of an AE (bonding).
+        """
+        port1, sriov_iface1 = self._create_sriov(
+            'sriov0', host=self.worker)
+        port2, sriov_iface2 = self._create_sriov(
+            'sriov1', host=self.worker)
+        # Create an AE interface using both sriov interfaces
+        ae_iface = self._post_get_test_interface(
+            ifname='bond0',
+            iftype=constants.INTERFACE_TYPE_AE,
+            ifclass=constants.INTERFACE_CLASS_PLATFORM,
+            uses=[sriov_iface1['ifname'], sriov_iface2['ifname']],
+            txhashpolicy='layer2',
+            aemode='balanced',
+            forihostid=self.worker.id,
+            ihost_uuid=self.worker.uuid)
+        self._post_and_check_success(ae_iface)
+        # Attempt to create an ethernet with ovs_access=True over sriov0
+        # which is now part of the AE
+        eth_ovs = self._post_get_test_interface(
+            ifname='eth-ovs',
+            iftype=constants.INTERFACE_TYPE_ETHERNET,
+            ifclass=constants.INTERFACE_CLASS_DATA,
+            uses=[sriov_iface1['ifname']],
+            forihostid=self.worker.id,
+            ihost_uuid=self.worker.uuid,
+            ovs_access=True)
+        self._post_and_check(eth_ovs, expect_errors=True,
+                             error_message="Cannot set ovs-access on "
+                                           "interface")
+
+    def test_modify_ovs_access_on_vlan_invalid(self):
+        port, lower_iface = self._create_ethernet(
+            'data', constants.NETWORK_TYPE_DATA,
+            constants.INTERFACE_CLASS_DATA, 'group0-data0',
+            host=self.worker)
+        vlan_iface = self._create_vlan(
+            'vlan100', constants.NETWORK_TYPE_DATA,
+            constants.INTERFACE_CLASS_DATA, 100,
+            lower_iface=lower_iface, datanetworks='group0-data1',
+            host=self.worker)
+        self._patch_and_check(
+            {'ovs_access': True},
+            self._get_path(vlan_iface['uuid']),
+            expect_errors=True,
+            error_message="Can only set ovs-access to ethernet interface "
+                          "over a pci-sriov ethernet interface")
+
+    def test_create_ethernet_ovs_access_no_lower_interface_invalid(self):
+        """Reject setting ovs_access=True on an ethernet interface that
+        has no lower interface (not created over a pci-sriov interface).
+        """
+        port, iface = self._create_ethernet(host=self.worker)
+        self._patch_and_check(
+            {'ovs_access': True},
+            self._get_path(iface['uuid']),
+            expect_errors=True,
+            error_message="Can only set ovs-access to ethernet interface "
+                          "over a pci-sriov ethernet interface")
+
+    def test_modify_ovs_access_on_ethernet_over_sriov_valid(self):
+        port, sriov_iface = self._create_sriov(
+            'sriov', host=self.worker)
+        interface = self._post_get_test_interface(
+            ifname='eth-ovs',
+            iftype=constants.INTERFACE_TYPE_ETHERNET,
+            ifclass=constants.INTERFACE_CLASS_DATA,
+            uses=[sriov_iface['ifname']],
+            forihostid=self.worker.id,
+            ihost_uuid=self.worker.uuid,
+            ovs_access=False)
+        response = self._post_and_check_success(interface)
+        uuid = response.json['uuid']
+        # Modify ovs_access to True should succeed
+        self._patch_and_check(
+            {'ovs_access': True},
+            self._get_path(uuid),
+            expect_errors=False)
+
+    def test_create_ethernet_ovs_access_over_sriov_with_platform_network_rejected(self):
+        """Reject creating an ethernet interface with ovs_access=True over
+        a pci-sriov interface that already has a platform network assigned.
+        """
+        port, sriov_iface = self._create_sriov(
+            'sriov', host=self.worker)
+        # Assign a platform network to the sriov interface
+        iface_obj = self.dbapi.iinterface_get(sriov_iface['uuid'])
+        dbutils.create_test_interface_network_type_assign(
+            iface_obj.id, constants.NETWORK_TYPE_MGMT)
+        # Create an ethernet interface with ovs_access=True over the sriov
+        interface = self._post_get_test_interface(
+            ifname='eth-ovs',
+            iftype=constants.INTERFACE_TYPE_ETHERNET,
+            ifclass=constants.INTERFACE_CLASS_PLATFORM,
+            uses=[sriov_iface['ifname']],
+            forihostid=self.worker.id,
+            ihost_uuid=self.worker.uuid,
+            ovs_access=True)
+        self._post_and_check(interface, expect_errors=True,
+                             error_message="Cannot set ovs-access on interface")
+
+    def test_modify_ovs_access_true_over_sriov_with_platform_network_rejected(self):
+        """Reject modifying ovs_access to True on an ethernet interface
+        when the lower pci-sriov interface already has a platform network.
+        """
+        port, sriov_iface = self._create_sriov(
+            'sriov', host=self.worker)
+        # Assign a platform network to the sriov interface
+        iface_obj = self.dbapi.iinterface_get(sriov_iface['uuid'])
+        dbutils.create_test_interface_network_type_assign(
+            iface_obj.id, constants.NETWORK_TYPE_MGMT)
+        # Create an ethernet interface with ovs_access=False over the sriov
+        interface = self._post_get_test_interface(
+            ifname='eth-ovs',
+            iftype=constants.INTERFACE_TYPE_ETHERNET,
+            ifclass=constants.INTERFACE_CLASS_PLATFORM,
+            uses=[sriov_iface['ifname']],
+            forihostid=self.worker.id,
+            ihost_uuid=self.worker.uuid,
+            ovs_access=False)
+        response = self._post_and_check_success(interface)
+        uuid = response.json['uuid']
+        # Modify ovs_access to True should fail
+        self._patch_and_check(
+            {'ovs_access': True},
+            self._get_path(uuid),
+            expect_errors=True,
+            error_message="Cannot set ovs-access on interface")
+
+    def test_create_second_ovs_access_interface_rejected(self):
+        """Reject creating a second interface with ovs_access=True on the
+        same host.
+        """
+        port, sriov_iface = self._create_sriov(
+            'sriov0', host=self.worker)
+        # Create first ethernet interface with ovs_access=True
+        interface1 = self._post_get_test_interface(
+            ifname='eth-ovs0',
+            iftype=constants.INTERFACE_TYPE_ETHERNET,
+            ifclass=constants.INTERFACE_CLASS_DATA,
+            uses=[sriov_iface['ifname']],
+            forihostid=self.worker.id,
+            ihost_uuid=self.worker.uuid,
+            ovs_access=True)
+        self._post_and_check_success(interface1)
+
+        # Create a second sriov interface
+        port2, sriov_iface2 = self._create_sriov(
+            'sriov1', host=self.worker)
+        # Attempt to create second ethernet interface with ovs_access=True
+        interface2 = self._post_get_test_interface(
+            ifname='eth-ovs1',
+            iftype=constants.INTERFACE_TYPE_ETHERNET,
+            ifclass=constants.INTERFACE_CLASS_DATA,
+            uses=[sriov_iface2['ifname']],
+            forihostid=self.worker.id,
+            ihost_uuid=self.worker.uuid,
+            ovs_access=True)
+        self._post_and_check(interface2, expect_errors=True,
+                             error_message="Only one interface per host "
+                                           "can have ovs-access enabled")
+
+    def test_modify_second_ovs_access_interface_rejected(self):
+        """Reject modifying a second interface to ovs_access=True when
+        another interface on the same host already has it.
+        """
+        port, sriov_iface = self._create_sriov(
+            'sriov0', host=self.worker)
+        # Create first ethernet interface with ovs_access=True
+        interface1 = self._post_get_test_interface(
+            ifname='eth-ovs0',
+            iftype=constants.INTERFACE_TYPE_ETHERNET,
+            ifclass=constants.INTERFACE_CLASS_DATA,
+            uses=[sriov_iface['ifname']],
+            forihostid=self.worker.id,
+            ihost_uuid=self.worker.uuid,
+            ovs_access=True)
+        self._post_and_check_success(interface1)
+
+        # Create a second sriov interface
+        port2, sriov_iface2 = self._create_sriov(
+            'sriov1', host=self.worker)
+        # Create second ethernet interface with ovs_access=False
+        interface2 = self._post_get_test_interface(
+            ifname='eth-ovs1',
+            iftype=constants.INTERFACE_TYPE_ETHERNET,
+            ifclass=constants.INTERFACE_CLASS_DATA,
+            uses=[sriov_iface2['ifname']],
+            forihostid=self.worker.id,
+            ihost_uuid=self.worker.uuid,
+            ovs_access=False)
+        response = self._post_and_check_success(interface2)
+        uuid = response.json['uuid']
+        # Modify ovs_access to True should fail
+        self._patch_and_check(
+            {'ovs_access': True},
+            self._get_path(uuid),
+            expect_errors=True,
+            error_message="Only one interface per host "
+                          "can have ovs-access enabled")
+
 
 class TestAIOPost(InterfaceTestCase):
     def setUp(self):
