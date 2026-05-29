@@ -117,6 +117,20 @@ SB_SUPPORTED_NETWORKS = {
 PTP_INSTANCE_TYPE_PTP4L = 'ptp4l'
 PTP_INSTANCE_TYPE_GNSS_MONITOR = "gnss-monitor"
 PTP_INSTANCE_TYPE_DPLL_MGR = "dpll-mgr"
+PTP_INSTANCE_TYPE_DPLL_MGR_SUPPORTED_SECTIONS = [
+    'global',
+    'channels',
+    'dpll',
+    'dpll_policy',
+    'ptp',
+    'ptp_profiles',
+    'ptp_primary_attributes',
+    'ptp_secondary_defaults',
+    'ptp_secondary_attributes',
+    'synce',
+    'ql_map',
+    'inputs_ql',
+]
 PTP_INSTANCE_TYPE_GNSS_MONITOR_SUPPORTED_PARAMETERS = [
     "devices", "satellite_count", "signal_quality_db",
     "cmdline_opts"

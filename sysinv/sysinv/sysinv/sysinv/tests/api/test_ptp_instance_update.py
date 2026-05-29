@@ -481,3 +481,135 @@ class TestUpdatePtpInstance(BasePtpInstanceTestCase):
         self.assertEqual(response.content_type, 'application/json')
         self.assertEqual(response.status_code, http_client.BAD_REQUEST)
         self.assertIn(error_message, response.json['error_message'])
+
+
+class TestUpdatePtpInstanceAptsMgr(BasePtpInstanceTestCase):
+    uuid = None
+
+    def setUp(self):
+        super(TestUpdatePtpInstanceAptsMgr, self).setUp()
+        ptp_instance = dbutils.create_test_ptp_instance(
+            name='test-dpll-mgr',
+            service=constants.PTP_INSTANCE_TYPE_DPLL_MGR)
+        self.uuid = ptp_instance['uuid']
+
+    def test_add_config_json_valid(self):
+        """Add config_json with valid full JSON."""
+        json_value = '{"global":{"operation_mode":"SW_BASED"},"dpll":{"dpll0":{"name":"DPLL0_FREQ"}}}'
+        response = self.patch_json(
+            self.get_single_url(self.uuid),
+            [{'path': constants.PTP_PARAMETER_ARRAY_PATH,
+              'section': 'config_json',
+              'value': 'config_json=%s' % json_value,
+              'op': constants.PTP_PATCH_OPERATION_ADD}],
+            headers=self.API_HEADERS)
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
+
+    def test_add_config_json_invalid_json(self):
+        """Reject config_json with malformed JSON."""
+        response = self.patch_json(
+            self.get_single_url(self.uuid),
+            [{'path': constants.PTP_PARAMETER_ARRAY_PATH,
+              'section': 'config_json',
+              'value': 'config_json={bad json',
+              'op': constants.PTP_PATCH_OPERATION_ADD}],
+            headers=self.API_HEADERS,
+            expect_errors=True)
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+        self.assertIn('Invalid JSON value', response.json['error_message'])
+
+    def test_add_config_json_unsupported_section(self):
+        """Reject config_json with unsupported section in JSON."""
+        json_value = '{"bad_section":{"key":"value"}}'
+        response = self.patch_json(
+            self.get_single_url(self.uuid),
+            [{'path': constants.PTP_PARAMETER_ARRAY_PATH,
+              'section': 'config_json',
+              'value': 'config_json=%s' % json_value,
+              'op': constants.PTP_PATCH_OPERATION_ADD}],
+            headers=self.API_HEADERS,
+            expect_errors=True)
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+        self.assertIn('Unsupported sections', response.json['error_message'])
+
+    def test_add_config_json_long_value(self):
+        """Accept config_json with value longer than 255 chars."""
+        # Build a valid JSON > 255 chars
+        large_json = '{"global":{"operation_mode":"SW_BASED"},"ptp":{"ptp_primary_attributes":{' + \
+            ','.join(['"source_%d":{"clockClass":6,"clockAccuracy":"0x22","timeTraceable":1}' % i
+                      for i in range(10)]) + '}}}'
+        self.assertGreater(len(large_json), 255)
+        response = self.patch_json(
+            self.get_single_url(self.uuid),
+            [{'path': constants.PTP_PARAMETER_ARRAY_PATH,
+              'section': 'config_json',
+              'value': 'config_json=%s' % large_json,
+              'op': constants.PTP_PATCH_OPERATION_ADD}],
+            headers=self.API_HEADERS)
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
+
+    def test_replace_config_json(self):
+        """Replace existing config_json with new value."""
+        # Add first
+        json_value1 = '{"global":{"operation_mode":"SW_BASED"}}'
+        self.patch_json(
+            self.get_single_url(self.uuid),
+            [{'path': constants.PTP_PARAMETER_ARRAY_PATH,
+              'section': 'config_json',
+              'value': 'config_json=%s' % json_value1,
+              'op': constants.PTP_PATCH_OPERATION_ADD}],
+            headers=self.API_HEADERS)
+
+        # Remove first
+        self.patch_json(
+            self.get_single_url(self.uuid),
+            [{'path': constants.PTP_PARAMETER_ARRAY_PATH,
+              'section': 'config_json',
+              'value': 'config_json=%s' % json_value1,
+              'op': constants.PTP_PATCH_OPERATION_DELETE}],
+            headers=self.API_HEADERS)
+
+        # Add new
+        json_value2 = '{"global":{"operation_mode":"HW_BASED"}}'
+        response = self.patch_json(
+            self.get_single_url(self.uuid),
+            [{'path': constants.PTP_PARAMETER_ARRAY_PATH,
+              'section': 'config_json',
+              'value': 'config_json=%s' % json_value2,
+              'op': constants.PTP_PATCH_OPERATION_ADD}],
+            headers=self.API_HEADERS)
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
+
+    def test_delete_config_json_by_uuid(self):
+        """Delete config_json parameter by UUID."""
+        # Add first
+        json_value = '{"global":{"operation_mode":"SW_BASED"}}'
+        response = self.patch_json(
+            self.get_single_url(self.uuid),
+            [{'path': constants.PTP_PARAMETER_ARRAY_PATH,
+              'section': 'config_json',
+              'value': 'config_json=%s' % json_value,
+              'op': constants.PTP_PATCH_OPERATION_ADD}],
+            headers=self.API_HEADERS)
+        self.assertEqual(response.status_code, http_client.OK)
+
+        # Get parameter UUID from DB
+        ptp_params = self.get_json(
+            '/ptp_instances/%s/ptp_parameters' % self.uuid,
+            headers=self.API_HEADERS)
+        param_uuid = ptp_params['ptp_parameters'][0]['uuid']
+
+        # Delete by UUID
+        response = self.patch_json(
+            self.get_single_url(self.uuid),
+            [{'path': constants.PTP_PARAMETER_ARRAY_PATH,
+              'section': 'config_json',
+              'value': param_uuid,
+              'op': constants.PTP_PATCH_OPERATION_DELETE}],
+            headers=self.API_HEADERS)
+        self.assertEqual(response.status_code, http_client.OK)

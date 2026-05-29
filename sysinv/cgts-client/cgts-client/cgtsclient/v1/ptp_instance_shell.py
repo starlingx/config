@@ -6,6 +6,9 @@
 #
 ########################################################################
 
+import json
+import sys
+
 from cgtsclient.common import constants
 from cgtsclient.common import unicast_master_table as umt
 from cgtsclient.common import utils
@@ -100,6 +103,12 @@ def _ptp_instance_parameter_op(cc, op, instance, section, parameters):
                     f"Parameter {param_name} is not supported. Supported parameters:"
                     f"{constants.PTP_INSTANCE_TYPE_GNSS_MONITOR_SUPPORTED_PARAMETERS}"
                 )
+    # check section whitelist for dpll-mgr type
+    elif ptp_instance.service == constants.PTP_INSTANCE_TYPE_DPLL_MGR and op == "add":
+        if section not in constants.PTP_INSTANCE_TYPE_DPLL_MGR_SUPPORTED_SECTIONS:
+            raise exc.CommandError(
+                f"Section '{section}' is not supported for dpll-mgr. "
+                f"Supported: {constants.PTP_INSTANCE_TYPE_DPLL_MGR_SUPPORTED_SECTIONS}")
     # sanity check for PTP4l's unicast_master_table sectional parameters
     elif (
         ptp_instance.service == constants.PTP_INSTANCE_TYPE_PTP4L
@@ -138,6 +147,53 @@ def _ptp_instance_parameter_op(cc, op, instance, section, parameters):
     _print_ptp_instance_show(ptp_instance)
 
 
+def _ptp_instance_parameter_from_json(cc, instance, filepath=None,
+                                      json_string=None):
+    """Import dpll-mgr config from JSON. Replaces existing config_json."""
+
+    ptp_instance = ptp_instance_utils._find_ptp_instance(cc, instance)
+
+    if ptp_instance.service != constants.PTP_INSTANCE_TYPE_DPLL_MGR:
+        raise exc.CommandError(
+            '--from-file/--from-json only supported for dpll-mgr instances')
+
+    # Read JSON from file or inline string
+    if filepath:
+        try:
+            with open(filepath, 'r') as f:
+                config = json.load(f)
+        except (IOError, json.JSONDecodeError) as e:
+            raise exc.CommandError(f"Failed to read config file: {e}")
+    else:
+        try:
+            config = json.loads(json_string)
+        except (json.JSONDecodeError, ValueError) as e:
+            raise exc.CommandError(f"Invalid JSON: {e}")
+
+    # Validate sections
+    for section in config.keys():
+        if section not in \
+                constants.PTP_INSTANCE_TYPE_DPLL_MGR_SUPPORTED_SECTIONS:
+            raise exc.CommandError(
+                f"Unsupported section '{section}'. Supported: "
+                f"{constants.PTP_INSTANCE_TYPE_DPLL_MGR_SUPPORTED_SECTIONS}")
+
+    # Serialize JSON (compact)
+    json_value = json.dumps(config, separators=(',', ':'))
+    if len(json_value) > 50000:
+        msg = (f"WARNING: config_json is {len(json_value)} characters. "
+               "Large configs may impact performance.")
+        print(msg, file=sys.stderr)
+
+    # Add/replace config_json parameter (server handles upsert)
+    patch = [{'op': 'add',
+              'path': '/ptp_parameters/-',
+              'section': 'config_json',
+              'value': f"config_json={json_value}"}]
+    ptp_instance = cc.ptp_instance.update(ptp_instance.uuid, patch)
+    _print_ptp_instance_show(ptp_instance)
+
+
 @utils.arg('nameoruuid',
            metavar='<name or UUID>',
            help="Name or UUID of PTP instance")
@@ -145,17 +201,34 @@ def _ptp_instance_parameter_op(cc, op, instance, section, parameters):
            metavar='<section_name>',
            default='global',
            help='Section name of PTP parameters (default: global)')
+@utils.arg('--from-file',
+           metavar='<json_file>',
+           default=None,
+           help='Import config from JSON file (replaces existing, '
+                'dpll-mgr only)')
+@utils.arg('--from-json',
+           metavar='<json_string>',
+           default=None,
+           help='Import config from inline JSON string (replaces existing, '
+                'dpll-mgr only)')
 @utils.arg('parameters',
            metavar='<name=value>',
-           nargs='+',
+           nargs='*',
            action='append',
            default=[],
            help="PTP parameter to add")
 def do_ptp_instance_parameter_add(cc, args):
     """Add parameter(s) to a PTP instance."""
-    _ptp_instance_parameter_op(cc, op='add', instance=args.nameoruuid,
-                               section=args.section,
-                               parameters=args.parameters[0])
+    if args.from_file or args.from_json:
+        _ptp_instance_parameter_from_json(cc, args.nameoruuid,
+                                          filepath=args.from_file,
+                                          json_string=args.from_json)
+    else:
+        if not args.parameters or not args.parameters[0]:
+            raise exc.CommandError('Missing PTP parameter')
+        _ptp_instance_parameter_op(cc, op='add', instance=args.nameoruuid,
+                                   section=args.section,
+                                   parameters=args.parameters[0])
 
 
 @utils.arg('nameoruuid',
@@ -166,11 +239,11 @@ def do_ptp_instance_parameter_add(cc, args):
            default='global',
            help='Section name of PTP parameters (default: global)')
 @utils.arg('parameters',
-           metavar='<name=value>',
+           metavar='<name=value or uuid>',
            nargs='+',
            action='append',
            default=[],
-           help="PTP parameter to remove")
+           help="PTP parameter to remove (name=value or parameter UUID)")
 def do_ptp_instance_parameter_delete(cc, args):
     """Delete parameter(s) from a PTP instance."""
     _ptp_instance_parameter_op(cc, op='remove', instance=args.nameoruuid,

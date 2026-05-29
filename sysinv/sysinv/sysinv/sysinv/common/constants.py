@@ -2625,6 +2625,21 @@ PTP_INSTANCE_TYPE_SYNCE4L = 'synce4l'
 PTP_INSTANCE_TYPE_GNSS_MONITOR = "gnss-monitor"
 PTP_INSTANCE_TYPE_DPLL_MGR = "dpll-mgr"
 
+PTP_INSTANCE_TYPE_DPLL_MGR_SUPPORTED_SECTIONS = [
+    'global',
+    'channels',
+    'dpll',
+    'dpll_policy',
+    'ptp',
+    'ptp_profiles',
+    'ptp_primary_attributes',
+    'ptp_secondary_defaults',
+    'ptp_secondary_attributes',
+    'synce',
+    'ql_map',
+    'inputs_ql',
+]
+
 # PTP instances created during migration
 PTP_INSTANCE_LEGACY_PTP4L = 'ptp4l-legacy'
 PTP_INSTANCE_LEGACY_PHC2SYS = 'phc2sys-legacy'

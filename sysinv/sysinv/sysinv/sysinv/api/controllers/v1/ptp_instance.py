@@ -4,6 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
+import json
 import jsonpatch
 import pecan
 from pecan import rest
@@ -13,6 +14,7 @@ from wsme import types as wtypes
 import wsmeext.pecan as wsme_pecan
 
 from oslo_log import log
+from oslo_utils import uuidutils
 from sysinv._i18n import _
 from sysinv.api.controllers.v1 import base
 from sysinv.api.controllers.v1 import collection
@@ -204,6 +206,25 @@ class PtpInstanceController(rest.RestController):
         return PtpInstance.convert_with_links(
             pecan.request.dbapi.ptp_instance_create(ptp_instance_dict))
 
+    def _remove_ptp_parameter(self, instance_uuid, param_uuid,
+                              param_label=None):
+        """Remove a PTP parameter from an instance and destroy if orphaned."""
+        try:
+            pecan.request.dbapi.ptp_instance_parameter_remove(
+                instance_uuid, param_uuid)
+        except exception.NotFound:
+            raise wsme.exc.ClientSideError(
+                _("No PTP parameter object %s is owned by the "
+                  "given instance" % (param_label or param_uuid)))
+        LOG.debug("PtpInstanceController: removed param %s from %s" %
+                  (param_label or param_uuid, instance_uuid))
+        param_owners = pecan.request.dbapi.ptp_parameter_get_owners(
+            param_uuid)
+        if len(param_owners) == 0:
+            LOG.debug("PtpInstanceController: destroying unreferenced "
+                      "parameter %s" % (param_label or param_uuid))
+            pecan.request.dbapi.ptp_parameter_destroy(param_uuid)
+
     def _check_umt_table_id_uniqueness(
         self, instance_uuid, param_section, param_name, param_value
     ):
@@ -299,7 +320,8 @@ class PtpInstanceController(rest.RestController):
         utils.validate_patch(patch)
         try:
             # Check PTP instance exists
-            objects.ptp_instance.get_by_uuid(pecan.request.context, uuid)
+            ptp_instance = objects.ptp_instance.get_by_uuid(
+                pecan.request.context, uuid)
         except exception.InvalidParameterValue:
             raise wsme.exc.ClientSideError(
                 _("No PTP instance found for %s" % uuid))
@@ -312,10 +334,63 @@ class PtpInstanceController(rest.RestController):
             # default section already set to global by PtpInstancePatchType
             param_section = p.get("section")
             param_keypair = p['value']
+
+            # Support delete by parameter UUID (no '=' in value)
+            if (not param_adding and '=' not in param_keypair
+                    and uuidutils.is_uuid_like(param_keypair)):
+                param_uuid = param_keypair
+                self._remove_ptp_parameter(uuid, param_uuid)
+                continue
+
             if param_keypair.find('=') < 0:
                 raise wsme.exc.ClientSideError(
                     _("Bad PTP parameter keypair: %s" % param_keypair))
             (param_name, param_value) = param_keypair.split('=', 1)
+
+            # Validate dpll-mgr config_json parameters
+            if (ptp_instance['service'] ==
+                    constants.PTP_INSTANCE_TYPE_DPLL_MGR and param_adding):
+                if param_name == 'config_json':
+                    try:
+                        config = json.loads(param_value)
+                    except (json.JSONDecodeError, ValueError) as e:
+                        raise wsme.exc.ClientSideError(
+                            _("Invalid JSON value: %s" % str(e)))
+                    unsupported = (
+                        set(config.keys()) - set(
+                            constants.PTP_INSTANCE_TYPE_DPLL_MGR_SUPPORTED_SECTIONS)
+                    )
+                    if unsupported:
+                        raise wsme.exc.ClientSideError(
+                            _("Unsupported sections: %s" % sorted(unsupported)))
+                    if len(param_value) > 50000:
+                        LOG.warning("dpll-mgr config_json is %d characters "
+                                    "for instance %s"
+                                    % (len(param_value), uuid))
+
+                    # Upsert: if config_json already exists for this
+                    # instance, update in-place instead of creating new
+                    existing_params = (
+                        pecan.request.dbapi
+                        .ptp_parameters_get_list(ptp_instance=uuid))
+                    for ep in existing_params:
+                        if (ep.name == 'config_json' and
+                                ep.section == param_section):
+                            pecan.request.dbapi.ptp_parameter_update(
+                                ep.uuid, {'value': param_value})
+                            LOG.info("PtpInstanceController.patch: "
+                                     "updated config_json in-place "
+                                     "for instance %s" % uuid)
+                            param_uuid = ep.uuid
+                            break
+                    else:
+                        # No existing config_json — will create below
+                        param_uuid = None
+
+                    if param_uuid:
+                        # Already updated in-place, skip create/add
+                        continue
+
             try:
                 # Check PTP parameter exists
                 ptp_parameter = \
@@ -365,27 +440,9 @@ class PtpInstanceController(rest.RestController):
                 LOG.debug("PtpInstanceController.patch: added %s's %s to %s" %
                           (param_section, param_keypair, uuid))
             else:
-                try:
-                    pecan.request.dbapi.ptp_instance_parameter_remove(
-                        uuid, param_uuid)
-
-                except exception.NotFound:
-                    raise wsme.exc.ClientSideError(
-                        _("No PTP parameter object %s's %s is owned by the "
-                        "given instance" % (param_section, param_keypair))
-                    )
-
-                LOG.debug("PtpInstanceController.patch: removed %s's %s from %s" %
-                          (param_section, param_keypair, uuid))
-
-                # If PTP parameter isn't owned by anyone else, remove it
-                param_owners = pecan.request.dbapi.ptp_parameter_get_owners(
-                    param_uuid)
-                if len(param_owners) == 0:
-                    LOG.debug(
-                        "PtpInstanceController.patch: destroying unreferenced "
-                        f"parameter {param_section}'s {param_keypair}")
-                    pecan.request.dbapi.ptp_parameter_destroy(param_uuid)
+                self._remove_ptp_parameter(
+                    uuid, param_uuid,
+                    param_label="%s's %s" % (param_section, param_keypair))
 
         return PtpInstance.convert_with_links(
             objects.ptp_instance.get_by_uuid(pecan.request.context, uuid))

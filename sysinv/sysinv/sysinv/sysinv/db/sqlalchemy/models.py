@@ -832,7 +832,7 @@ class PtpParameters(Base):
 
     section = Column(String(255), default='global')
     name = Column(String(255), nullable=False)
-    value = Column(String(255))
+    value = Column(Text)
 
     ptp_parameter_owners = relationship(
         "PtpParameterOwners",
