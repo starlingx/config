@@ -7929,6 +7929,7 @@ class ConductorManager(service.PeriodicService):
             if app_bundle is None:
                 # Skip if no bundles are found
                 LOG.debug("No bundle found for uploading %s" % app_name)
+                self.dbapi.kube_app_destroy(name=app.name, version=app.app_version)
                 return
 
             # Increment the auto upload attempts
@@ -8104,7 +8105,7 @@ class ConductorManager(service.PeriodicService):
                                         str(constants.APP_METADATA_AUTO_DOWNGRADE_DEFAULT_VALUE)))
         latest_downgrade_bundle = None
         available_versions = set()
-        latest_version_bundle = None
+        chosen_bundle = None
 
         current_k8s_version = self._kube.kube_get_kubernetes_version().strip().lstrip('v')
         if k8s_version is None:
@@ -8163,12 +8164,12 @@ class ConductorManager(service.PeriodicService):
             elif not bundle_metadata.auto_update:
                 LOG.debug("Application auto update disabled for bundle {}"
                           .format(bundle_metadata.file_path))
-            elif ((latest_version_bundle is None) or
+            elif ((chosen_bundle is None) or
                   (LooseVersion(bundle_metadata.version) >
-                   LooseVersion(latest_version_bundle.version))):
+                   LooseVersion(chosen_bundle.version))):
                 # Only set the chosen bundle if it was not set before or if the version
                 # of the current one is higher than the one previously set.
-                latest_version_bundle = bundle_metadata
+                chosen_bundle = bundle_metadata
 
         # Downgrade if the installed app version is not available anymore and an older compatible
         # bundle is available instead.
@@ -8176,11 +8177,16 @@ class ConductorManager(service.PeriodicService):
                 app.app_version not in available_versions and
                 latest_downgrade_bundle is not None and
                 k8s_upgrade_timing is None):
+            chosen_bundle = latest_downgrade_bundle
             LOG.info("Application {} will be downgraded from version {} to {}"
                      .format(app.name, app.app_version, latest_downgrade_bundle.version))
-            return latest_downgrade_bundle
 
-        return latest_version_bundle
+        # Check if the chosen bundle exists on the file system
+        if chosen_bundle and not os.path.isfile(chosen_bundle.file_path):
+            LOG.error("Application bundle {} not found".format(chosen_bundle.file_path))
+            chosen_bundle = None
+
+        return chosen_bundle
 
     def _auto_update_app(self,
                          context,

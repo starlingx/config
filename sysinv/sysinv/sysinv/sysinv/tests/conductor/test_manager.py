@@ -10520,7 +10520,8 @@ class ManagerTestCase(base.DbTestCase):
     # For unit test to get_app_bundle function, check that the return value of the
     # kube_get_kubelet_versions and KubeAppBundleDatabase.get_all functions were
     # mocked within the setUp function
-    def test_get_app_bundle_for_update(self):
+    @mock.patch('os.path.isfile', return_value=True)
+    def test_get_app_bundle_for_update(self, mock_isfile):
         app_moked = self.get_app_object_moked_and_call_start()
 
         # Test when k8s_version is None
@@ -10528,7 +10529,8 @@ class ManagerTestCase(base.DbTestCase):
         # It should be if 1.1.0 auto_update was not false
         self.assertEqual(result.version, "1.0.5")
 
-    def test_get_app_bundle_for_update_k8s_version(self):
+    @mock.patch('os.path.isfile', return_value=True)
+    def test_get_app_bundle_for_update_k8s_version(self, mock_isfile):
         app_moked = self.get_app_object_moked_and_call_start()
 
         # Test when k8s_version is specified
@@ -10539,7 +10541,8 @@ class ManagerTestCase(base.DbTestCase):
         result = self.service._get_app_bundle_for_update(app_moked, k8s_version="v1.29.2")
         self.assertEqual(result.version, "1.2.0")
 
-    def test_get_app_bundle_for_update_k8s_upgrade_timing(self):
+    @mock.patch('os.path.isfile', return_value=True)
+    def test_get_app_bundle_for_update_k8s_upgrade_timing(self, mock_isfile):
         app_moked = self.get_app_object_moked_and_call_start()
 
         # Test with k8s_upgrade_timing key
@@ -10554,7 +10557,8 @@ class ManagerTestCase(base.DbTestCase):
         # It should be if 1.1.0 auto_update was not false
         self.assertEqual(result.version, "1.0.5")
 
-    def test_get_app_bundle_for_update_downgrade(self):
+    @mock.patch('os.path.isfile', return_value=True)
+    def test_get_app_bundle_for_update_downgrade(self, mock_isfile):
         app_moked = self.get_app_object_moked_and_call_start()
 
         # Using a higher app version than is available. The function must be able
@@ -10563,12 +10567,21 @@ class ManagerTestCase(base.DbTestCase):
         result = self.service._get_app_bundle_for_update(app_moked)
         self.assertEqual(result.version, "1.1.0")
 
-    def test_get_app_bundle_for_update_return_none(self):
+    @mock.patch('os.path.isfile', return_value=True)
+    def test_get_app_bundle_for_update_k8s_version_lower_than_available(self, mock_isfile):
         app_moked = self.get_app_object_moked_and_call_start()
 
         # Test when k8s_version lower than what is available.
         # This forces the return None
         result = self.service._get_app_bundle_for_update(app_moked, k8s_version="v1.17.0")
+        self.assertEqual(result, None)
+
+    @mock.patch('os.path.isfile', return_value=False)
+    def test_get_app_bundle_for_update_bundle_not_found(self, mock_isfile):
+        app_moked = self.get_app_object_moked_and_call_start()
+
+        # Test when the bundle file does not exist
+        result = self.service._get_app_bundle_for_update(app_moked)
         self.assertEqual(result, None)
 
     @mock.patch('glob.glob')
