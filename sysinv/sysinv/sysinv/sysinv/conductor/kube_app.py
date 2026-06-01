@@ -611,7 +611,15 @@ class AppOperator(object):
         return charts_in_use
 
     def _remove_app_charts_from_repo(self, app_id, app_charts):
-        """ Remove application charts from Helm repository
+        """ Delete application charts from Helm repository
+
+        This takes an application identifier and a list of candidate charts
+        to be removed. Charts are deleted only if they are not in use by any
+        other app.
+
+        Deleting a chart requires the Helm repository to be re-indexed. Deletion
+        and re-indexing must be serialized since Helm needs to read all charts in
+        the repository to update its index file.
 
         :param app_id: identifier of the application that is having
                        its charts removed.
@@ -3625,8 +3633,10 @@ class AppOperator(object):
                 else:
                     charts_to_delete.append(from_chart)
 
-            self._remove_app_charts_from_repo(from_app._kube_app.id,
-                                              charts_to_delete)
+            with self._lock:
+                self._remove_app_charts_from_repo(from_app._kube_app.id,
+                                                  charts_to_delete)
+
             self._cleanup(from_app, app_dir=False)
         except Exception as e:
             raise exception.KubeAppCleanupFailure(
@@ -3866,7 +3876,8 @@ class AppOperator(object):
             self._clear_app_alarm(app.name)
 
             # Remove charts from Helm repository
-            self._remove_app_charts_from_repo(app._kube_app.id, app.charts)
+            with self._lock:
+                self._remove_app_charts_from_repo(app._kube_app.id, app.charts)
 
             LOG.info("Application (%s) has been purged from the system." %
                      app.name)
