@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2019-2025 Wind River Systems, Inc.
+# Copyright (c) 2019-2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -8,6 +8,7 @@ from fm_api import constants as fm_constants
 from fm_api import fm_api
 
 from distutils.version import LooseVersion
+from oslo_config import cfg
 import pecan
 from pecan import rest
 import os
@@ -32,6 +33,42 @@ from sysinv.common import utils as cutils
 from sysinv import objects
 
 LOG = log.getLogger(__name__)
+
+
+# Default list of alarm IDs to ignore during the system health check that
+# runs before kube-upgrade-start. These alarms are either not management-
+# affecting in the context of a manual Kubernetes upgrade, or are expected
+# to be active as part of a combined platform + Kubernetes upgrade flow.
+# This aligns with NFV KubeUpgradeStrategy and replaces the previous
+# client-side list (formerly in cgts-client). The list can be customized
+# via sysinv.conf for deployment flexibility.
+DEFAULT_KUBE_UPGRADE_ALARM_IGNORE_LIST = [
+    '100.103',  # Memory threshold exceeded
+    '100.119',  # PTP alarm for SyncE
+    '200.001',  # Locked Host
+    '280.001',  # Subcloud resource off-line
+    '280.002',  # Subcloud resource out-of-sync
+    '700.004',  # VM stopped
+    '750.006',  # Configuration change requires reapply of cert-manager
+    '900.007',  # Kube Upgrade in progress
+    '900.022',  # Clean up deployment data
+    '900.023',  # Software release deploy operation in progress
+                # (enable combined platform + Kubernetes upgrade)
+    '900.401',  # kube-upgrade-auto-apply-inprogress
+    '900.402',  # Kubernetes upgrade auto-apply aborting
+    '900.701',  # Node tainted
+]
+
+kube_upgrade_opts = [
+    cfg.ListOpt('alarm_ignore_list',
+                default=DEFAULT_KUBE_UPGRADE_ALARM_IGNORE_LIST,
+                help=_('List of alarm IDs to ignore during the system '
+                       'health check before kube-upgrade-start. '
+                       'Allows deployment flexibility and aligns with '
+                       'NFV KubeUpgradeStrategy.')),
+]
+
+cfg.CONF.register_opts(kube_upgrade_opts, group='kube_upgrade')
 
 
 class KubeUpgradePatchType(types.JsonPatchType):
@@ -263,7 +300,21 @@ class KubeUpgradeController(rest.RestController):
         """Create a new Kubernetes Upgrade and start upgrade."""
 
         force = body.get('force', False) is True
-        alarm_ignore_list = body.get('alarm_ignore_list')
+        client_alarm_ignore_list = cutils.parse_alarm_ignore_list(
+            body.get('alarm_ignore_list'))
+
+        # Merge the client-supplied alarm_ignore_list with the server-side
+        # default list configured in sysinv.conf [kube_upgrade]
+        # alarm_ignore_list. This centralizes the policy in the API so that
+        # all clients (cgts-client, NFV, etc.) get consistent behaviour and
+        # so that operators can customize the list via sysinv.conf without
+        # rebuilding clients.
+        server_alarm_ignore_list = list(
+            cfg.CONF.kube_upgrade.alarm_ignore_list)
+        alarm_ignore_list = sorted(
+            set(server_alarm_ignore_list) | set(client_alarm_ignore_list))
+        LOG.info("kube-upgrade-start alarm_ignore_list (merged): %s"
+                 % alarm_ignore_list)
 
         # There must not be a platform upgrade in progress
         try:
