@@ -8,6 +8,7 @@ import json
 import re
 
 from sysinv.common import constants
+from sysinv.common import exception
 from sysinv.common import utils
 from sysinv.puppet import base
 
@@ -271,6 +272,15 @@ class StoragePuppet(base.BasePuppet):
         # Save the list of devices
         self.set_lvm_devices(final_devices)
 
+        # Validate the LVM Storage state
+        csi_service_enabled = False
+        try:
+            sb = self.dbapi.storage_backend_get_list_by_type(
+                backend_type=constants.SB_TYPE_LVM)
+            csi_service_enabled = (sb is not None) and (len(sb) > 0)
+        except exception.StorageBackendNotFoundByName:
+            csi_service_enabled = False
+
         return {
             'platform::lvm::params::final_filter': final_filter,
             'platform::lvm::params::transition_filter': transition_filter,
@@ -279,6 +289,7 @@ class StoragePuppet(base.BasePuppet):
             'platform::lvm::params::cgts_thin_pool_size':
                 cgts_thin_pool_size,
             'platform::lvm::params::removing_lvgs': removing_lvgs,
+            'platform::lvm::params::csi_service_enabled': csi_service_enabled,
 
             'platform::lvm::vg::cgts_vg::physical_volumes': cgts_devices,
             'platform::lvm::vg::nova_local::physical_volumes': nova_final_devices,

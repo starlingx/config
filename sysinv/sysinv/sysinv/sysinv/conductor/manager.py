@@ -2458,6 +2458,21 @@ class ConductorManager(service.PeriodicService):
                                             config_dict,
                                             force=True)
 
+    def update_lvm_storage_flag(self, context):
+        personalities = [constants.CONTROLLER]
+
+        config_uuid = self._config_update_hosts(context, personalities)
+
+        config_dict = {
+            "personalities": personalities,
+            "classes": ['platform::lvm::csi::flag']
+        }
+
+        self._config_apply_runtime_manifest(context,
+                                            config_uuid,
+                                            config_dict,
+                                            force=True)
+
     def delete_lvm_csi_lvg_pv(self, context, host_uuid, lvg, pv):
         personalities = [constants.CONTROLLER,
                          constants.WORKER]
