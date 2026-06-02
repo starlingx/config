@@ -3062,12 +3062,26 @@ class ManagerTestCase(base.DbTestCase):
 
         FROM_VERSION = 'v1.29.2'
         TO_VERSION = 'v1.30.6'
-        network_images = {'calico_cni_img': 'fake_calico_cni_img',
-                           'calico_node_img': 'fake_calico_node_img',
-                           'calico_kube_controllers_img': 'fake_calico_kube_controllers_img',
-                           'multus_img': 'fake_multus_img',
-                           'sriov_cni_img': 'fake_sriov_cni_img',
-                           'sriov_network_device_img': 'fake_sriov_network_device_img'}
+        network_images = {'calico_apiserver_img': 'fake_calico_apiserver_img',
+                          'calico_cni_img': 'fake_calico_cni_img',
+                          'calico_csi_img': 'fake_calico_csi_img',
+                          'calico_ctl_img': 'fake_calico_ctl_img',
+                          'calico_dikastes_img': 'fake_calico_dikastes_img',
+                          'calico_envoy_gateway_img': 'fake_calico_envoy_gateway_img',
+                          'calico_envoy_proxy_img': 'fake_calico_envoy_proxy_img',
+                          'calico_goldmane_img': 'fake_calico_goldmane_img',
+                          'calico_kube_controllers_img': 'fake_calico_kube_controllers_img',
+                          'calico_node_driver_registrar_img': 'fake_calico_node_driver_registrar_img',
+                          'calico_node_img': 'fake_calico_node_img',
+                          'calico_pod2daemon_flexvol_img': 'fake_calico_pod2daemon_flexvol_img',
+                          'calico_typha_img': 'fake_calico_typha_img',
+                          'calico_whisker_backend_img': 'fake_calico_whisker_backend_img',
+                          'calico_whisker_img': 'fake_calico_whisker_img',
+                          'multus_img': 'fake_multus_img',
+                          'sriov_cni_img': 'fake_sriov_cni_img',
+                          'sriov_network_device_img': 'fake_sriov_network_device_img',
+                          'tigera_operator_img': 'fake_tigera_operator_img'}
+
         image_download_result = True
         upgrade_overrides_file_exists = True
         upgrade_overrides = {"cluster_pod_subnet": "172.16.0.0/16",
@@ -3249,12 +3263,25 @@ class ManagerTestCase(base.DbTestCase):
 
         FROM_VERSION = 'v1.29.2'
         TO_VERSION = 'v1.30.6'
-        network_images = {'calico_cni_img': 'fake_calico_cni_img',
-                           'calico_node_img': 'fake_calico_node_img',
-                           'calico_kube_controllers_img': 'fake_calico_kube_controllers_img',
-                           'multus_img': 'fake_multus_img',
-                           'sriov_cni_img': 'fake_sriov_cni_img',
-                           'sriov_network_device_img': 'fake_sriov_network_device_img'}
+        network_images = {'calico_apiserver_img': 'fake_calico_apiserver_img',
+                          'calico_cni_img': 'fake_calico_cni_img',
+                          'calico_csi_img': 'fake_calico_csi_img',
+                          'calico_ctl_img': 'fake_calico_ctl_img',
+                          'calico_dikastes_img': 'fake_calico_dikastes_img',
+                          'calico_envoy_gateway_img': 'fake_calico_envoy_gateway_img',
+                          'calico_envoy_proxy_img': 'fake_calico_envoy_proxy_img',
+                          'calico_goldmane_img': 'fake_calico_goldmane_img',
+                          'calico_kube_controllers_img': 'fake_calico_kube_controllers_img',
+                          'calico_node_driver_registrar_img': 'fake_calico_node_driver_registrar_img',
+                          'calico_node_img': 'fake_calico_node_img',
+                          'calico_pod2daemon_flexvol_img': 'fake_calico_pod2daemon_flexvol_img',
+                          'calico_typha_img': 'fake_calico_typha_img',
+                          'calico_whisker_backend_img': 'fake_calico_whisker_backend_img',
+                          'calico_whisker_img': 'fake_calico_whisker_img',
+                          'multus_img': 'fake_multus_img',
+                          'sriov_cni_img': 'fake_sriov_cni_img',
+                          'sriov_network_device_img': 'fake_sriov_network_device_img',
+                          'tigera_operator_img': 'fake_tigera_operator_img'}
         image_download_result = True
         upgrade_overrides_file_exists = True
         upgrade_overrides = {"cluster_pod_subnet": "::ffff:ac10:0/16",
@@ -3435,12 +3462,26 @@ class ManagerTestCase(base.DbTestCase):
 
         FROM_VERSION = 'v1.29.2'
         TO_VERSION = 'v1.30.6'
-        network_images = {'calico_cni_img': 'fake_calico_cni_img',
-                           'calico_node_img': 'fake_calico_node_img',
-                           'calico_kube_controllers_img': 'fake_calico_kube_controllers_img',
-                           'multus_img': 'fake_multus_img',
-                           'sriov_cni_img': 'fake_sriov_cni_img',
-                           'sriov_network_device_img': 'fake_sriov_network_device_img'}
+        network_images = {'calico_apiserver_img': 'fake_calico_apiserver_img',
+                          'calico_cni_img': 'fake_calico_cni_img',
+                          'calico_csi_img': 'fake_calico_csi_img',
+                          'calico_ctl_img': 'fake_calico_ctl_img',
+                          'calico_dikastes_img': 'fake_calico_dikastes_img',
+                          'calico_envoy_gateway_img': 'fake_calico_envoy_gateway_img',
+                          'calico_envoy_proxy_img': 'fake_calico_envoy_proxy_img',
+                          'calico_goldmane_img': 'fake_calico_goldmane_img',
+                          'calico_kube_controllers_img': 'fake_calico_kube_controllers_img',
+                          'calico_node_driver_registrar_img': 'fake_calico_node_driver_registrar_img',
+                          'calico_node_img': 'fake_calico_node_img',
+                          'calico_pod2daemon_flexvol_img': 'fake_calico_pod2daemon_flexvol_img',
+                          'calico_typha_img': 'fake_calico_typha_img',
+                          'calico_whisker_backend_img': 'fake_calico_whisker_backend_img',
+                          'calico_whisker_img': 'fake_calico_whisker_img',
+                          'multus_img': 'fake_multus_img',
+                          'sriov_cni_img': 'fake_sriov_cni_img',
+                          'sriov_network_device_img': 'fake_sriov_network_device_img',
+                          'tigera_operator_img': 'fake_tigera_operator_img'}
+
         image_download_result = True
         upgrade_overrides_file_exists = True
         upgrade_overrides = {
@@ -3625,12 +3666,25 @@ class ManagerTestCase(base.DbTestCase):
 
         FROM_VERSION = 'v1.29.2'
         TO_VERSION = 'v1.30.6'
-        network_images = {'calico_cni_img': 'fake_calico_cni_img',
-                           'calico_node_img': 'fake_calico_node_img',
-                           'calico_kube_controllers_img': 'fake_calico_kube_controllers_img',
-                           'multus_img': 'fake_multus_img',
-                           'sriov_cni_img': 'fake_sriov_cni_img',
-                           'sriov_network_device_img': 'fake_sriov_network_device_img'}
+        network_images = {'calico_apiserver_img': 'fake_calico_apiserver_img',
+                          'calico_cni_img': 'fake_calico_cni_img',
+                          'calico_csi_img': 'fake_calico_csi_img',
+                          'calico_ctl_img': 'fake_calico_ctl_img',
+                          'calico_dikastes_img': 'fake_calico_dikastes_img',
+                          'calico_envoy_gateway_img': 'fake_calico_envoy_gateway_img',
+                          'calico_envoy_proxy_img': 'fake_calico_envoy_proxy_img',
+                          'calico_goldmane_img': 'fake_calico_goldmane_img',
+                          'calico_kube_controllers_img': 'fake_calico_kube_controllers_img',
+                          'calico_node_driver_registrar_img': 'fake_calico_node_driver_registrar_img',
+                          'calico_node_img': 'fake_calico_node_img',
+                          'calico_pod2daemon_flexvol_img': 'fake_calico_pod2daemon_flexvol_img',
+                          'calico_typha_img': 'fake_calico_typha_img',
+                          'calico_whisker_backend_img': 'fake_calico_whisker_backend_img',
+                          'calico_whisker_img': 'fake_calico_whisker_img',
+                          'multus_img': 'fake_multus_img',
+                          'sriov_cni_img': 'fake_sriov_cni_img',
+                          'sriov_network_device_img': 'fake_sriov_network_device_img',
+                          'tigera_operator_img': 'fake_tigera_operator_img'}
         image_download_result = True
         upgrade_overrides_file_exists = True
         upgrade_overrides = {"cluster_pod_subnet": "172.16.0.0/16",
@@ -4318,13 +4372,27 @@ class ManagerTestCase(base.DbTestCase):
         FAKE_AUTH = "fake_username:fake_password"
 
         FAKE_IMAGES = {
+            'calico_apiserver_img': 'img7',
             'calico_cni_img': 'img1',
-            'calico_node_img': 'img2',
+            'calico_csi_img': 'img8',
+            'calico_ctl_img': 'img9',
+            'calico_dikastes_img': 'img10',
+            'calico_envoy_gateway_img': 'img11',
+            'calico_envoy_proxy_img': 'img12',
+            'calico_goldmane_img': 'img13',
             'calico_kube_controllers_img': 'img3',
+            'calico_node_driver_registrar_img': 'img14',
+            'calico_node_img': 'img2',
+            'calico_pod2daemon_flexvol_img': 'img15',
+            'calico_typha_img': 'img16',
+            'calico_whisker_backend_img': 'img17',
+            'calico_whisker_img': 'img18',
             'multus_img': 'img4',
             'sriov_cni_img': 'img5',
             'sriov_network_device_img': 'img6',
+            'tigera_operator_img': 'img19',
         }
+
         FAKE_IMAGE_LIST = list(FAKE_IMAGES.values())
 
         with mock.patch(
@@ -4482,12 +4550,25 @@ class ManagerTestCase(base.DbTestCase):
 
         # Proper image mocking (CRITICAL FIX)
         FAKE_IMAGES = {
+            'calico_apiserver_img': 'img7',
             'calico_cni_img': 'img1',
-            'calico_node_img': 'img2',
+            'calico_csi_img': 'img8',
+            'calico_ctl_img': 'img9',
+            'calico_dikastes_img': 'img10',
+            'calico_envoy_gateway_img': 'img11',
+            'calico_envoy_proxy_img': 'img12',
+            'calico_goldmane_img': 'img13',
             'calico_kube_controllers_img': 'img3',
+            'calico_node_driver_registrar_img': 'img14',
+            'calico_node_img': 'img2',
+            'calico_pod2daemon_flexvol_img': 'img15',
+            'calico_typha_img': 'img16',
+            'calico_whisker_backend_img': 'img17',
+            'calico_whisker_img': 'img18',
             'multus_img': 'img4',
             'sriov_cni_img': 'img5',
             'sriov_network_device_img': 'img6',
+            'tigera_operator_img': 'img19',
         }
         FAKE_IMAGE_LIST = list(FAKE_IMAGES.values())
 
