@@ -139,7 +139,9 @@ from sysinv.objects import kube_app as kubeapp_obj
 from sysinv.puppet import common as puppet_common
 from sysinv.puppet import puppet
 from sysinv.puppet import interface as pinterface
+from sysinv.helm import common as helm_common
 from sysinv.helm import helm
+from sysinv.helm import utils as helm_utils
 from sysinv.helm.flux import FluxDeploymentManager
 from sysinv.helm.lifecycle_constants import LifecycleConstants
 from sysinv.helm.lifecycle_hook import LifecycleHookInfo
@@ -408,6 +410,7 @@ class ConductorManager(service.PeriodicService):
 
         self._initialize_backup_actions_log()
         self._app_alarm_audit_counter = 0  # Counter for alarm audit frequency
+        self._unused_helm_charts_audit_counter = 0  # Counter for helm chart cleanup frequency
         self._k8s_upgrade_downloading_images_on_inactive_controller = False
         self._app_operations_audit_thread = None
 
@@ -8878,6 +8881,86 @@ class ConductorManager(service.PeriodicService):
 
             time.sleep(1)
 
+    def delete_unused_helm_charts(self, context):
+        """Remove helm charts not in use by any active application.
+
+        This method iterates through all helm repositories defined by
+        HELM_SUPPORTED_REPOS, collects the chart files (.tgz) in each repo,
+        determines which charts are currently in use by active applications,
+        and deletes any chart files that are not referenced by any active app.
+        After deletion, each modified repository is re-indexed.
+
+        :param context: request context.
+        """
+
+        def get_chart_locations(db_app):
+            """Get filesystem locations for all charts of an app."""
+            locations = set()
+            try:
+                app = self._app.Application(db_app)
+                app_charts = self._app._get_list_of_charts(app, include_disabled=True)
+                for chart in app_charts:
+                    if chart.filesystem_location:
+                        locations.add(chart.filesystem_location)
+            except Exception as e:
+                LOG.warning(f"Failed to get charts for app {db_app.name}: {e}")
+            return locations
+
+        LOG.info("Looking for unused helm charts from repositories.")
+
+        # Collect all chart filesystem locations in use by active applications
+        charts_in_use = set()
+        try:
+            active_apps = self.dbapi.kube_app_get_all()
+            if not active_apps:
+                LOG.error("No active applications found during Helm repo auditing. "
+                          "Critical apps should be available. Skipping chart clean-up.")
+                return
+        except Exception as e:
+            LOG.error(f"Failed to retrieve applications: {e}")
+            return
+
+        core_count = cutils.get_platform_core_count(self.dbapi)
+        with ThreadPoolExecutor(max_workers=core_count) as executor:
+            results = executor.map(get_chart_locations, active_apps)
+            for locations in results:
+                charts_in_use.update(locations)
+
+        LOG.debug(f"Found {len(charts_in_use)} chart files in use by active applications.")
+
+        # Iterate through each supported helm repository and remove
+        # chart files that are not in use
+        repos_modified = set()
+        for repo_name in helm_common.HELM_SUPPORTED_REPOS:
+            repo_path = os.path.join(helm_common.HELM_REPO_BASE_PATH, repo_name)
+            if not os.path.isdir(repo_path):
+                LOG.debug(f"Repository path {repo_path} does not exist, skipping.")
+                continue
+
+            for filename in os.listdir(repo_path):
+                if not filename.endswith('.tgz'):
+                    continue
+
+                chart_file_path = os.path.join(repo_path, filename)
+                if chart_file_path not in charts_in_use:
+                    try:
+                        os.remove(chart_file_path)
+                        LOG.info(f"Removed unused chart: {chart_file_path}")
+                        repos_modified.add(repo_path)
+                    except OSError as e:
+                        LOG.error(f"Failed to remove chart {chart_file_path}: {e}")
+
+        if repos_modified:
+            # Re-index any repositories that had charts removed
+            for repo_path in repos_modified:
+                try:
+                    helm_utils.index_repo(repo_path)
+                    LOG.info(f"Re-indexed Helm repository: {repo_path}")
+                except Exception as e:
+                    LOG.error(f"Failed to re-index Helm repository {repo_path}: {e}")
+        else:
+            LOG.info("No unused Helm charts found to remove.")
+
     def _audit_application_alarms(self):
         """Audit and clear outdated alarms for application apply/update progress."""
         # Check for reapply pending alarm to skip audit
@@ -9026,6 +9109,15 @@ class ConductorManager(service.PeriodicService):
             else:
                 # Thread is done, clear it
                 self._app_operations_audit_thread = None
+
+        # Look for unused Helm Charts every 60 iterations (1 hour).
+        # This should be executed when no other application automatic
+        # operations are in progress in order to avoid race conditions
+        # when removing charts from Helm repositories.
+        self._unused_helm_charts_audit_counter += 1
+        if self._unused_helm_charts_audit_counter >= 60:
+            self.delete_unused_helm_charts(context)
+            self._unused_helm_charts_audit_counter = 0
 
         # Initialize app operations audit helper
         operations_audit = app_operations_audit.AppOperationsAudit(

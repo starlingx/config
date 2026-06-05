@@ -11615,6 +11615,268 @@ class ManagerTestCaseInternal(base.BaseHostTestCase):
         self.assertEqual(0, collisions)
 
 
+class TestPeriodicChartCleanup(base.DbTestCase):
+    """Tests for ConductorManager.delete_unused_helm_charts()."""
+
+    def setUp(self):
+        super(TestPeriodicChartCleanup, self).setUp()
+
+        self.service = manager.ConductorManager('test-host', 'test-topic')
+        self.service.dbapi = dbapi.get_instance()
+        self.context = context.get_admin_context()
+        self.system = utils.create_test_isystem()
+        self.service._app = mock.Mock()
+        self.service.fm_api = mock.Mock()
+
+    @mock.patch('sysinv.common.utils.get_platform_core_count', return_value=2)
+    @mock.patch('sysinv.helm.utils.index_repo')
+    @mock.patch('os.remove')
+    @mock.patch('os.listdir')
+    @mock.patch('os.path.isdir')
+    def test_removes_unused_charts(
+            self, mock_isdir, mock_listdir, mock_remove,
+            mock_index_repo, mock_core_count):
+        """Test that charts not in use by any active app are removed."""
+
+        mock_isdir.return_value = True
+        mock_listdir.return_value = [
+            'app-chart-1.0.0.tgz',
+            'app-chart-2.0.0.tgz',
+            'unused-chart-1.0.0.tgz',
+            'index.yaml',
+        ]
+
+        mock_chart_in_use = mock.MagicMock()
+        mock_chart_in_use.filesystem_location = \
+            '/var/www/pages/helm_charts/starlingx/app-chart-1.0.0.tgz'
+
+        mock_chart_in_use_2 = mock.MagicMock()
+        mock_chart_in_use_2.filesystem_location = \
+            '/var/www/pages/helm_charts/starlingx/app-chart-2.0.0.tgz'
+
+        self.service._app._get_list_of_charts.return_value = [
+            mock_chart_in_use, mock_chart_in_use_2
+        ]
+
+        # Create a fake active app in the database
+        mock_db_app = mock.MagicMock()
+        mock_db_app.active = True
+        mock_db_app.name = 'test-app'
+        self.service._app.Application.return_value = mock.MagicMock()
+        self.service.dbapi.kube_app_get_all = mock.MagicMock(
+            return_value=[mock_db_app])
+
+        self.service.delete_unused_helm_charts(self.context)
+
+        # Only unused-chart-1.0.0.tgz should be removed (once per repo)
+        removed_paths = [call[0][0] for call in mock_remove.call_args_list]
+        self.assertIn(
+            '/var/www/pages/helm_charts/starlingx/unused-chart-1.0.0.tgz',
+            removed_paths)
+        self.assertIn(
+            '/var/www/pages/helm_charts/stx-platform/unused-chart-1.0.0.tgz',
+            removed_paths)
+
+        # Charts in use should NOT be removed
+        self.assertNotIn(
+            '/var/www/pages/helm_charts/starlingx/app-chart-1.0.0.tgz',
+            removed_paths)
+        self.assertNotIn(
+            '/var/www/pages/helm_charts/starlingx/app-chart-2.0.0.tgz',
+            removed_paths)
+
+        # index_repo should be called for modified repos
+        self.assertTrue(mock_index_repo.called)
+
+    @mock.patch('sysinv.common.utils.get_platform_core_count', return_value=2)
+    @mock.patch('sysinv.helm.utils.index_repo')
+    @mock.patch('os.remove')
+    @mock.patch('os.listdir')
+    @mock.patch('os.path.isdir')
+    def test_no_removal_needed(
+            self, mock_isdir, mock_listdir, mock_remove,
+            mock_index_repo, mock_core_count):
+        """Test that no charts are removed when all are in use."""
+
+        mock_isdir.return_value = True
+        mock_listdir.return_value = [
+            'app-chart-1.0.0.tgz',
+            'index.yaml',
+        ]
+
+        mock_chart = mock.MagicMock()
+        mock_chart.filesystem_location = \
+            '/var/www/pages/helm_charts/starlingx/app-chart-1.0.0.tgz'
+
+        mock_chart_platform = mock.MagicMock()
+        mock_chart_platform.filesystem_location = \
+            '/var/www/pages/helm_charts/stx-platform/app-chart-1.0.0.tgz'
+
+        self.service._app._get_list_of_charts.return_value = [
+            mock_chart, mock_chart_platform
+        ]
+
+        mock_db_app = mock.MagicMock()
+        mock_db_app.active = True
+        mock_db_app.name = 'test-app'
+        self.service._app.Application.return_value = mock.MagicMock()
+        self.service.dbapi.kube_app_get_all = mock.MagicMock(
+            return_value=[mock_db_app])
+
+        self.service.delete_unused_helm_charts(self.context)
+
+        # No charts should be removed
+        mock_remove.assert_not_called()
+        # No repos should be re-indexed
+        mock_index_repo.assert_not_called()
+
+    @mock.patch('sysinv.common.utils.get_platform_core_count', return_value=2)
+    @mock.patch('sysinv.helm.utils.index_repo')
+    @mock.patch('os.remove')
+    @mock.patch('os.listdir')
+    @mock.patch('os.path.isdir')
+    def test_no_active_apps(
+            self, mock_isdir, mock_listdir, mock_remove,
+            mock_index_repo, mock_core_count):
+        """Test that no active apps were found.
+
+        kube_app_get_all() filters out apps with APP_INACTIVE_STATE at the
+        DB level, so when all apps are inactive the returned list is empty.
+        In this scenario the clean-up should be skipped since the system is
+        supposed to have at least active critical apps.
+        """
+
+        mock_isdir.return_value = True
+        mock_listdir.return_value = [
+            'inactive-chart-1.0.0.tgz',
+            'index.yaml',
+        ]
+
+        # kube_app_get_all filters inactive apps at the DB layer,
+        # so it returns an empty list
+        self.service.dbapi.kube_app_get_all = mock.MagicMock(
+            return_value=[])
+
+        self.service.delete_unused_helm_charts(self.context)
+
+        # No charts should be removed
+        mock_remove.assert_not_called()
+        # No repos should be re-indexed
+        mock_index_repo.assert_not_called()
+
+    @mock.patch('sysinv.common.utils.get_platform_core_count', return_value=2)
+    @mock.patch('sysinv.helm.utils.index_repo')
+    @mock.patch('os.remove')
+    @mock.patch('os.listdir')
+    @mock.patch('os.path.isdir')
+    def test_skips_non_tgz_files(
+            self, mock_isdir, mock_listdir, mock_remove,
+            mock_index_repo, mock_core_count):
+        """Test that non-.tgz files (like index.yaml) are never removed."""
+
+        mock_isdir.return_value = True
+        mock_listdir.return_value = [
+            'index.yaml',
+            'README.md',
+        ]
+
+        self.service._app._get_list_of_charts.return_value = []
+
+        mock_db_app = mock.MagicMock()
+        mock_db_app.active = True
+        mock_db_app.name = 'test-app'
+        self.service._app.Application.return_value = mock.MagicMock()
+        self.service.dbapi.kube_app_get_all = mock.MagicMock(
+            return_value=[mock_db_app])
+
+        self.service.delete_unused_helm_charts(self.context)
+
+        # No files should be removed
+        mock_remove.assert_not_called()
+        mock_index_repo.assert_not_called()
+
+    @mock.patch('sysinv.common.utils.get_platform_core_count', return_value=2)
+    @mock.patch('sysinv.helm.utils.index_repo')
+    @mock.patch('os.remove')
+    @mock.patch('os.listdir')
+    @mock.patch('os.path.isdir')
+    def test_skips_missing_repo_dir(
+            self, mock_isdir, mock_listdir, mock_remove,
+            mock_index_repo, mock_core_count):
+        """Test that missing repo directories are skipped gracefully."""
+
+        mock_isdir.return_value = False
+
+        self.service._app._get_list_of_charts.return_value = []
+
+        mock_db_app = mock.MagicMock()
+        mock_db_app.active = True
+        mock_db_app.name = 'test-app'
+        self.service._app.Application.return_value = mock.MagicMock()
+        self.service.dbapi.kube_app_get_all = mock.MagicMock(
+            return_value=[mock_db_app])
+
+        self.service.delete_unused_helm_charts(self.context)
+
+        # listdir should never be called if dir doesn't exist
+        mock_listdir.assert_not_called()
+        mock_remove.assert_not_called()
+        mock_index_repo.assert_not_called()
+
+    @mock.patch('sysinv.common.utils.get_platform_core_count', return_value=2)
+    @mock.patch('sysinv.helm.utils.index_repo')
+    @mock.patch('os.remove')
+    @mock.patch('os.listdir')
+    @mock.patch('os.path.isdir')
+    def test_handles_remove_failure(
+            self, mock_isdir, mock_listdir, mock_remove,
+            mock_index_repo, mock_core_count):
+        """Test that OSError on remove is handled gracefully."""
+
+        mock_isdir.return_value = True
+        mock_listdir.return_value = ['unused-chart-1.0.0.tgz']
+        mock_remove.side_effect = OSError("Permission denied")
+
+        self.service._app._get_list_of_charts.return_value = []
+
+        mock_db_app = mock.MagicMock()
+        mock_db_app.active = True
+        mock_db_app.name = 'test-app'
+        self.service._app.Application.return_value = mock.MagicMock()
+        self.service.dbapi.kube_app_get_all = mock.MagicMock(
+            return_value=[mock_db_app])
+
+        # Should not raise
+        self.service.delete_unused_helm_charts(self.context)
+
+        # Remove was attempted
+        self.assertTrue(mock_remove.called)
+        # index_repo should not be called since remove failed
+        mock_index_repo.assert_not_called()
+
+    @mock.patch('sysinv.common.utils.get_platform_core_count', return_value=2)
+    @mock.patch('sysinv.helm.utils.index_repo')
+    @mock.patch('os.remove')
+    @mock.patch('os.listdir')
+    @mock.patch('os.path.isdir')
+    def test_handles_get_apps_failure(
+            self, mock_isdir, mock_listdir, mock_remove,
+            mock_index_repo, mock_core_count):
+        """Test that failure to retrieve apps is handled gracefully."""
+
+        self.service.dbapi.kube_app_get_all = mock.MagicMock(
+            side_effect=Exception("DB connection failed"))
+
+        # Should not raise
+        self.service.delete_unused_helm_charts(self.context)
+
+        # Nothing should be removed if we can't get apps
+        mock_isdir.assert_not_called()
+        mock_listdir.assert_not_called()
+        mock_remove.assert_not_called()
+        mock_index_repo.assert_not_called()
+
+
 class TestGetActiveControllerUuid(base.DbTestCase):
     """Tests for ConductorManager._get_active_controller_uuid().
 

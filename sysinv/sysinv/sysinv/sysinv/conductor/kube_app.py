@@ -29,7 +29,6 @@ import threading
 import time
 
 from collections import namedtuple
-from concurrent.futures import ThreadPoolExecutor
 from distutils.util import strtobool
 from distutils.version import LooseVersion
 from eventlet import greenpool
@@ -581,76 +580,6 @@ class AppOperator(object):
     def get_global_namespace(root_kustomization_yaml):
         """ Retrieve the namespace of a top level kustomization """
         return root_kustomization_yaml.get("namespace", constants.FLUXCD_K8S_FALLBACK_NAMESPACE)
-
-    def _get_charts_in_use_except(self, excluded_apps_id_list=None):
-        """ Get all charts currently in use by applications
-
-        :param excluded_apps_id_list: list of application ids that should not
-                                      have their charts included
-        """
-
-        def get_filtered_result(db_app):
-            app = AppOperator.Application(db_app)
-            if excluded_apps_id_list is None or \
-                    (excluded_apps_id_list is not None and app.id not in excluded_apps_id_list):
-                return self._get_list_of_charts(app)
-            else:
-                return []
-
-        # Get the number of platform CPU cores
-        core_count = cutils.get_platform_core_count(self._dbapi)
-
-        db_apps = self._dbapi.kube_app_get_all()
-        with ThreadPoolExecutor(max_workers=core_count) as executor:
-            charts_lists = executor.map(get_filtered_result, db_apps)
-
-            charts_in_use = []
-            for charts_list in charts_lists:
-                charts_in_use.extend(charts_list)
-
-        return charts_in_use
-
-    def _remove_app_charts_from_repo(self, app_id, app_charts):
-        """ Delete application charts from Helm repository
-
-        This takes an application identifier and a list of candidate charts
-        to be removed. Charts are deleted only if they are not in use by any
-        other app.
-
-        Deleting a chart requires the Helm repository to be re-indexed. Deletion
-        and re-indexing must be serialized since Helm needs to read all charts in
-        the repository to update its index file.
-
-        :param app_id: identifier of the application that is having
-                       its charts removed.
-        :param app_charts: charts to be removed
-        """
-
-        chart_files_in_use = {c.filesystem_location for c in
-                              self._get_charts_in_use_except([app_id])}
-        chart_files_to_remove = set()
-        repo_set = set()
-
-        for chart in app_charts:
-            if not chart.filesystem_location:
-                LOG.error("Filesystem location not available for "
-                          "chart {}. Unable to delete from repository."
-                          .format(chart.name))
-            elif chart.filesystem_location not in chart_files_in_use:
-                chart_files_to_remove.add(chart.filesystem_location)
-
-        for chart_file in chart_files_to_remove:
-            try:
-                os.remove(chart_file)
-                LOG.info("Chart {} deleted from repository.".format(chart_file))
-                repo_set.add(os.path.dirname(chart_file))
-            except OSError:
-                LOG.error("Error while removing chart {} from repository".
-                          format(chart_file))
-
-        # Re-index repositories
-        for repo_path in repo_set:
-            helm_utils.index_repo(repo_path)
 
     def _get_image_tags_by_charts_fluxcd(self, app_images_file, manifest, overrides_dir):
         app_imgs = []
@@ -3633,15 +3562,11 @@ class AppOperator(object):
                 else:
                     charts_to_delete.append(from_chart)
 
-            with self._lock:
-                self._remove_app_charts_from_repo(from_app._kube_app.id,
-                                                  charts_to_delete)
-
             self._cleanup(from_app, app_dir=False)
         except Exception as e:
             raise exception.KubeAppCleanupFailure(
                 name=from_app.name,
-                version=from_app.app_version,
+                version=from_app.version,
                 reason=e
             )
 
@@ -3874,10 +3799,6 @@ class AppOperator(object):
             # One last check of app alarm, should be no-op unless the
             # user deletes the application following an upload failure.
             self._clear_app_alarm(app.name)
-
-            # Remove charts from Helm repository
-            with self._lock:
-                self._remove_app_charts_from_repo(app._kube_app.id, app.charts)
 
             LOG.info("Application (%s) has been purged from the system." %
                      app.name)
