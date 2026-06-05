@@ -1,4 +1,4 @@
-# Copyright (c) 2015-2024 Wind River Systems, Inc.
+# Copyright (c) 2015-2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -9,7 +9,6 @@ from pecan import rest
 import wsme
 from wsme import types as wtypes
 import wsmeext.pecan as wsme_pecan
-from ast import literal_eval
 
 from oslo_log import log
 from sysinv._i18n import _
@@ -328,38 +327,12 @@ class PCIDeviceController(rest.RestController):
 
         sriov_update = _check_device_sriov(device.as_dict(), host)
 
-        if not rpc_device['extra_info']:
-            extra_info = dict()
-        else:
-            extra_info = literal_eval(rpc_device['extra_info'])
-
-        update_extra = False
         for field in objects.pci_device.fields:
             value = getattr(device, field)
-            if field in ['sriov_vf_driver', 'driver'] and value == 'none':
-                value = None
             # Update fields that have changed
             if rpc_device[field] != value:
                 _check_field(field)
                 rpc_device[field] = value
-
-            if field in ['driver', 'sriov_vf_driver', 'sriov_numvfs']:
-                # Save configured value in extra_info since the field
-                # may get overwritten with temporary value by
-                # concurrent inventory report
-                if field == 'driver':
-                    key = 'expected_driver'
-                elif field == 'sriov_vf_driver':
-                    key = 'expected_vf_driver'
-                else:
-                    key = 'expected_numvfs'
-
-                update_extra = True
-                extra_info.update({key: rpc_device[field]})
-
-        if update_extra:
-            rpc_device['extra_info'] = str(extra_info)
-            LOG.debug("Updated 'extra_info': %s" % rpc_device['extra_info'])
 
         rpc_device.save()
 
@@ -381,7 +354,7 @@ def _check_host(host):
 
 
 def _check_field(field):
-    if field not in ["enabled", "name", "driver", "sriov_numvfs", "sriov_vf_driver"]:
+    if field not in ["enabled", "name"]:
         raise wsme.exc.ClientSideError(_('Modifying %s attribute restricted') % field)
 
 
@@ -404,104 +377,5 @@ def _check_device_sriov(device, host):
                     current_device['driver'], current_device['sriov_numvfs']))
         raise wsme.exc.ClientSideError(msg)
 
-    if (device['pdevice_id'] in dconstants.SRIOV_ENABLED_FEC_DEVICE_IDS and
-            host.invprovision not in [constants.UPGRADING, constants.PROVISIONED]):
-        raise wsme.exc.ClientSideError(_("Cannot configure device %s "
-                    "until host %s is unlocked for the first time." %
-                    (device['uuid'], host.hostname)))
-
-    if (device['pdevice_id'] not in dconstants.SRIOV_ENABLED_FEC_DEVICE_IDS and
-            'sriov_numvfs' in device.keys() and device['sriov_numvfs']):
-        raise wsme.exc.ClientSideError(_("The number of SR-IOV VFs is specified "
-                                         "but the device is not supported for SR-IOV"))
-
-    if (device['pdevice_id'] not in dconstants.SRIOV_ENABLED_FEC_DEVICE_IDS and
-            'sriov_vf_driver' in device.keys() and device['sriov_vf_driver']):
-        raise wsme.exc.ClientSideError(_("The SR-IOV VF driver is specified "
-                                         "but the device is not supported for SR-IOV"))
-
-    if device['pdevice_id'] not in dconstants.SRIOV_ENABLED_FEC_DEVICE_IDS:
-        return sriov_update
-
-    if ('driver' in device.keys() and device['driver']):
-        if (device['driver'] not in
-                dconstants.FPGA_INTEL_5GNR_FEC_PF_VALID_DRIVERS):
-            msg = (_("Value for SR-IOV PF driver must be one of "
-                     "{}").format(', '.join(dconstants.FPGA_INTEL_5GNR_FEC_PF_VALID_DRIVERS)))
-            raise wsme.exc.ClientSideError(msg)
-        elif (device['driver'] == dconstants.FPGA_INTEL_5GNR_FEC_DRIVER_NONE):
-            # If the user desires the FEC driver to be reset to 'none', it is required
-            # that the number of VFs is first set to 0.  This is because in the normal
-            # case of an FEC driver being set to a functional value, puppet ensures
-            # that the device is bound to the appropriate PF driver before the device
-            # is able to be configured with VFs.  This semantic check catches the
-            # opposite case.  We wouldn't be able to set the number of VFs to 0 if the
-            # device was first unbound from a functional driver.
-            current_device = pecan.request.dbapi.pci_device_get(device['pciaddr'],
-                                                                hostid=host['id'])
-            if (current_device['sriov_vf_driver'] is not None or
-                    current_device['sriov_numvfs'] != 0):
-                msg = (_("The SR-IOV VF driver must first be set to {} and "
-                         "the number of VFs set to 0 before setting the PF "
-                         "driver to {}.  Current values: "
-                         "sriov_vf_driver: {}, sriov_numvfs: {}").format(
-                         dconstants.FPGA_INTEL_5GNR_FEC_DRIVER_NONE,
-                         dconstants.FPGA_INTEL_5GNR_FEC_DRIVER_NONE,
-                         current_device['sriov_vf_driver'],
-                         current_device['sriov_numvfs']))
-                raise wsme.exc.ClientSideError(msg)
-            elif (current_device['sriov_vfs_pci_address'].count(',') > 0):
-                # This catches the case of the VF driver and number of VFs being
-                # reset to None/0, but before the information has been reported
-                # to the sysinv conductor.  This is a similar check that is done
-                # when trying to unlock a host before the SR-IOV configuration has
-                # been applied.
-                msg = (_("Expecting number of interface sriov_vfs_pci_address={}. "
-                         "Please wait a few minutes for inventory update and "
-                         "retry host-device-modify.".format(device['sriov_numvfs'])))
-                raise wsme.exc.ClientSideError(msg)
-
-    if 'sriov_numvfs' not in device.keys():
-        raise wsme.exc.ClientSideError(_("The number of SR-IOV VFs must be specified"))
-    else:
-        if ('sriov_vf_driver' in device.keys() and device['sriov_vf_driver'] and
-                device['sriov_vf_driver'] != dconstants.FPGA_INTEL_5GNR_FEC_DRIVER_NONE and
-                device['sriov_numvfs'] is None):
-            raise wsme.exc.ClientSideError(_("Value for number of SR-IOV VFs must be specified."))
-
-        if device['sriov_numvfs'] and device['sriov_numvfs'] < 0:
-            raise wsme.exc.ClientSideError(_("Value for number of SR-IOV VFs must be >= 0."))
-
-        if ('sriov_vf_driver' in device.keys() and device['sriov_vf_driver'] and
-                device['sriov_vf_driver'] != dconstants.FPGA_INTEL_5GNR_FEC_DRIVER_NONE and
-                device['sriov_numvfs'] == 0):
-            raise wsme.exc.ClientSideError(_(
-                "The value for number of SR-IOV VFs must be > 0 "
-                "when the VF driver is {}").format(device['sriov_vf_driver']))
-        if ('driver' in device.keys() and not device['driver'] and
-                device['sriov_numvfs'] > 0):
-            raise wsme.exc.ClientSideError(_(
-                "The SR-IOV PF driver must not be None to set the number of VFs."))
-
-        if 'sriov_totalvfs' in device.keys():
-            if not device['sriov_totalvfs']:
-                raise wsme.exc.ClientSideError(_("SR-IOV cannot be configured on this interface"))
-            if device['sriov_numvfs'] and device['sriov_numvfs'] > device['sriov_totalvfs']:
-                raise wsme.exc.ClientSideError(_(
-                    "The device supports a maximum of %s VFs" % device['sriov_totalvfs']))
-
-    if 'sriov_vf_driver' not in device.keys():
-        raise wsme.exc.ClientSideError(_("The SR-IOV VF driver must be specified"))
-    else:
-        if device['sriov_vf_driver'] is not None:
-            if device['sriov_vf_driver'] not in dconstants.FPGA_INTEL_5GNR_FEC_VF_VALID_DRIVERS:
-                msg = (_("Value for SR-IOV VF driver must be one of "
-                    "{}").format(', '.join(dconstants.FPGA_INTEL_5GNR_FEC_VF_VALID_DRIVERS)))
-                raise wsme.exc.ClientSideError(msg)
-            elif (device['sriov_vf_driver'] == dconstants.FPGA_INTEL_5GNR_FEC_DRIVER_NONE and
-                    device['sriov_numvfs'] != 0):
-                msg = (_("The value for the SR-IOV number of VFs must be 0 when the "
-                         "SR-IOV VF driver is {}".format(device['sriov_vf_driver'])))
-                raise wsme.exc.ClientSideError(msg)
     sriov_update = True
     return sriov_update
