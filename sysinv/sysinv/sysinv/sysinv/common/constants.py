@@ -1649,6 +1649,12 @@ SERVICE_PARAM_NAME_K8S_APPLICATION_AUDIT = 'k8s_application_audit'
 SERVICE_PARAM_NAME_AUTOREAPPLY_APPS_AFTER_APPLY_RUNTIME_MANIFEST = \
     'autoreapply_apps_after_apply_runtime_manifest'
 
+# cgroup v2 parameters
+SERVICE_PARAM_NAME_CGROUP_V2_ENABLED = 'cgroup_v2_enabled'
+SERVICE_PARAM_NAME_KUBELET_CGROUP_DRIVER = 'cgroupDriver'
+CGROUP_DRIVER_SYSTEMD = 'systemd'
+CGROUP_DRIVER_CGROUPFS = 'cgroupfs'
+
 # systemd related
 SYSTEMCTL_PATH = '/usr/bin/systemctl'
 PMON_START_FULL_PATH = '/usr/local/sbin/pmon-start'

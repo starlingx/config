@@ -1183,6 +1183,7 @@ PLATFORM_CONFIG_PARAMETER_OPTIONAL = [
     constants.SERVICE_PARAM_NAME_AUTOREAPPLY_APPS_AFTER_APPLY_RUNTIME_MANIFEST,
     constants.SERVICE_PARAM_NAME_PLATFORM_TLS_MIN_VERSION,
     constants.SERVICE_PARAM_NAME_PLATFORM_TLS_CIPHER_SUITE,
+    constants.SERVICE_PARAM_NAME_CGROUP_V2_ENABLED,
 ]
 
 PLATFORM_CONFIG_PARAMETER_READONLY = [
@@ -1218,6 +1219,8 @@ PLATFORM_CONFIG_PARAMETER_VALIDATOR = {
         _validate_tls_min_version,
     constants.SERVICE_PARAM_NAME_PLATFORM_TLS_CIPHER_SUITE:
         _validate_tls_cipher_suite,
+    constants.SERVICE_PARAM_NAME_CGROUP_V2_ENABLED:
+        _validate_boolean,
 }
 
 PLATFORM_CONFIG_PARAMETER_RESOURCE = {
@@ -1240,7 +1243,9 @@ PLATFORM_CONFIG_PARAMETER_RESOURCE = {
     constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_DATABASE_MAX_OVERFLOW_SIZE:
         'platform::sysinv::custom::params::db_over_size',
     constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_HOST_UNLOCK_BLOCKING_PERIOD:
-        'platform::sysinv::params::host_unlock_blocking_period'
+        'platform::sysinv::params::host_unlock_blocking_period',
+    constants.SERVICE_PARAM_NAME_CGROUP_V2_ENABLED:
+        'platform::params::cgroup_v2_enabled',
 }
 
 IDENTITY_LDAP_PARAMETER_OPTIONAL = [
