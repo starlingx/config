@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2025 Wind River Systems, Inc.
+# Copyright (c) 2013-2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -366,8 +366,7 @@ class PCIOperator(object):
         cmd = ["lspci", "-Dm"]
         # See if the caller wants to limit us to a specific vendor/device.
         if vendor and device:
-            option = "-d " + vendor + ":" + device
-            cmd.append(option)
+            cmd.extend(["-d", vendor + ":" + device])
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
                 universal_newlines=True)
 
