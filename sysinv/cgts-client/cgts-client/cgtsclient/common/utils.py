@@ -397,6 +397,125 @@ def parse_date(string_data):
     return re.sub(pattern, convert_date, string_data)
 
 
+def _truncate_json_str(val, max_len=100):
+    """Truncate valid JSON object strings for table display.
+
+    Truncates values that are valid JSON objects, or long strings
+    containing embedded JSON (name={...} pattern, e.g., Python repr
+    of parameters). Returns unchanged for short or non-JSON values.
+    """
+    if len(val) <= max_len:
+        return val
+    is_json = False
+    if val.startswith('{'):
+        try:
+            json.loads(val)
+            is_json = True
+        except (ValueError, TypeError):
+            pass
+    if not is_json and '={' not in val:
+        return val
+    if not getattr(_truncate_json_str, '_hint_shown', False):
+        print("Note: JSON value truncated. Use --to-json or"
+              " --to-file for full content.", file=sys.stderr)
+        _truncate_json_str._hint_shown = True
+    return val[:max_len] + "..."
+
+
+def truncate_json_for_table(field, max_len=100):
+    """Formatter for print_list: truncates valid JSON object values."""
+    def _formatter(obj):
+        val = str(getattr(obj, field, '') or '')
+        return _truncate_json_str(val, max_len)
+    return _formatter
+
+
+def truncate_json_value(val, max_len=100):
+    """Formatter for print_tuple_list: truncates valid JSON object values."""
+    return _truncate_json_str(str(val or ''), max_len)
+
+
+def _decode_name_value_str(s):
+    """Decode a 'name=value' string where value may be JSON.
+
+    Returns decoded value if JSON, otherwise returns the original string.
+    """
+    if '=' not in s:
+        return s
+    _, val = s.split('=', 1)
+    if val.startswith('{'):
+        try:
+            return json.loads(val)
+        except (ValueError, TypeError):
+            pass
+    return s
+
+
+def _auto_decode_json_values(data):
+    """Recursively decode string values that are valid JSON objects.
+
+    Handles: dicts, lists, and string values starting with '{' that
+    contain valid JSON. Also decodes 'name={...}' strings in lists
+    (e.g., parameters field from ptp-instance-show). Other types
+    (int, bool, plain strings) are passed through unchanged.
+    """
+    if isinstance(data, list):
+        return [_auto_decode_json_values(item) for item in data]
+    if isinstance(data, dict):
+        result = {}
+        for k, v in data.items():
+            if isinstance(v, str) and v.startswith('{'):
+                try:
+                    result[k] = json.loads(v)
+                except (ValueError, TypeError):
+                    result[k] = v
+            elif isinstance(v, str) and '={' in v:
+                result[k] = _decode_name_value_str(v)
+            elif isinstance(v, (dict, list)):
+                result[k] = _auto_decode_json_values(v)
+            else:
+                result[k] = v
+        return result
+    if isinstance(data, str) and '={' in data:
+        return _decode_name_value_str(data)
+    return data
+
+
+def output_as_json(data, args, command_name):
+    """Output data as JSON to stdout or file.
+
+    data -- dict (show) or list of dicts (list command)
+    args -- parsed args (checked for to_json / to_file)
+    command_name -- string for filename generation
+
+    Returns True if JSON output was handled, False otherwise.
+    """
+    to_json = getattr(args, 'to_json', False)
+    to_file = getattr(args, 'to_file', False)
+    if to_json and to_file:
+        raise exc.CommandError(
+            "--to-json and --to-file are mutually exclusive")
+    if not to_json and not to_file:
+        return False
+
+    data = _auto_decode_json_values(data)
+    json_str = json.dumps(data, indent=2)
+
+    if to_json:
+        print(json_str)
+    else:
+        timestamp = datetime.now().strftime('%Y%m%dT%H%M%S')
+        filename = "/tmp/%s_%s.json" % (command_name, timestamp)
+        try:
+            with open(filename, 'w') as f:
+                f.write(json_str)
+        except IOError as e:
+            raise exc.CommandError(
+                "Failed to write file %s: %s" % (filename, e))
+        print("JSON saved to: %s" % filename)
+    return True
+
+
 def print_list(objs, fields, field_labels, formatters=None, sortby=0,
                reversesort=False, no_wrap_fields=None, printer=default_printer,
                output_format=None):

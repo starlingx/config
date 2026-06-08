@@ -16,22 +16,32 @@ from cgtsclient.v1 import ptp_parameter as ptp_parameter_utils
 def _print_ptp_parameter_show(ptp_parameter_obj):
     fields = ['uuid', 'name', 'value', 'created_at', 'updated_at']
     data = [(f, getattr(ptp_parameter_obj, f, '')) for f in fields]
-    utils.print_tuple_list(data)
+    utils.print_tuple_list(data,
+                           formatters={'value': utils.truncate_json_value})
 
 
 @utils.arg('uuid',
            metavar='<uuid>',
            help="UUID of PTP parameter")
+@utils.arg('--to-json', action='store_true', default=False,
+           help='Output in JSON format to stdout')
+@utils.arg('--to-file', action='store_true', default=False,
+           help='Output JSON to auto-generated file in /tmp')
 def do_ptp_parameter_show(cc, args):
     """Show PTP parameter attributes."""
     ptp_parameter = ptp_parameter_utils._find_ptp_parameter(cc, args.uuid)
+    if utils.output_as_json(ptp_parameter._info, args,
+                            'ptp-parameter-show_' + args.uuid):
+        return
     _print_ptp_parameter_show(ptp_parameter)
 
 
 def _print_ptp_parameter_list(ptp_parameter_list):
     fields = ['uuid', 'section', 'name', 'value']
     labels = ['uuid', 'section', 'name', 'value']
-    utils.print_list(ptp_parameter_list, fields, labels)
+    utils.print_list(ptp_parameter_list, fields, labels,
+                     formatters={'value':
+                                 utils.truncate_json_for_table('value')})
 
 
 @utils.arg('--instance',
@@ -42,6 +52,10 @@ def _print_ptp_parameter_list(ptp_parameter_list):
            metavar='<interface>',
            default=None,
            help="Name or UUID of PTP interface")
+@utils.arg('--to-json', action='store_true', default=False,
+           help='Output in JSON format to stdout')
+@utils.arg('--to-file', action='store_true', default=False,
+           help='Output JSON to auto-generated file in /tmp')
 def do_ptp_parameter_list(cc, args):
     """List all PTP parameters, the ones of a specified PTP instance or
        the ones of a specified PTP interface.
@@ -62,6 +76,9 @@ def do_ptp_parameter_list(cc, args):
     else:
         ptp_parameters = cc.ptp_parameter.list()
 
+    if utils.output_as_json([p._info for p in ptp_parameters], args,
+                            'ptp-parameter-list'):
+        return
     _print_ptp_parameter_list(ptp_parameters)
 
 

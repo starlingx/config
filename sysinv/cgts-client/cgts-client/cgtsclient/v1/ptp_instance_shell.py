@@ -21,15 +21,23 @@ def _print_ptp_instance_show(ptp_instance_obj):
     fields = ['uuid', 'name', 'service', 'hostnames', 'parameters',
               'created_at']
     data = [(f, getattr(ptp_instance_obj, f, '')) for f in fields]
-    utils.print_tuple_list(data)
+    utils.print_tuple_list(
+        data, formatters={'parameters': utils.truncate_json_value})
 
 
 @utils.arg('nameoruuid',
            metavar='<name or UUID>',
            help="Name or UUID of PTP instance")
+@utils.arg('--to-json', action='store_true', default=False,
+           help='Output in JSON format to stdout')
+@utils.arg('--to-file', action='store_true', default=False,
+           help='Output JSON to auto-generated file in /tmp')
 def do_ptp_instance_show(cc, args):
     """Show PTP instance attributes."""
     ptp_instance = ptp_instance_utils._find_ptp_instance(cc, args.nameoruuid)
+    if utils.output_as_json(ptp_instance._info, args,
+                            'ptp-instance-show_' + args.nameoruuid):
+        return
     _print_ptp_instance_show(ptp_instance)
 
 
@@ -39,9 +47,16 @@ def _print_ptp_instance_list(ptp_instance_list):
     utils.print_list(ptp_instance_list, fields, field_labels)
 
 
+@utils.arg('--to-json', action='store_true', default=False,
+           help='Output in JSON format to stdout')
+@utils.arg('--to-file', action='store_true', default=False,
+           help='Output JSON to auto-generated file in /tmp')
 def do_ptp_instance_list(cc, args):
     """List all PTP instances."""
     ptp_instances = cc.ptp_instance.list()
+    if utils.output_as_json([i._info for i in ptp_instances], args,
+                            'ptp-instance-list'):
+        return
     _print_ptp_instance_list(ptp_instances)
 
 
@@ -254,10 +269,18 @@ def do_ptp_instance_parameter_delete(cc, args):
 @utils.arg('hostnameorid',
            metavar='<hostname or id>',
            help="Name or ID of host")
+@utils.arg('--to-json', action='store_true', default=False,
+           help='Output in JSON format to stdout')
+@utils.arg('--to-file', action='store_true', default=False,
+           help='Output JSON to auto-generated file in /tmp')
 def do_host_ptp_instance_list(cc, args):
     """List PTP instances on host."""
     ihost = ihost_utils._find_ihost(cc, args.hostnameorid)
     ptp_instances = cc.ptp_instance.list_by_host(ihost.uuid)
+    if utils.output_as_json([i._info for i in ptp_instances], args,
+                            'host-ptp-instance-list_'
+                            + args.hostnameorid):
+        return
     _print_ptp_instance_list(ptp_instances)
 
 

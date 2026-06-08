@@ -19,16 +19,24 @@ def _print_ptp_interface_show(ptp_interface_obj):
     fields = ['uuid', 'name', 'interface_names', 'ptp_instance_name',
               'parameters', 'created_at']
     data = [(f, getattr(ptp_interface_obj, f, '')) for f in fields]
-    utils.print_tuple_list(data)
+    utils.print_tuple_list(
+        data, formatters={'parameters': utils.truncate_json_value})
 
 
 @utils.arg('nameoruuid',
            metavar='<name or UUID>',
            help="Name or UUID of a PTP interface")
+@utils.arg('--to-json', action='store_true', default=False,
+           help='Output in JSON format to stdout')
+@utils.arg('--to-file', action='store_true', default=False,
+           help='Output JSON to auto-generated file in /tmp')
 def do_ptp_interface_show(cc, args):
     """Show PTP interface attributes."""
     ptp_interface = ptp_interface_utils._find_ptp_interface(
         cc, args.nameoruuid)
+    if utils.output_as_json(ptp_interface._info, args,
+                            'ptp-interface-show_' + args.nameoruuid):
+        return
     _print_ptp_interface_show(ptp_interface)
 
 
@@ -38,9 +46,16 @@ def _print_ptp_interface_list(ptp_interface_list):
     utils.print_list(ptp_interface_list, fields, field_labels)
 
 
+@utils.arg('--to-json', action='store_true', default=False,
+           help='Output in JSON format to stdout')
+@utils.arg('--to-file', action='store_true', default=False,
+           help='Output JSON to auto-generated file in /tmp')
 def do_ptp_interface_list(cc, args):
     """List all PTP interfaces."""
     ptp_interfaces = cc.ptp_interface.list()
+    if utils.output_as_json([i._info for i in ptp_interfaces], args,
+                            'ptp-interface-list'):
+        return
     _print_ptp_interface_list(ptp_interfaces)
 
 
@@ -142,6 +157,10 @@ def do_ptp_interface_parameter_delete(cc, args):
            metavar='<interface name or UUID>',
            nargs='?',
            help="Interface name or UUID [OPTIONAL]")
+@utils.arg('--to-json', action='store_true', default=False,
+           help='Output in JSON format to stdout')
+@utils.arg('--to-file', action='store_true', default=False,
+           help='Output JSON to auto-generated file in /tmp')
 def do_host_if_ptp_list(cc, args):
     """List all PTP interfaces on the specified host,
        or a subset of PTP interfaces associated
@@ -153,9 +172,15 @@ def do_host_if_ptp_list(cc, args):
                                                       args.ifnameorid)
         ptp_interfaces = cc.ptp_interface.list_by_interface(
             iinterface.uuid)
-        _print_ptp_interface_list(ptp_interfaces)
     else:
         ptp_interfaces = cc.ptp_interface.list_by_host(ihost.uuid)
+    if utils.output_as_json([i._info for i in ptp_interfaces], args,
+                            'host-if-ptp-list_'
+                            + args.hostnameorid):
+        return
+    if args.ifnameorid:
+        _print_ptp_interface_list(ptp_interfaces)
+    else:
         field_labels = ['uuid', 'ptp_instance_name', 'interface_names']
         fields = ['uuid', 'ptp_instance_name', 'interface_names']
         utils.print_list(ptp_interfaces, fields, field_labels)
