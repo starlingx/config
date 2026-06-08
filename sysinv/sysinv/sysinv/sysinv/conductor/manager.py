@@ -529,8 +529,30 @@ class ConductorManager(service.PeriodicService):
         self._inotify.add_watch(constants.OSTREE_ROOT_FOLDER, watch_flags)
 
     def _get_active_controller_uuid(self):
+        """Get the active controller UUID.
+
+        On first unlock, sysinv-agent writes the platform.conf after
+        obtaining data from the conductor, the DB value is returned
+        directly.
+
+        After that, to support host UUID update, if the platform.conf
+        contains a UUID differs from the database, update the
+        database to match platform.conf.
+        """
         ahost = utils.HostHelper.get_active_controller(self.dbapi)
         if ahost:
+            if tsc.host_uuid and tsc.host_uuid != ahost.uuid:
+                LOG.info("Host UUID mismatch for %s: "
+                         "platform.conf=%s, DB=%s. "
+                         "Updating DB to match platform.conf."
+                         % (ahost.hostname, tsc.host_uuid, ahost.uuid))
+                try:
+                    self.dbapi.ihost_update(ahost.uuid,
+                                            {'uuid': tsc.host_uuid})
+                    return tsc.host_uuid
+                except Exception as e:
+                    LOG.exception("Failed to update host UUID in DB: %s" % e)
+                    raise
             return ahost.uuid
         else:
             return None
