@@ -10930,6 +10930,270 @@ class ManagerTestCase(base.DbTestCase):
         mock_config_update_hosts.assert_not_called()
         mock_config_apply_runtime_manifest.assert_not_called()
 
+    # Calico Operator path tests (k8s >= v1.35.2)
+    def _setup_operator_test_mocks(self, network_images, image_download_result,
+                                   upgrade_overrides_file_exists, upgrade_overrides):
+        """Common mock setup for operator path tests"""
+        mocks = {}
+
+        mocks['sanitize'] = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.manager.ConductorManager.sanitize_kubeadm_configmap',
+                       mocks['sanitize'])
+        p.start().return_value = 0
+        self.addCleanup(p.stop)
+
+        mocks['backup'] = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.manager.ConductorManager.backup_kube_control_plane',
+                       mocks['backup'])
+        p.start()
+        self.addCleanup(p.stop)
+
+        mocks['get_images'] = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.manager.ConductorManager._get_kubernetes_system_images',
+                       mocks['get_images'])
+        p.start().return_value = network_images
+        self.addCleanup(p.stop)
+
+        mocks['download'] = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.conductor.manager.ContainerImageDownloader.'
+            'download_images_from_upstream_to_local_reg_and_crictl',
+            mocks['download'])
+        p.start().return_value = image_download_result
+        self.addCleanup(p.stop)
+
+        p = mock.patch('sysinv.common.utils.get_local_docker_registry_auth', mock.MagicMock())
+        p.start().return_value = {'username': 'fake', 'password': 'fake'}
+        self.addCleanup(p.stop)
+
+        p = mock.patch.object(agent_rpcapi.AgentAPI, 'pull_kubernetes_images', mock.MagicMock())
+        p.start()
+        self.addCleanup(p.stop)
+
+        p = mock.patch('sysinv.common.utils.execute',
+                       mock.MagicMock(return_value=('cni-bin-dir', '')))
+        p.start()
+        self.addCleanup(p.stop)
+
+        p = mock.patch('os.path.exists', mock.MagicMock())
+        p.start().return_value = upgrade_overrides_file_exists
+        self.addCleanup(p.stop)
+
+        p = mock.patch('builtins.open', mock.mock_open())
+        p.start()
+        self.addCleanup(p.stop)
+
+        if cutils.is_debian_bullseye():
+            p = mock.patch('ruamel.yaml.safe_load', mock.MagicMock())
+            p.start().return_value = upgrade_overrides
+            self.addCleanup(p.stop)
+        else:
+            mock_yaml_obj = mock.MagicMock()
+            mock_yaml_obj.load.return_value = upgrade_overrides
+            p = mock.patch('sysinv.conductor.manager.YAML', return_value=mock_yaml_obj)
+            p.start()
+            self.addCleanup(p.stop)
+
+        p = mock.patch('shutil.copy2', mock.MagicMock())
+        p.start()
+        self.addCleanup(p.stop)
+
+        mocks['render'] = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.render_jinja_template_from_file', mocks['render'])
+        p.start().return_value = "fake_rendered_string"
+        self.addCleanup(p.stop)
+
+        mocks['kubectl_apply'] = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.kubectl_apply', mocks['kubectl_apply'])
+        p.start()
+        self.addCleanup(p.stop)
+
+        mocks['os_remove'] = mock.MagicMock()
+        p = mock.patch('os.remove', mocks['os_remove'])
+        p.start()
+        self.addCleanup(p.stop)
+
+        # Initialize _kube
+        if self.service._kube is None:
+            self.service._kube = mock.MagicMock()
+
+        mocks['create_ns'] = mock.MagicMock()
+        p = mock.patch.object(self.service._kube, 'kube_create_namespace', mocks['create_ns'])
+        p.start()
+        self.addCleanup(p.stop)
+
+        mocks['patch_ns'] = mock.MagicMock()
+        p = mock.patch.object(self.service._kube, 'kube_patch_namespace', mocks['patch_ns'])
+        p.start()
+        self.addCleanup(p.stop)
+
+        mocks['copy_secret'] = mock.MagicMock()
+        p = mock.patch.object(self.service._kube, 'kube_copy_secret', mocks['copy_secret'])
+        p.start()
+        self.addCleanup(p.stop)
+
+        captured_calico_ctx = {}
+        orig_gen = self.service._generate_k8s_manifests_and_apply
+
+        def _gen_wrapper(source_template_path, dest_manifest_path, *, is_template=False, values=None):
+            if os.path.basename(str(dest_manifest_path)) == 'update_calico-operator.yaml':
+                captured_calico_ctx['ctx'] = values
+            return orig_gen(source_template_path, dest_manifest_path,
+                            is_template=is_template, values=values)
+
+        p = mock.patch.object(self.service, '_generate_k8s_manifests_and_apply', side_effect=_gen_wrapper)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mocks['captured_ctx'] = captured_calico_ctx
+        return mocks
+
+    def _get_calico_operator_network_images(self):
+        return {'calico_apiserver_img': 'fake_calico_apiserver_img',
+                'calico_cni_img': 'fake_calico_cni_img',
+                'calico_csi_img': 'fake_calico_csi_img',
+                'calico_ctl_img': 'fake_calico_ctl_img',
+                'calico_dikastes_img': 'fake_calico_dikastes_img',
+                'calico_envoy_gateway_img': 'fake_calico_envoy_gateway_img',
+                'calico_envoy_proxy_img': 'fake_calico_envoy_proxy_img',
+                'calico_goldmane_img': 'fake_calico_goldmane_img',
+                'calico_kube_controllers_img': 'fake_calico_kube_controllers_img',
+                'calico_node_driver_registrar_img': 'fake_calico_node_driver_registrar_img',
+                'calico_node_img': 'fake_calico_node_img',
+                'calico_pod2daemon_flexvol_img': 'fake_calico_pod2daemon_flexvol_img',
+                'calico_typha_img': 'fake_calico_typha_img',
+                'calico_whisker_backend_img': 'fake_calico_whisker_backend_img',
+                'calico_whisker_img': 'fake_calico_whisker_img',
+                'multus_img': 'fake_multus_img',
+                'sriov_cni_img': 'fake_sriov_cni_img',
+                'sriov_network_device_img': 'fake_sriov_network_device_img',
+                'tigera_operator_img': 'fake_tigera_operator_img'}
+
+    def test_kube_upgrade_networking_success_calico_operator_ipv4(self):
+        """Test kubernetes networking upgrade with Calico operator (ipv4, >= v1.35.2)"""
+        config_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER, hostname='controller-0',
+            uuid=str(uuid.uuid4()), config_status=None,
+            config_applied=config_uuid, config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        FROM_VERSION = 'v1.34.1'
+        TO_VERSION = 'v1.35.2'
+        upgrade_overrides = {"cluster_pod_subnet": "172.16.0.0/16",
+                             "cluster_host_floating_address": "192.168.206.1",
+                             "cluster_host_node_0_address": "192.168.206.2"}
+
+        utils.create_test_kube_upgrade(from_version=FROM_VERSION, to_version=TO_VERSION,
+                                       state=kubernetes.KUBE_UPGRADING_NETWORKING)
+
+        mocks = self._setup_operator_test_mocks(
+            self._get_calico_operator_network_images(), True, True, upgrade_overrides)
+
+        self.service.kube_upgrade_networking(self.context, TO_VERSION)
+
+        mocks['create_ns'].assert_any_call('calico-system')
+        mocks['create_ns'].assert_any_call('tigera-operator')
+        self.assertEqual(mocks['create_ns'].call_count, 2)
+        mocks['copy_secret'].assert_any_call('registry-local-secret', 'kube-system', 'calico-system')
+        mocks['copy_secret'].assert_any_call('registry-local-secret', 'kube-system', 'tigera-operator')
+        self.assertEqual(mocks['render'].call_count, 6)
+        self.assertEqual(mocks['kubectl_apply'].call_count, 7)
+
+        updated_upgrade = self.dbapi.kube_upgrade_get_one()
+        self.assertEqual(updated_upgrade.state, kubernetes.KUBE_UPGRADED_NETWORKING)
+
+        ctx = mocks['captured_ctx'].get('ctx')
+        self.assertIsNotNone(ctx)
+        self.assertEqual(ctx.get('cluster_network_ipv4'), '172.16.0.0/16')
+        self.assertIsNone(ctx.get('cluster_network_ipv6'))
+        self.assertEqual(ctx.get('tigera_operator_img'), 'fake_tigera_operator_img')
+
+    def test_kube_upgrade_networking_success_calico_operator_ipv6(self):
+        """Test kubernetes networking upgrade with Calico operator (ipv6, >= v1.35.2)"""
+        config_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER, hostname='controller-0',
+            uuid=str(uuid.uuid4()), config_status=None,
+            config_applied=config_uuid, config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        FROM_VERSION = 'v1.34.1'
+        TO_VERSION = 'v1.35.2'
+        upgrade_overrides = {"cluster_pod_subnet": "fd00::/64",
+                             "cluster_host_floating_address": "fd01::1",
+                             "cluster_host_node_0_address": "fd01::2"}
+
+        utils.create_test_kube_upgrade(from_version=FROM_VERSION, to_version=TO_VERSION,
+                                       state=kubernetes.KUBE_UPGRADING_NETWORKING)
+
+        mocks = self._setup_operator_test_mocks(
+            self._get_calico_operator_network_images(), True, True, upgrade_overrides)
+
+        self.service.kube_upgrade_networking(self.context, TO_VERSION)
+
+        mocks['create_ns'].assert_any_call('calico-system')
+        mocks['create_ns'].assert_any_call('tigera-operator')
+        mocks['copy_secret'].assert_any_call('registry-local-secret', 'kube-system', 'calico-system')
+        self.assertEqual(mocks['render'].call_count, 6)
+        self.assertEqual(mocks['kubectl_apply'].call_count, 7)
+
+        updated_upgrade = self.dbapi.kube_upgrade_get_one()
+        self.assertEqual(updated_upgrade.state, kubernetes.KUBE_UPGRADED_NETWORKING)
+
+        ctx = mocks['captured_ctx'].get('ctx')
+        self.assertIsNotNone(ctx)
+        self.assertIsNone(ctx.get('cluster_network_ipv4'))
+        self.assertEqual(ctx.get('cluster_network_ipv6'), 'fd00::/64')
+        self.assertEqual(ctx.get('tigera_operator_img'), 'fake_tigera_operator_img')
+
+    def test_kube_upgrade_networking_success_calico_operator_dual_stack(self):
+        """Test kubernetes networking upgrade with Calico operator (dual-stack, >= v1.35.2)"""
+        config_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER, hostname='controller-0',
+            uuid=str(uuid.uuid4()), config_status=None,
+            config_applied=config_uuid, config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        FROM_VERSION = 'v1.34.1'
+        TO_VERSION = 'v1.35.2'
+        upgrade_overrides = {"cluster_pod_subnet": "172.16.0.0/16,fd00::/64",
+                             "cluster_host_floating_address": "192.168.206.1",
+                             "cluster_host_node_0_address": "192.168.206.2,fd01::2"}
+
+        utils.create_test_kube_upgrade(from_version=FROM_VERSION, to_version=TO_VERSION,
+                                       state=kubernetes.KUBE_UPGRADING_NETWORKING)
+
+        mocks = self._setup_operator_test_mocks(
+            self._get_calico_operator_network_images(), True, True, upgrade_overrides)
+
+        self.service.kube_upgrade_networking(self.context, TO_VERSION)
+
+        mocks['create_ns'].assert_any_call('calico-system')
+        mocks['create_ns'].assert_any_call('tigera-operator')
+        mocks['copy_secret'].assert_any_call('registry-local-secret', 'kube-system', 'calico-system')
+        self.assertEqual(mocks['render'].call_count, 6)
+        self.assertEqual(mocks['kubectl_apply'].call_count, 7)
+
+        updated_upgrade = self.dbapi.kube_upgrade_get_one()
+        self.assertEqual(updated_upgrade.state, kubernetes.KUBE_UPGRADED_NETWORKING)
+
+        ctx = mocks['captured_ctx'].get('ctx')
+        self.assertIsNotNone(ctx)
+        self.assertEqual(ctx.get('cluster_network_ipv4'), '172.16.0.0/16')
+        self.assertEqual(ctx.get('cluster_network_ipv6'), 'fd00::/64')
+        self.assertEqual(ctx.get('tigera_operator_img'), 'fake_tigera_operator_img')
+
 
 class ManagerTestCaseInternal(base.BaseHostTestCase):
     def setUp(self):

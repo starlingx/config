@@ -19577,12 +19577,24 @@ class ConductorManager(service.PeriodicService):
             'cluster_network_ipv4': cluster_network_ipv4,
             'cluster_network_ipv6': cluster_network_ipv6,
             'local_registry': constants.DOCKER_REGISTRY_SERVER,
-            'calico_cni_img': images[CALICO_CNI_IMAGE_KEY],
-            'calico_node_img': images[CALICO_NODE_IMAGE_KEY],
             'controller_0_cluster_host': controller_0_cluster_host,
             'controller_0_cluster_host_secondary': controller_0_cluster_host_secondary,
             'kubelet_cni_bin_dir': constants.KUBELET_CNI_BIN_DIR,
+            'calico_apiserver_img': images[CALICO_APISERVER_KEY],
+            'calico_cni_img': images[CALICO_CNI_IMAGE_KEY],
+            'calico_csi_img': images[CALICO_CSI_KEY],
+            'calico_ctl_img': images[CALICO_CTL_KEY],
+            'calico_dikastes_img': images[CALICO_DIKASTES_KEY],
+            'calico_envoy_gateway_img': images[CALICO_ENVOY_GATEWAY_KEY],
+            'calico_envoy_proxy_img': images[CALICO_ENVOY_PROXY_KEY],
+            'calico_goldmane_img': images[CALICO_GOLDMANE_KEY],
             'calico_kube_controllers_img': images[CALICO_KUBE_CONTROLLERS_KEY],
+            'calico_node_driver_registrar_img': images[CALICO_NODE_DRIVER_REGISTRAR_KEY],
+            'calico_node_img': images[CALICO_NODE_IMAGE_KEY],
+            'calico_pod2daemon_flexvol_img': images[CALICO_POD2DAEMON_FLEXVOL_KEY],
+            'calico_typha_img': images[CALICO_TYPHA_KEY],
+            'calico_whisker_backend_img': images[CALICO_WHISKER_BACKEND_KEY],
+            'calico_whisker_img': images[CALICO_WHISKER_KEY],
             'calico_chain_insert_mode': constants.CALICO_CHAIN_INSERT_MODE,
             'calico_ip4_autodetect_host': (
                 controller_0_cluster_host
@@ -19594,6 +19606,7 @@ class ConductorManager(service.PeriodicService):
                 if netaddr.valid_ipv6(str(controller_0_cluster_host))
                 else (controller_0_cluster_host_secondary or controller_0_cluster_host)
             ),
+            'tigera_operator_img': images[TIGERA_OPERATOR_KEY],
         }
 
         multus_cni_template_variables = {
@@ -19620,27 +19633,221 @@ class ConductorManager(service.PeriodicService):
 
         version_subpath = f"k8s-{kube_version}"
 
-        dispatch_list = [['coredns.yaml.j2', 'update_coredns.yaml', False,
-                          None],
-                         [f"{version_subpath}/calico-cni.yaml.j2", 'update_calico.yaml', True,
-                          calico_cni_template_variables],
-                         [f"{version_subpath}/multus-cni.yaml.j2", 'update_multus.yaml', True,
-                          multus_cni_template_variables],
-                         [f"{version_subpath}/sriov-cni.yaml.j2", 'update_sriov-cni.yaml', True,
-                          sriov_cni_template_variables],
-                         [f"{version_subpath}/sriov-plugin.yaml.j2",
-                          'update_sriovdp-daemonset.yaml', True,
-                          sriov_plugin_template_variables]]
+        # Create namespaces and secrets for Calico operator (k8s >= v1.35.2)
+        if LooseVersion(kube_version) >= LooseVersion('v1.35.2'):
+            try:
+                self._kube.kube_create_namespace('calico-system')
+            except Exception as e:
+                raise exception.SysinvException("Failed to create calico-system "
+                                            "namespace. Details: %s" % str(e))
+            try:
+                self._kube.kube_create_namespace('tigera-operator')
+            except Exception as e:
+                raise exception.SysinvException("Failed to create tigera-operator "
+                                            "namespace. Details: %s" % str(e))
 
-        for data in dispatch_list:
+            # Label namespaces as platform components
+            label_body = {'metadata': {'labels': {'app.starlingx.io/component': 'platform'}}}
+            try:
+                self._kube.kube_patch_namespace('calico-system', label_body)
+            except Exception as e:
+                raise exception.SysinvException("Failed to label platform in calico-system "
+                                            "namespace. Details: %s" % str(e))
+            try:
+                self._kube.kube_patch_namespace('tigera-operator', label_body)
+            except Exception as e:
+                raise exception.SysinvException("Failed to label platform in tigera-operator "
+                                            "namespace. Details: %s" % str(e))
+
+            # Copy registry secret to new namespaces
+            try:
+                self._kube.kube_copy_secret('registry-local-secret', 'kube-system', 'calico-system')
+            except Exception as e:
+                raise exception.SysinvException("Could not copy secret to "
+                                            "calico-system: %s" % str(e))
+            try:
+                self._kube.kube_copy_secret('registry-local-secret', 'kube-system', 'tigera-operator')
+            except Exception as e:
+                raise exception.SysinvException("Could not copy secret to "
+                                            "tigera-operator: %s" % str(e))
+
+            # 1. Create /opt/cni/bin symlink
+            try:
+                cutils.execute('mkdir', '-p', '/opt/cni', run_as_root=True)
+                cutils.execute('ln', '-sf', '/var/opt/cni/bin', '/opt/cni/bin',
+                                run_as_root=True)
+            except Exception as e:
+                raise exception.SysinvException("Could not create "
+                                            "/opt/cni/bin symlink: %s" % str(e))
+
+            # 2. Patch calico-node DaemonSet cni-bin-dir volume hostPath
+            try:
+                stdout, _ = cutils.execute(
+                    'kubectl', f'--kubeconfig={kubernetes.KUBERNETES_ADMIN_CONF}',
+                    '-n', 'kube-system', 'get', 'ds', 'calico-node',
+                    '-o', 'jsonpath={.spec.template.spec.volumes[*].name}',
+                    run_as_root=False)
+                volume_names = stdout.strip().split()
+                if 'cni-bin-dir' not in volume_names:
+                    raise Exception("Volume 'cni-bin-dir' not found in calico-node DaemonSet")
+                idx = volume_names.index('cni-bin-dir')
+                patch_json = ('[{"op":"replace","path":"/spec/template/spec/volumes/%d'
+                              '/hostPath/path","value":"/opt/cni/bin"}]' % idx)
+                cutils.execute(
+                    'kubectl', f'--kubeconfig={kubernetes.KUBERNETES_ADMIN_CONF}',
+                    '-n', 'kube-system', 'patch', 'ds', 'calico-node',
+                    '--type=json', f'-p={patch_json}',
+                    run_as_root=False)
+            except Exception as e:
+                raise exception.SysinvException("Could not patch calico-node "
+                                            "hostPath: %s" % str(e))
+
+            # 3. set FELIX_IPV6SUPPORT based on cluster network configuration
+            felix_ipv6_value = 'true' if cluster_network_ipv6 else 'false'
+            try:
+                cutils.execute(
+                    'bash', '-c',
+                    f"kubectl --kubeconfig={kubernetes.KUBERNETES_ADMIN_CONF} "
+                    f"-n kube-system set env ds/calico-node "
+                    f"--containers=calico-node FELIX_IPV6SUPPORT={felix_ipv6_value}",
+                    run_as_root=False)
+                LOG.info("Set FELIX_IPV6SUPPORT=%s on legacy calico-node." % felix_ipv6_value)
+            except Exception as e:
+                raise exception.SysinvException("Could not set "
+                                            "FELIX_IPV6SUPPORT=%s: %s" % (felix_ipv6_value, e))
+
+            # 4. Remove unsupported env vars from calico-node DaemonSet
+            # CALICO_ROUTER_ID=hash is needed only for IPv6-only (no IPv4 for BGP Router ID)
+            # Must be removed for IPv4-only and dual-stack configurations
+            unsupported_calico_node_envs = ['CALICO_STARTUP_LOGLEVEL', 'NO_DEFAULT_POOLS']
+            if cluster_network_ipv4:
+                unsupported_calico_node_envs.append('CALICO_ROUTER_ID')
+
+            unsupported_envs = {
+                'calico-node': unsupported_calico_node_envs,
+                'install-cni': ['UPDATE_CNI_BINARIES'],
+            }
+
+            for container, env_vars in unsupported_envs.items():
+                try:
+                    env_removals = ' '.join([f'{v}-' for v in env_vars])
+                    cutils.execute(
+                        'bash', '-c',
+                        f"kubectl --kubeconfig={kubernetes.KUBERNETES_ADMIN_CONF} "
+                        f"-n kube-system set env ds/calico-node "
+                        f"--containers={container} {env_removals}",
+                        run_as_root=False)
+                except Exception as e:
+                    raise exception.SysinvException("Could not remove env vars from %s: %s"
+                                % (container, str(e)))
+
+            LOG.info("Calico-node DaemonSet prepared for operator migration.")
+
+            # 5. Restart calico-node to pick up the env changes
+            try:
+                cutils.execute(
+                    'kubectl', f'--kubeconfig={kubernetes.KUBERNETES_ADMIN_CONF}',
+                    'rollout', 'restart', 'ds/calico-node', '-n', 'kube-system',
+                    run_as_root=False)
+                cutils.execute(
+                    'kubectl', f'--kubeconfig={kubernetes.KUBERNETES_ADMIN_CONF}',
+                    'rollout', 'status', 'ds/calico-node', '-n', 'kube-system',
+                    '--timeout=120s', run_as_root=False)
+                LOG.info("Calico-node rollout restart completed.")
+            except Exception as e:
+                raise exception.SysinvException("Could not restart "
+                                            "calico-node: %s" % str(e))
+
+        if LooseVersion(kube_version) >= LooseVersion('v1.35.2'):
+            # Phase 1: Apply operator first
+            calico_entry = [
+                [f"{version_subpath}/calico-operator.yaml.j2",
+                'update_calico-operator.yaml', True, calico_cni_template_variables],
+            ]
+            # Phase 2: Custom resources and felix (applied after operator is ready)
+            calico_cr_entries = [
+                [f"{version_subpath}/calico-felix-config.yaml.j2",
+                'update_calico-felix-config.yaml', True, calico_cni_template_variables],
+                [f"{version_subpath}/calico-custom-resources-update.yaml.j2",
+                'update_calico-custom-resources.yaml', True, calico_cni_template_variables],
+            ]
+        else:
+            calico_entry = [
+                [f"{version_subpath}/calico-cni.yaml.j2",
+                'update_calico.yaml', True, calico_cni_template_variables],
+            ]
+            calico_cr_entries = []
+
+        # Apply coredns + calico operator
+        dispatch_list_phase1 = [['coredns.yaml.j2', 'update_coredns.yaml', False, None],
+                                *calico_entry]
+
+        for data in dispatch_list_phase1:
             source_template_path = os.path.join(full_template_path, data[0])
             dest_manifest_path = os.path.join(kubernetes.KUBERNETES_CONF_DIR, data[1])
             is_template = data[2]
             values = data[3]
             if self._generate_k8s_manifests_and_apply(source_template_path, dest_manifest_path,
-                                                      is_template=is_template, values=values):
+                                                    is_template=is_template, values=values):
                 LOG.info("Kubernetes networking component [%s] upgraded successfully."
-                         % (re.split('update_|\.', data[1])[1]))
+                        % (re.split('update_|\.', data[1])[1]))
+            else:
+                raise exception.SysinvException("Failed to upgrade kubernetes networking "
+                                                "component: [%s]"
+                                                % (re.split('update_|\.', data[1])[1]))
+
+        # Wait for Tigera operator CRDs to be registered (only for operator path)
+        if LooseVersion(kube_version) >= LooseVersion('v1.35.2') and calico_cr_entries:
+            LOG.info("Waiting for Tigera operator CRDs to be registered...")
+            crd_ready = False
+            for attempt in range(30):  # Wait up to 5 minutes (30 x 10s)
+                try:
+                    cutils.execute('kubectl', f'--kubeconfig={kubernetes.KUBERNETES_ADMIN_CONF}',
+                                   'get', 'crd', 'installations.operator.tigera.io',
+                                   run_as_root=False)
+                    crd_ready = True
+                    LOG.info("Tigera operator CRDs are ready.")
+                    break
+                except Exception:
+                    pass
+                time.sleep(10)
+
+            if not crd_ready:
+                raise exception.SysinvException(
+                    "Timed out waiting for Tigera operator CRDs to be registered.")
+
+        # Wait for tigera-operator to be fully ready
+        if LooseVersion(kube_version) >= LooseVersion('v1.35.2'):
+            try:
+                cutils.execute(
+                    'kubectl', f'--kubeconfig={kubernetes.KUBERNETES_ADMIN_CONF}',
+                    'rollout', 'status', 'deploy/tigera-operator',
+                    '-n', 'tigera-operator', '--timeout=120s',
+                    run_as_root=False)
+                LOG.info("Tigera operator is ready.")
+            except Exception as e:
+                raise exception.SysinvException(
+                    "Timed out waiting for tigera-operator: %s" % str(e))
+
+        # Apply calico custom resources + felix + multus + sriov
+        dispatch_list_phase2 = [*calico_cr_entries,
+                                [f"{version_subpath}/multus-cni.yaml.j2", 'update_multus.yaml', True,
+                                multus_cni_template_variables],
+                                [f"{version_subpath}/sriov-cni.yaml.j2", 'update_sriov-cni.yaml', True,
+                                sriov_cni_template_variables],
+                                [f"{version_subpath}/sriov-plugin.yaml.j2",
+                                'update_sriovdp-daemonset.yaml', True,
+                                sriov_plugin_template_variables]]
+
+        for data in dispatch_list_phase2:
+            source_template_path = os.path.join(full_template_path, data[0])
+            dest_manifest_path = os.path.join(kubernetes.KUBERNETES_CONF_DIR, data[1])
+            is_template = data[2]
+            values = data[3]
+            if self._generate_k8s_manifests_and_apply(source_template_path, dest_manifest_path,
+                                                    is_template=is_template, values=values):
+                LOG.info("Kubernetes networking component [%s] upgraded successfully."
+                        % (re.split('update_|\.', data[1])[1]))
             else:
                 raise exception.SysinvException("Failed to upgrade kubernetes networking "
                                                 "component: [%s]"
