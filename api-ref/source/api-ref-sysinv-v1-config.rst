@@ -13694,3 +13694,210 @@ unauthorized (401), forbidden (403), itemNotFound (404)
       "hostname": "controller-0",
       "vim_event": "host-audit",
    }
+
+
+-------------------------
+Helm Charts
+-------------------------
+
+These APIs allow the display, update, and deletion of Helm chart
+overrides for applications managed by the system.
+
+*******************************************
+Lists available charts for an application
+*******************************************
+
+.. rest_method:: GET /v1/helm_charts/?app_name={app_name}
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+computeFault (400, 500, ...), serviceUnavailable (503), badRequest (400),
+unauthorized (401), forbidden (403), badMethod (405), overLimit (413),
+itemNotFound (404)
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "app_name", "query", "xsd:string", "The name of the application."
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "charts", "plain", "xsd:list", "A list of available helm charts for the application."
+   "charts[].name", "plain", "xsd:string", "The name of the helm chart."
+   "charts[].namespaces", "plain", "xsd:list", "The namespaces associated with the chart."
+   "charts[].enabled", "plain", "xsd:list", "The enabled state for each namespace."
+
+::
+
+   {
+      "charts": [
+         {
+            "name": "dex",
+            "namespaces": ["kube-system"],
+            "enabled": ["true"]
+         }
+      ]
+   }
+
+This operation does not accept a request body.
+
+****************************************************
+Shows overrides for a specific chart and namespace
+****************************************************
+
+.. rest_method:: GET /v1/helm_charts/{app_name}?name={chart_name}&namespace={namespace}
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+computeFault (400, 500, ...), serviceUnavailable (503), badRequest (400),
+unauthorized (401), forbidden (403), badMethod (405), overLimit (413),
+itemNotFound (404)
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "app_name", "URI", "xsd:string", "The name of the application."
+   "name", "query", "xsd:string", "The name of the helm chart."
+   "namespace", "query", "xsd:string", "The namespace of the chart overrides."
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "name", "plain", "xsd:string", "The name of the helm chart."
+   "namespace", "plain", "xsd:string", "The namespace of chart overrides."
+   "attributes", "plain", "xsd:string", "Chart attributes in YAML format (e.g. enabled)."
+   "system_overrides", "plain", "xsd:string", "System-generated overrides in YAML format."
+   "user_overrides", "plain", "xsd:string", "User-specified overrides in YAML format."
+   "combined_overrides", "plain", "xsd:string", "Merged system and user overrides in YAML format."
+
+::
+
+   {
+      "name": "dex",
+      "namespace": "kube-system",
+      "attributes": "enabled: true\n",
+      "system_overrides": "replicas: 1\n",
+      "user_overrides": "replicas: 3\n",
+      "combined_overrides": "replicas: 3\n"
+   }
+
+This operation does not accept a request body.
+
+*******************************************
+Updates user overrides for a chart
+*******************************************
+
+.. rest_method:: PATCH /v1/helm_charts/{app_name}?name={chart_name}&namespace={namespace}
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+computeFault (400, 500, ...), serviceUnavailable (503), badRequest (400),
+unauthorized (401), forbidden (403), badMethod (405), overLimit (413),
+itemNotFound (404)
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "app_name", "URI", "xsd:string", "The name of the application."
+   "name", "query", "xsd:string", "The name of the helm chart."
+   "namespace", "query", "xsd:string", "The namespace of the chart overrides."
+   "attributes (Optional)", "plain", "xsd:dictionary", "A dictionary of non-override chart attributes (e.g. enabled)."
+   "flags", "plain", "xsd:dictionary", "A dictionary of boolean flags: ``reuse_values`` (reuse existing user overrides, default false), ``reset_values`` (reset existing user overrides, default true), ``reapply`` (trigger on-demand reapply of the target application, default false), ``reapply_all`` (trigger on-demand reapply of all installed applications, default false). Note: ``reuse_values`` and ``reset_values`` are mutually exclusive. ``reapply`` and ``reapply_all`` are mutually exclusive."
+   "values", "plain", "xsd:dictionary", "A dictionary with override values. Keys: ``files`` (list of YAML override strings), ``set`` (list of key=value override strings)."
+
+**Request body example**
+
+::
+
+   {
+      "flags": {
+         "reuse_values": false,
+         "reset_values": true,
+         "reapply": true,
+         "reapply-all": false
+      },
+      "values": {
+         "files": [],
+         "set": [
+            "test.replication=2"
+         ]
+      },
+      "attributes": {}
+   }
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "name", "plain", "xsd:string", "The name of the helm chart."
+   "namespace", "plain", "xsd:string", "The namespace of chart overrides."
+   "user_overrides (Optional)", "plain", "xsd:string", "The updated user overrides in YAML format."
+   "attributes (Optional)", "plain", "xsd:dictionary", "The updated chart attributes."
+
+**Response body example**
+
+::
+
+   {
+      "name": "dex",
+      "namespace": "kube-system",
+      "user_overrides": "test:\n  replication: 2\n"
+   }
+
+***************************************
+Deletes user overrides for a chart
+***************************************
+
+.. rest_method:: DELETE /v1/helm_charts/{app_name}?name={chart_name}&namespace={namespace}
+
+**Normal response codes**
+
+204
+
+**Error response codes**
+
+computeFault (400, 500, ...), serviceUnavailable (503), badRequest (400),
+unauthorized (401), forbidden (403), badMethod (405), overLimit (413),
+itemNotFound (404)
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "app_name", "URI", "xsd:string", "The name of the application."
+   "name", "query", "xsd:string", "The name of the helm chart."
+   "namespace", "query", "xsd:string", "The namespace of the chart overrides."
+
+This operation does not accept a request body.

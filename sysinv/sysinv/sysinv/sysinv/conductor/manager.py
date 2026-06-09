@@ -9151,46 +9151,39 @@ class ConductorManager(service.PeriodicService):
                     result = False
         return result, successful_executions, failed_executions
 
-    def check_pending_app_reapply(self, context):
+    def can_proceed_with_reapply(self):
+        """
+        Check if the conditions are met to proceed with the reapply of an application.
+        It checks for ongoing restores, upgrades, and software orchestration processes that might
+        interfere with the reapplication.
+        Returns:
+            bool: True if all checks pass and it's safe to proceed with reapplication,
+                  False otherwise.
+        """
+        # Defer application reapply while an restore in progress
         if self._verify_restore_in_progress():
-            LOG.info("Restore in progress - Ignore app reapply checks.")
-            return
+            LOG.warn("Restore in progress - Automatic reapply skipped.")
+            return False
 
         # Defer application reapply while an upgrade is active
         try:
             self.verify_upgrade_not_in_progress()
         except Exception:
-            LOG.info("Upgrade in progress - Ignore app reapply checks")
-            return
+            LOG.warn("Upgrade in progress - Automatic reapply skipped.")
+            return False
 
         # Defer application reapply during update orchestration
         if self._check_software_orchestration_in_progress():
-            LOG.info("Software update orchestration in progress. "
-                     "Ignore app reapply checks.")
-            return
+            LOG.warn("Software update orchestration in progress. "
+                     "Automatic reapply skipped.")
+            return False
 
-        apps = []
-        apps = self.determine_apps_reapply_order(name_only=True, filter_active=False)
-
-        # Pick first app that needs to be re-applied
-        for index, app_name in enumerate(apps):
-            if self._app.needs_reapply(app_name):
-                break
-        else:
-            # No app needs reapply
-            return
+        # Defer application reapply if nodes not in a stable state
         if not self.check_nodes_stable():
-            LOG.info("%s requires re-apply but there are "
-                     "currently node(s) in an unstable state. Will "
-                     "retry on next audit", app_name)
-            return
+            LOG.warn("The nodes are not in a stable state. Automatic reapply skipped.")
+            return False
 
-        self._inner_sync_auto_apply_with_lock(
-            context,
-            app_name,
-            status_constraints=(constants.APP_APPLY_SUCCESS,),
-            is_reapply=True
-        )
+        return True
 
     @cutils.synchronized(LOCK_APP_AUTO_MANAGE)
     def _inner_sync_auto_apply_with_lock(self,
@@ -11251,7 +11244,23 @@ class ConductorManager(service.PeriodicService):
                     self.dbapi)
 
             if service_parameter_value == 'enabled':
-                self.check_pending_app_reapply(context)
+                if self.can_proceed_with_reapply():
+                    # Initialize AppOperationsAudit helper to performs the reapply operation while
+                    # preserving the correct application order and dependency chain. The
+                    # AppOperationsAudit class reapplies applications in parallel whenever possible,
+                    # and sequentially when dependency constraints require it.
+                    operations_audit = app_operations_audit.AppOperationsAudit(
+                        self.dbapi,
+                        context,
+                        self._app,
+                        self.apps_metadata,
+                        self.perform_automatic_operation_in_parallel,
+                        self.execute_automatic_operation_sync
+                    )
+                    # Populate the app statuses
+                    operations_audit.load_app_status()
+                    # Run the reapply sequence
+                    operations_audit.reapply_apps()
             else:
                 LOG.info("Skipping reapply apps after apply runtime manifest because "
                          "service parameter 'autoreapply_apps_after_apply_runtime_manifest' "
@@ -17012,7 +17021,7 @@ class ConductorManager(service.PeriodicService):
 
         return ordered_active_apps
 
-    def evaluate_apps_reapply(self, context, trigger):
+    def evaluate_apps_reapply(self, context, trigger, app_name=None, flag=None):
         """Synchronously, determine whether an application
         re-apply is needed, and if so, raise the re-apply flag.
 
@@ -17030,6 +17039,9 @@ class ConductorManager(service.PeriodicService):
 
         :param context: request context.
         :param trigger: dictionary containing at least the 'type' field
+        :param app_name: optional application name to restrict reapply
+        :param flag: optional flag indicating reapply mode
+                     ('reapply' or 'reapply-all')
 
         """
 
@@ -17059,6 +17071,15 @@ class ConductorManager(service.PeriodicService):
         metadata_map = constants.APP_EVALUATE_REAPPLY_TRIGGER_TO_METADATA_MAP
 
         for app in apps:
+            # For on-demand single-app reapply, skip apps that don't match
+            # the target app_name. When flag is reapply-all, all apps are
+            # evaluated so no filtering is applied.
+            if (
+                flag == constants.HELM_OVERRIDE_UPDATE_WITH_REAPPLY
+                and trigger["type"] == constants.APP_EVALUATE_REAPPLY_TYPE_ON_DEMAND_REAPPLY
+                and app.name != app_name
+            ):
+                continue
             # We need to get an updated app status before moving on. It may have
             # changed during the for loop execution. This avoids race conditions
             # during upgrade activation.
@@ -17150,6 +17171,43 @@ class ConductorManager(service.PeriodicService):
 
                         if allow:
                             self.evaluate_app_reapply(context, app.name)
+
+        if (
+            trigger["type"] == constants.APP_EVALUATE_REAPPLY_TYPE_ON_DEMAND_REAPPLY
+            and flag == constants.HELM_OVERRIDE_UPDATE_WITH_REAPPLY_ALL
+            and self.can_proceed_with_reapply()
+        ):
+            # Initialize app operations audit helper to performs the reapply operation while
+            # preserving the correct application order and dependency chain. The AppOperationsAudit
+            # class reapplies applications in parallel whenever possible, and sequentially when
+            # dependency constraints require it.
+            operations_audit = app_operations_audit.AppOperationsAudit(
+                self.dbapi,
+                context,
+                self._app,
+                self.apps_metadata,
+                self.perform_automatic_operation_in_parallel,
+                self.execute_automatic_operation_sync
+            )
+            # Populate the app statuses
+            operations_audit.load_app_status()
+            # Run the reapply sequence
+            operations_audit.reapply_apps()
+        elif (
+            trigger["type"] == constants.APP_EVALUATE_REAPPLY_TYPE_ON_DEMAND_REAPPLY
+            and flag == constants.HELM_OVERRIDE_UPDATE_WITH_REAPPLY
+            and self.can_proceed_with_reapply()
+        ):
+            if (
+                updated_app.status == constants.APP_APPLY_SUCCESS
+                and self._app.needs_reapply(app_name)
+            ):
+                # Reapply on only targeted app if flag is set to 'reapply'.
+                try:
+                    self._auto_apply_managed_app(context, app_name)
+                except Exception as e:
+                    LOG.exception("Failed to perform on-demand reapply for "
+                                  "application '%s'. Error: %s", app_name, e)
 
     def evaluate_app_reapply(self, context, app_name):
         """Synchronously, determine whether an application

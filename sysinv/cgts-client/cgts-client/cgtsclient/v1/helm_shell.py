@@ -104,6 +104,10 @@ def do_helm_override_delete(cc, args):
 @utils.arg('--reset-values', action='store_true', default=False,
            help='Replace any existing helm chart overrides with the ones '
                 'specified.')
+@utils.arg('--reapply', action='store_true', default=False,
+           help='Call evaluation and reapply only from the target app')
+@utils.arg('--reapply-all', action='store_true', default=False,
+           help='Call evaluation and reapply for all apps installed')
 @utils.arg('--values', metavar='<file_name>', action='append', dest='files',
            default=[],
            help='Specify a YAML file containing helm chart override values. '
@@ -119,10 +123,27 @@ def do_helm_override_update(cc, args):
     app = app_utils._find_app(cc, args.app)
     _find_overrides(cc, app, args.chart, args.namespace)
 
-    # This logic results in similar behaviour to "helm upgrade".
-    flag = 'reset'
-    if args.reuse_values and not args.reset_values:
-        flag = 'reuse'
+    # reset_values and reuse_values are mutually exclusive.
+    if args.reuse_values and args.reset_values:
+        raise exc.CommandError(
+            '--reuse-values and --reset-values cannot both be specified.')
+    # reapply and reapply_all are mutually exclusive.
+    if args.reapply and args.reapply_all:
+        raise exc.CommandError(
+            '--reapply and --reapply-all cannot both be specified.')
+
+    # If neither flag is explicitly set, default to resetting values.
+    # When --reuse-values is specified, existing user overrides are preserved
+    # and new values are merged on top. Otherwise, values are replaced entirely.
+    reuse_values = args.reuse_values
+    reset_values = not reuse_values
+
+    flags = {
+        'reuse_values': reuse_values,
+        'reset_values': reset_values,
+        'reapply': args.reapply,
+        'reapply_all': args.reapply_all
+    }
 
     # Overrides can be specified three different ways.  To preserve helm's
     # behaviour we will process all "--values" files first, then all "--set"
@@ -149,8 +170,25 @@ def do_helm_override_update(cc, args):
     }
 
     chart = cc.helm.update_overrides(args.app, args.chart, args.namespace,
-                                     flag, overrides)
+                                     flags, overrides)
     _print_helm_chart(chart)
+
+    if args.reapply:
+        print(
+            "NOTE: The '--reapply' flag triggers an evaluation of the "
+            "target application for reapply. Reapply will only occur if "
+            "the application has pending override changes and declares "
+            "the 'on-demand-reapply' trigger in its metadata.yaml."
+        )
+
+    if args.reapply_all:
+        print(
+            "NOTE: The '--reapply-all' flag triggers an evaluation of all "
+            "applications currently in 'applied' status. Reapply is not "
+            "guaranteed for every app. Only applications that have pending "
+            "override changes and declare the 'on-demand-reapply' trigger "
+            "in their metadata.yaml will be reapplied."
+        )
 
 
 @utils.arg('app',

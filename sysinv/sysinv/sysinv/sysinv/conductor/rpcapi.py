@@ -1772,16 +1772,21 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.cast(context, self.make_msg('kube_post_application_update',
                                                 k8s_version=k8s_version))
 
-    def evaluate_apps_reapply(self, context, trigger):
+    def evaluate_apps_reapply(self, context, trigger, app_name=None, flag=None):
         """Asynchronously, determine whether an application
         re-apply is needed, and if so, raise the re-apply flag.
 
         :param context: request context.
         :param trigger: dictionary containing at least the 'type' field
+        :param app_name: optional application name to restrict reapply
+        :param flag: optional flag indicating reapply mode
+                     ('reapply' or 'reapply-all')
 
         """
         return self.cast(context, self.make_msg('evaluate_apps_reapply',
-                                                trigger=trigger))
+                                                trigger=trigger,
+                                                app_name=app_name,
+                                                flag=flag))
 
     def mtc_action_apps_semantic_checks(self, context, action):
         """Synchronously, call apps semantic check for maintenance actions.

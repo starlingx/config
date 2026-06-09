@@ -42,7 +42,7 @@ class AppOperationsAudit():  # noqa: H238
         self._execute_automatic_operation_sync = execute_automatic_operation_sync
         self._app_statuses = {}
 
-    def _load_app_status(self):
+    def load_app_status(self):
         """
         Load the status of all managed applications.
 
@@ -61,7 +61,7 @@ class AppOperationsAudit():  # noqa: H238
                 app_statuses[app_name] = app.status
             except exception.KubeAppNotFound:
                 app_statuses[app_name] = constants.APP_NOT_PRESENT
-        return app_statuses
+        self._app_statuses = app_statuses
 
     def upload_missing_apps(self):
         """
@@ -318,7 +318,7 @@ class AppOperationsAudit():  # noqa: H238
               available that are compatible with the k8s version of the platform.
         """
         # Populate the app statuses
-        self._app_statuses = self._load_app_status()
+        self.load_app_status()
         # Perform all automatic operations
         self.upload_missing_apps()
         self.apply_missing_apps()

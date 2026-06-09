@@ -137,11 +137,11 @@ class TestAppOperationsAudit(unittest.TestCase):
         mock_app.status = constants.APP_APPLY_SUCCESS
         self.mock_dbapi.kube_app_get.return_value = mock_app
 
-        result = self.audit._load_app_status()
+        self.audit.load_app_status()
 
-        self.assertEqual(len(result), len(self.audit._managed_apps))
+        self.assertEqual(len(self.audit._app_statuses), len(self.audit._managed_apps))
         for app_name in self.audit._managed_apps:
-            self.assertEqual(result[app_name], constants.APP_APPLY_SUCCESS)
+            self.assertEqual(self.audit._app_statuses[app_name], constants.APP_APPLY_SUCCESS)
 
     def test_load_app_status_some_missing(self):
         """Test loading app status when some apps are missing"""
@@ -155,10 +155,10 @@ class TestAppOperationsAudit(unittest.TestCase):
 
         self.mock_dbapi.kube_app_get.side_effect = mock_get_app
 
-        result = self.audit._load_app_status()
+        self.audit.load_app_status()
 
-        self.assertEqual(result["cert-manager"], constants.APP_APPLY_SUCCESS)
-        self.assertEqual(result["oidc-auth-apps"], constants.APP_NOT_PRESENT)
+        self.assertEqual(self.audit._app_statuses["cert-manager"], constants.APP_APPLY_SUCCESS)
+        self.assertEqual(self.audit._app_statuses["oidc-auth-apps"], constants.APP_NOT_PRESENT)
 
     def test_upload_missing_apps_not_present(self):
         """Test uploading apps that are not present"""
@@ -393,12 +393,10 @@ class TestAppOperationsAudit(unittest.TestCase):
     @patch.object(AppOperationsAudit, 'reapply_apps')
     @patch.object(AppOperationsAudit, 'apply_missing_apps')
     @patch.object(AppOperationsAudit, 'upload_missing_apps')
-    @patch.object(AppOperationsAudit, '_load_app_status')
+    @patch.object(AppOperationsAudit, 'load_app_status')
     def test_trigger_automatic_operations(self, mock_load, mock_upload, mock_apply,
                                           mock_reapply, mock_recover, mock_update):
         """Test trigger_automatic_operations calls all operations in order"""
-        mock_load.return_value = {"cert-manager": constants.APP_APPLY_SUCCESS}
-
         self.audit.trigger_automatic_operations()
 
         # Verify all methods are called
@@ -408,9 +406,6 @@ class TestAppOperationsAudit(unittest.TestCase):
         mock_reapply.assert_called_once()
         mock_recover.assert_called_once()
         mock_update.assert_called_once()
-
-        # Verify _app_statuses is set
-        self.assertEqual(self.audit._app_statuses, {"cert-manager": constants.APP_APPLY_SUCCESS})
 
     def test_apply_missing_apps_with_empty_class_lists(self):
         """Test apply_missing_apps handles empty class lists correctly"""
