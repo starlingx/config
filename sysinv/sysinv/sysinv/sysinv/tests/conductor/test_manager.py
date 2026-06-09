@@ -4394,7 +4394,15 @@ class ManagerTestCase(base.DbTestCase):
             'tigera_operator_img': 'img19',
         }
 
-        FAKE_IMAGE_LIST = list(FAKE_IMAGES.values())
+        # For versions below v1.35.2, only base images are used
+        FAKE_IMAGE_LIST = [
+            FAKE_IMAGES['calico_cni_img'],
+            FAKE_IMAGES['calico_node_img'],
+            FAKE_IMAGES['calico_kube_controllers_img'],
+            FAKE_IMAGES['multus_img'],
+            FAKE_IMAGES['sriov_cni_img'],
+            FAKE_IMAGES['sriov_network_device_img'],
+        ]
 
         with mock.patch(
             'sysinv.conductor.manager.ConductorManager._get_kubernetes_system_images',
@@ -4571,7 +4579,15 @@ class ManagerTestCase(base.DbTestCase):
             'sriov_network_device_img': 'img6',
             'tigera_operator_img': 'img19',
         }
-        FAKE_IMAGE_LIST = list(FAKE_IMAGES.values())
+        # For versions below v1.35.2, only base images are used
+        FAKE_IMAGE_LIST = [
+            FAKE_IMAGES['calico_cni_img'],
+            FAKE_IMAGES['calico_node_img'],
+            FAKE_IMAGES['calico_kube_controllers_img'],
+            FAKE_IMAGES['multus_img'],
+            FAKE_IMAGES['sriov_cni_img'],
+            FAKE_IMAGES['sriov_network_device_img'],
+        ]
 
         with mock.patch(
             'sysinv.conductor.manager.ConductorManager._get_kubernetes_system_images',

@@ -19405,25 +19405,28 @@ class ConductorManager(service.PeriodicService):
 
         try:
             images = self._get_kubernetes_system_images(kube_version)
-            networking_images = [images[CALICO_APISERVER_KEY],
-                                 images[CALICO_CNI_IMAGE_KEY],
-                                 images[CALICO_CSI_KEY],
-                                 images[CALICO_CTL_KEY],
-                                 images[CALICO_DIKASTES_KEY],
-                                 images[CALICO_ENVOY_GATEWAY_KEY],
-                                 images[CALICO_ENVOY_PROXY_KEY],
-                                 images[CALICO_GOLDMANE_KEY],
-                                 images[CALICO_KUBE_CONTROLLERS_KEY],
-                                 images[CALICO_NODE_DRIVER_REGISTRAR_KEY],
+            networking_images = [images[CALICO_CNI_IMAGE_KEY],
                                  images[CALICO_NODE_IMAGE_KEY],
-                                 images[CALICO_POD2DAEMON_FLEXVOL_KEY],
-                                 images[CALICO_TYPHA_KEY],
-                                 images[CALICO_WHISKER_BACKEND_KEY],
-                                 images[CALICO_WHISKER_KEY],
+                                 images[CALICO_KUBE_CONTROLLERS_KEY],
                                  images[MULTUS_KEY],
                                  images[SRIOV_CNI_KEY],
-                                 images[SRIOV_NW_DEVICE_KEY],
-                                 images[TIGERA_OPERATOR_KEY]]
+                                 images[SRIOV_NW_DEVICE_KEY]]
+
+            if LooseVersion(kube_version) >= LooseVersion('v1.35.2'):
+                networking_images.extend([
+                    images[CALICO_APISERVER_KEY],
+                    images[CALICO_CSI_KEY],
+                    images[CALICO_CTL_KEY],
+                    images[CALICO_DIKASTES_KEY],
+                    images[CALICO_ENVOY_GATEWAY_KEY],
+                    images[CALICO_ENVOY_PROXY_KEY],
+                    images[CALICO_GOLDMANE_KEY],
+                    images[CALICO_NODE_DRIVER_REGISTRAR_KEY],
+                    images[CALICO_POD2DAEMON_FLEXVOL_KEY],
+                    images[CALICO_TYPHA_KEY],
+                    images[CALICO_WHISKER_BACKEND_KEY],
+                    images[CALICO_WHISKER_KEY],
+                    images[TIGERA_OPERATOR_KEY]])
 
         except Exception as ex:
             raise exception.SysinvException("Failed to get networking images information. "
