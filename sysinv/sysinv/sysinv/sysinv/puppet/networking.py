@@ -4,9 +4,10 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-import netaddr
 import glob
 import ipaddress
+import json
+import netaddr
 
 from oslo_log import log
 
@@ -454,7 +455,8 @@ class NetworkingPuppet(base.BasePuppet):
                 'ts2phc.pulsewidth': constants.PTP_TS2PHC_PULSEWIDTH_100000000,
                 'leapfile': constants.PTP_LEAPFILE_PATH
             },
-            'synce4l': {}
+            'synce4l': {},
+            'dpll-mgr': {}
         }
 
         default_cmdline_opts = {
@@ -462,6 +464,7 @@ class NetworkingPuppet(base.BasePuppet):
             'phc2sys': '-a -r -R 2 -u 600',
             'ts2phc': '-s nmea',
             'synce4l': '',
+            'dpll-mgr': ''
         }
 
         default_pmc_parameters = {
@@ -612,13 +615,72 @@ class NetworkingPuppet(base.BasePuppet):
         allowed_instance_fields = ['global_parameters', 'interfaces', 'name', 'service',
                                    'cmdline_opts', 'id', 'pmc_gm_settings', 'device_parameters',
                                    'gnss_uart_disable', 'external_source', 'monitoring_parameters',
-                                   'section_parameters']
+                                   'section_parameters', 'config_json']
         for instance_name in ptp_instances:
             instance = ptp_instances[instance_name]
-            pruned_instance = {r: instance[r] for r in allowed_instance_fields}
+            pruned_instance = {r: instance[r] for r in allowed_instance_fields
+                               if r in instance}
             pruned_instance['_name'] = pruned_instance.pop('name')
             ptp_instances[instance_name] = pruned_instance
         return ptp_instances
+
+    def _set_ptp_instance_dpll_mgr_config(self, ptp_config):
+        """Assemble dpll-mgr JSON config from section parameters.
+
+        For each dpll-mgr instance in ptp_config:
+        1. Decode the single config_json row into the full nested config
+        2. Auto-fill missing channels from sibling PTP instances on same host
+        3. Store assembled config as 'config_json' in the instance dict
+        """
+        for instance_name in ptp_config:
+            instance = ptp_config[instance_name]
+            if instance.get('service') != constants.PTP_INSTANCE_TYPE_DPLL_MGR:
+                continue
+
+            dpll_config = {}
+
+            section_params = instance.get('section_parameters', {})
+            if 'config_json' in section_params:
+                for param_dict in section_params['config_json']:
+                    raw_value = param_dict.get('config_json', '')
+                    if isinstance(raw_value, str):
+                        raw_value = raw_value.strip("'")
+                    try:
+                        dpll_config = json.loads(raw_value)
+                    except (json.JSONDecodeError, TypeError):
+                        LOG.error("Failed to decode dpll-mgr config_json "
+                                  "for instance '%s'" % instance_name)
+                section_params.pop('config_json')
+
+            generated_channels = self._generate_dpll_mgr_channels(
+                instance_name, ptp_config)
+            if 'channels' not in dpll_config:
+                dpll_config['channels'] = generated_channels
+            else:
+                for ch_name, ch_val in generated_channels.items():
+                    if ch_name not in dpll_config['channels']:
+                        dpll_config['channels'][ch_name] = ch_val
+
+            instance['config_json'] = dpll_config
+
+    def _generate_dpll_mgr_channels(self, dpll_instance_name, ptp_config):
+        """Auto-generate channels section from sibling PTP instances.
+
+        Maps each sibling instance to its UDS socket path.
+        Channel key = instance name, value = {"call_channel": "uds:<path>"}
+        """
+        channels = {}
+        for name, instance in ptp_config.items():
+            if name == dpll_instance_name:
+                continue
+            service = instance.get('service', '')
+            if service in (constants.PTP_INSTANCE_TYPE_PTP4L,
+                           constants.PTP_INSTANCE_TYPE_PHC2SYS,
+                           constants.PTP_INSTANCE_TYPE_TS2PHC,
+                           constants.PTP_INSTANCE_TYPE_SYNCE4L):
+                uds_path = '/var/run/%s-%s' % (service, name)
+                channels[name] = {'call_channel': 'uds:%s' % uds_path}
+        return channels
 
     def _set_ptp_instance_interfaces(self, host, ptp_instances, ptp_interfaces):
         allowed_interface_fields = ['ifname',
@@ -677,6 +739,7 @@ class NetworkingPuppet(base.BasePuppet):
                 'tx_heartbeat_msec': constants.PTP_SYNCE_TX_HEARTBEAT_MSEC,
                 'rx_heartbeat_msec': constants.PTP_SYNCE_RX_HEARTBEAT_MSEC,
             },
+            'dpll-mgr': {}
         }
         recover_clk_cmd_fmt = 'echo %s 0 > /sys/class/net/%s/device/phy/synce'
         ecc_get_state_cmd_fmt = 'cat /sys/class/net/%s/device/dpll_0_state'
@@ -747,6 +810,7 @@ class NetworkingPuppet(base.BasePuppet):
                 'locked_to_holdover_threshold_seconds': constants.PTP_MONITORING_LOCKED_TO_HOLDOVER_THRESHOLD_SECONDS
             },
             'synce4l': {},  # No default monitoring parameters for synce4l
+            'dpll-mgr': {}
         }
         for instance_name in ptp_instances:
             instance = ptp_instances[instance_name]
@@ -1005,6 +1069,7 @@ class NetworkingPuppet(base.BasePuppet):
                                                                      ptp_parameters_interface)
             ptp_config = self._set_ptp_instance_monitoring_parameters(ptp_config,
                                                                       ptp_parameters_instance)
+            self._set_ptp_instance_dpll_mgr_config(ptp_config)
             ptp_config = self._prune_ptp_config_fields(ptp_config)
         else:
             ptp_config = {}
