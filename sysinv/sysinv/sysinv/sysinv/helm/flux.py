@@ -259,6 +259,97 @@ class FluxDeploymentManager(object):
             LOG.error(f"Multiple Flux charts found in {chart_dir}: {matches}")
             return None
 
+    def deploy_controllers_restore(self, download_images=True):
+        """ Deploy Flux controllers during restore operations.
+
+        In setups with more than 3 nodes, the cluster could be in the
+        PartialDisruption state and the pods may not be rescheduled off of
+        a down node. This method scales down the deployments first via a
+        Helm upgrade with replicas=0, then deploys and upgrades the Helm
+        release to scale them back up.
+
+        See https://bugs.launchpad.net/starlingx/+bug/1893149
+
+        Args:
+            download_images (bool, optional): If True, downloads the required controller images
+                before deployment. Set to False to skip image downloads when they have already
+                been downloaded previously.
+
+        Returns:
+            bool: True if the deploy is successful. False otherwise.
+        """
+
+        LOG.info("Starting Flux controllers deployment (restore mode)")
+
+        k8s_operator = kubernetes.KubeOperator()
+
+        # If no pods exist in the namespace, skip the scale down and
+        # proceed directly to deploy.
+        if not k8s_operator.kube_namespaced_pods_exist(self.conf_dict['fluxcd_namespace']):
+            LOG.info(f"No pods found in namespace {self.conf_dict['fluxcd_namespace']}. "
+                     "Skipping scale down, proceeding with deploy.")
+            return self.deploy_controllers(download_images=download_images)
+
+        # Scale down helm-controller and source-controller to 0 replicas
+        # via Helm upgrade to ensure pods are rescheduled on controller-0.
+        chart_path = self.get_chart_path(BASE_CHART_DIR)
+        if not chart_path:
+            LOG.error("Unable to locate Flux chart for restore scale-down")
+            return False
+
+        overrides = self.generate_overrides()
+
+        LOG.info("Scaling down Flux controllers to 0 replicas via Helm upgrade")
+        try:
+            subprocess.run(
+                ["helm", "upgrade",
+                 "--namespace", self.conf_dict['fluxcd_namespace'],
+                 "--kubeconfig", KUBECONFIG,
+                 "--wait", "--wait-for-jobs",
+                 "--values", "-",
+                 "--set", "helmController.replicas=0",
+                 "--set", "sourceController.replicas=0",
+                 self.conf_dict['flux_helm_release_name'], chart_path],
+                check=True,
+                capture_output=True,
+                text=True,
+                input=overrides,
+            )
+            LOG.info("Flux controllers scaled down to 0 replicas")
+        except subprocess.CalledProcessError as e:
+            LOG.error(f"Failed to scale down Flux controllers: {e.stderr}")
+            return False
+        except Exception as e:
+            LOG.error(f"Error scaling down Flux controllers: {e}")
+            return False
+
+        # Deploy the controllers (will scale back up with default replicas)
+        if not self.deploy_controllers(download_images=download_images):
+            return False
+
+        # Upgrade the Helm release to ensure deployments are fully scaled back up
+        LOG.info("Upgrading Flux controllers for restore over existing deployment")
+        try:
+            subprocess.run(
+                ["helm", "upgrade",
+                 "--namespace", self.conf_dict['fluxcd_namespace'],
+                 "--kubeconfig", KUBECONFIG, "--wait", "--wait-for-jobs",
+                 "--values", "-", self.conf_dict['flux_helm_release_name'], chart_path],
+                check=True,
+                capture_output=True,
+                text=True,
+                input=overrides,
+            )
+            LOG.info("Flux release successfully upgraded for restore")
+        except subprocess.CalledProcessError as e:
+            LOG.error(f"Error while upgrading Flux controllers for restore: {e.stderr}")
+            return False
+        except Exception as e:
+            LOG.error(f"Cannot upgrade Flux controllers for restore: {e}")
+            return False
+
+        return True
+
     def upgrade_controllers(self):
         """ Upgrade Flux controllers via Helm
 
