@@ -19650,7 +19650,15 @@ class ConductorManager(service.PeriodicService):
                                             "namespace. Details: %s" % str(e))
 
             # Label namespaces as platform components
-            label_body = {'metadata': {'labels': {'app.starlingx.io/component': 'platform'}}}
+            label_body = {'metadata': {'labels': {
+                'app.starlingx.io/component': 'platform',
+                'pod-security.kubernetes.io/audit-version': 'latest',
+                'pod-security.kubernetes.io/enforce-version': 'latest',
+                'pod-security.kubernetes.io/warn-version': 'latest',
+                'pod-security.kubernetes.io/audit': 'privileged',
+                'pod-security.kubernetes.io/enforce': 'privileged',
+                'pod-security.kubernetes.io/warn': 'privileged',
+            }}}
             try:
                 self._kube.kube_patch_namespace('calico-system', label_body)
             except Exception as e:
