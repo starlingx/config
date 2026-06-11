@@ -19583,21 +19583,9 @@ class ConductorManager(service.PeriodicService):
             'controller_0_cluster_host': controller_0_cluster_host,
             'controller_0_cluster_host_secondary': controller_0_cluster_host_secondary,
             'kubelet_cni_bin_dir': constants.KUBELET_CNI_BIN_DIR,
-            'calico_apiserver_img': images[CALICO_APISERVER_KEY],
             'calico_cni_img': images[CALICO_CNI_IMAGE_KEY],
-            'calico_csi_img': images[CALICO_CSI_KEY],
-            'calico_ctl_img': images[CALICO_CTL_KEY],
-            'calico_dikastes_img': images[CALICO_DIKASTES_KEY],
-            'calico_envoy_gateway_img': images[CALICO_ENVOY_GATEWAY_KEY],
-            'calico_envoy_proxy_img': images[CALICO_ENVOY_PROXY_KEY],
-            'calico_goldmane_img': images[CALICO_GOLDMANE_KEY],
             'calico_kube_controllers_img': images[CALICO_KUBE_CONTROLLERS_KEY],
-            'calico_node_driver_registrar_img': images[CALICO_NODE_DRIVER_REGISTRAR_KEY],
             'calico_node_img': images[CALICO_NODE_IMAGE_KEY],
-            'calico_pod2daemon_flexvol_img': images[CALICO_POD2DAEMON_FLEXVOL_KEY],
-            'calico_typha_img': images[CALICO_TYPHA_KEY],
-            'calico_whisker_backend_img': images[CALICO_WHISKER_BACKEND_KEY],
-            'calico_whisker_img': images[CALICO_WHISKER_KEY],
             'calico_chain_insert_mode': constants.CALICO_CHAIN_INSERT_MODE,
             'calico_ip4_autodetect_host': (
                 controller_0_cluster_host
@@ -19609,8 +19597,25 @@ class ConductorManager(service.PeriodicService):
                 if netaddr.valid_ipv6(str(controller_0_cluster_host))
                 else (controller_0_cluster_host_secondary or controller_0_cluster_host)
             ),
-            'tigera_operator_img': images[TIGERA_OPERATOR_KEY],
         }
+
+        # Tigera operator images only needed for v1.35.2+
+        if LooseVersion(kube_version) >= LooseVersion('v1.35.2'):
+            calico_cni_template_variables.update({
+                'calico_apiserver_img': images[CALICO_APISERVER_KEY],
+                'calico_csi_img': images[CALICO_CSI_KEY],
+                'calico_ctl_img': images[CALICO_CTL_KEY],
+                'calico_dikastes_img': images[CALICO_DIKASTES_KEY],
+                'calico_envoy_gateway_img': images[CALICO_ENVOY_GATEWAY_KEY],
+                'calico_envoy_proxy_img': images[CALICO_ENVOY_PROXY_KEY],
+                'calico_goldmane_img': images[CALICO_GOLDMANE_KEY],
+                'calico_node_driver_registrar_img': images[CALICO_NODE_DRIVER_REGISTRAR_KEY],
+                'calico_pod2daemon_flexvol_img': images[CALICO_POD2DAEMON_FLEXVOL_KEY],
+                'calico_typha_img': images[CALICO_TYPHA_KEY],
+                'calico_whisker_backend_img': images[CALICO_WHISKER_BACKEND_KEY],
+                'calico_whisker_img': images[CALICO_WHISKER_KEY],
+                'tigera_operator_img': images[TIGERA_OPERATOR_KEY],
+            })
 
         multus_cni_template_variables = {
             'cluster_network_ipv4': cluster_network_ipv4,
