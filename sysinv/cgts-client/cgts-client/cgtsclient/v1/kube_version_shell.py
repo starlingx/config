@@ -10,8 +10,11 @@ from collections import OrderedDict
 
 
 def _print_kube_version_show(kube_version):
-    ordereddata = OrderedDict(sorted(kube_version.to_dict().items(),
-                                     key=lambda t: t[0]))
+    fields_to_hide = ['upgrade_from']
+    ordereddata = OrderedDict(sorted(
+        ((k, v) for k, v in kube_version.to_dict().items()
+         if k not in fields_to_hide),
+        key=lambda t: t[0]))
     utils.print_dict(ordereddata, wrap=72)
 
 

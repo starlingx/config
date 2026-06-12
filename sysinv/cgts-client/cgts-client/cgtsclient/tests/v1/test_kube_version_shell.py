@@ -57,7 +57,7 @@ class KubeVersionTest(test_shell.ShellTest):
         version_results = self.shell("kube-version-show %s" %
                                      fake_version['version'])
         self.assertIn(fake_version['version'], version_results)
-        self.assertIn(str(fake_version['upgrade_from']), version_results)
+        self.assertNotIn('upgrade_from', version_results)
         self.assertIn(str(fake_version['downgrade_to']), version_results)
         self.assertIn(str(fake_version['target']), version_results)
         self.assertIn(fake_version['state'], version_results)
