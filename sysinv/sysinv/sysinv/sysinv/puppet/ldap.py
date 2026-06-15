@@ -211,27 +211,40 @@ class LdapPuppet(base.BasePuppet):
             }
 
         # Rest of the configuration is required only for controller hosts
-        provider_prot = 'ldaps'
-        if utils.is_centos():
-            provider_prot = 'ldap'
-
         if host.hostname == constants.CONTROLLER_0_HOSTNAME:
             server_id = '001'
-            provider_uri = '%s://%s' % (provider_prot, constants.CONTROLLER_1_HOSTNAME)
         elif host.hostname == constants.CONTROLLER_1_HOSTNAME:
             server_id = '002'
-            provider_uri = '%s://%s' % (provider_prot, constants.CONTROLLER_0_HOSTNAME)
         else:
             raise Exception("unknown controller hostname {}".format(
                 host.hostname))
 
-        return {
+        config = {
             'platform::ldap::params::server_id': server_id,
-            'platform::ldap::params::provider_uri': provider_uri,
             'platform::ldap::params::ldapserver_remote': ldapserver_remote,
             'platform::ldap::params::ldapserver_host': ldapserver_host,
             'platform::ldap::params::bind_anonymous': bind_anonymous,
         }
+
+        # On simplex there is no peer controller, so syncrepl is not
+        # needed. Passing empty provider_uri signals puppet to disable
+        # syncrepl in the live cn=config, avoiding a thread that
+        # retries indefinitely and can trigger a crash in slapd on shutdown
+        # (ITS#8901).
+        system = self._get_system()
+        if system.system_mode != constants.SYSTEM_MODE_SIMPLEX:
+            provider_prot = 'ldaps'
+            if host.hostname == constants.CONTROLLER_0_HOSTNAME:
+                provider_uri = '%s://%s' % (
+                    provider_prot, constants.CONTROLLER_1_HOSTNAME)
+            else:
+                provider_uri = '%s://%s' % (
+                    provider_prot, constants.CONTROLLER_0_HOSTNAME)
+            config['platform::ldap::params::provider_uri'] = provider_uri
+        else:
+            config['platform::ldap::params::provider_uri'] = ''
+
+        return config
 
     def get_service_config(self, service):
         configs = self.context.setdefault('_service_configs', {})
