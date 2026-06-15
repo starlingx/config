@@ -48,9 +48,7 @@ class AppUpdateManager:  # noqa: H238
             groups (in order of update priority):
                 - critical
                 - storage + independent_apps
-                - discovery
-                - optional
-                - reporting
+                - discovery + optional + reporting
                 - dependent_apps
             Each application is matched against its current status in the system (successfully
             applied, failed, or uploaded) to determine whether it should be updated, uploaded, or
@@ -82,9 +80,11 @@ class AppUpdateManager:  # noqa: H238
             'storage_and_independent_apps': (
                 class_apps.get('storage', []) + apps_metadata.get('independent_apps', [])
             ),
-            'discovery': class_apps.get('discovery', []),
-            'optional': class_apps.get('optional', []),
-            'reporting': class_apps.get('reporting', []),
+            'discovery_optional_and_reporting': (
+                class_apps.get('discovery', [])
+                + class_apps.get('optional', [])
+                + class_apps.get('reporting', [])
+            ),
             'dependent_apps': apps_metadata.get('dependent_apps', []),
             'unmanaged_apps': apps_metadata.get('unmanaged_apps', set()),
         }

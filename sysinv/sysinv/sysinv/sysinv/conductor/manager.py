@@ -241,6 +241,7 @@ LOCK_APP_AUTO_MANAGE = 'AppAutoManageLock'
 LOCK_IMAGE_PULL = 'image_pull_'
 
 MAX_UPTIME_TO_CLEAR_REBOOT_REQUIRED = 1200
+MAX_APP_OPERATIONS_PER_PLATFORM_CORE = 2
 
 # Keystone users whose passwords change are monitored by keystone listener, and
 # the puppet classes to update the service after the passwords change.
@@ -9168,12 +9169,25 @@ class ConductorManager(service.PeriodicService):
             return False
         return True
 
+    def _get_max_app_operations(self):
+        """Get max-app-operations-per-platform-core service parameter.
+           If not set returns MAX_APP_OPERATIONS_PER_PLATFORM_CORE.
+        """
+        try:
+            param = self.dbapi.service_parameter_get_one(
+                constants.SERVICE_TYPE_PLATFORM,
+                constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG,
+                constants.SERVICE_PARAM_NAME_MAX_APP_OPERATIONS_PER_PLATFORM_CORE).value
+            return int(param)
+        except exception.NotFound:
+            return MAX_APP_OPERATIONS_PER_PLATFORM_CORE
+
     def perform_automatic_operation_in_parallel(self, context, apps, op, **kwargs):
         """
         Perform an automatic operation on a list of applications using a thread pool.
         This method executes the specified operation (`op`) on the provided list of
         applications (`apps`) concurrently, utilizing a thread pool with a number of
-        workers equal to the number of physical CPU cores.
+        workers calculated as: platform_core_count * max_app_operations (service parameter).
         Args:
             context (object): The context object containing runtime information.
             apps (list): A list of application objects to process.
@@ -9189,8 +9203,9 @@ class ConductorManager(service.PeriodicService):
             None. The other two returned values contain the names of the apps with successful and
             failed operations.
         """
-        # Get the number of platform CPU cores
-        core_count = cutils.get_platform_core_count(self.dbapi)
+        available_workers = cutils.get_platform_core_count(self.dbapi) * \
+            self._get_max_app_operations()
+        max_workers = max(1, min(available_workers, len(apps)))
 
         operation_func = {
             constants.APP_APPLY_OP: self._auto_apply_managed_app,
@@ -9206,9 +9221,9 @@ class ConductorManager(service.PeriodicService):
         failed_executions = []
 
         LOG.info(f"Initiating automatic operation '{op}' on {len(apps)} applications: "
-                 f"{', '.join(apps)} using a thread pool with {core_count} workers.")
+                 f"{', '.join(apps)} using a thread pool with {max_workers} workers.")
 
-        with ThreadPoolExecutor(max_workers=core_count) as executor:
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = {
                 executor.submit(operation_func[op], context, app, **kwargs): app
                 for app in apps
