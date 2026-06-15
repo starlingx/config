@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2023-2025 Wind River Systems, Inc.
+# Copyright (c) 2023-2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -1127,6 +1127,54 @@ class TestPatchMixin(object):
             name=constants.SERVICE_PARAM_NAME_DOCKER_NO_PROXY)
 
         self.assertEqual(_get_ip_list([new_floating, new_c0]), no_proxy_entry.value)
+
+    def _setup_storage_pool_missing_controller1(self):
+        """Set up a storage pool with controller1_address = None."""
+        self._set_system_mode(constants.SYSTEM_MODE_DUPLEX)
+        addrpool = self.find_addrpool_by_networktype(constants.NETWORK_TYPE_STORAGE)
+        self.dbapi.address_destroy_by_id(addrpool.controller1_address_id)
+        self.dbapi.address_pool_update(addrpool.uuid, {
+            'controller1_address_id': None
+        })
+        addrpool = self.dbapi.address_pool_get(addrpool.uuid)
+        self.assertIsNone(addrpool.controller1_address_id)
+        return addrpool
+
+    def test_modify_storage_pool_populate_empty_controller1_duplex(self):
+        """Setting controller1_address when None on duplex should succeed."""
+        addrpool = self._setup_storage_pool_missing_controller1()
+        subnet = netaddr.IPNetwork('%s/%s' % (addrpool.network, addrpool.prefix))
+        new_addr = str(subnet[4])
+
+        response = self.patch_success(addrpool, controller1_address=new_addr)
+
+        self.assertIsNotNone(response.json['controller1_address_id'])
+        self.assertEqual(new_addr, response.json['controller1_address'])
+
+    def test_fail_modify_storage_pool_change_existing_controller0_duplex(self):
+        """Changing an existing controller0_address on duplex should fail."""
+        self._set_system_mode(constants.SYSTEM_MODE_DUPLEX)
+        addrpool = self.find_addrpool_by_networktype(constants.NETWORK_TYPE_STORAGE)
+        subnet = netaddr.IPNetwork('%s/%s' % (addrpool.network, addrpool.prefix))
+
+        self.patch_fail(addrpool, http_client.CONFLICT,
+                        controller0_address=str(subnet[-3]))
+
+    def test_fail_modify_storage_pool_non_address_field_duplex(self):
+        """Modifying non-address fields on storage pool should fail."""
+        self._set_system_mode(constants.SYSTEM_MODE_DUPLEX)
+        addrpool = self.find_addrpool_by_networktype(constants.NETWORK_TYPE_STORAGE)
+
+        self.patch_fail(addrpool, http_client.CONFLICT, name='new-name')
+
+    def test_fail_modify_storage_pool_mixed_fields_duplex(self):
+        """Populating controller1 + changing another field should fail."""
+        addrpool = self._setup_storage_pool_missing_controller1()
+        subnet = netaddr.IPNetwork('%s/%s' % (addrpool.network, addrpool.prefix))
+
+        self.patch_fail(addrpool, http_client.CONFLICT,
+                        controller1_address=str(subnet[5]),
+                        name='should-fail')
 
 
 class TestPatchIPv4(TestPatchMixin,
