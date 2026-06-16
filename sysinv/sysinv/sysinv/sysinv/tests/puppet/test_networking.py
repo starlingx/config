@@ -3,13 +3,19 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
+import json
 import uuid
 import os
 import yaml
 
+import mock
 import netaddr
+import testtools
+
 from sysinv.tests.puppet import base
 from sysinv.puppet import puppet
+from sysinv.puppet.networking import NetworkingPuppet
+from sysinv.puppet import quoted_str
 from sysinv.tests.db import base as dbbase
 from sysinv.common import constants
 from sysinv.tests.db import utils as dbutils
@@ -765,3 +771,185 @@ class NetworkingTestTestCaseControllerDualStackIPv6Primary(NetworkingTestCaseMix
                          constants.NETWORK_TYPE_PXEBOOT, constants.NETWORK_TYPE_OAM]:
             self.assertEqual(hiera_data[f'platform::network::{type}::params::interface_address'],
                              hiera_data[f'platform::network::{type}::ipv6::params::interface_address'])
+
+
+class TestDpllMgrHieradata(testtools.TestCase):
+    """Unit tests for dpll-mgr hieradata generation in NetworkingPuppet."""
+
+    def setUp(self):
+        super(TestDpllMgrHieradata, self).setUp()
+        mock_operator = mock.MagicMock()
+        self.networking = NetworkingPuppet(mock_operator)
+
+    def _make_instance(self, name, service, section_params=None):
+        instance = {
+            'name': name,
+            'service': service,
+            'id': 1,
+            'uuid': 'fake-uuid',
+            'global_parameters': {},
+            'cmdline_opts': '',
+            'interfaces': [],
+            'pmc_gm_settings': {},
+            'device_parameters': {},
+            'gnss_uart_disable': True,
+            'external_source': {},
+            'monitoring_parameters': {},
+            'section_parameters': section_params or {}
+        }
+        return instance
+
+    def _make_config_json_section(self, config_dict):
+        """Simulate how section_parameters stores config_json after quoted_str."""
+        raw = json.dumps(config_dict)
+        return {'config_json': [{'config_json': quoted_str(raw)}]}
+
+    def test_dpll_mgr_hieradata_basic(self):
+        """Full config_json decoded into config_json field."""
+        config = {
+            'global': {'poll_interval_ms': 1000},
+            'dpll': {'dpll0': {'name': 'DPLL0_FREQ'}},
+            'ptp': {'ptp_profiles': {}},
+            'synce': {'ql_type': 1},
+            'ql_map': {},
+            'inputs_ql': {}
+        }
+        section_params = self._make_config_json_section(config)
+        ptp_config = {
+            'dpll-0': self._make_instance('dpll-0', 'dpll-mgr', section_params)
+        }
+        self.networking._set_ptp_instance_dpll_mgr_config(ptp_config)
+        result = ptp_config['dpll-0']['config_json']
+        self.assertEqual(result['global']['poll_interval_ms'], 1000)
+        self.assertEqual(result['dpll']['dpll0']['name'], 'DPLL0_FREQ')
+        self.assertEqual(result['synce']['ql_type'], 1)
+
+    def test_dpll_mgr_channels_auto_generated(self):
+        """No user channels → auto-generated from siblings."""
+        config = {'global': {'operation_mode': 'SW_BASED'}}
+        section_params = self._make_config_json_section(config)
+        ptp_config = {
+            'dpll-0': self._make_instance('dpll-0', 'dpll-mgr', section_params),
+            'ptp-fr': self._make_instance('ptp-fr', 'ptp4l'),
+            'phc-0': self._make_instance('phc-0', 'phc2sys')
+        }
+        self.networking._set_ptp_instance_dpll_mgr_config(ptp_config)
+        channels = ptp_config['dpll-0']['config_json']['channels']
+        self.assertEqual(channels['ptp-fr'], {'call_channel': 'uds:/var/run/ptp4l-ptp-fr'})
+        self.assertEqual(channels['phc-0'], {'call_channel': 'uds:/var/run/phc2sys-phc-0'})
+
+    def test_dpll_mgr_channels_user_partial(self):
+        """User provides some channels; missing siblings filled in."""
+        config = {
+            'global': {},
+            'channels': {'my-custom': {'call_channel': 'uds:/custom/path'}}
+        }
+        section_params = self._make_config_json_section(config)
+        ptp_config = {
+            'dpll-0': self._make_instance('dpll-0', 'dpll-mgr', section_params),
+            'ptp-fr': self._make_instance('ptp-fr', 'ptp4l')
+        }
+        self.networking._set_ptp_instance_dpll_mgr_config(ptp_config)
+        channels = ptp_config['dpll-0']['config_json']['channels']
+        self.assertEqual(channels['my-custom'], {'call_channel': 'uds:/custom/path'})
+        self.assertEqual(channels['ptp-fr'], {'call_channel': 'uds:/var/run/ptp4l-ptp-fr'})
+
+    def test_dpll_mgr_channels_user_complete(self):
+        """User provides all channels including sibling name → no override."""
+        config = {
+            'global': {},
+            'channels': {'ptp-fr': {'call_channel': 'uds:/user/override'}}
+        }
+        section_params = self._make_config_json_section(config)
+        ptp_config = {
+            'dpll-0': self._make_instance('dpll-0', 'dpll-mgr', section_params),
+            'ptp-fr': self._make_instance('ptp-fr', 'ptp4l')
+        }
+        self.networking._set_ptp_instance_dpll_mgr_config(ptp_config)
+        channels = ptp_config['dpll-0']['config_json']['channels']
+        self.assertEqual(channels['ptp-fr'], {'call_channel': 'uds:/user/override'})
+
+    def test_dpll_mgr_channels_excludes_self(self):
+        """dpll-mgr not in its own channels."""
+        ptp_config = {
+            'dpll-0': self._make_instance('dpll-0', 'dpll-mgr'),
+            'ptp-fr': self._make_instance('ptp-fr', 'ptp4l')
+        }
+        channels = self.networking._generate_dpll_mgr_channels('dpll-0', ptp_config)
+        self.assertNotIn('dpll-0', channels)
+        self.assertIn('ptp-fr', channels)
+
+    def test_dpll_mgr_channels_all_service_types(self):
+        """All supported service types generate correct UDS paths."""
+        ptp_config = {
+            'dpll-0': self._make_instance('dpll-0', 'dpll-mgr'),
+            'p4l': self._make_instance('p4l', 'ptp4l'),
+            'phc': self._make_instance('phc', 'phc2sys'),
+            'ts2': self._make_instance('ts2', 'ts2phc'),
+            'syn': self._make_instance('syn', 'synce4l')
+        }
+        channels = self.networking._generate_dpll_mgr_channels('dpll-0', ptp_config)
+        self.assertEqual(channels['p4l'], {'call_channel': 'uds:/var/run/ptp4l-p4l'})
+        self.assertEqual(channels['phc'], {'call_channel': 'uds:/var/run/phc2sys-phc'})
+        self.assertEqual(channels['ts2'], {'call_channel': 'uds:/var/run/ts2phc-ts2'})
+        self.assertEqual(channels['syn'], {'call_channel': 'uds:/var/run/synce4l-syn'})
+
+    def test_dpll_mgr_bad_json_logged(self):
+        """Malformed JSON → error logged, config_json has auto channels only."""
+        section_params = {'config_json': [{'config_json': 'not valid json{{{'}]}
+        ptp_config = {
+            'dpll-0': self._make_instance('dpll-0', 'dpll-mgr', section_params),
+            'ptp-fr': self._make_instance('ptp-fr', 'ptp4l')
+        }
+        with mock.patch('sysinv.puppet.networking.LOG') as mock_log:
+            self.networking._set_ptp_instance_dpll_mgr_config(ptp_config)
+            mock_log.error.assert_called_once()
+        result = ptp_config['dpll-0']['config_json']
+        self.assertIn('ptp-fr', result['channels'])
+
+    def test_dpll_mgr_empty_config(self):
+        """No config_json parameter → empty dict with auto channels."""
+        ptp_config = {
+            'dpll-0': self._make_instance('dpll-0', 'dpll-mgr'),
+            'ptp-fr': self._make_instance('ptp-fr', 'ptp4l')
+        }
+        self.networking._set_ptp_instance_dpll_mgr_config(ptp_config)
+        result = ptp_config['dpll-0']['config_json']
+        self.assertEqual(result, {'channels': {'ptp-fr': {'call_channel': 'uds:/var/run/ptp4l-ptp-fr'}}})
+
+    def test_dpll_mgr_quoted_str_stripped(self):
+        """quoted_str wrapping is stripped before JSON decode."""
+        raw_json = json.dumps({'global': {'log_level': 'INFO'}})
+        # Simulate quoted_str adding single quotes
+        wrapped = "'" + raw_json + "'"
+        section_params = {'config_json': [{'config_json': wrapped}]}
+        ptp_config = {
+            'dpll-0': self._make_instance('dpll-0', 'dpll-mgr', section_params)
+        }
+        self.networking._set_ptp_instance_dpll_mgr_config(ptp_config)
+        self.assertEqual(ptp_config['dpll-0']['config_json']['global']['log_level'], 'INFO')
+
+    def test_dpll_mgr_prune_keeps_config_json(self):
+        """_prune_ptp_config_fields preserves config_json field."""
+        instance = self._make_instance('dpll-0', 'dpll-mgr')
+        instance['config_json'] = {'global': {'test': True}}
+        ptp_config = {'dpll-0': instance}
+        result = self.networking._prune_ptp_config_fields(ptp_config)
+        self.assertIn('config_json', result['dpll-0'])
+        self.assertEqual(result['dpll-0']['config_json']['global']['test'], True)
+
+    def test_non_dpll_mgr_unaffected(self):
+        """ptp4l instances don't get config_json key."""
+        ptp_config = {
+            'dpll-0': self._make_instance('dpll-0', 'dpll-mgr'),
+            'ptp-fr': self._make_instance('ptp-fr', 'ptp4l')
+        }
+        self.networking._set_ptp_instance_dpll_mgr_config(ptp_config)
+        self.assertNotIn('config_json', ptp_config['ptp-fr'])
+
+    def test_prune_no_config_json_for_ptp4l(self):
+        """_prune_ptp_config_fields doesn't add config_json to ptp4l."""
+        instance = self._make_instance('ptp-fr', 'ptp4l')
+        ptp_config = {'ptp-fr': instance}
+        result = self.networking._prune_ptp_config_fields(ptp_config)
+        self.assertNotIn('config_json', result['ptp-fr'])
