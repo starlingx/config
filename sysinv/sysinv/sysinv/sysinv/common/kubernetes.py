@@ -621,13 +621,15 @@ def get_installed_kube_versions():
     return kube_versions
 
 
-def get_k8s_images(kube_version):
+def get_k8s_images(kube_version, include_all=False):
     """Provides a list of images for a kubernetes version.
 
     Excludes etcd container images since etcd runs as a bare metal service
     and does not use the container image reported by kubeadm.
 
     :param: kube_version: kubernetes version string.
+    :param: include_all: If True, include all kubeadm images;
+            if False, exclude bare-metal services that do not require an image
     :returns: nested dictionary component name as a key and upstream (public) image name:tag as
               value.
               e.g. {'kube-apiserver': 'registry.k8s.io/kube-apiserver:v1.29.2',
@@ -638,7 +640,7 @@ def get_k8s_images(kube_version):
                     'pause': 'registry.k8s.io/pause:3.9'}
     """
     # etcd runs as a bare metal service; its container image from kubeadm is unused.
-    EXCLUDED_IMAGES = {'etcd'}
+    EXCLUDED_IMAGES = set() if include_all else {'etcd'}
 
     try:
         kubeadm_path = constants.KUBEADM_PATH_FORMAT_STR.format(kubeadm_ver=kube_version)

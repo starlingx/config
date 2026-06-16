@@ -19159,11 +19159,14 @@ class ConductorManager(service.PeriodicService):
         # Upgrade etcd binary and control-plane
         kube_host_upgrade_obj.status = kubernetes.KUBE_HOST_UPGRADING_ETCD
         kube_host_upgrade_obj.save()
-        target_etcd_version = etcd.get_max_etcd_version()
+        # Determines the etcd version by querying the current kubernetes
+        # version and its associated etcd image version, then selecting
+        # the highest installed etcd version matching that major.minor.
+        supported_etcd_version = etcd.get_supported_etcd_version(target_version)
         try:
             agent_api = agent_rpcapi.AgentAPI()
             agent_api.kube_upgrade_control_plane(
-                    context, host_uuid, target_etcd_version, target_version, is_first)
+                    context, host_uuid, supported_etcd_version, target_version, is_first)
         except Exception as ex:
             # Handle unexpected exception
             LOG.exception("Kubernetes control-plane upgrade for host %s failed. Error: [%s]"

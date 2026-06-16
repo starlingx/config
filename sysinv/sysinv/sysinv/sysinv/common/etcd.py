@@ -181,6 +181,60 @@ def get_max_etcd_version():
     return etcd_version
 
 
+def get_supported_etcd_version(target_kube_version=None):
+    """Retrieve the supported etcd version for a given kubernetes version.
+
+    Determines the correct etcd version by querying the target kubernetes
+    version (if provided) or the current kubernetes version, and its
+    associated etcd image version, then selecting the highest installed
+    etcd binary matching that major.minor.
+
+    :param target_kube_version: target kubernetes version for upgrade
+    (e.g. 'v1.33.1'). If None, uses current version from symlink.
+
+    :returns: etcd_version string
+    """
+    try:
+        if target_kube_version:
+            kube_version = target_kube_version
+        else:
+            kube_version = kubernetes.get_kube_version_from_symlink()
+        if kube_version:
+            kube_ver = kube_version.lstrip('v')
+
+            # Determine the supported etcd major.minor version based on
+            # the Kubernetes version and the images configured via kubeadm.
+            images = kubernetes.get_k8s_images(kube_ver, include_all=True)
+            etcd_image = images.get('etcd', '')
+            if etcd_image:
+                # etcd image tag format: "registry.k8s.io/etcd:3.5.10-0"
+                # Extract version, stripping the trailing build suffix
+                tag = etcd_image.split(':')[-1]
+                supported_ver = tag.split('-')[0]
+                supported_major_minor = LooseVersion(
+                    supported_ver).version[:2]
+
+                # Pick the highest installed version whose major.minor
+                # does not exceed the kubernetes-expected major.minor
+                installed = get_installed_etcd_versions()
+                etcd_version = None
+                for v in sorted(installed, key=LooseVersion):
+                    if LooseVersion(v).version[:2] <= supported_major_minor:
+                        etcd_version = v
+                if etcd_version:
+                    LOG.info("Supported etcd version %s "
+                            "(major.minor %s from k8s %s)"
+                            % (etcd_version,
+                                '.'.join(str(x) for x in supported_major_minor),
+                                kube_ver))
+                    return etcd_version
+    except Exception as e:
+        LOG.warning("Unable to determine supported etcd version from "
+                    "kubernetes: %s. Falling back to max." % e)
+
+    return get_max_etcd_version()
+
+
 def get_installed_etcd_versions():
     """Retrieve list of installed etcd versions.
 

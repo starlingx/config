@@ -1698,8 +1698,8 @@ class TestKubeOperator(base.TestCase):
                           'fake_version')
         mock_utils_execute.assert_called_once()
 
-    def test_get_k8s_images_excludes_etcd(self):
-        """Test that get_k8s_images() excludes etcd container images
+    def test_get_k8s_images_default_excludes_etcd(self):
+        """Test that get_k8s_images() by default excludes etcd container images
         """
         fake_output = ('registry.k8s.io/kube-apiserver:v1.32.2\n'
                        'registry.k8s.io/etcd:3.5.16-0\n'
@@ -1718,6 +1718,28 @@ class TestKubeOperator(base.TestCase):
 
         self.assertEqual(expected_result, actual_result)
         self.assertNotIn('etcd', actual_result)
+
+    def test_get_k8s_images_include_all(self):
+        """Test that get_k8s_images() includes all when include_all=True
+        """
+        fake_output = ('registry.k8s.io/kube-apiserver:v1.32.2\n'
+                       'registry.k8s.io/etcd:3.5.16-0\n'
+                       'registry.k8s.io/pause:3.10\n')
+        expected_result = {
+            'kube-apiserver': 'registry.k8s.io/kube-apiserver:v1.32.2',
+            'etcd': 'registry.k8s.io/etcd:3.5.16-0',
+            'pause': 'registry.k8s.io/pause:3.10'
+        }
+
+        mock_utils_execute = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.execute', mock_utils_execute)
+        p.start().return_value = (fake_output, None)
+        self.addCleanup(p.stop)
+
+        actual_result = kube.get_k8s_images('fake_version', include_all=True)
+
+        self.assertEqual(expected_result, actual_result)
+        self.assertIn('etcd', actual_result)
 
     def test_get_k8s_images_for_all_versions(self):
         """Test successful execution of method get_k8s_images_for_all_versions()
