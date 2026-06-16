@@ -13184,7 +13184,8 @@ class ConductorManager(service.PeriodicService):
                     personalities = [constants.CONTROLLER]
                     config_dict = {
                             "personalities": personalities,
-                            "classes": ['openstack::horizon::runtime']
+                            "classes": ['openstack::horizon::runtime',
+                                        'openstack::keystone::lockout::runtime']
                     }
                     self._config_apply_runtime_manifest(context, config_uuid, config_dict)
                 else:
