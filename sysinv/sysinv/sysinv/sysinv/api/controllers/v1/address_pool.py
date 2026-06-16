@@ -15,7 +15,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2015-2025 Wind River Systems, Inc.
+# Copyright (c) 2015-2026 Wind River Systems, Inc.
 #
 
 
@@ -364,7 +364,7 @@ class AddressPoolController(rest.RestController):
         AddressPool._validate_name(addrpool['name'])
         self._check_name_conflict(addrpool)
 
-    def _check_modification_allowed(self, network_types):
+    def _check_modification_allowed(self, network_types, addrpool=None, updates=None):
         # No restrictions during initial config
         if not cutils.is_initial_config_complete():
             return
@@ -404,11 +404,38 @@ class AddressPoolController(rest.RestController):
                             system.capabilities.get('simplex_to_duplex-direct_migration')):
                         continue
 
+            # Allow populating controller addresses that are currently None
+            # on duplex systems. This handles the case where a controller host
+            # was deleted and re-added, requiring its address to be re-created
+            # in the pool.
+            if addrpool and updates:
+                if self._get_system_mode() == constants.SYSTEM_MODE_DUPLEX:
+                    if self._is_populating_incomplete_controller_address(
+                            addrpool, updates):
+                        continue
+
             # An addresspool except the admin and system controller's pools
             # are considered read-only after the initial configuration is
             # complete. During bootstrap it should be modifiable even though
             # it is allocated to a network.
             raise exception.AddressPoolReadonly()
+
+    def _is_populating_incomplete_controller_address(self, addrpool, updates):
+        """Return True if the update only sets a controller address that is
+        currently None. This is needed when a controller is re-provisioned
+        after deletion on a duplex system."""
+        allowed_fields = {'controller0_address', 'controller1_address'}
+        for field, value in updates.items():
+            if field not in allowed_fields:
+                return False
+            current = getattr(addrpool, field, None)
+            if current:
+                # Attempting to change an existing address - not allowed
+                return False
+            if not value:
+                # Attempting to clear an address - not allowed
+                return False
+        return len(updates) > 0
 
     def _make_default_range(self, addrpool):
         ipset = netaddr.IPSet([addrpool['network'] + "/" + str(addrpool['prefix'])])
@@ -688,7 +715,7 @@ class AddressPoolController(rest.RestController):
         is_primary = self._is_primary(addrpool, networks)
         network_types = self._get_network_types(networks)
         updates = self._get_updates(patch)
-        self._check_modification_allowed(network_types)
+        self._check_modification_allowed(network_types, addrpool, updates)
         existing_addresses = self._validate_updates(addrpool, network_types, updates)
 
         if constants.NETWORK_TYPE_MGMT in network_types:
