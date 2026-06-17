@@ -1,4 +1,4 @@
-# Copyright (c) 2020-2025 Wind River Systems, Inc.
+# Copyright (c) 2020-2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -7,6 +7,8 @@ import json
 import mock
 import re
 import uuid
+from subprocess import TimeoutExpired
+import subprocess
 
 from sysinv.common import utils
 from sysinv.common import constants
@@ -14,6 +16,7 @@ from sysinv.common import device as dconstants
 from sysinv.common import kubernetes
 from sysinv.puppet import interface
 from sysinv.puppet import puppet
+from sysinv.puppet.kubernetes import KubernetesPuppet
 from sysinv.tests.db import base as dbbase
 from sysinv.tests.db import utils as dbutils
 from sysinv.tests.puppet import base
@@ -562,3 +565,43 @@ class KubeVersionTestCase(base.PuppetTestCaseMixin, dbbase.BaseHostTestCase):
 
         self.assertEqual(kubeadm_version, '1.19.13')
         self.assertEqual(kubelet_version, '1.19.13')
+
+
+class RetryOnTokenTestCase(base.PuppetTestCaseMixin, dbbase.BaseHostTestCase):
+    """Test _retry_on_token correctly identifies TimeoutExpired exceptions
+    to trigger retry during kubernetes join command generation.
+    """
+
+    def setUp(self):
+        super(RetryOnTokenTestCase, self).setUp()
+        self.host = self._create_test_host(constants.CONTROLLER)
+        self._update_context()
+
+    @puppet.puppet_context
+    def _update_context(self):
+        self.context = {}
+
+    def test_retry_on_token_returns_true_for_timeout_expired(self):
+        """Test _retry_on_token returns True for TimeoutExpired."""
+        ex = TimeoutExpired(cmd='kubeadm', timeout=30)
+        result = KubernetesPuppet._retry_on_token(ex)
+        self.assertTrue(result)
+
+    def test_retry_on_token_returns_false_for_non_timeout_exceptions(self):
+        """Test _retry_on_token returns False for non-timeout exceptions."""
+        ex = Exception("Failed to generate bootstrap token")
+        result = KubernetesPuppet._retry_on_token(ex)
+        self.assertFalse(result)
+
+    def test_retry_on_token_returns_false_for_called_process_error(self):
+        """Test _retry_on_token returns False for CalledProcessError."""
+        ex = subprocess.CalledProcessError(
+            returncode=1, cmd='kubeadm token create')
+        result = KubernetesPuppet._retry_on_token(ex)
+        self.assertFalse(result)
+
+    def test_timeout_expired_is_from_standard_library(self):
+        """Test TimeoutExpired used is from standard library subprocess."""
+        from sysinv.puppet.kubernetes import TimeoutExpired as KubeTimeoutExpired
+        from subprocess import TimeoutExpired as StdTimeoutExpired
+        self.assertIs(KubeTimeoutExpired, StdTimeoutExpired)

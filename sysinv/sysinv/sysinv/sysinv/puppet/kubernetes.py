@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2018-2025 Wind River Systems, Inc.
+# Copyright (c) 2018-2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -7,6 +7,10 @@
 from __future__ import absolute_import
 from distutils.version import LooseVersion
 from eventlet.green import subprocess
+# eventlet.green.subprocess defines its own TimeoutExpired, which differs
+# from the stdlib exception actually raised at runtime; import stdlib
+# TimeoutExpired to ensure matching.
+from subprocess import TimeoutExpired
 import json
 import keyring
 import netaddr
@@ -279,7 +283,7 @@ class KubernetesPuppet(base.BasePuppet):
         return config
 
     def _retry_on_token(ex):  # pylint: disable=no-self-argument
-        if isinstance(ex, subprocess.TimeoutExpired):
+        if isinstance(ex, TimeoutExpired):
             LOG.warn('Retrying in _get_kubernetes_join_cmd')
             return True
         else:
@@ -345,7 +349,7 @@ class KubernetesPuppet(base.BasePuppet):
                            KUBECONFIG]
                     try:
                         subprocess.check_call(cmd, stdout=f, timeout=30)  # pylint: disable=not-callable
-                    except subprocess.TimeoutExpired:
+                    except TimeoutExpired:
                         LOG.error("Command %s: timed out." % cmd)
                         os.unlink(temp_kubeadm_config_view)
                         raise
@@ -429,7 +433,7 @@ class KubernetesPuppet(base.BasePuppet):
                     raise exception.SysinvException(
                         "uploading certificate key to the cluster"
                         "failed with error: [%s]" % e)
-                except subprocess.TimeoutExpired as e:
+                except TimeoutExpired as e:
                     LOG.error("Command timed out: %s", cmd)
                     LOG.error("stderr: %s", e.stderr)
                     raise
@@ -474,7 +478,7 @@ class KubernetesPuppet(base.BasePuppet):
                 LOG.error("stderr: %s", e.stderr)
                 raise exception.SysinvException(
                     "kubeadm token create failed with error: [%s]" % e)
-            except subprocess.TimeoutExpired as e:
+            except TimeoutExpired as e:
                 LOG.error("Command timed out: %s", cmd)
                 LOG.error("stderr: %s", e.stderr)
                 raise
@@ -482,6 +486,9 @@ class KubernetesPuppet(base.BasePuppet):
                 " --cri-socket /var/run/containerd/containerd.sock"
             join_cmd = join_cmd.strip() + join_cmd_additions
             LOG.info('get_kubernetes_join_cmd join_cmd=%s' % join_cmd)
+        except TimeoutExpired:
+            LOG.error("Command timed out in _get_kubernetes_join_cmd")
+            raise
         except Exception as e:
             LOG.exception("Exception generating bootstrap token")
             stderr = getattr(e, 'stderr', None)
