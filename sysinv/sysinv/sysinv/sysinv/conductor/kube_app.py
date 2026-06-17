@@ -2192,6 +2192,10 @@ class AppOperator(object):
 
         lifecycle_hook_info_app_recover = copy.deepcopy(lifecycle_hook_info_app)
         lifecycle_hook_info_app_recover.operation = constants.APP_RECOVER_OP
+        lifecycle_hook_info_app_recover[LifecycleConstants.EXTRA][
+            LifecycleConstants.FROM_APP_VERSION] = new_app.version
+        lifecycle_hook_info_app_recover[LifecycleConstants.EXTRA][
+            LifecycleConstants.TO_APP_VERSION] = old_app.version
 
         try:
             lifecycle_hook_info_app_recover.lifecycle_type = LifecycleConstants.APP_LIFECYCLE_TYPE_RESOURCE

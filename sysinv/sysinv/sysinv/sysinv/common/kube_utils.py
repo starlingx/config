@@ -42,6 +42,13 @@ class KubeResourceType(str, Enum):
     cron_job = "cron_job"
     storage_class = "storage_class"
     client = "client"
+    lease = "lease"
+    endpoints = "endpoints"
+    helmchart = "helmchart"
+    role = "role"
+    cluster_role = "cluster_role"
+    role_binding = "role_binding"
+    cluster_role_binding = "cluster_role_binding"
 
 
 class KubeUtils(object):
@@ -53,11 +60,16 @@ class KubeUtils(object):
         "extensions": "ApiextensionsV1Api",
         "apps": "AppsV1Api",
         "storage": "StorageV1Api",
+        "coordination": "CoordinationV1Api",
+        "rbac": "RbacAuthorizationV1Api"
     }
 
+    # Check the API -> resource in github docs
+    # https://github.com/kubernetes-client/python/blob/master/kubernetes/aio/README.md
     kube_client_map = {
         KubeResourceType.service_account: kube_clients["core"],
         KubeResourceType.config_map: kube_clients["core"],
+        KubeResourceType.endpoints: kube_clients["core"],
         KubeResourceType.persistent_volume_claim: kube_clients["core"],
         KubeResourceType.pod: kube_clients["core"],
         KubeResourceType.secret: kube_clients["core"],
@@ -74,6 +86,11 @@ class KubeUtils(object):
         KubeResourceType.custom_resource_definition: kube_clients["extensions"],
         KubeResourceType.custom_object: kube_clients["custom"],
         KubeResourceType.client: kube_clients["client"],
+        KubeResourceType.lease: kube_clients["coordination"],
+        KubeResourceType.role: kube_clients["rbac"],
+        KubeResourceType.cluster_role: kube_clients["rbac"],
+        KubeResourceType.role_binding: kube_clients["rbac"],
+        KubeResourceType.cluster_role_binding: kube_clients["rbac"],
     }
 
     def __init__(self):
@@ -361,7 +378,7 @@ class KubeUtils(object):
             dict: Resource of the kubernetes in dict format after patched.
         """
 
-        LOG.info("Patching %s %s/%s", resource_type.value, kwargs.get("plural"), name)
+        LOG.info("Patching %s %s/%s", resource_type.value, kwargs.get("plural", kwargs.get("namespace")), name)
 
         resource = None
 
@@ -420,11 +437,13 @@ class KubeUtils(object):
                                      name=name,
                                      **kwargs)
 
+        plural = kwargs.get("plural", kwargs.get("namespace"))
+
         if not resource:
-            LOG.info("The %s %s/%s does not exist.", resource_type.value, kwargs.get("plural"), name)
+            LOG.info("The %s %s/%s does not exist.", resource_type.value, plural, name)
             return
 
-        LOG.info("Deleting %s %s/%s...", resource_type.value, kwargs.get("plural"), name)
+        LOG.info("Deleting %s %s/%s...", resource_type.value, plural, name)
 
         try:
             stream = watch.stream(
@@ -446,14 +465,14 @@ class KubeUtils(object):
                         watch.stop()
                         LOG.info("The %s %s/%s was deleted succesfully.",
                                  resource_type.value,
-                                 kwargs.get("plural"),
+                                 kwargs.get("plural", kwargs.get("namespace")),
                                  name)
                         return
 
         except Timeout:
             LOG.error("Timeout reached while waiting for %s %s/%s to be deleted",
                       resource_type.value,
-                      kwargs.get("plural"),
+                      kwargs.get("plural", kwargs.get("namespace")),
                       name)
             watch.stop()
             return
@@ -462,7 +481,7 @@ class KubeUtils(object):
             if err.status != 404:
                 LOG.error("Exception raised from deleting %s %s/%s: %s",
                           resource_type.value,
-                          kwargs.get("plural"),
+                          kwargs.get("plural", kwargs.get("namespace")),
                           name)
                 raise
 
