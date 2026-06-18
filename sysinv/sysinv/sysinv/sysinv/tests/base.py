@@ -68,6 +68,25 @@ class Database(fixtures.Fixture):
         self.engine.dispose()
 
     def setup_sqlite(self, db_migrate):
+        # On Trixie, alembic migrations require PostgreSQL and import
+        # heavy dependencies (eventlet, oslo). For SQLite test DBs,
+        # create tables directly from ORM models instead.
+        from sysinv.common.utils import get_debian_codename
+        from sysinv.common import constants
+        if get_debian_codename() != constants.OS_DEBIAN_BULLSEYE:
+            from sysinv.db.sqlalchemy import models
+            models.Base.metadata.create_all(self.engine)
+            # Insert seed data that migrations would normally provide
+            from sqlalchemy import text
+            from sysinv.common import kubernetes
+            with self.engine.begin() as conn:
+                conn.execute(text(
+                    "INSERT INTO kube_cmd_versions "
+                    "(kubeadm_version, kubelet_version) "
+                    "VALUES (:kubeadm, :kubelet)"
+                ), {"kubeadm": kubernetes.K8S_INITIAL_CMD_VERSION,
+                    "kubelet": kubernetes.K8S_INITIAL_CMD_VERSION})
+            return
         if db_migrate.db_version() > db_migration.INIT_VERSION:
             return
         db_migrate.db_sync()
@@ -94,13 +113,19 @@ class Database(fixtures.Fixture):
         personality_check_new = "CHECK (personality IN ('controller', " + \
             "'worker', 'network', 'storage', 'profile', 'reserve1', " + \
             "'reserve2', 'edgeworker'))"
-        results = self.engine.execute("SELECT sql FROM sqlite_master \
-            WHERE type='table' AND name='i_host'")
-        create_i_host = list(results.first().values())[0]
-        create_i_host = create_i_host.replace(personality_check_old,
-                                               personality_check_new)
-        self.engine.execute("ALTER TABLE i_host RENAME TO i_host_bak")
-        self.engine.execute(create_i_host)
+        from sqlalchemy import text
+        with self.engine.begin() as conn:
+            results = conn.execute(text(
+                "SELECT sql FROM sqlite_master "
+                "WHERE type='table' AND name='i_host'"))
+            row = results.first()
+            if row is None:
+                return
+            create_i_host = row[0]
+            create_i_host = create_i_host.replace(personality_check_old,
+                                                   personality_check_new)
+            conn.execute(text("ALTER TABLE i_host RENAME TO i_host_bak"))
+            conn.execute(text(create_i_host))
 
 
 class ReplaceModule(fixtures.Fixture):
