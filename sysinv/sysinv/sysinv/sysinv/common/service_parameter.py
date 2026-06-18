@@ -2049,6 +2049,34 @@ PLATFORM_SYSCTL_KERNEL_PARAMETER_RESOURCE = {
     constants.SERVICE_PARAM_NAME_WILDCARD: 'platform::sysctl::kernel::params',
 }
 
+# SNMP NodePort parameters
+SNMP_CONFIG_PARAMETER_OPTIONAL = [
+    constants.SERVICE_PARAM_SNMP_NODEPORT_SNMP,
+    constants.SERVICE_PARAM_SNMP_NODEPORT_AGENTX,
+    constants.SERVICE_PARAM_SNMP_NODEPORT_TRAP,
+]
+
+
+def _validate_snmp_nodeport(name, value):
+    try:
+        port = int(value)
+    except ValueError:
+        raise wsme.exc.ClientSideError(
+            "Parameter '%s' must be an integer." % name)
+    if port < 30000 or port > 31499:
+        raise wsme.exc.ClientSideError(
+            "Parameter '%s' must be in range 30000-31499." % name)
+
+
+SNMP_CONFIG_PARAMETER_VALIDATOR = {
+    constants.SERVICE_PARAM_SNMP_NODEPORT_SNMP: _validate_snmp_nodeport,
+    constants.SERVICE_PARAM_SNMP_NODEPORT_AGENTX: _validate_snmp_nodeport,
+    constants.SERVICE_PARAM_SNMP_NODEPORT_TRAP: _validate_snmp_nodeport,
+}
+
+SNMP_CONFIG_PARAMETER_RESOURCE = {}
+
+
 # Service Parameter Schema
 SERVICE_PARAM_MANDATORY = 'mandatory'
 SERVICE_PARAM_OPTIONAL = 'optional'
@@ -2324,6 +2352,13 @@ SERVICE_PARAMETER_SCHEMA = {
             SERVICE_PARAM_OPTIONAL: MODULE_I801_I2C_INTERRUPTS_OPTIONAL,
             SERVICE_PARAM_VALIDATOR: MODULE_I801_I2C_INTERRUPTS_VALIDATOR,
             SERVICE_PARAM_RESOURCE: MODULE_I801_I2C_INTERRUPTS_RESOURCE,
+        },
+    },
+    constants.SERVICE_TYPE_SNMP: {
+        constants.SERVICE_PARAM_SECTION_SNMP_CONFIG: {
+            SERVICE_PARAM_OPTIONAL: SNMP_CONFIG_PARAMETER_OPTIONAL,
+            SERVICE_PARAM_VALIDATOR: SNMP_CONFIG_PARAMETER_VALIDATOR,
+            SERVICE_PARAM_RESOURCE: SNMP_CONFIG_PARAMETER_RESOURCE,
         },
     },
 }

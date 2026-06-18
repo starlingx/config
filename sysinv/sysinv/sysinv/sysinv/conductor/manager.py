@@ -12919,6 +12919,9 @@ class ConductorManager(service.PeriodicService):
 
             config_uuid = self._config_update_hosts(context, personalities)
             self._config_apply_runtime_manifest(context, config_uuid, config_dict)
+        elif service == constants.SERVICE_TYPE_SNMP:
+            # NodePort changes take effect on application-apply
+            personalities = None
         elif service == constants.SERVICE_TYPE_KUBERNETES:
             reboot = True
             # kube apiserver service parameters can be applied without a reboot

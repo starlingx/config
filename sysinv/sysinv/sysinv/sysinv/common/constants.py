@@ -1223,6 +1223,7 @@ SERVICE_TYPE_PTP = 'ptp'
 SERVICE_TYPE_CEPH = 'ceph'
 SERVICE_TYPE_DNS = 'dns'
 SERVICE_TYPE_MODULE = 'module'
+SERVICE_TYPE_SNMP = 'snmp'
 
 # For service parameter sections that include a wildcard, any 'name' field will be
 # allowed by the API. The wildcard card name will only be matched if no other matches
@@ -1637,6 +1638,12 @@ SERVICE_PARAM_NAME_DNS_LOCAL_DOMAINS = 'domains'
 # i801 module parameters
 SERVICE_PARAM_SECTION_MODULE_I801 = 'i801'
 SERVICE_PARAM_NAME_MODULE_I801_I2C_INTERRUPTS = 'i2c_interrupts'
+
+# SNMP NodePort parameters
+SERVICE_PARAM_SECTION_SNMP_CONFIG = 'config'
+SERVICE_PARAM_SNMP_NODEPORT_SNMP = 'snmp_nodeport'
+SERVICE_PARAM_SNMP_NODEPORT_AGENTX = 'agentx_nodeport'
+SERVICE_PARAM_SNMP_NODEPORT_TRAP = 'trap_nodeport'
 
 # cli-confirmation parameters
 SERVICE_PARAM_SECTION_PLATFORM_CLIENT = 'client'
