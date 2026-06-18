@@ -41,6 +41,7 @@ class KubeResourceType(str, Enum):
     job = "job"
     cron_job = "cron_job"
     storage_class = "storage_class"
+    resource_quota = "resource_quota"
     client = "client"
     lease = "lease"
     endpoints = "endpoints"
@@ -76,6 +77,7 @@ class KubeUtils(object):
         KubeResourceType.service: kube_clients["core"],
         KubeResourceType.namespace: kube_clients["core"],
         KubeResourceType.node: kube_clients["core"],
+        KubeResourceType.resource_quota: kube_clients["core"],
         KubeResourceType.daemon_set: kube_clients["apps"],
         KubeResourceType.deployment: kube_clients["apps"],
         KubeResourceType.replica_set: kube_clients["apps"],
@@ -592,3 +594,81 @@ class KubeUtils(object):
                             name=name,
                             body=remove_finalizers_patch,
                             **kwargs)
+
+    def list_cluster_resources(self, resource_type: KubeResourceType, **kwargs):
+        """List cluster-scoped resources.
+
+        This method handles listing of cluster-scoped resources such as
+        ClusterRole, ClusterRoleBinding, and cluster-scoped custom objects
+        (e.g. VolumeSnapshotClass). The standard list_resources method
+        builds namespaced/non-namespaced method names which may not work
+        for all cluster-scoped resources.
+
+        Args:
+            resource_type (KubeResourceType): Type of the kubernetes resource.
+
+        Kwargs Arguments (for custom_object):
+            group (str): API group (e.g. "snapshot.storage.k8s.io")
+            version (str): API version (e.g. "v1")
+            plural (str): Resource plural name (e.g. "volumesnapshotclasses")
+
+        Kwargs Arguments (for other types):
+            label_selector (str, optional): Label selector to filter resources.
+
+        Returns:
+            list[dict]: List of resources in dict format.
+        """
+        if resource_type == KubeResourceType.custom_object:
+            api = self._get_client(KubeResourceType.custom_object)
+            try:
+                result = api.list_cluster_custom_object(
+                    group=kwargs.get("group", ""),
+                    version=kwargs.get("version", ""),
+                    plural=kwargs.get("plural", ""))
+            except client.exceptions.ApiException as err:
+                if err.status == 404:
+                    return []
+                LOG.error("Exception listing cluster custom objects "
+                          "%s/%s/%s: %s",
+                          kwargs.get("group", ""),
+                          kwargs.get("version", ""),
+                          kwargs.get("plural", ""), err)
+                raise
+
+            if not result or not isinstance(result, dict):
+                return []
+
+            return [
+                self._convert_to_dict(item)
+                for item in result.get("items", [])
+            ]
+
+        api = self._get_client(resource_type)
+        list_method = getattr(api, f"list_{resource_type.value}", None)
+
+        if list_method is None:
+            LOG.error("No list method found for cluster resource type: %s",
+                      resource_type.value)
+            return []
+
+        filter_kwargs = {}
+        if kwargs.get("label_selector"):
+            filter_kwargs["label_selector"] = kwargs["label_selector"]
+
+        try:
+            result = list_method(**filter_kwargs)
+        except client.exceptions.ApiException as err:
+            if err.status == 404:
+                return []
+            LOG.error("Exception listing cluster resources %s: %s",
+                      resource_type.value, err)
+            raise
+
+        if not result:
+            return []
+
+        result = self._convert_to_dict(result)
+        return [
+            self._convert_to_dict(item)
+            for item in result.get("items", [])
+        ]
