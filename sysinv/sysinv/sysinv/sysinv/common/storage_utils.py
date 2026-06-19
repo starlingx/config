@@ -167,7 +167,7 @@ class StorageRookUtils(object):
         LOG.debug(f"hosts_rook: {hosts_rook}")
         return hosts_rook
 
-    def floating_monitor_is_installed(self):
+    def floating_monitor_is_installed(self, ignore_ready=False):
         _kube_operator = kubernetes.KubeOperator()
         _kube_client_custom_objects = _kube_operator._get_kubernetesclient_custom_objects()
 
@@ -187,7 +187,8 @@ class StorageRookUtils(object):
                 (c.get("status") for c in conditions if c.get("type") == "Ready"),
                 None
             )
-            if ready_status == "True":
+
+            if ready_status == "True" or ignore_ready:
                 float_is_installed = True
         except ApiException as e:
             if e.status != 404:
