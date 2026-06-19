@@ -500,6 +500,73 @@ class SriovdpTestCase(test_interface.InterfaceTestCaseMixin, dbbase.BaseHostTest
         self.assertEqual(expected, actual)
 
 
+class UploadCertsLocalEndpointTestCase(base.PuppetTestCaseMixin,
+                                       dbbase.BaseHostTestCase):
+    """Verify _get_kubernetes_join_cmd writes localAPIEndpoint in the
+    InitConfiguration YAML so kubeadm uses the internal HAProxy path."""
+
+    def setUp(self):
+        super(UploadCertsLocalEndpointTestCase, self).setUp()
+        self.host = self._create_test_host(constants.CONTROLLER)
+        # Stop the base mock that replaces _get_host_join_command
+        # so we can exercise _get_kubernetes_join_cmd directly.
+        mock.patch.stopall()
+        # Re-apply only the mocks we still need
+        mock.patch('sysinv.common.utils.is_virtual',
+                   return_value=False).start()
+
+    @mock.patch('sysinv.puppet.kubernetes.subprocess.run')
+    @mock.patch('sysinv.puppet.kubernetes.subprocess.check_call')
+    @mock.patch('sysinv.common.utils.is_initial_config_complete',
+                return_value=True)
+    def test_init_config_contains_local_api_endpoint(
+            self, _mock_config_complete, mock_check_call, mock_run):
+        """The InitConfiguration YAML must include localAPIEndpoint with
+        the cluster-host floating IP and KUBE_APISERVER_INTERNAL_PORT."""
+
+        # mock kubectl get configmap writing cluster config to file
+        mock_check_call.return_value = 0
+
+        # mock kubeadm upload-certs success
+        mock_run.return_value = mock.Mock(
+            stdout='', stderr='', returncode=0)
+
+        # mock kubeadm token create --print-join-command
+        mock_run.return_value.stdout = (
+            'kubeadm join 192.168.206.2:16443 --token abc '
+            '--discovery-token-ca-cert-hash sha256:xyz')
+
+        # Capture what gets written to the temp config file
+        written_content = []
+        real_open = open
+
+        def _capture_open(path, mode='r', *args, **kwargs):
+            f = real_open(path, mode, *args, **kwargs)
+            if mode == 'a' and path.endswith('.yaml'):
+                original_write = f.write
+
+                def _capturing_write(data):
+                    written_content.append(data)
+                    return original_write(data)
+                f.write = _capturing_write
+            return f
+
+        with mock.patch('builtins.open', side_effect=_capture_open):
+            join_cmd = self.operator.kubernetes._get_kubernetes_join_cmd(
+                self.host)
+
+        combined = ''.join(written_content)
+        self.assertIn('localAPIEndpoint:', combined)
+
+        expected_addr = self.operator.kubernetes._get_cluster_host_address()
+        self.assertIn(
+            f'advertiseAddress: "{expected_addr}"', combined)
+        self.assertIn(
+            f'bindPort: {constants.KUBE_APISERVER_INTERNAL_PORT}', combined)
+        self.assertIn('kind: InitConfiguration', combined)
+        self.assertIsNotNone(join_cmd)
+
+
 class KubeVersionTestCase(base.PuppetTestCaseMixin, dbbase.BaseHostTestCase):
 
     def setUp(self):
