@@ -393,12 +393,27 @@ class KubernetesPuppet(base.BasePuppet):
                     else KUBEADM_API_V1BETA4
                 )
 
+                # Append InitConfiguration to the kubeadm config with:
+                # - apiVersion: must match the kubeadm version to avoid
+                #   parse errors during upgrades.
+                # - certificateKey: custom key so all hosts encrypt/decrypt
+                #   certificates consistently.
+                # - localAPIEndpoint: directs kubeadm to the floating
+                #   cluster-host IP on the internal HAProxy port (16443)
+                #   rather than resolving the default route to the OAM
+                #   address, which suffers SSL handshake failures.
+                local_endpoint_addr = self._get_cluster_host_address()
+                local_endpoint_port = constants.KUBE_APISERVER_INTERNAL_PORT
+
                 with open(temp_kubeadm_config_view, "a") as f:
                     f.write(
                         "---\n"
                         f"apiVersion: {api_version}\n"
                         "kind: InitConfiguration\n"
                         f"certificateKey: {key}\n"
+                        "localAPIEndpoint:\n"
+                        f"  advertiseAddress: \"{local_endpoint_addr}\"\n"
+                        f"  bindPort: {local_endpoint_port}\n"
                     )
 
                 # Because we're passing in the entire kubeadm config, if we're doing
