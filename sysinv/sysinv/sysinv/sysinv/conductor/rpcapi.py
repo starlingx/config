@@ -905,6 +905,22 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.call(context, self.make_msg(
             'set_mgmt_network_reconfig_flag'))
 
+    def update_interface_channel_config(self, context, host_uuid):
+        """Synchronously, have a conductor configure interface channels.
+
+        Does the following tasks:
+        - sends a message to conductor
+        - who sends a message to all inventory agents
+        - who each apply the network manifest
+
+        :param context: request context.
+        :param host_uuid: the host unique uuid
+        """
+        LOG.debug("ConductorApi.update_interface_channel_config: sending "
+                  "update_interface_channel_config to conductor")
+        return self.call(context, self.make_msg('update_interface_channel_config',
+                                                host_uuid=host_uuid))
+
     def update_host_filesystem_config(self, context,
                                       host=None,
                                       filesystem_list=None):

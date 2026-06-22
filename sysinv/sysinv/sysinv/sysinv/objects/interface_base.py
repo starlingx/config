@@ -36,7 +36,9 @@ class InterfaceBase(base.SysinvObject):
             'uses': utils.list_of_strings_or_none,
             'used_by': utils.list_of_strings_or_none,
             'sriov_numvfs': utils.int_or_none,
-            'ovs_access': utils.bool_or_none
+            'ovs_access': utils.bool_or_none,
+            'sriov_vf_channels': utils.int_or_none,
+            'channels': utils.int_or_none
              }
 
     _foreign_fields = {

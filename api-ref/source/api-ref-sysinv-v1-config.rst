@@ -2603,6 +2603,8 @@ itemNotFound (404)
    "max_tx_rate (Optional)", "plain", "xsd:integer", "The Maximum Transmission Rate of the interface, in Mbps. Only applicable for combinations - ``ifclass : pci-sriov`` and ``iftype : vf`` or ``ifclass : platform`` and ``iftype : VLAN/AE/Ethernet``."
    "max_rx_rate (Optional)", "plain", "xsd:integer", "The Maximum Reception Rate of the interface, in Mbps. Only applicable if ``ifclass : platform`` and ``iftype : VLAN/AE/Ethernet``."
    "ovs_access (Optional)", "plain", "xsd:boolean", "Whether OVS access is enabled for this interface; ``true`` or ``false``."
+   "channels (Optional)", "plain", "xsd:integer", "The number of NIC channels (queues) configured on the interface. Only applicable if ``iftype : ethernet`` or ``iftype : ae``. Must be >= 1 and <= the port's ``maxchannels``. A value of ``null`` indicates system defaults are used. Can be modified at runtime without host lock."
+   "sriov_vf_channels (Optional)", "plain", "xsd:integer", "The number of SR-IOV VF channels (queues) configured on the interface. Only applicable if ``ifclass : pci-sriov`` with ``sriov_vf_driver : netdevice``, or ``iftype : vf``. Must be >= 1 and <= the port's ``sriov_vf_maxchannels``. A value of ``null`` indicates system defaults are used. Can be modified at runtime without host lock."
 
 ::
 
@@ -2635,6 +2637,8 @@ itemNotFound (404)
          "ifname": "eth1",
          "max_tx_rate": 30,
          "max_rx_rate": 30,
+         "channels": 2,
+         "sriov_vf_channels": null,
        },
        {
          "forihostid": 2,
@@ -2667,6 +2671,8 @@ itemNotFound (404)
          "aemode": "balanced",
          "ifclass": "data"
          "ifname": "data1"
+         "channels": null,
+         "sriov_vf_channels": null,
        }
      ]
    }
@@ -2723,6 +2729,8 @@ itemNotFound (404)
    "max_tx_rate (Optional)", "plain", "xsd:integer", "The Maximum Transmission Rate of the interface, in Mbps. Only applicable for combinations - ``ifclass : pci-sriov`` and ``iftype : vf`` or ``ifclass : platform`` and ``iftype : VLAN/AE/Ethernet``."
    "max_rx_rate (Optional)", "plain", "xsd:integer", "The Maximum Reception Rate of the interface, in Mbps. Only applicable if ``ifclass : platform`` and ``iftype : VLAN/AE/Ethernet``."
    "ovs_access (Optional)", "plain", "xsd:boolean", "Whether OVS access is enabled for this interface; ``true`` or ``false``."
+   "channels (Optional)", "plain", "xsd:integer", "The number of NIC channels (queues) configured on the interface. Only applicable if ``iftype : ethernet`` or ``iftype : ae``. Must be >= 1 and <= the port's ``maxchannels``. A value of ``null`` indicates system defaults are used. Can be modified at runtime without host lock."
+   "sriov_vf_channels (Optional)", "plain", "xsd:integer", "The number of SR-IOV VF channels (queues) configured on the interface. Only applicable if ``ifclass : pci-sriov`` with ``sriov_vf_driver : netdevice``, or ``iftype : vf``. Must be >= 1 and <= the port's ``sriov_vf_maxchannels``. A value of ``null`` indicates system defaults are used. Can be modified at runtime without host lock."
    "uuid (Optional)", "plain", "csapi:UUID", "The universally unique identifier for this object."
    "links (Optional)", "plain", "xsd:list", "For convenience, resources contain links to themselves. This allows a client to easily obtain rather than construct resource URIs. The following types of link relations are associated with resources: a self link containing a versioned link to the resource, and a bookmark link containing a permanent link to a resource that is appropriate for long term storage."
    "created_at (Optional)", "plain", "xsd:dateTime", "The time when the object was created."
@@ -2774,7 +2782,9 @@ itemNotFound (404)
       ],
       "forihostid" : 2,
       "updated_at" : null,
-      "imtu" : 1500
+      "imtu" : 1500,
+      "channels": null,
+      "sriov_vf_channels": null
    }
 
 This operation does not accept a request body.
@@ -2815,6 +2825,8 @@ badMediaType (415)
    "max_tx_rate (Optional)", "plain", "xsd:integer", "The Maximum Transmission Rate of the interface, in Mbps. Only applicable for combinations - ``ifclass : pci-sriov`` and ``iftype : vf`` or ``ifclass : platform`` and ``iftype : VLAN/AE/Ethernet``."
    "max_rx_rate (Optional)", "plain", "xsd:integer", "The Maximum Reception Rate of the interface, in Mbps. Only applicable if ``ifclass : platform`` and ``iftype : VLAN/AE/Ethernet``."
    "ovs_access (Optional)", "plain", "xsd:boolean", "Whether OVS access is enabled for this interface; ``true`` or ``false``."
+   "channels (Optional)", "plain", "xsd:integer", "The number of NIC channels (queues) to configure on the interface. Only applicable if ``iftype : ethernet`` or ``iftype : ae``. Must be >= 1 and <= the port's ``maxchannels``. Set to ``null`` or omit to use system defaults."
+   "sriov_vf_channels (Optional)", "plain", "xsd:integer", "The number of SR-IOV VF channels (queues) to configure on the interface. Only applicable if ``ifclass : pci-sriov`` with ``sriov_vf_driver : netdevice``, or ``iftype : vf``. Must be >= 1 and <= the port's ``sriov_vf_maxchannels``. Set to ``null`` or omit to use system defaults."
    "ihost_uuid (Optional)", "plain", "csapi:UUID", "The UUID of the host to create the interface on."
 
 **Response parameters**
@@ -2843,6 +2855,8 @@ badMediaType (415)
    "max_tx_rate (Optional)", "plain", "xsd:integer", "The Maximum Transmission Rate of the interface, in Mbps. Only applicable for combinations - ``ifclass : pci-sriov`` and ``iftype : vf`` or ``ifclass : platform`` and ``iftype : VLAN/AE/Ethernet``."
    "max_rx_rate (Optional)", "plain", "xsd:integer", "The Maximum Reception Rate of the interface, in Mbps. Only applicable if ``ifclass : platform`` and ``iftype : VLAN/AE/Ethernet``."
    "ovs_access (Optional)", "plain", "xsd:boolean", "Whether OVS access is enabled for this interface; ``true`` or ``false``."
+   "channels (Optional)", "plain", "xsd:integer", "The number of NIC channels (queues) configured on the interface. Only applicable if ``iftype : ethernet`` or ``iftype : ae``. Must be >= 1 and <= the port's ``maxchannels``. A value of ``null`` indicates system defaults are used. Can be modified at runtime without host lock."
+   "sriov_vf_channels (Optional)", "plain", "xsd:integer", "The number of SR-IOV VF channels (queues) configured on the interface. Only applicable if ``ifclass : pci-sriov`` with ``sriov_vf_driver : netdevice``, or ``iftype : vf``. Must be >= 1 and <= the port's ``sriov_vf_maxchannels``. A value of ``null`` indicates system defaults are used. Can be modified at runtime without host lock."
    "uuid (Optional)", "plain", "csapi:UUID", "The universally unique identifier for this object."
    "links (Optional)", "plain", "xsd:list", "For convenience, resources contain links to themselves. This allows a client to easily obtain rather than construct resource URIs. The following types of link relations are associated with resources: a self link containing a versioned link to the resource, and a bookmark link containing a permanent link to a resource that is appropriate for long term storage."
    "created_at (Optional)", "plain", "xsd:dateTime", "The time when the object was created."
@@ -2913,6 +2927,8 @@ badMediaType (415)
      "ifclass": "data",
      "ifname": "data1",
      "ports": null,
+     "channels": null,
+     "sriov_vf_channels": null,
    }
 
 
@@ -2952,6 +2968,8 @@ badMediaType (415)
    "max_tx_rate (Optional)", "plain", "xsd:integer", "The Maximum Transmission Rate of the interface, in Mbps. Only applicable for combinations - ``ifclass : pci-sriov`` and ``iftype : vf`` or ``ifclass : platform`` and ``iftype : VLAN/AE/Ethernet``."
    "max_rx_rate (Optional)", "plain", "xsd:integer", "The Maximum Reception Rate of the interface, in Mbps. Only applicable if ``ifclass : platform`` and ``iftype : VLAN/AE/Ethernet``."
    "ovs_access (Optional)", "plain", "xsd:boolean", "Whether OVS access is enabled for this interface; ``true`` or ``false``."
+   "channels (Optional)", "plain", "xsd:integer", "The number of NIC channels (queues) to configure on the interface. Only applicable if ``iftype : ethernet`` or ``iftype : ae``. Must be >= 1 and <= the port's ``maxchannels``. Set to ``none`` or ``default`` to reset to system defaults. Can be modified at runtime without host lock."
+   "sriov_vf_channels (Optional)", "plain", "xsd:integer", "The number of SR-IOV VF channels (queues) to configure on the interface. Only applicable if ``ifclass : pci-sriov`` with ``sriov_vf_driver : netdevice``, or ``iftype : vf``. Must be >= 1 and <= the port's ``sriov_vf_maxchannels``. Set to ``none`` or ``default`` to reset to system defaults. Can be modified at runtime without host lock."
 
 **Response parameters**
 
@@ -2979,6 +2997,8 @@ badMediaType (415)
    "max_tx_rate (Optional)", "plain", "xsd:integer", "The Maximum Transmission Rate of the interface, in Mbps. Only applicable for combinations - ``ifclass : pci-sriov`` and ``iftype : vf`` or ``ifclass : platform`` and ``iftype : VLAN/AE/Ethernet``."
    "max_rx_rate (Optional)", "plain", "xsd:integer", "The Maximum Reception Rate of the interface, in Mbps. Only applicable if ``ifclass : platform`` and ``iftype : VLAN/AE/Ethernet``."
    "ovs_access (Optional)", "plain", "xsd:boolean", "Whether OVS access is enabled for this interface; ``true`` or ``false``."
+   "channels (Optional)", "plain", "xsd:integer", "The number of NIC channels (queues) configured on the interface. Only applicable if ``iftype : ethernet`` or ``iftype : ae``. Must be >= 1 and <= the port's ``maxchannels``. A value of ``null`` indicates system defaults are used. Can be modified at runtime without host lock."
+   "sriov_vf_channels (Optional)", "plain", "xsd:integer", "The number of SR-IOV VF channels (queues) configured on the interface. Only applicable if ``ifclass : pci-sriov`` with ``sriov_vf_driver : netdevice``, or ``iftype : vf``. Must be >= 1 and <= the port's ``sriov_vf_maxchannels``. A value of ``null`` indicates system defaults are used. Can be modified at runtime without host lock."
    "uuid (Optional)", "plain", "csapi:UUID", "The universally unique identifier for this object."
    "links (Optional)", "plain", "xsd:list", "For convenience, resources contain links to themselves. This allows a client to easily obtain rather than construct resource URIs. The following types of link relations are associated with resources: a self link containing a versioned link to the resource, and a bookmark link containing a permanent link to a resource that is appropriate for long term storage."
    "created_at (Optional)", "plain", "xsd:dateTime", "The time when the object was created."
@@ -3005,6 +3025,11 @@ badMediaType (415)
      {
        "path": "/primary_reselect",
        "value": "better",
+       "op": "replace"
+     },
+     {
+       "path": "/channels",
+       "value": "4",
        "op": "replace"
      },
      {
@@ -3063,7 +3088,9 @@ badMediaType (415)
      "aemode": "active_standby",
      "ifclass": "data",
      "ifname": "data1",
-     "ports": null
+     "ports": null,
+     "channels": 4,
+     "sriov_vf_channels": null
    }
 
 *******************************

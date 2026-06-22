@@ -205,6 +205,12 @@ class Interface(base.APIBase):
     ovs_access = types.boolean
     "Whether OVS access is enabled for this interface"
 
+    channels = int
+    "The number of configured channels (queues)"
+
+    sriov_vf_channels = int
+    "The number of configured SR-IOV VF channels (queues)"
+
     def __init__(self, **kwargs):
         self.fields = list(objects.interface.fields.keys())
         for k in self.fields:
@@ -231,7 +237,7 @@ class Interface(base.APIBase):
                                            'ipv4_mode', 'ipv6_mode', 'ipv4_pool', 'ipv6_pool',
                                            'sriov_numvfs', 'sriov_vf_driver', 'ptp_role',
                                            'max_tx_rate', 'max_rx_rate', 'primary_reselect',
-                                           'ovs_access',
+                                           'ovs_access', 'channels', 'sriov_vf_channels',
                                            'created_at', 'updated_at'])
 
         # never expose the ihost_id attribute
@@ -440,6 +446,8 @@ class InterfaceController(rest.RestController):
         ports = None
         has_ptp_interfaces = False
         rateLimitRequested = False
+        channelLimitRequested = False
+        vfChannelLimitRequested = False
         patches_to_remove = []
         for p in patch:
             if '/ifclass' == p['path']:
@@ -472,6 +480,23 @@ class InterfaceController(rest.RestController):
             elif p['path'] == '/ovs_access':
                 if isinstance(p['value'], str):
                     p['value'] = p['value'].lower() == 'true'
+            elif p['path'] == '/channels':
+                channelLimitRequested = True
+            elif p['path'] == '/sriov_vf_channels':
+                vfChannelLimitRequested = True
+
+        # Convert 'none'/'default' string values to None for channels fields.
+        # This allows users to reset channels to system defaults.
+        for p in patch:
+            if p['path'] in ('/channels', '/sriov_vf_channels'):
+                if isinstance(p['value'], str) and \
+                        p['value'].lower() in ('none', 'default'):
+                    p['value'] = None
+
+        # Validate channel configuration
+        _check_interface_channels(rpc_interface, patch,
+                                  channelLimitRequested,
+                                  vfChannelLimitRequested)
 
         if has_ptp_interfaces:
             return Interface.convert_with_links(rpc_interface)
@@ -529,6 +554,13 @@ class InterfaceController(rest.RestController):
                 temp_interface['sriov_vf_driver'] = None
 
         sriov_update = _check_interface_sriov(temp_interface.as_dict(), ihost)
+
+        # Only trigger the sriov enable manifest if sriov_numvfs or
+        # sriov_vf_driver was actually modified. Other VF-related changes
+        # (e.g. --vf-channels) have their own runtime manifest triggers
+        # and don't need the enable/numvfs reconfiguration.
+        if sriov_update and sriov_numvfs is None and sriov_vf_driver is None:
+            sriov_update = False
 
         # Get the ethernet port associated with the interface if network type
         # is changed
@@ -671,6 +703,14 @@ class InterfaceController(rest.RestController):
 
             if rateLimitRequested:
                 pecan.request.rpcapi.update_platform_ratelimit_config(
+                    pecan.request.context, ihost['uuid'])
+
+            if channelLimitRequested:
+                pecan.request.rpcapi.update_interface_channel_config(
+                    pecan.request.context, ihost['uuid'])
+
+            if vfChannelLimitRequested:
+                pecan.request.rpcapi.update_sriov_vf_config(
                     pecan.request.context, ihost['uuid'])
 
             return Interface.convert_with_links(new_interface)
@@ -1141,6 +1181,172 @@ def _check_vf_interface_ratelimit(interface):
                     "available link speed bandwidth: %d Mbps." %
                     (total_rate_for_vf - total_rate_used))
             raise wsme.exc.ClientSideError(msg)
+
+
+def _check_channels_interface_type(rpc_interface):
+    """Disallow --channels on VF type interfaces and non-port types.
+
+    VF interfaces should use --vf-channels instead. Channels apply
+    to physical ports. For AE (bond) interfaces, the channel setting
+    is stored on the AE and propagated to each member port at the
+    puppet hieradata layer.
+    """
+    if rpc_interface['iftype'] == constants.INTERFACE_TYPE_VF:
+        raise wsme.exc.ClientSideError(
+            _("The --channels option is not supported on VF type "
+              "interfaces. Use --vf-channels to configure channels "
+              "on VF interfaces."))
+    if rpc_interface['iftype'] not in [constants.INTERFACE_TYPE_ETHERNET,
+                                        constants.INTERFACE_TYPE_AE]:
+        # Suggest the parent interface for vlan types
+        parent_name = None
+        if rpc_interface.get('uses'):
+            parent_name = rpc_interface['uses'][0]
+        msg = _("Cannot apply channel settings to interfaces of "
+                "type '%s'." % rpc_interface['iftype'])
+        if parent_name:
+            msg += _(" Did you mean '%s'?" % parent_name)
+        raise wsme.exc.ClientSideError(msg)
+
+
+def _check_channels_value(rpc_interface, patch):
+    """Validate --channels value is positive and within port maxchannels.
+
+    For AE (bond) interfaces, validate against all member ports.
+    """
+    channels_value = None
+    for p in patch:
+        if p['path'] == '/channels':
+            if p['value'] is not None:
+                try:
+                    channels_value = int(p['value'])
+                except ValueError:
+                    raise wsme.exc.ClientSideError(
+                        _("The --channels value must be an integer."))
+            break
+    if channels_value is not None and channels_value <= 0:
+        raise wsme.exc.ClientSideError(
+            _("The --channels value must be greater than 0."))
+    if channels_value:
+        if rpc_interface['iftype'] == constants.INTERFACE_TYPE_AE:
+            # For AE, validate against all member ports
+            for lower_ifname in rpc_interface['uses']:
+                lower_iface = pecan.request.dbapi.iinterface_get(
+                    lower_ifname, rpc_interface['ihost_uuid'])
+                iface_ports = \
+                    pecan.request.dbapi.ethernet_port_get_by_interface(
+                        lower_iface['uuid'])
+                for port in iface_ports:
+                    max_channels = port.get('maxchannels', None)
+                    if max_channels and channels_value > max_channels:
+                        raise wsme.exc.ClientSideError(
+                            _("The requested channels (%d) exceeds the "
+                              "maximum supported (%d) for bond member "
+                              "port %s." %
+                              (channels_value, max_channels,
+                               port['name'])))
+        else:
+            iface_ports = \
+                pecan.request.dbapi.ethernet_port_get_by_interface(
+                    rpc_interface['uuid'])
+            if iface_ports:
+                port = iface_ports[0]
+                max_channels = port.get('maxchannels', None)
+                if max_channels and channels_value > max_channels:
+                    raise wsme.exc.ClientSideError(
+                        _("The requested channels (%d) exceeds the "
+                          "maximum supported (%d) for port %s." %
+                          (channels_value, max_channels,
+                           port['name'])))
+
+
+def _check_vf_channels_interface_class(rpc_interface):
+    """Validate --vf-channels is only used on pci-sriov class interfaces."""
+    if rpc_interface['ifclass'] != constants.INTERFACE_CLASS_PCI_SRIOV:
+        raise wsme.exc.ClientSideError(
+            _("The --vf-channels option is only supported on "
+              "pci-sriov classed interfaces."))
+
+
+def _check_vf_channels_driver(rpc_interface):
+    """Validate --vf-channels requires a netdevice VF driver.
+
+    VFs bound to vfio-pci (or with no driver) don't expose a netdev,
+    so ethtool channel configuration is not possible.
+    """
+    vf_driver = rpc_interface['sriov_vf_driver']
+    if rpc_interface['iftype'] == constants.INTERFACE_TYPE_VF:
+        # VF type interfaces may inherit driver from parent
+        if not vf_driver:
+            lower_ifname = rpc_interface['uses'][0]
+            lower_iface = pecan.request.dbapi.iinterface_get(
+                lower_ifname, rpc_interface['ihost_uuid'])
+            vf_driver = lower_iface['sriov_vf_driver']
+    if vf_driver and vf_driver != constants.SRIOV_DRIVER_TYPE_NETDEVICE:
+        raise wsme.exc.ClientSideError(
+            _("The --vf-channels option requires the VF driver to "
+              "be '%s'. Current VF driver is '%s'." %
+              (constants.SRIOV_DRIVER_TYPE_NETDEVICE, vf_driver)))
+
+
+def _check_vf_channels_value(rpc_interface, patch):
+    """Validate --vf-channels value is positive and within port limits.
+
+    For VF type interfaces, the port belongs to the lower (parent)
+    SR-IOV interface.
+    """
+    vf_channels_value = None
+    for p in patch:
+        if p['path'] == '/sriov_vf_channels':
+            if p['value'] is not None:
+                try:
+                    vf_channels_value = int(p['value'])
+                except ValueError:
+                    raise wsme.exc.ClientSideError(
+                        _("The --vf-channels value must be an integer."))
+            break
+    if vf_channels_value is not None and vf_channels_value <= 0:
+        raise wsme.exc.ClientSideError(
+            _("The --vf-channels value must be greater than 0."))
+    if vf_channels_value:
+        if rpc_interface['iftype'] == constants.INTERFACE_TYPE_VF:
+            lower_ifname = rpc_interface['uses'][0]
+            lower_iface = pecan.request.dbapi.iinterface_get(
+                lower_ifname, rpc_interface['ihost_uuid'])
+            iface_ports = \
+                pecan.request.dbapi.ethernet_port_get_by_interface(
+                    lower_iface['uuid'])
+        else:
+            iface_ports = \
+                pecan.request.dbapi.ethernet_port_get_by_interface(
+                    rpc_interface['uuid'])
+        if iface_ports:
+            port = iface_ports[0]
+            max_vf_channels = port.get('sriov_vf_maxchannels', None)
+            if max_vf_channels and vf_channels_value > max_vf_channels:
+                raise wsme.exc.ClientSideError(
+                    _("The requested vf-channels (%d) exceeds the "
+                      "maximum supported (%d) for port %s at the "
+                      "current VF count." %
+                      (vf_channels_value, max_vf_channels,
+                       port['name'])))
+
+
+def _check_interface_channels(rpc_interface, patch,
+                              channelLimitRequested, vfChannelLimitRequested):
+    """Validate channel configuration on interface modify.
+
+    Performs all channel-related checks when --channels or --vf-channels
+    is requested in a patch operation.
+    """
+    if channelLimitRequested:
+        _check_channels_interface_type(rpc_interface)
+        _check_channels_value(rpc_interface, patch)
+
+    if vfChannelLimitRequested:
+        _check_vf_channels_interface_class(rpc_interface)
+        _check_vf_channels_driver(rpc_interface)
+        _check_vf_channels_value(rpc_interface, patch)
 
 
 def _check_interface_ptp(interface):
@@ -2037,19 +2243,22 @@ def _check(op, interface, ports=None, ifaces=None, existing_interface=None,
             elif (op == 'add' and interface['iftype'] == constants.INTERFACE_TYPE_VF):
                 # user can add interface SR-IOV VF without host lock in AIO-SX
                 check_host = False
+    if op == 'modify' and patch is not None:
+        patch_paths = {p['path'] for p in patch}
 
-    if op == 'modify' and patch is not None and \
-            (interface['ifclass'] == constants.INTERFACE_CLASS_PLATFORM):
-        if (interface['iftype'] in [constants.INTERFACE_TYPE_ETHERNET,
-                                    constants.INTERFACE_TYPE_AE,
-                                    constants.INTERFACE_TYPE_VLAN]):
-            # Finding a patch request which contains only max_tx_rate or only max_rx_rate or both.
-            # Runtime Modify is allowed for platform interfaces for these two fields only.
-            # Above condition holds true for all system types eg:- AIO-DX, AIO-SX, STD, Subcloud
+        # Rate-limit: runtime modify for platform ethernet/ae/vlan
+        if (interface['ifclass'] == constants.INTERFACE_CLASS_PLATFORM and
+                interface['iftype'] in [constants.INTERFACE_TYPE_ETHERNET,
+                                        constants.INTERFACE_TYPE_AE,
+                                        constants.INTERFACE_TYPE_VLAN]):
             allowed_paths = {'/max_tx_rate', '/max_rx_rate'}
-            patch_paths = {p['path'] for p in patch}
             if (patch_paths.issubset(allowed_paths) and len(patch_paths) > 0):
                 check_host = False
+
+        # Channels: runtime modify for any interface with a netdev
+        channel_paths = {'/channels', '/sriov_vf_channels'}
+        if (patch_paths.issubset(channel_paths) and len(patch_paths) > 0):
+            check_host = False
 
     if check_host:
         _check_host(ihost)

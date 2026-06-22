@@ -35,6 +35,14 @@ LOG = logging.getLogger(__name__)
 NOMINAL_SPEED_REGEX = re.compile(r"(\d+)base")
 # Regex to catch "Speed: 10000Mb/s" and capture the numeric part
 CURRENT_SPEED_REGEX = re.compile(r"Speed:\s+(\d+)")
+# Regex to find the maximum and current channels for a net device.
+# re.DOTALL makes the . metacharacter match newline characters (\n) in addition
+# to every other character.
+CURRENT_CHANNELS_REGEX = re.compile(
+      r'Pre-set maximums:.*?Combined:\s+(\d+).*?Current hardware settings:.*?Combined:\s+(\d+)',
+      re.DOTALL
+)
+
 
 # Look for PCI class 0x0200 and 0x0280 so that we get generic ethernet
 # controllers and those that may report as "other" network controllers.
@@ -159,11 +167,17 @@ class Port(object):
         self.sriov_vf_pdevice_id = kwargs.get('sriov_vf_pdevice_id')
         self.driver = kwargs.get('driver')
         self.dpdksupport = kwargs.get('dpdksupport')
+        self.maxchannels = kwargs.get('maxchannels')
+        self.numchannels = kwargs.get('numchannels')
+        self.sriov_vf_maxchannels = kwargs.get('sriov_vf_maxchannels')
+        self.sriov_vf_numchannels = kwargs.get('sriov_vf_numchannels')
 
     def __str__(self):
-        return "%s %s: [%s] [%s] [%s], [%s], [%s], [%s], [%s]" % (
+        return "%s %s: [%s] [%s] [%s], [%s], [%s], [%s], [%s], [%s], [%s], [%s], [%s]" % (
             self.ipci, self.name, self.mac, self.mtu, self.speed,
-            self.link_mode, self.numa_node, self.dev_id, self.dpdksupport)
+            self.link_mode, self.numa_node, self.dev_id, self.dpdksupport,
+            self.maxchannels, self.numchannels, self.sriov_vf_maxchannels,
+            self.sriov_vf_numchannels)
 
     def __repr__(self):
         return "<Port '%s'>" % str(self)
@@ -294,6 +308,17 @@ class PCIOperator(object):
                 break
 
         return vf_device_id
+
+    def get_pci_sriov_vf_maxchannels(self, sriov_vfs_pci_address):
+        max_combined = None
+        num_combined = None
+        for vf_pci_addr in sriov_vfs_pci_address:
+            netdev = self._get_pci_sriov_vf_netdev(vf_pci_addr)
+            if netdev:
+                max_combined, num_combined = self._get_interface_channels(netdev)
+                # VF channels should be partitioned evenly by the PF
+                break
+        return max_combined, num_combined
 
     def get_lspci_output_by_addr(self, pciaddr):
         with open(os.devnull, "w") as fnull:
@@ -662,6 +687,65 @@ class PCIOperator(object):
             LOG.error(f"An unexpected error occurred while processing {interface_name}: {e}")
             return None
 
+    def _get_interface_channels(self, interface_name):
+        """
+        Gets the interface channels using ethtool.
+
+        This function runs 'ethtool -l <interface_name>' and parses the
+        Maximum / Current "Combined" output to get the count of available /
+        configured NIC queues.
+
+        Args:
+            interface_name (str): The name of the network interface (e.g., "eth0").
+
+        Returns:
+            tuple: (The maximum queues available, The current queues configured)
+        """
+        max_combined = None
+        current_combined = None
+
+        cmd = ['ethtool', '-l', interface_name]
+
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                check=True,
+                encoding='utf-8'
+            )
+
+            output = result.stdout
+
+            match = CURRENT_CHANNELS_REGEX.search(output)
+            if match:
+                max_combined = int(match.group(1))
+                current_combined = int(match.group(2))
+
+            if not max_combined or not current_combined:
+                LOG.debug(
+                    f"Current channels for {interface_name} is unknown. ")
+
+            return max_combined, current_combined
+
+        except subprocess.CalledProcessError as e:
+            LOG.warning(f"NIC {interface_name} does not support configurable "
+                        f"channels (ethtool -l failed: {e.stderr.strip()})")
+            return None, None
+        except Exception as e:
+            LOG.error(f"An unexpected error occurred while querying channels "
+                      f"for {interface_name}: {e}")
+            return None, None
+
+    def _get_pci_sriov_vf_netdev(self, pciaddr):
+        dnetdev = '/sys/bus/pci/devices/' + pciaddr + '/net/'
+        try:
+            with os.scandir(dnetdev) as netdevs:
+                netdev = next(entry for entry in netdevs if entry.is_dir())
+            return netdev.name
+        except StopIteration:
+            return None
+
     def pci_get_net_attrs(self, pciaddr):
         ''' For this pciaddr, build a list of network attributes per port '''
         pci_attrs_array = []
@@ -687,6 +771,8 @@ class PCIOperator(object):
                 # to use if an interface has an SR-IOV VF driver of 'netdevice'
                 sriov_vf_driver = self.get_pci_sriov_vf_module_name(a, sriov_vfs_pci_address)
                 sriov_vf_pdevice_id = self.get_pci_sriov_vf_device_id(a, sriov_vfs_pci_address)
+                sriov_vf_maxchannels, sriov_vf_numchannels = \
+                    self.get_pci_sriov_vf_maxchannels(sriov_vfs_pci_address)
                 driver = self.get_pci_driver_name(a)
 
                 # Determine DPDK support
@@ -771,6 +857,7 @@ class PCIOperator(object):
                         mtu = None
 
                     speed = self._get_interface_speed(n)
+                    max_channels, cur_channels = self._get_interface_channels(n)
 
                     flink_mode = dirpcinet + n + '/' + "link_mode"
                     try:
@@ -807,6 +894,8 @@ class PCIOperator(object):
                             ','.join(str(x) for x in sriov_vfs_pci_address),
                         "sriov_vf_driver": sriov_vf_driver,
                         "sriov_vf_pdevice_id": sriov_vf_pdevice_id,
+                        "sriov_vf_maxchannels": sriov_vf_maxchannels,
+                        "sriov_vf_numchannels": sriov_vf_numchannels,
                         "driver": driver,
                         "pci_address": a,
                         "mac": mac,
@@ -814,7 +903,9 @@ class PCIOperator(object):
                         "speed": speed,
                         "link_mode": link_mode,
                         "dev_id": dev_port,
-                        "dpdksupport": dpdksupport
+                        "dpdksupport": dpdksupport,
+                        "numchannels": cur_channels,
+                        "maxchannels": max_channels
                     }
 
                     pci_attrs_array.append(attrs)

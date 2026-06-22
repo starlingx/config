@@ -108,7 +108,11 @@ FAKE_PORT_ATTRIBUTES = [{
     "speed": 1000,
     "link_mode": 0,
     "dev_id": 1,
-    "dpdksupport": True
+    "dpdksupport": True,
+    "numchannels": 32,
+    "maxchannels": 64,
+    "sriov_vf_numchannels": 2,
+    "sriov_vf_maxchannels": 4
 }]
 
 FAKE_PORTS = [PCI(

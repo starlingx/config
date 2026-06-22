@@ -206,7 +206,8 @@ class InterfaceTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
 
     def _create_ethernet(self, ifname=None, networktype=None, ifclass=None,
                          datanetworks=None, host=None, expect_errors=False,
-                         lower_iface=None, ptp_role=None, error_message=None):
+                         lower_iface=None, ptp_role=None, error_message=None,
+                         maxchannels=None, numchannels=None):
         interface_id = len(self.profile['interfaces']) + 1
         port = None
         if not ifname:
@@ -223,7 +224,9 @@ class InterfaceTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
                 host_id=host.id,
                 interface_id=interface_id,
                 pciaddr='0000:00:00.' + str(port_id + 1),
-                dev_id=0)
+                dev_id=0,
+                maxchannels=maxchannels,
+                numchannels=numchannels)
             self.profile['ports'].append(port)
         if not ptp_role:
             ptp_role = constants.INTERFACE_PTP_ROLE_NONE
@@ -397,7 +400,8 @@ class InterfaceTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
 
     def _create_sriov(self, ifname,
                       sriov_totalvfs=None, sriov_numvfs=None,
-                      sriov_vf_driver=None,
+                      sriov_vf_driver=None, sriov_vf_maxchannels=None,
+                      maxchannels=None,
                       datanetworks=None, host=None, expect_errors=False):
         interface_id = len(self.profile['interfaces']) + 1
         if not ifname:
@@ -419,6 +423,8 @@ class InterfaceTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
             dev_id=0,
             sriov_totalvfs=sriov_totalvfs,
             sriov_numvfs=sriov_numvfs,
+            sriov_vf_maxchannels=sriov_vf_maxchannels,
+            maxchannels=maxchannels,
             driver='i40e',
             sriov_vf_driver='i40evf',
             speed=10000)
@@ -1083,6 +1089,406 @@ class TestPatchMixin(object):
                f"'{mgmt_addrpool.name}' {{{mgmt_addrpool.uuid}}} assigned to mgmt network")
 
         self.patch_fail(c0_if0, message=msg, http_code=http_client.CONFLICT, **ndict)
+
+    # Expected error:
+    # The --channels option is not supported on VF type interfaces.
+    # Use --vf-channels to configure channels on VF interfaces.
+    def test_modify_vf_interface_channels_rejected(self):
+        """Setting --channels on a VF type interface must be rejected."""
+        self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT,
+                              host=self.worker)
+        port, lower_iface = self._create_sriov(
+            'sriov', host=self.worker, sriov_numvfs=4)
+        vf = self._create_vf('vf1', lower_iface=lower_iface,
+            host=self.worker, sriov_numvfs=2, expect_errors=False)
+
+        response = self.patch_dict_json(
+            '%s' % self._get_path(vf['uuid']),
+            channels=4,
+            expect_errors=True)
+        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+        self.assertEqual('application/json', response.content_type)
+        self.assertTrue(response.json['error_message'])
+        self.assertIn("not supported on VF type interfaces",
+                      response.json['error_message'])
+
+    def test_modify_vlan_interface_channels_rejected(self):
+        """Setting --channels on a VLAN interface must be rejected
+        with a suggestion to use the parent interface."""
+        self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT,
+                              host=self.worker)
+        port, lower_iface = self._create_ethernet(
+            'eth1', constants.NETWORK_TYPE_NONE, host=self.worker)
+        vlan = self._create_vlan('vlan100', constants.NETWORK_TYPE_NONE,
+                                 ifclass=constants.INTERFACE_CLASS_DATA,
+                                 vlan_id=100, lower_iface=lower_iface,
+                                 host=self.worker)
+
+        response = self.patch_dict_json(
+            '%s' % self._get_path(vlan['uuid']),
+            channels=4,
+            expect_errors=True)
+        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+        self.assertEqual('application/json', response.content_type)
+        self.assertTrue(response.json['error_message'])
+        self.assertIn("Cannot apply channel settings to interfaces of type",
+                      response.json['error_message'])
+        self.assertIn("Did you mean",
+                      response.json['error_message'])
+        self.assertIn(lower_iface['ifname'],
+                      response.json['error_message'])
+
+    def test_modify_vf_interface_vf_channels_allowed(self):
+        """Setting --vf-channels on a VF type interface must be allowed."""
+        self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT,
+                              host=self.worker)
+        port, lower_iface = self._create_sriov(
+            'sriov', host=self.worker, sriov_numvfs=4)
+        vf = self._create_vf('vf1', lower_iface=lower_iface,
+            host=self.worker, sriov_numvfs=2, expect_errors=False)
+
+        response = self.patch_dict_json(
+            '%s' % self._get_path(vf['uuid']),
+            sriov_vf_channels=4)
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(http_client.OK, response.status_code)
+        self.assertEqual(4, response.json['sriov_vf_channels'])
+
+    def test_modify_sriov_interface_channels_allowed(self):
+        """Setting --channels on an SR-IOV (PF) interface must be allowed."""
+        self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT,
+                              host=self.worker)
+        port, sriov_iface = self._create_sriov(
+            'sriov', host=self.worker, sriov_numvfs=4)
+
+        response = self.patch_dict_json(
+            '%s' % self._get_path(sriov_iface['uuid']),
+            channels=4)
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(http_client.OK, response.status_code)
+        self.assertEqual(4, response.json['channels'])
+
+    # Expected error:
+    # The requested channels (N) exceeds the maximum supported (M) for port X.
+    def test_modify_sriov_interface_channels_exceeds_max(self):
+        """Setting --channels above port maxchannels must be rejected."""
+        self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT,
+                              host=self.worker)
+        port, sriov_iface = self._create_sriov(
+            'sriov', host=self.worker, sriov_numvfs=4,
+            maxchannels=128)
+
+        response = self.patch_dict_json(
+            '%s' % self._get_path(sriov_iface['uuid']),
+            channels=256,
+            expect_errors=True)
+        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+        self.assertEqual('application/json', response.content_type)
+        self.assertTrue(response.json['error_message'])
+        self.assertIn("exceeds the maximum supported",
+                      response.json['error_message'])
+
+    def test_modify_sriov_interface_channels_within_max(self):
+        """Setting --channels within port maxchannels must succeed."""
+        self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT,
+                              host=self.worker)
+        port, sriov_iface = self._create_sriov(
+            'sriov', host=self.worker, sriov_numvfs=4,
+            maxchannels=128)
+
+        response = self.patch_dict_json(
+            '%s' % self._get_path(sriov_iface['uuid']),
+            channels=64)
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(http_client.OK, response.status_code)
+        self.assertEqual(64, response.json['channels'])
+
+    def test_modify_sriov_interface_channels_zero_rejected(self):
+        """Setting --channels to 0 must be rejected."""
+        self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT,
+                              host=self.worker)
+        port, sriov_iface = self._create_sriov(
+            'sriov', host=self.worker, sriov_numvfs=4)
+
+        response = self.patch_dict_json(
+            '%s' % self._get_path(sriov_iface['uuid']),
+            channels=0,
+            expect_errors=True)
+        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+        self.assertEqual('application/json', response.content_type)
+        self.assertTrue(response.json['error_message'])
+        self.assertIn("must be greater than 0",
+                      response.json['error_message'])
+
+    def test_modify_sriov_interface_channels_negative_rejected(self):
+        """Setting --channels to a negative value must be rejected."""
+        self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT,
+                              host=self.worker)
+        port, sriov_iface = self._create_sriov(
+            'sriov', host=self.worker, sriov_numvfs=4)
+
+        response = self.patch_dict_json(
+            '%s' % self._get_path(sriov_iface['uuid']),
+            channels=-1,
+            expect_errors=True)
+        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+        self.assertEqual('application/json', response.content_type)
+        self.assertTrue(response.json['error_message'])
+        self.assertIn("must be greater than 0",
+                      response.json['error_message'])
+
+    def test_modify_sriov_vf_channels_zero_rejected(self):
+        """Setting --vf-channels to 0 must be rejected."""
+        self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT,
+                              host=self.worker)
+        port, sriov_iface = self._create_sriov(
+            'sriov', host=self.worker, sriov_numvfs=4,
+            sriov_vf_maxchannels=16)
+
+        response = self.patch_dict_json(
+            '%s' % self._get_path(sriov_iface['uuid']),
+            sriov_vf_channels=0,
+            expect_errors=True)
+        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+        self.assertEqual('application/json', response.content_type)
+        self.assertTrue(response.json['error_message'])
+        self.assertIn("must be greater than 0",
+                      response.json['error_message'])
+
+    # Expected error:
+    # The --vf-channels option is only supported on pci-sriov class interfaces.
+    def test_modify_platform_interface_vf_channels_rejected(self):
+        """Setting --vf-channels on a non-pci-sriov interface must be rejected."""
+        self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT,
+                              host=self.worker)
+        port, iface = self._create_ethernet(
+            'data0', constants.NETWORK_TYPE_NONE, host=self.worker)
+
+        response = self.patch_dict_json(
+            '%s' % self._get_path(iface['uuid']),
+            sriov_vf_channels=4,
+            expect_errors=True)
+        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+        self.assertEqual('application/json', response.content_type)
+        self.assertTrue(response.json['error_message'])
+        self.assertIn("only supported on pci-sriov classed interfaces",
+                      response.json['error_message'])
+
+    # Expected error:
+    # The --vf-channels option requires the VF driver to be 'netdevice'.
+    def test_modify_sriov_vf_channels_rejected_vfio_driver(self):
+        """Setting --vf-channels with vfio VF driver must be rejected."""
+        self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT,
+                              host=self.worker)
+        port, sriov_iface = self._create_sriov(
+            'sriov', host=self.worker, sriov_numvfs=4,
+            sriov_vf_driver=constants.SRIOV_DRIVER_TYPE_VFIO)
+
+        response = self.patch_dict_json(
+            '%s' % self._get_path(sriov_iface['uuid']),
+            sriov_vf_channels=4,
+            expect_errors=True)
+        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+        self.assertEqual('application/json', response.content_type)
+        self.assertTrue(response.json['error_message'])
+        self.assertIn("requires the VF driver to be",
+                      response.json['error_message'])
+
+    # Expected error:
+    # The requested vf-channels (N) exceeds the maximum supported (M)
+    # for port X at the current VF count.
+    def test_modify_sriov_vf_channels_exceeds_max(self):
+        """Setting --vf-channels above sriov_vf_maxchannels must be rejected."""
+        self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT,
+                              host=self.worker)
+        port, sriov_iface = self._create_sriov(
+            'sriov', host=self.worker, sriov_numvfs=4,
+            sriov_vf_maxchannels=16)
+
+        response = self.patch_dict_json(
+            '%s' % self._get_path(sriov_iface['uuid']),
+            sriov_vf_channels=32,
+            expect_errors=True)
+        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+        self.assertEqual('application/json', response.content_type)
+        self.assertTrue(response.json['error_message'])
+        self.assertIn("exceeds the maximum supported",
+                      response.json['error_message'])
+
+    def test_modify_sriov_vf_channels_within_max(self):
+        """Setting --vf-channels within sriov_vf_maxchannels must succeed."""
+        self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT,
+                              host=self.worker)
+        port, sriov_iface = self._create_sriov(
+            'sriov', host=self.worker, sriov_numvfs=4,
+            sriov_vf_maxchannels=16)
+
+        response = self.patch_dict_json(
+            '%s' % self._get_path(sriov_iface['uuid']),
+            sriov_vf_channels=16)
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(http_client.OK, response.status_code)
+        self.assertEqual(16, response.json['sriov_vf_channels'])
+
+    def test_modify_vf_interface_vf_channels_exceeds_max(self):
+        """Setting --vf-channels on a VF interface above max must be rejected."""
+        self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT,
+                              host=self.worker)
+        port, lower_iface = self._create_sriov(
+            'sriov', host=self.worker, sriov_numvfs=4,
+            sriov_vf_maxchannels=8)
+        vf = self._create_vf('vf1', lower_iface=lower_iface,
+            host=self.worker, sriov_numvfs=2, expect_errors=False)
+
+        response = self.patch_dict_json(
+            '%s' % self._get_path(vf['uuid']),
+            sriov_vf_channels=16,
+            expect_errors=True)
+        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+        self.assertEqual('application/json', response.content_type)
+        self.assertTrue(response.json['error_message'])
+        self.assertIn("exceeds the maximum supported",
+                      response.json['error_message'])
+
+    def test_modify_sriov_numvfs_increase_blocked_by_vf_channels(self):
+        """Increasing numvfs when vf-channels is set must be allowed.
+        The puppet layer caps vf-channels at the new sriov_vf_maxchannels
+        if it has decreased due to the numvfs increase.
+        """
+        self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT,
+                              host=self.worker)
+        port, sriov_iface = self._create_sriov(
+            'sriov', host=self.worker, sriov_numvfs=4,
+            sriov_vf_maxchannels=16)
+
+        # First set vf-channels
+        response = self.patch_dict_json(
+            '%s' % self._get_path(sriov_iface['uuid']),
+            sriov_vf_channels=8)
+        self.assertEqual(http_client.OK, response.status_code)
+
+        # Increasing numvfs should now be allowed
+        response = self.patch_dict_json(
+            '%s' % self._get_path(sriov_iface['uuid']),
+            sriov_numvfs=8)
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(http_client.OK, response.status_code)
+
+    def test_modify_sriov_numvfs_decrease_allowed_with_vf_channels(self):
+        """Decreasing numvfs when vf-channels is set should be allowed."""
+        self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT,
+                              host=self.worker)
+        port, sriov_iface = self._create_sriov(
+            'sriov', host=self.worker, sriov_numvfs=8,
+            sriov_vf_maxchannels=16)
+
+        # First set vf-channels
+        response = self.patch_dict_json(
+            '%s' % self._get_path(sriov_iface['uuid']),
+            sriov_vf_channels=8)
+        self.assertEqual(http_client.OK, response.status_code)
+
+        # Decreasing numvfs should be allowed
+        response = self.patch_dict_json(
+            '%s' % self._get_path(sriov_iface['uuid']),
+            sriov_numvfs=4)
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(http_client.OK, response.status_code)
+
+    def test_modify_ae_interface_channels_allowed(self):
+        """Setting --channels on an AE (bond) interface must be allowed.
+
+        The channels value is stored on the AE interface and propagated
+        to member ports at the puppet hieradata layer.
+        """
+        self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT,
+                              host=self.worker)
+        bond = self._create_bond('bond0',
+                                 constants.NETWORK_TYPE_OAM,
+                                 ifclass=constants.INTERFACE_CLASS_PLATFORM,
+                                 host=self.worker)
+
+        response = self.patch_dict_json(
+            '%s' % self._get_path(bond['uuid']),
+            channels=4)
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(http_client.OK, response.status_code)
+        self.assertEqual(4, response.json['channels'])
+
+    def test_modify_ae_interface_channels_exceeds_member_max(self):
+        """Setting --channels above member port maxchannels must be rejected."""
+        self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT,
+                              host=self.worker)
+        # Create bond with members that have maxchannels=64
+        port1, iface1 = self._create_ethernet(
+            host=self.worker, maxchannels=64)
+        port2, iface2 = self._create_ethernet(
+            host=self.worker, maxchannels=64)
+        interface_id = len(self.profile['interfaces'])
+        interface = self._post_get_test_interface(
+            id=interface_id,
+            ifname='bond0',
+            iftype=constants.INTERFACE_TYPE_AE,
+            ifclass=constants.INTERFACE_CLASS_PLATFORM,
+            uses=[iface1['ifname'], iface2['ifname']],
+            txhashpolicy='layer2',
+            aemode='802.3ad',
+            forihostid=self.worker.id,
+            ihost_uuid=self.worker.uuid)
+        response = self._post_and_check(interface, expect_errors=False)
+        bond_uuid = response.json['uuid']
+        iface = self.dbapi.iinterface_get(bond_uuid)
+        network = self.dbapi.network_get_by_type(constants.NETWORK_TYPE_OAM)
+        dbutils.create_test_interface_network(
+            interface_id=iface.id,
+            network_id=network.id)
+
+        response = self.patch_dict_json(
+            '%s' % self._get_path(bond_uuid),
+            channels=128,
+            expect_errors=True)
+        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+        self.assertEqual('application/json', response.content_type)
+        self.assertTrue(response.json['error_message'])
+        self.assertIn("exceeds the maximum supported",
+                      response.json['error_message'])
+        self.assertIn("bond member",
+                      response.json['error_message'])
+
+    def test_modify_ae_interface_channels_within_member_max(self):
+        """Setting --channels within member port maxchannels must succeed."""
+        self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT,
+                              host=self.worker)
+        # Create bond with members that have maxchannels=64
+        port1, iface1 = self._create_ethernet(
+            host=self.worker, maxchannels=64)
+        port2, iface2 = self._create_ethernet(
+            host=self.worker, maxchannels=64)
+        interface_id = len(self.profile['interfaces'])
+        interface = self._post_get_test_interface(
+            id=interface_id,
+            ifname='bond1',
+            iftype=constants.INTERFACE_TYPE_AE,
+            ifclass=constants.INTERFACE_CLASS_PLATFORM,
+            uses=[iface1['ifname'], iface2['ifname']],
+            txhashpolicy='layer2',
+            aemode='802.3ad',
+            forihostid=self.worker.id,
+            ihost_uuid=self.worker.uuid)
+        response = self._post_and_check(interface, expect_errors=False)
+        bond_uuid = response.json['uuid']
+        iface = self.dbapi.iinterface_get(bond_uuid)
+        network = self.dbapi.network_get_by_type(constants.NETWORK_TYPE_OAM)
+        dbutils.create_test_interface_network(
+            interface_id=iface.id,
+            network_id=network.id)
+
+        response = self.patch_dict_json(
+            '%s' % self._get_path(bond_uuid),
+            channels=32)
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(http_client.OK, response.status_code)
+        self.assertEqual(32, response.json['channels'])
 
 
 class TestPostMixin(object):

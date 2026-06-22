@@ -18,6 +18,7 @@ class SriovVFInterface(interface_ethernet.EthernetInterface):
     fields = dict({
         'sriov_numvfs': utils.int_or_none,
         'sriov_vf_driver': utils.str_or_none,
+        'sriov_vf_channels': utils.int_or_none,
     }, **interface_ethernet.EthernetInterface.fields)
 
     @base.remotable_classmethod

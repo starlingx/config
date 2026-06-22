@@ -764,7 +764,7 @@ class AgentManager(service.PeriodicService):
         # do not send report if it is neither first boot nor
         # ansible-bootstrap, and worker config has not finished,
         # i.e. during subsequent reboot before the worker manifest
-        # enables and binds any SR-IOV devices
+        # enables and binds any SR-IOV devices.
         if (not self._first_boot_flag
                 and not ansible_bootstrap_flag
                 and constants.WORKER in self.subfunctions_list_get()
@@ -823,7 +823,11 @@ class AgentManager(service.PeriodicService):
                          'speed': port.speed,
                          'link_mode': port.link_mode,
                          'dev_id': port.dev_id,
-                         'dpdksupport': port.dpdksupport}
+                         'dpdksupport': port.dpdksupport,
+                         'numchannels': port.numchannels,
+                         'maxchannels': port.maxchannels,
+                         'sriov_vf_numchannels': port.sriov_vf_numchannels,
+                         'sriov_vf_maxchannels': port.sriov_vf_maxchannels}
 
             LOG.debug('Sysinv Agent inic {}'.format(inic_dict))
 
@@ -879,8 +883,8 @@ class AgentManager(service.PeriodicService):
                 topic=conductor_rpcapi.MANAGER_TOPIC)
 
         if pci_device_list is None or port_list is None:
-            port_list, pci_device_list, host_macs = self._get_ports_inventory()
-
+            port_list, pci_device_list, host_macs = \
+                self._get_ports_inventory()
         if port_list:
             try:
                 rpcapi.iport_update_by_ihost(context,
@@ -2122,7 +2126,8 @@ class AgentManager(service.PeriodicService):
     def _report_inventory(self, context, config_dict):
         inventory_update = config_dict.get(puppet.REPORT_INVENTORY_UPDATE, None)
         LOG.info("report_inventory request=%s" % inventory_update)
-        if inventory_update == puppet.REPORT_PCI_SRIOV_CONFIG:
+        if inventory_update in (puppet.REPORT_PCI_SRIOV_CONFIG,
+                                puppet.REPORT_CHANNEL_CONFIG):
             self._report_port_inventory(context)
         else:
             LOG.error("report_inventory unknown request=%s" % inventory_update)

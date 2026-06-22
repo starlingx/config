@@ -1290,6 +1290,10 @@ def get_test_ethernet_port(**kw):
         'sriov_vf_driver': kw.get('sriov_vf_driver'),
         'sriov_vf_pdevice_id': kw.get('sriov_vf_pdevice_id'),
         'sriov_vfs_pci_address': kw.get('sriov_vfs_pci_address'),
+        'sriov_vf_maxchannels': kw.get('sriov_vf_maxchannels'),
+        'sriov_vf_numchannels': kw.get('sriov_vf_numchannels'),
+        'maxchannels': kw.get('maxchannels'),
+        'numchannels': kw.get('numchannels'),
         'driver': kw.get('driver'),
         'numa_node': kw.get('numa_node', -1)
     }
@@ -1374,7 +1378,9 @@ def get_test_interface(**kw):
         'ptp_role': kw.get('ptp_role', None),
         'max_tx_rate': kw.get('max_tx_rate', None),
         'max_rx_rate': kw.get('max_rx_rate', None),
-        'ovs_access': kw.get('ovs_access', None)
+        'ovs_access': kw.get('ovs_access', None),
+        'sriov_vf_channels': kw.get('sriov_vf_channels', None),
+        'channels': kw.get('channels', None)
     }
     return interface
 

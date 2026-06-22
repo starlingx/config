@@ -3305,6 +3305,166 @@ class ConductorManager(service.PeriodicService):
                         self.fm_api.clear_fault(fm_constants.FM_ALARM_ID_NETWORK_PORT,
                                                 entity_instance_id)
 
+    def _verify_channel_config(self, ihost):
+        """Verify that actual port channel counts match desired interface config.
+
+        After a channel configuration manifest is applied and the agent
+        re-reports port inventory, compare the reported numchannels and
+        sriov_vf_numchannels against the desired values configured on
+        the interface (interface.channels and interface.sriov_vf_channels).
+
+        Raises alarm 300.001 (minor severity) per-port if there is a mismatch.
+        Clears the alarm if the values now match.
+
+        Only checks interfaces with explicitly configured channel values
+        (non-None).  Default-calculated values are not verified to avoid
+        false positives during initial configuration.
+        """
+        try:
+            interfaces = self.dbapi.iinterface_get_by_ihost(ihost['uuid'])
+            eth_ports = self.dbapi.ethernet_port_get_by_host(ihost['uuid'])
+
+            # Build port lookup by interface_id
+            ports_by_iface_id = {}
+            for port in eth_ports:
+                if port.interface_id:
+                    ports_by_iface_id.setdefault(
+                        port.interface_id, []).append(port)
+
+            alarm_port_list = []  # (port, reason_text) tuples
+            clear_port_list = []  # ports where alarm should be cleared
+
+            for iface in interfaces:
+                desired_channels = iface.get('channels', None)
+                desired_vf_channels = iface.get('sriov_vf_channels', None)
+
+                # Only verify explicitly configured values
+                if desired_channels is None and desired_vf_channels is None:
+                    continue
+
+                # Determine which ports to check based on interface type
+                if iface['iftype'] == constants.INTERFACE_TYPE_AE:
+                    # For AE interfaces, check each member port
+                    iface_ports = []
+                    for lower_ifname in (iface.get('uses') or []):
+                        try:
+                            lower_iface = self.dbapi.iinterface_get(
+                                lower_ifname, ihost['uuid'])
+                            iface_ports.extend(
+                                ports_by_iface_id.get(
+                                    lower_iface['id'], []))
+                        except Exception:
+                            LOG.warning(f"Failed to get AE member ports for {iface['ifname']}")
+                            pass
+                elif iface['iftype'] == constants.INTERFACE_TYPE_VF:
+                    # VF type: channel config applies to parent PF's port
+                    iface_ports = []
+                    parent_ifname = (iface.get('uses') or [None])[0]
+                    if parent_ifname:
+                        try:
+                            parent_iface = self.dbapi.iinterface_get(
+                                parent_ifname, ihost['uuid'])
+                            iface_ports = ports_by_iface_id.get(
+                                parent_iface['id'], [])
+                        except Exception:
+                            LOG.warning(f"Failed to get parent port for {iface['ifname']}")
+                            pass
+                else:
+                    iface_ports = ports_by_iface_id.get(
+                        iface['id'], [])
+
+                for port in iface_ports:
+                    mismatches = []
+
+                    # Check PF channels
+                    if desired_channels is not None:
+                        actual = port.numchannels
+                        if (actual is not None and
+                                actual != desired_channels):
+                            mismatches.append(
+                                "channels: desired=%d actual=%d" %
+                                (desired_channels, actual))
+
+                    # Check VF channels
+                    if desired_vf_channels is not None:
+                        actual_vf = port.sriov_vf_numchannels
+                        if (actual_vf is not None and
+                                actual_vf != desired_vf_channels):
+                            mismatches.append(
+                                "vf-channels: desired=%d actual=%d" %
+                                (desired_vf_channels, actual_vf))
+
+                    if mismatches:
+                        reason = (
+                            "Interface '%s' channel configuration "
+                            "mismatch on port '%s': %s" %
+                            (iface['ifname'], port.name,
+                             "; ".join(mismatches)))
+                        alarm_port_list.append((port, reason))
+                    else:
+                        clear_port_list.append(port)
+
+            # Raise alarms for mismatches
+            for port, reason_text in alarm_port_list:
+                self._set_channel_mismatch_alarm(ihost, port, reason_text)
+
+            # Clear alarms for ports that now match
+            self._clear_channel_mismatch_alarms(ihost, clear_port_list)
+
+        except Exception:
+            LOG.exception("Failed to verify channel configuration "
+                          "for host %s" % ihost.get('hostname', 'unknown'))
+
+    def _set_channel_mismatch_alarm(self, host, port, reason_text):
+        """Raise alarm 300.001 (minor) for a channel configuration mismatch."""
+        entity_instance_id = (
+            "%s=%s.%s=%s" %
+            (fm_constants.FM_ENTITY_TYPE_HOST, host['hostname'],
+             fm_constants.FM_ENTITY_TYPE_PORT, port.uuid))
+
+        fault = fm_api.Fault(
+            alarm_id=fm_constants.FM_ALARM_ID_NETWORK_PORT,
+            alarm_state=fm_constants.FM_ALARM_STATE_SET,
+            entity_type_id=fm_constants.FM_ENTITY_TYPE_PORT,
+            entity_instance_id=entity_instance_id,
+            severity=fm_constants.FM_ALARM_SEVERITY_MINOR,
+            reason_text=reason_text,
+            alarm_type=fm_constants.FM_ALARM_TYPE_4,
+            probable_cause=fm_constants.ALARM_PROBABLE_CAUSE_45,
+            proposed_repair_action=_(
+                "Verify the NIC supports the requested channel count. "
+                "Re-apply channel configuration with "
+                "'system host-if-modify --channels <value>' or "
+                "'system host-if-modify --vf-channels <value>'. "
+                "If the problem persists, reset the channel value to "
+                "'default' and investigate NIC firmware/driver."),
+            service_affecting=False)
+        self.fm_api.set_fault(fault)
+        LOG.warning("Channel config mismatch alarm raised: %s" % reason_text)
+
+    def _clear_channel_mismatch_alarms(self, host, ports):
+        """Clear alarm 300.001 for ports whose channels now match."""
+        if not ports:
+            return
+        existing_alarms = self.fm_api.get_faults_by_id(
+            fm_constants.FM_ALARM_ID_NETWORK_PORT)
+        if not existing_alarms:
+            return
+        for port in ports:
+            entity_instance_id = (
+                "%s=%s.%s=%s" %
+                (fm_constants.FM_ENTITY_TYPE_HOST, host['hostname'],
+                 fm_constants.FM_ENTITY_TYPE_PORT, port.uuid))
+            for alarm in existing_alarms:
+                if entity_instance_id == alarm.entity_instance_id:
+                    self.fm_api.clear_fault(
+                        fm_constants.FM_ALARM_ID_NETWORK_PORT,
+                        entity_instance_id)
+                    LOG.info(
+                        "Channel config mismatch alarm cleared "
+                        "for port %s on host %s" %
+                        (port.name, host['hostname']))
+
     def _get_port_id_subfield(self, input_text):
         str_found = ""
         try:
@@ -3752,6 +3912,10 @@ class ConductorManager(service.PeriodicService):
                             'driver': inic['driver'],
                             'dpdksupport': inic['dpdksupport'],
                             'speed': inic['speed'],
+                            'maxchannels': inic['maxchannels'],
+                            'numchannels': inic['numchannels'],
+                            'sriov_vf_maxchannels': inic['sriov_vf_maxchannels'],
+                            'sriov_vf_numchannels': inic['sriov_vf_numchannels'],
                         }
 
                         LOG.info("port %s update attr: %s" %
@@ -3828,6 +3992,11 @@ class ConductorManager(service.PeriodicService):
             # on the host being installed with a cloned image. Comparison is against
             # the DB which was backed up on the original system (used for cloning).
             self.validate_cloned_interfaces(ihost_uuid)
+
+        # Verify channel configuration matches actual port state.
+        # Only runs on unlocked hosts where channels are actively applied.
+        if ihost.administrative == constants.ADMIN_UNLOCKED:
+            self._verify_channel_config(ihost)
 
     def _update_port_name(self, port, updated_name):
         """
@@ -10107,7 +10276,9 @@ class ConductorManager(service.PeriodicService):
         config_dict = {
             "personalities": personalities,
             'host_uuids': [host_uuid],
-            "classes": ['platform::network::interfaces::sriov::vf::runtime']
+            "classes": ['platform::network::interfaces::sriov::vf::runtime'],
+            puppet_common.REPORT_INVENTORY_UPDATE:
+                puppet_common.REPORT_CHANNEL_CONFIG,
         }
 
         self._config_apply_runtime_manifest(
@@ -10625,6 +10796,29 @@ class ConductorManager(service.PeriodicService):
             }
 
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
+
+    def update_interface_channel_config(self, context, host_uuid):
+        """update interface channel configuration of platform/SR-IOV interfaces
+
+        :param context: an admin context
+        :param host_uuid: the host uuid
+        """
+        # update manifest files and notify agent to apply them
+        personalities = [constants.CONTROLLER,
+                         constants.WORKER]
+        config_uuid = self._config_update_hosts(context, personalities,
+                                                host_uuids=[host_uuid])
+
+        config_dict = {
+            "personalities": personalities,
+            'host_uuids': [host_uuid],
+            "classes": ['platform::network::interfaces::channels::runtime'],
+            puppet_common.REPORT_INVENTORY_UPDATE:
+                puppet_common.REPORT_CHANNEL_CONFIG,
+        }
+
+        self._config_apply_runtime_manifest(
+            context, config_uuid, config_dict, force=True)
 
     def update_host_filesystem_config(self, context,
                                       host=None,

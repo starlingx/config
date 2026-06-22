@@ -22,7 +22,8 @@ def _print_iinterface_show(cc, iinterface):
               'vlan_id', 'uses', 'used_by',
               'created_at', 'updated_at', 'sriov_numvfs',
               'sriov_vf_driver', 'max_tx_rate', 'max_rx_rate',
-              'ovs_access']
+              'ovs_access', 'channels', 'sriov_vf_channels']
+
     optional_fields = ['ipv4_mode', 'ipv6_mode', 'ipv4_pool', 'ipv6_pool']
     rename_fields = [{'field': 'dpdksupport', 'label': 'accelerated'}]
     data = [(f, getattr(iinterface, f, '')) for f in fields]
@@ -93,6 +94,10 @@ def do_host_if_list(cc, args):
             attr_str = "%s,max_tx_rate=%s" % (attr_str, i.max_tx_rate)
         if i.max_rx_rate:
             attr_str = "%s,max_rx_rate=%s" % (attr_str, i.max_rx_rate)
+        if i.channels:
+            attr_str = "%s,channels=%s" % (attr_str, i.channels)
+        if i.sriov_vf_channels:
+            attr_str = "%s,sriov_vf_channels=%s" % (attr_str, i.sriov_vf_channels)
         setattr(i, 'attrs', attr_str)
 
     field_labels = ['uuid', 'name', 'class', 'type', 'vlan id', 'ports',
@@ -196,6 +201,14 @@ def do_host_if_delete(cc, args):
            metavar='<ovs access>',
            choices=['true', 'false'],
            help='Whether OVS access is enabled for this interface (true/false)')
+@utils.arg('--channels',
+           dest='channels',
+           metavar='<channels>',
+           help='The number of channels (queues) of the Platform interface')
+@utils.arg('--vf-channels',
+           dest='sriov_vf_channels',
+           metavar='<sriov vf channels>',
+           help='The number of channels (queues) of the SR-IOV interface')
 def do_host_if_add(cc, args):
     """Add an interface."""
 
@@ -313,6 +326,14 @@ def do_host_if_add(cc, args):
            metavar='<ovs access>',
            choices=['true', 'false'],
            help='Whether OVS access is enabled for this interface (true/false)')
+@utils.arg('--channels',
+           dest='channels',
+           metavar='<channels>',
+           help='The number of channels (queues) of the Platform interface')
+@utils.arg('--vf-channels',
+           dest='sriov_vf_channels',
+           metavar='<sriov vf channels>',
+           help='The number of channels (queues) of the SR-IOV interface')
 def do_host_if_modify(cc, args):
     """Modify interface attributes."""
 
@@ -320,12 +341,19 @@ def do_host_if_modify(cc, args):
                 'ports', 'ifclass', 'ptp_role', 'primary_reselect',
                 'ipv4_mode', 'ipv6_mode', 'ipv4_pool', 'ipv6_pool',
                 'sriov_numvfs', 'sriov_vf_driver', 'max_tx_rate', 'max_rx_rate',
-                'ovs_access']
+                'ovs_access', 'channels', 'sriov_vf_channels']
 
     ihost = ihost_utils._find_ihost(cc, args.hostnameorid)
 
     user_specified_fields = dict((k, v) for (k, v) in vars(args).items()
                                  if k in rwfields and not (v is None))
+
+    # Allow resetting channels/vf-channels to defaults by sending
+    # the string 'none' which the API will interpret as NULL.
+    for field in ('channels', 'sriov_vf_channels'):
+        if field in user_specified_fields:
+            if str(user_specified_fields[field]).lower() in ('none', 'default'):
+                user_specified_fields[field] = 'none'
 
     interface = _find_interface(cc, ihost, args.ifnameoruuid)
     fields = interface.__dict__
