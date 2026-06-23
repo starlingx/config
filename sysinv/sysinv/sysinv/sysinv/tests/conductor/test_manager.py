@@ -11623,10 +11623,15 @@ class TestPeriodicChartCleanup(base.DbTestCase):
 
         self.service = manager.ConductorManager('test-host', 'test-topic')
         self.service.dbapi = dbapi.get_instance()
+        self._orig_kube_app_get_all = self.service.dbapi.kube_app_get_all
         self.context = context.get_admin_context()
         self.system = utils.create_test_isystem()
         self.service._app = mock.Mock()
         self.service.fm_api = mock.Mock()
+
+    def tearDown(self):
+        self.service.dbapi.kube_app_get_all = self._orig_kube_app_get_all
+        super(TestPeriodicChartCleanup, self).tearDown()
 
     @mock.patch('sysinv.common.utils.get_platform_core_count', return_value=2)
     @mock.patch('sysinv.helm.utils.index_repo')

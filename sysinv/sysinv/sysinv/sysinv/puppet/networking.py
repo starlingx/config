@@ -1125,7 +1125,20 @@ class NetworkingPuppet(base.BasePuppet):
                     network_interface.imtu
             })
 
-            addresses = self.context['addresses'].get(network_interface['ifname'], [])
+            # Use interface_networks to get only addresses belonging to
+            # THIS network, not all addresses on the interface.
+            # This is critical when multiple networks share the same
+            # interface (e.g., mgmt and cluster-host on AIO-DX).
+            if network:
+                network_id = network.id
+                iface_networks = self.context['interface_networks'].get(
+                    network_interface['ifname'], {})
+                network_entry = iface_networks.get(network_id, {})
+                addresses = network_entry.get('addresses', [])
+            else:
+                addresses = self.context['addresses'].get(
+                    network_interface['ifname'], [])
+
             for address in addresses:
                 family = "ipv4" if address.family == constants.IPV4_FAMILY else "ipv6"
                 config.update({
@@ -1134,14 +1147,13 @@ class NetworkingPuppet(base.BasePuppet):
                 })
 
             if network:
+                prim_family = network.primary_pool_family.lower()
                 for address in addresses:
                     family = "ipv4" if address.family == constants.IPV4_FAMILY else "ipv6"
-                    prim_family = network.primary_pool_family.lower()
                     if prim_family == family:
                         config.update({
                             f'platform::network::{networktype}::params::interface_address':
                                 address.address
                         })
-                    break
-
+                        break
         return config

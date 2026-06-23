@@ -773,6 +773,160 @@ class NetworkingTestTestCaseControllerDualStackIPv6Primary(NetworkingTestCaseMix
                              hiera_data[f'platform::network::{type}::ipv6::params::interface_address'])
 
 
+class NetworkingTestSharedInterfaceMgmtCluster(NetworkingTestCaseMixin,
+                                               dbbase.BaseHostTestCase):
+    """Test that _get_interface_config correctly filters addresses by network
+    when mgmt and cluster-host share the same interface (AIO-DX scenario).
+    """
+
+    def __init__(self, *args, **kwargs):
+        super(NetworkingTestSharedInterfaceMgmtCluster, self).__init__(*args, **kwargs)
+        self.test_interfaces = dict()
+
+    def setUp(self):
+        super(NetworkingTestSharedInterfaceMgmtCluster, self).setUp()
+        self.dbapi = db_api.get_instance()
+        self._setup_context()
+
+    def _update_context(self):
+        self.host.save(self.admin_context)
+        super(NetworkingTestSharedInterfaceMgmtCluster, self)._update_context()
+
+    def _setup_configuration(self):
+        """Setup with mgmt and cluster-host on the SAME interface (shared)."""
+        self.host = self._create_test_host(personality=constants.CONTROLLER)
+
+        _, c0_oam = self._create_ethernet_test("oam0",
+            constants.INTERFACE_CLASS_PLATFORM,
+            constants.NETWORK_TYPE_OAM, self.host.id)
+
+        # Create a SHARED interface for both mgmt and cluster-host
+        _, c0_shared = self._create_ethernet_test("mgmt0",
+            constants.INTERFACE_CLASS_PLATFORM,
+            [constants.NETWORK_TYPE_MGMT, constants.NETWORK_TYPE_CLUSTER_HOST],
+            self.host.id)
+
+        _, c0_pxe = self._create_ethernet_test("pxe0",
+            constants.INTERFACE_CLASS_PLATFORM,
+            constants.NETWORK_TYPE_PXEBOOT, self.host.id)
+
+        self.host_c1 = self._create_test_host(personality=constants.CONTROLLER,
+                                              unit=1)
+
+        _, c1_oam = self._create_ethernet_test("oam0",
+            constants.INTERFACE_CLASS_PLATFORM,
+            constants.NETWORK_TYPE_OAM, self.host_c1.id)
+
+        # Shared interface on controller-1 as well
+        _, c1_shared = self._create_ethernet_test("mgmt0",
+            constants.INTERFACE_CLASS_PLATFORM,
+            [constants.NETWORK_TYPE_MGMT, constants.NETWORK_TYPE_CLUSTER_HOST],
+            self.host_c1.id)
+
+        _, c1_pxe = self._create_ethernet_test("pxe0",
+            constants.INTERFACE_CLASS_PLATFORM,
+            constants.NETWORK_TYPE_PXEBOOT, self.host_c1.id)
+
+        # associate addresses with its interfaces
+        addresses = self.dbapi.addresses_get_all()
+        for addr in addresses:
+            for hostname in [self.host.hostname, self.host_c1.hostname]:
+                if addr.name == f"{hostname}-{constants.NETWORK_TYPE_OAM}":
+                    if hostname == constants.CONTROLLER_0_HOSTNAME:
+                        values = {'interface_id': c0_oam.id}
+                        self.dbapi.address_update(addr.uuid, values)
+                    elif hostname == constants.CONTROLLER_1_HOSTNAME:
+                        values = {'interface_id': c1_oam.id}
+                        self.dbapi.address_update(addr.uuid, values)
+                elif addr.name == f"{hostname}-{constants.NETWORK_TYPE_MGMT}":
+                    # Both mgmt and cluster-host addresses go on the SAME interface
+                    if hostname == constants.CONTROLLER_0_HOSTNAME:
+                        values = {'interface_id': c0_shared.id}
+                        self.dbapi.address_update(addr.uuid, values)
+                    elif hostname == constants.CONTROLLER_1_HOSTNAME:
+                        values = {'interface_id': c1_shared.id}
+                        self.dbapi.address_update(addr.uuid, values)
+                elif addr.name == f"{hostname}-{constants.NETWORK_TYPE_CLUSTER_HOST}":
+                    # cluster-host address on the SAME shared interface
+                    if hostname == constants.CONTROLLER_0_HOSTNAME:
+                        values = {'interface_id': c0_shared.id}
+                        self.dbapi.address_update(addr.uuid, values)
+                    elif hostname == constants.CONTROLLER_1_HOSTNAME:
+                        values = {'interface_id': c1_shared.id}
+                        self.dbapi.address_update(addr.uuid, values)
+                elif addr.name == f"{hostname}-{constants.NETWORK_TYPE_PXEBOOT}":
+                    if hostname == constants.CONTROLLER_0_HOSTNAME:
+                        values = {'interface_id': c0_pxe.id}
+                        self.dbapi.address_update(addr.uuid, values)
+                    elif hostname == constants.CONTROLLER_1_HOSTNAME:
+                        values = {'interface_id': c1_pxe.id}
+                        self.dbapi.address_update(addr.uuid, values)
+
+        # associate addresses with its pools
+        for net_type in [constants.NETWORK_TYPE_OAM,
+                         constants.NETWORK_TYPE_MGMT,
+                         constants.NETWORK_TYPE_CLUSTER_HOST,
+                         constants.NETWORK_TYPE_PXEBOOT]:
+            net = self.dbapi.network_get_by_type(net_type)
+            net_pools = self.dbapi.network_addrpool_get_by_network_id(net.id)
+            for net_pool in net_pools:
+                address_pool = self.dbapi.address_pool_get(net_pool.address_pool_uuid)
+                addresses = self.dbapi.addresses_get_all()
+                for addr in addresses:
+                    if (addr.name.endswith(f"-{net_type}")) \
+                            and (addr.family == address_pool.family):
+                                values = {'address_pool_id': address_pool.id}
+                                self.dbapi.address_update(addr.uuid, values)
+
+    def test_shared_interface_mgmt_address_not_overwritten_by_cluster(self):
+        """Verify that when mgmt and cluster-host share an interface, the
+        mgmt interface_address is NOT overwritten by the cluster-host IP.
+        """
+        hieradata_directory = self._create_hieradata_directory()
+        config_filename = self._get_config_filename(hieradata_directory)
+        with open(config_filename, 'w') as config_file:
+            config = self.operator.networking.get_host_config(self.host)
+            yaml.dump(config, config_file, default_flow_style=False)
+
+        hiera_data = dict()
+        with open(config_filename, 'r') as config_file:
+            hiera_data = yaml.safe_load(config_file)
+
+        mgmt_key = 'platform::network::mgmt::ipv4::params::interface_address'
+        cluster_key = 'platform::network::cluster_host::ipv4::params::interface_address'
+
+        self.assertIn(mgmt_key, hiera_data)
+        self.assertIn(cluster_key, hiera_data)
+
+        # The critical assertion: mgmt and cluster-host must have DIFFERENT IPs
+        # (they come from different subnets: 192.168.204.x vs 192.168.206.x)
+        self.assertNotEqual(
+            hiera_data[mgmt_key],
+            hiera_data[cluster_key],
+            "mgmt interface_address must NOT be the cluster-host address! "
+            "This indicates the shared-interface filtering bug is present.")
+
+        # Verify the mgmt address is from the mgmt subnet (192.168.204.x)
+        mgmt_addr = hiera_data[mgmt_key]
+        self.assertTrue(
+            netaddr.IPAddress(mgmt_addr) in netaddr.IPNetwork('192.168.204.0/24'),
+            f"mgmt interface_address {mgmt_addr} is not in mgmt subnet 192.168.204.0/24")
+
+        # Verify the cluster-host address is from the cluster subnet (192.168.206.x)
+        cluster_addr = hiera_data[cluster_key]
+        self.assertTrue(
+            netaddr.IPAddress(cluster_addr) in netaddr.IPNetwork('192.168.206.0/24'),
+            f"cluster-host interface_address {cluster_addr} is not in cluster subnet 192.168.206.0/24")
+
+        # Also verify primary (non-family) keys are correct
+        mgmt_primary_key = 'platform::network::mgmt::params::interface_address'
+        cluster_primary_key = 'platform::network::cluster_host::params::interface_address'
+        self.assertIn(mgmt_primary_key, hiera_data)
+        self.assertIn(cluster_primary_key, hiera_data)
+        self.assertEqual(hiera_data[mgmt_primary_key], mgmt_addr)
+        self.assertEqual(hiera_data[cluster_primary_key], cluster_addr)
+
+
 class TestDpllMgrHieradata(testtools.TestCase):
     """Unit tests for dpll-mgr hieradata generation in NetworkingPuppet."""
 
