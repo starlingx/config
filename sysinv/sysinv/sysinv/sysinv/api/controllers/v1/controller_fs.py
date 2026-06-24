@@ -517,7 +517,7 @@ def _check_optional_controller_fs(controller_fs, operation):
                 for function in controller_fs['capabilities']['functions'])):
             float_is_installed = _floating_monitor_is_installed(operation, controller_fs)
             if float_is_installed:
-                msg = _("Failed to {} controller filesystem {}: operation not allowed"
+                msg = _("Failed to {} controller filesystem {}: operation not allowed "
                         "when has monitor function.".format(operation, controller_fs['name']))
                 raise wsme.exc.ClientSideError(msg)
 
