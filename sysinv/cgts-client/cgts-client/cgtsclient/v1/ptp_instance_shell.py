@@ -124,6 +124,31 @@ def _ptp_instance_parameter_op(cc, op, instance, section, parameters):
             raise exc.CommandError(
                 f"Section '{section}' is not supported for dpll-mgr. "
                 f"Supported: {constants.PTP_INSTANCE_TYPE_DPLL_MGR_SUPPORTED_SECTIONS}")
+    # validate section=dpll parameters for clock instance type
+    elif (ptp_instance.service == constants.PTP_INSTANCE_TYPE_CLOCK
+          and section == 'dpll' and op == "add"):
+        for param_keypair in parameters:
+            if param_keypair.find("=") < 0:
+                raise exc.CommandError(f"Bad PTP parameter keypair: {param_keypair}")
+            (param_name, param_value) = param_keypair.split("=", 1)
+            if param_name not in constants.PTP_INSTANCE_TYPE_CLOCK_DPLL_SUPPORTED_PARAMS:
+                raise exc.CommandError(
+                    f"Parameter '{param_name}' is not supported for clock section=dpll. "
+                    f"Supported: {constants.PTP_INSTANCE_TYPE_CLOCK_DPLL_SUPPORTED_PARAMS}")
+            if param_name.startswith('pin_priority_'):
+                try:
+                    prio = int(param_value)
+                    if prio < 0 or prio > 14:
+                        raise ValueError()
+                except (ValueError, TypeError):
+                    raise exc.CommandError(
+                        f"Invalid priority value '{param_value}' for {param_name}. "
+                        f"Must be integer 0-14.")
+            elif param_name.startswith('pin_state_'):
+                if param_value not in constants.PTP_INSTANCE_TYPE_CLOCK_DPLL_VALID_STATES:
+                    raise exc.CommandError(
+                        f"Invalid state '{param_value}' for {param_name}. "
+                        f"Must be one of: {constants.PTP_INSTANCE_TYPE_CLOCK_DPLL_VALID_STATES}")
     # sanity check for PTP4l's unicast_master_table sectional parameters
     elif (
         ptp_instance.service == constants.PTP_INSTANCE_TYPE_PTP4L

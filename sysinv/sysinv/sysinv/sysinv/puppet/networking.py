@@ -949,6 +949,57 @@ class NetworkingPuppet(base.BasePuppet):
 
         return gnrd_pin_values[is_gnss_enabled]
 
+    def _set_ptp_dpll_pin_config(self, nic_clocks, ptp_parameters_instance):
+        """Generate DPLL pin priority/state config from section=dpll parameters.
+
+        Reads pin_priority_* and pin_state_* parameters from clock instances
+        and produces a list of pin config entries for puppet/script consumption.
+        """
+        PIN_MAP = {
+            'gnss': {'group': 'gnss'},
+            'synce': {'group': 'synce'},
+            'ptp': {'group': 'ptp'},
+            'ext': {'group': 'ext'},
+        }
+
+        configs = []
+        clock_uuids = {nic_clocks[name]['uuid'] for name in nic_clocks}
+
+        for param in ptp_parameters_instance:
+            if param['section'] != 'dpll':
+                continue
+            # Check if this param belongs to a clock instance
+            if not any(uuid in clock_uuids for uuid in param['owners']):
+                continue
+
+            name = param['name']
+            value = param['value']
+
+            if name.startswith('pin_priority_'):
+                suffix = name[len('pin_priority_'):]
+                if suffix not in PIN_MAP:
+                    LOG.warning(f"Unknown dpll pin name: {suffix}")
+                    continue
+                try:
+                    priority = int(value)
+                except (ValueError, TypeError):
+                    LOG.warning(f"Invalid dpll priority value: {value}")
+                    continue
+                entry = dict(PIN_MAP[suffix])
+                entry['priority'] = priority
+                configs.append(entry)
+
+            elif name.startswith('pin_state_'):
+                suffix = name[len('pin_state_'):]
+                if suffix not in PIN_MAP:
+                    LOG.warning(f"Unknown dpll pin name: {suffix}")
+                    continue
+                entry = dict(PIN_MAP[suffix])
+                entry['state'] = value
+                configs.append(entry)
+
+        return configs
+
     def _generate_clock_port_dict(self, host, nic_clock_config, host_port_list):
         port_dict = {}
         for instance in nic_clock_config:
@@ -1132,6 +1183,11 @@ class NetworkingPuppet(base.BasePuppet):
         gnss_pin_config = self._set_ptp_gnss_state(nic_clock_config)
         LOG.info(f"PTP GNSS Config for host id {host.id}: {gnss_pin_config}")
 
+        # Generate DPLL pin priority config from section=dpll params
+        dpll_pin_config = self._set_ptp_dpll_pin_config(
+            nic_clocks, ptp_parameters_instance)
+        LOG.info(f"PTP DPLL Pin Config for host id {host.id}: {dpll_pin_config}")
+
         # Generate the ptp instance config if ptp is enabled
         if ptpinstance_enabled:
             ptp_config = self._set_ptp_instance_global_parameters(ptp_instance_configs,
@@ -1174,6 +1230,7 @@ class NetworkingPuppet(base.BasePuppet):
             'platform::ptpinstance::nic_clock::nic_clock_config_extended': nic_clock_config_extended,
             'platform::ptpinstance::nic_clock::nic_clock_enabled': nic_clock_enabled,
             'platform::ptpinstance::gnss_state::gnss_pin_config': gnss_pin_config,
+            'platform::ptpinstance::dpll_pin_config::configs': dpll_pin_config,
         }
 
     def _get_interface_config(self, networktype):
