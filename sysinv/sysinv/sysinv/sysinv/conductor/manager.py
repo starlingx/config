@@ -814,6 +814,36 @@ class ConductorManager(service.PeriodicService):
                 LOG.info("State of ceph backend: '%s' to '%s'." %
                         (ceph_backend.state, constants.SB_STATE_CONFIGURED))
 
+        rook_backend = StorageBackendConfig.get_backend(
+            self.dbapi,
+            constants.SB_TYPE_CEPH_ROOK
+        )
+        # Clear stale has_long_running_operations flag if present.
+        # This capability is set by the rook-ceph lifecycle plugin
+        # and cleared when the operation completes.
+        # If the conductor is starting, the background thread
+        # that held this flag is guaranteed dead.
+        if rook_backend:
+            capabilities = rook_backend.capabilities or {}
+            if "has_long_running_operations" in capabilities:
+                LOG.info(
+                    "Clearing stale 'has_long_running_operations' from "
+                    "ceph storage backend '%s'." %
+                    rook_backend.uuid)
+                del capabilities["has_long_running_operations"]
+                self.dbapi.storage_backend_update(rook_backend.uuid, {
+                    'capabilities': capabilities
+                })
+                # Clear the associated alarm
+                entity_instance_id = "%s=%s-%s" % (
+                    fm_constants.FM_ENTITY_TYPE_APPLICATION,
+                    "rook-ceph",
+                    "long-running-operations")
+                self.fm_api.clear_fault(
+                    fm_constants.FM_ALARM_ID_STORAGE_CEPH,
+                    entity_instance_id)
+                LOG.info("Cleared long-running-operations alarm for rook-ceph.")
+
     def _init_controller_for_upgrade(self, upgrade):
         # Raise alarm to show an upgrade is in progress
         # After upgrading controller-1 and swacting to it, we must
