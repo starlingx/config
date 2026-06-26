@@ -8150,9 +8150,11 @@ class ConductorManager(service.PeriodicService):
                                                                          True,
                                                                          k8s_upgrade_timing)
 
-        auto_downgrade = strtobool(app.app_metadata.get(constants.APP_METADATA_DOWNGRADES, {})
-                                   .get(constants.APP_METADATA_AUTO_DOWNGRADE,
-                                        str(constants.APP_METADATA_AUTO_DOWNGRADE_DEFAULT_VALUE)))
+        auto_downgrade_raw = (app.app_metadata.get(constants.APP_METADATA_DOWNGRADES, {})
+                              .get(constants.APP_METADATA_AUTO_DOWNGRADE,
+                                   constants.APP_METADATA_AUTO_DOWNGRADE_DEFAULT_VALUE))
+        auto_downgrade = strtobool(auto_downgrade_raw) \
+            if isinstance(auto_downgrade_raw, str) else bool(auto_downgrade_raw)
         latest_downgrade_bundle = None
         available_versions = set()
         chosen_bundle = None

@@ -10810,6 +10810,40 @@ class ManagerTestCase(base.DbTestCase):
         result = self.service._get_app_bundle_for_update(app_moked)
         self.assertEqual(result, None)
 
+    @mock.patch('os.path.isfile', return_value=True)
+    def test_get_app_bundle_for_update_bool_auto_downgrade(self, mock_isfile):
+        """Test auto_downgrade as bool (YAML-parsed) does not raise AttributeError"""
+        self.service.start()
+
+        app = mock.MagicMock()
+        app.name = "test_app"
+        app.app_version = "1.0.0"
+        app.app_metadata = {
+            constants.APP_METADATA_DOWNGRADES: {
+                constants.APP_METADATA_AUTO_DOWNGRADE: True
+            }
+        }
+
+        result = self.service._get_app_bundle_for_update(app)
+        self.assertEqual(result.version, "1.0.5")
+
+    @mock.patch('os.path.isfile', return_value=True)
+    def test_get_app_bundle_for_update_bool_false_auto_downgrade(self, mock_isfile):
+        """Test auto_downgrade as bool False disables downgrade"""
+        self.service.start()
+
+        app = mock.MagicMock()
+        app.name = "test_app"
+        app.app_version = "1.2.3"
+        app.app_metadata = {
+            constants.APP_METADATA_DOWNGRADES: {
+                constants.APP_METADATA_AUTO_DOWNGRADE: False
+            }
+        }
+
+        result = self.service._get_app_bundle_for_update(app)
+        self.assertIsNone(result)
+
     @mock.patch('glob.glob')
     @mock.patch('sysinv.common.app_metadata.extract_bundle_metadata')
     @mock.patch('sysinv.conductor.manager.ConductorManager._update_cached_app_bundles_set')
