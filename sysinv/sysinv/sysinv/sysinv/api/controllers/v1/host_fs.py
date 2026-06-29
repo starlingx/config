@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2020, 2024-2025 Wind River Systems, Inc.
+# Copyright (c) 2020, 2024-2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -468,6 +468,44 @@ def _check_fs_resizing(fs_name, size, current_host_fs_list, current_host_lvg_lis
         raise wsme.exc.ClientSideError(msg)
 
 
+def _check_ceph_floating_monitor(operation):
+    """Check if the floating monitor (ceph-float controllerfs) prevents
+    changes to a fixed monitor.
+
+    This validates two conditions:
+    1. If the controllerfs ceph-float is in 'reconfigure-with-app' state,
+       a pending change has not been applied yet, so the floating monitor
+       is still effectively active.
+    2. If the floating monitor function is currently assigned on the
+       controllerfs, the operation is not allowed.
+
+    :param operation: string describing the operation (e.g. "add", "update",
+                      "delete") used in error messages.
+    """
+    try:
+        controller_fs = pecan.request.dbapi.controller_fs_get_by_name(
+            constants.FILESYSTEM_NAME_CEPH_DRBD)
+        controller_fs_state = eval(controller_fs.state).get('status', '')
+        if controller_fs_state == constants.CONTROLLER_FS_RECONFIGURE_WITH_APP:
+            msg = _("HostFs %s failed: the controller filesystem "
+                    "%s is in '%s' state. Please apply the application "
+                    "to complete the pending configuration before "
+                    "retrying this command."
+                    % (operation,
+                       constants.FILESYSTEM_NAME_CEPH_DRBD,
+                       constants.CONTROLLER_FS_RECONFIGURE_WITH_APP))
+            raise wsme.exc.ClientSideError(msg)
+    except exception.ControllerFSNameNotFound:
+        pass
+
+    if cutils.is_floating_monitor_assigned(pecan.request.dbapi):
+        msg = _("HostFs %s failed: cannot modify a fixed monitor "
+                "while the floating monitor (%s controllerfs) is "
+                "configured. Please remove the floating monitor first."
+                % (operation, constants.FILESYSTEM_NAME_CEPH_DRBD))
+        raise wsme.exc.ClientSideError(msg)
+
+
 def _check_capabilities(fs_name, functions, current_fs_list):
     """Checking Capabilities."""
 
@@ -532,6 +570,12 @@ def _check_capabilities(fs_name, functions, current_fs_list):
         msg = _("HostFs update failed: Number of monitors cannot exceed %s." %
                 constants.FILESYSTEM_CEPH_MONITOR_MAX)
         raise wsme.exc.ClientSideError(msg)
+
+    # When removing the monitor function on an AIO-DX system, the floating
+    # monitor must be removed first.
+    if (constants.FILESYSTEM_CEPH_FUNCTION_MONITOR not in functions and
+            constants.FILESYSTEM_CEPH_FUNCTION_MONITOR in current_fs_functions):
+        _check_ceph_floating_monitor("update")
 
 
 def _check_host_fs(host_fs):
@@ -684,6 +728,12 @@ def _create(host_fs):
                         constants.FILESYSTEM_CEPH_MONITOR_MAX)
                 LOG.warning(msg)
                 raise wsme.exc.ClientSideError(msg)
+
+            # If the floating monitor is configured or pending
+            # reconfiguration, the user must remove it before creating
+            # a new fixed monitor host-fs.
+            _check_ceph_floating_monitor("create")
+
         elif parent == 'istors':
             capabilities['functions'] = [constants.FILESYSTEM_CEPH_FUNCTION_OSD]
 
@@ -747,6 +797,14 @@ def _delete(host_fs):
         msg = _("HostFs update failed: deletion for optional filesystem '{}' is "
                 "only possible for states {}.".format(host_fs['name'], allowed_states))
         raise wsme.exc.ClientSideError(msg)
+
+    # When deleting a ceph host_fs that has the monitor function on an AIO-DX
+    # system, the floating monitor (ceph-float controllerfs) must be removed first.
+    if host_fs['name'] == constants.FILESYSTEM_NAME_CEPH:
+        capabilities = host_fs.get('capabilities', {})
+        functions = capabilities.get('functions', [])
+        if constants.FILESYSTEM_CEPH_FUNCTION_MONITOR in functions:
+            _check_ceph_floating_monitor("delete")
 
     ihost = pecan.request.dbapi.ihost_get(host_fs['forihostid'])
 

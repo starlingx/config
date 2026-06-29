@@ -565,11 +565,24 @@ class ApiControllerFSPutTestSuiteMixin(ApiControllerFSTestCaseMixin):
         system_dict['system_type'] = constants.TIS_AIO_BUILD
         self.dbapi.isystem_update(self.system.uuid, system_dict)
 
-        self._create_controller_1(
+        controller_1 = self._create_controller_1(
             invprovision=constants.PROVISIONED,
             administrative=constants.ADMIN_LOCKED,
             operational=constants.OPERATIONAL_ENABLED,
             availability=constants.AVAILABILITY_ONLINE)
+
+        # Create host-fs ceph with monitor function on both controllers
+        # (required fixed monitors before creating the floating monitor)
+        dbutils.create_test_host_fs(id=90,
+                                    name='ceph',
+                                    forihostid=self.host.id,
+                                    state=constants.HOST_FS_STATUS_IN_USE,
+                                    capabilities={"functions": ["monitor"]})
+        dbutils.create_test_host_fs(id=91,
+                                    name='ceph',
+                                    forihostid=controller_1.id,
+                                    state=constants.HOST_FS_STATUS_IN_USE,
+                                    capabilities={"functions": ["monitor"]})
 
         # Create a logical volume
         dbutils.create_test_lvg(lvm_vg_name='cgts-vg',
@@ -609,6 +622,25 @@ class ApiControllerFSPutTestSuiteMixin(ApiControllerFSTestCaseMixin):
         system_dict['system_mode'] = constants.SYSTEM_MODE_DUPLEX
         system_dict['system_type'] = constants.TIS_AIO_BUILD
         self.dbapi.isystem_update(self.system.uuid, system_dict)
+
+        controller_1 = self._create_controller_1(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_LOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Create host-fs ceph with monitor function on both controllers
+        # (required fixed monitors before adding monitor function)
+        dbutils.create_test_host_fs(id=90,
+                                    name='ceph',
+                                    forihostid=self.host.id,
+                                    state=constants.HOST_FS_STATUS_IN_USE,
+                                    capabilities={"functions": ["monitor"]})
+        dbutils.create_test_host_fs(id=91,
+                                    name='ceph',
+                                    forihostid=controller_1.id,
+                                    state=constants.HOST_FS_STATUS_IN_USE,
+                                    capabilities={"functions": ["monitor"]})
 
         # Create a logical volume
         dbutils.create_test_lvg(lvm_vg_name='cgts-vg',
@@ -836,7 +868,7 @@ class ApiControllerFSPostTestSuiteMixin(ApiControllerFSTestCaseMixin):
         backend = dbutils.get_test_storage_backend(backend=constants.SB_TYPE_CEPH_ROOK)
         self.dbapi.storage_ceph_rook_create(backend)
 
-        self._create_controller_1(
+        controller_1 = self._create_controller_1(
             invprovision=constants.PROVISIONED,
             administrative=constants.ADMIN_LOCKED,
             operational=constants.OPERATIONAL_ENABLED,
@@ -847,6 +879,19 @@ class ApiControllerFSPostTestSuiteMixin(ApiControllerFSTestCaseMixin):
         system_dict['system_mode'] = constants.SYSTEM_MODE_DUPLEX
         system_dict['system_type'] = constants.TIS_AIO_BUILD
         self.dbapi.isystem_update(self.system.uuid, system_dict)
+
+        # Create host-fs ceph with monitor function on both controllers
+        # (required fixed monitors before creating the floating monitor)
+        dbutils.create_test_host_fs(id=90,
+                                    name='ceph',
+                                    forihostid=self.host.id,
+                                    state=constants.HOST_FS_STATUS_IN_USE,
+                                    capabilities={"functions": ["monitor"]})
+        dbutils.create_test_host_fs(id=91,
+                                    name='ceph',
+                                    forihostid=controller_1.id,
+                                    state=constants.HOST_FS_STATUS_IN_USE,
+                                    capabilities={"functions": ["monitor"]})
 
         # Create a logical volume
         dbutils.create_test_lvg(lvm_vg_name='cgts-vg',
@@ -868,6 +913,43 @@ class ApiControllerFSPostTestSuiteMixin(ApiControllerFSTestCaseMixin):
 
         capabilities = {"functions": ["monitor"]}
         self.assertEqual(response['capabilities'], capabilities)
+
+    def test_post_fail_no_fixed_monitors(self):
+        """Test that creating ceph-float fails when fixed monitors are not configured."""
+
+        # Rook Ceph must be as storage backend
+        backend = dbutils.get_test_storage_backend(backend=constants.SB_TYPE_CEPH_ROOK)
+        self.dbapi.storage_ceph_rook_create(backend)
+
+        self._create_controller_1(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_LOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Must be AIO-DX
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_DUPLEX
+        system_dict['system_type'] = constants.TIS_AIO_BUILD
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+
+        # Create a logical volume
+        dbutils.create_test_lvg(lvm_vg_name='cgts-vg',
+                                forihostid=self.host.id)
+
+        # No host-fs ceph with monitor on the controllers
+        response = self.post_json('/controller_fs',
+                                  {'name': 'ceph-float',
+                                   'size': 20},
+                                  headers=self.API_HEADERS,
+                                  expect_errors=True)
+
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+        self.assertIn("does not have a ceph host-fs configured",
+                      response.json['error_message'])
+        self.assertIn("Both controllers must have fixed monitors",
+                      response.json['error_message'])
 
     def test_post_not_allowed(self):
 
@@ -892,4 +974,5 @@ class ApiControllerFSPostTestSuiteMixin(ApiControllerFSTestCaseMixin):
                                   expect_errors=True)
 
         self.assertEqual(response.status_code, http_client.BAD_REQUEST)
-        self.assertIn("Failed to create:", response.json['error_message'])
+        self.assertIn("does not have a ceph host-fs configured",
+                      response.json['error_message'])
