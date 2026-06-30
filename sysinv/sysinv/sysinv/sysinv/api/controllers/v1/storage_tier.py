@@ -22,6 +22,7 @@
 import copy
 import jsonpatch
 import os
+import re
 import pecan
 from pecan import rest
 import six
@@ -370,6 +371,17 @@ def _check_parameters(tier, is_rook_ceph_backend=False):
         forclusterid = clusterId
     tier.update({'forclusterid': forclusterid})
 
+    # Validate the tier name format (RFC 1123 subdomain)
+    tier_name = tier.get('name')
+    if is_rook_ceph_backend and tier_name:
+        pattern = r'^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$'
+        if not re.match(pattern, tier_name):
+            raise wsme.exc.ClientSideError(
+                _("Invalid storage tier name '%s'. Name must consist of "
+                  "lower case alphanumeric characters, '-' or '.', and "
+                  "must start and end with an alphanumeric character "
+                  "(e.g. 'my-tier', 'tier.1').") % tier_name)
+
     # Make sure that the default system tier is present
     default_tier_name = constants.SB_TIER_DEFAULT_NAMES[constants.SB_TIER_TYPE_CEPH]
     if not is_rook_ceph_backend and ('name' not in tier or tier['name'] != default_tier_name):
@@ -391,6 +403,17 @@ def _pre_patch_checks(tier_obj, patch_obj):
                 raise wsme.exc.ClientSideError(
                     _("Storage Tier %s cannot be renamed. It is %s") %
                     (tier_obj.name, constants.SB_TIER_STATUS_IN_USE))
+            # Validate new name format
+            if StorageBackendConfig.has_backend(
+                    pecan.request.dbapi, constants.SB_TYPE_CEPH_ROOK):
+                new_name = p.get('value', '')
+                pattern = r'^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$'
+                if not re.match(pattern, new_name):
+                    raise wsme.exc.ClientSideError(
+                        _("Invalid storage tier name '%s'. Name must consist of "
+                          "lower case alphanumeric characters, '-' or '.', and "
+                          "must start and end with an alphanumeric character "
+                          "(e.g. 'my-tier', 'tier.1').") % new_name)
         elif p['path'] == '/capabilities':
                 raise wsme.exc.ClientSideError(
                     _("The capabilities of storage tier %s cannot be "
