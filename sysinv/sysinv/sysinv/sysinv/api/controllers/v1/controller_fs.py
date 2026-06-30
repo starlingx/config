@@ -508,6 +508,16 @@ def _check_optional_controller_fs(controller_fs, operation):
                     operation, controller_fs['name'], constants.SB_TYPE_CEPH_ROOK))
         raise wsme.exc.ClientSideError(msg)
 
+    if not cutils.is_aio_duplex_system(pecan.request.dbapi):
+        msg = _("Failed to {} controller filesystem {}: command only allowed for "
+                "duplex configs.".format(operation, controller_fs['name']))
+        raise wsme.exc.ClientSideError(msg)
+
+    if operation == "create":
+        # Verify that fixed monitors exist on both controllers before
+        # allowing creation of the floating monitor filesystem.
+        _check_fixed_monitors_on_controllers(operation)
+
     # If the operation is delete, and have monitor in the
     # functions, the controllerfs cannot be deleted.
     # This check is only for ceph-float and the above check
@@ -520,11 +530,6 @@ def _check_optional_controller_fs(controller_fs, operation):
                 msg = _("Failed to {} controller filesystem {}: operation not allowed"
                         "when has monitor function.".format(operation, controller_fs['name']))
                 raise wsme.exc.ClientSideError(msg)
-
-    if not cutils.is_aio_duplex_system(pecan.request.dbapi):
-        msg = _("Failed to {} controller filesystem {}: command only allowed for "
-                "duplex configs.".format(operation, controller_fs['name']))
-        raise wsme.exc.ClientSideError(msg)
 
     # Validate if there are pending updates on the controllers lvg
     controller_hosts = pecan.request.dbapi.ihost_get_by_personality(
@@ -542,6 +547,57 @@ def _check_optional_controller_fs(controller_fs, operation):
                 "LVG updates, please retry again later.".format(
                     operation, controller_fs['name']))
         raise wsme.exc.ClientSideError(msg)
+
+
+def _check_fixed_monitors_on_controllers(operation):
+    """Verify that both controllers have the host_fs ceph filesystem
+    with the monitor function configured (fixed monitors).
+
+    The floating monitor (ceph-float controllerfs) requires that fixed
+    monitors are already created and configured on both controllers.
+    """
+    controller_hosts = pecan.request.dbapi.ihost_get_by_personality(
+        constants.CONTROLLER)
+
+    for chost in controller_hosts:
+        try:
+            host_fs = pecan.request.dbapi.host_fs_get_by_name_ihost(
+                chost.uuid, constants.FILESYSTEM_NAME_CEPH)
+
+            # If host_fs is in "Reconfigure with App" state, the current
+            # functions have not been applied yet. The user must apply the
+            # app before proceeding.
+            if host_fs.get('state') == constants.HOST_FS_STATUS_RECONFIGURE_WITH_APP:
+                msg = _("Failed to %s controller filesystem %s: "
+                        "host %s has ceph host-fs in '%s' state. "
+                        "Please apply the application to complete the "
+                        "pending configuration before retrying this command."
+                        % (operation,
+                           constants.FILESYSTEM_NAME_CEPH_DRBD,
+                           chost.hostname,
+                           constants.HOST_FS_STATUS_RECONFIGURE_WITH_APP))
+                raise wsme.exc.ClientSideError(msg)
+
+            functions = host_fs['capabilities'].get('functions', [])
+            if constants.FILESYSTEM_CEPH_FUNCTION_MONITOR not in functions:
+                msg = _("Failed to %s controller filesystem %s: "
+                        "host %s does not have the ceph monitor function "
+                        "configured on its host-fs ceph filesystem. "
+                        "Both controllers must have fixed monitors "
+                        "configured before creating the floating monitor."
+                        % (operation,
+                           constants.FILESYSTEM_NAME_CEPH_DRBD,
+                           chost.hostname))
+                raise wsme.exc.ClientSideError(msg)
+        except exception.HostFSNameNotFound:
+            msg = _("Failed to %s controller filesystem %s: "
+                    "host %s does not have a ceph host-fs configured. "
+                    "Both controllers must have fixed monitors "
+                    "configured before creating the floating monitor."
+                    % (operation,
+                       constants.FILESYSTEM_NAME_CEPH_DRBD,
+                       chost.hostname))
+            raise wsme.exc.ClientSideError(msg)
 
 
 def _create(controller_fs):
@@ -602,7 +658,7 @@ def _create(controller_fs):
             len(controller_hosts) == 1):
         data['state'] = str({'status': constants.CONTROLLER_FS_CREATING_ON_UNLOCK})
 
-    elif not (any(chost.get('administrative') == constants.ADMIN_LOCKED and
+    if not (any(chost.get('administrative') == constants.ADMIN_LOCKED and
           chost.get('availability') == constants.AVAILABILITY_ONLINE
           for chost in controller_hosts) and len(controller_hosts) > 1):
         msg = _("Failed to create: It is only possible to create the "
@@ -712,6 +768,11 @@ def _check_capabilities(fs_name, functions):
                     "are supported: %s. Got '%s'." % (
                         str(constants.HOSTFS_CEPH_FUNCTIONS_SUPPORTED), function))
             raise wsme.exc.ClientSideError(msg)
+
+    # When adding the monitor function, fixed monitors must already
+    # be configured on both controllers.
+    if constants.FILESYSTEM_CEPH_FUNCTION_MONITOR in functions:
+        _check_fixed_monitors_on_controllers(operation="update")
 
 
 def _check_fs_resizing(fs_name, fs_size, valid_fs_list, controllers_lvg_updated):
