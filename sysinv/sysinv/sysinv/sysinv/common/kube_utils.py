@@ -5,6 +5,8 @@
 #
 
 import json
+import yaml
+import re
 from enum import Enum
 from time import sleep
 from typing import Literal
@@ -220,7 +222,63 @@ class KubeUtils(object):
         return self._convert_to_dict(resource)
 
     def create_from_yaml(self, file_path):
+        """Create Kubernetes resources from a YAML file.
+
+        Before creating, force-delete any pre-existing resources defined in the
+        file to avoid conflicts (e.g. from a previous failed run).
+        """
+
+        self._delete_existing_resources_from_yaml(file_path)
         return utils.create_from_yaml(self._get_client(KubeResourceType.client), file_path)
+
+    def _delete_existing_resources_from_yaml(self, file_path):
+        """Parse a multi-document YAML file and delete any existing resources."""
+
+        with open(file_path, 'r') as f:
+            documents = list(yaml.safe_load_all(f))
+
+        for doc in documents:
+            if not doc or not isinstance(doc, dict):
+                continue
+
+            kind = doc.get("kind")
+            metadata = doc.get("metadata", {})
+            name = metadata.get("name")
+            namespace = metadata.get("namespace")
+
+            # Skip resources without a fixed name (e.g. generateName)
+            if not kind or not name:
+                LOG.warning("Skipping resource without kind or name in %s: "
+                            "kind=%s, name=%s", file_path, kind, name)
+                continue
+
+            # Convert PascalCase kind to snake_case to match KubeResourceType enum values
+            snake_kind = re.sub(r'(?<!^)(?=[A-Z])', '_', kind).lower()
+
+            resource_id = "%s/%s" % (kind, name)
+            if namespace:
+                resource_id = "%s/%s/%s" % (kind, namespace, name)
+
+            try:
+                resource_type = KubeResourceType(snake_kind)
+            except ValueError:
+                LOG.warning("Skipping unknown resource kind for '%s'", resource_id)
+                continue
+
+            try:
+                kwargs = {}
+                if namespace:
+                    kwargs["namespace"] = namespace
+
+                self.remove_resource_finalizers(resource_type=resource_type,
+                                                name=name,
+                                                **kwargs)
+
+                self.delete_resource(resource_type=resource_type,
+                                     name=name,
+                                     **kwargs)
+            except Exception as e:
+                LOG.warning("Could not delete pre-existing %s: %s", resource_id, e)
 
     def list_resources(self, resource_type: KubeResourceType, **kwargs):
         """ List kubernetes resources
@@ -557,9 +615,10 @@ class KubeUtils(object):
                     object_name = object.get('metadata', {}).get('name', {})
                     if (object_name in resource_names_to_delete
                             and event['type'] == "DELETED"):
-                        watch.stop()
                         resource_names_to_delete.remove(object_name)
                         LOG.info("The %s %s was deleted succesfully.", object_name, resource_type.value)
+                        if not resource_names_to_delete:
+                            watch.stop()
 
         except Timeout:
             LOG.error("Timeout reached while waiting for [%s] to be deleted",
