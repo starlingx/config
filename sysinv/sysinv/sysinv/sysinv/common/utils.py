@@ -5104,3 +5104,15 @@ def parse_alarm_ignore_list(value):
         "alarm_ignore_list has unexpected type %s, ignoring it",
         type(value).__name__)
     return []
+
+
+def get_lvm_mode_flag():
+    """
+    Retrieve lvm_mode_flag on the system
+    :returns: lvm mode flag value
+    """
+    try:
+        with open(constants.WIPE_LVM_MODE_FLAG, 'r') as f:
+            return f.read().strip()
+    except OSError:
+        return ''
