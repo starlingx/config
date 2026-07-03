@@ -662,7 +662,11 @@ def get_interface_os_ifname(context, iface):
     else:
         os_ifname = iface['ifname']
         if iface['iftype'] == constants.INTERFACE_TYPE_ETHERNET:
-            os_ifname = get_interface_port_name(context, iface)
+            if not iface.get('ovs_access'):
+                os_ifname = get_interface_port_name(context, iface)
+            else:
+                # ovs-access creates a veth device to connect to app-openvswitch
+                os_ifname = iface['ifname']
         elif iface['iftype'] == constants.INTERFACE_TYPE_VLAN:
             os_ifname = get_vlan_os_ifname(iface)
         elif iface['iftype'] == constants.INTERFACE_TYPE_AE:
@@ -1463,7 +1467,14 @@ def get_interface_network_config(context, iface, network=None, address=None):
     network_type = network.type if network else None
 
     # add the description field with the database ifname and networktype if available
-    config['options']['stx-description'] = f"ifname:{iface['ifname']},net:{network_type}"
+    stx_description = f"ifname:{iface['ifname']},net:{network_type}"
+    if iface.get('ovs_access') and iface.get('uses') and ':' not in config['ifname']:
+        # validation makes sure that 'uses' has only one interface
+        base_intf = iface['uses'][0]
+        if context['interfaces'].get(base_intf):
+            base_os_intef = get_interface_os_ifname(context, context['interfaces'][base_intf])
+            stx_description += f",ovs-access={base_os_intef}"
+    config['options']['stx-description'] = stx_description
 
     return config
 

@@ -2602,6 +2602,7 @@ itemNotFound (404)
    "used_by (Optional)", "plain", "xsd:list", "Interfaces which use the current interface."
    "max_tx_rate (Optional)", "plain", "xsd:integer", "The Maximum Transmission Rate of the interface, in Mbps. Only applicable for combinations - ``ifclass : pci-sriov`` and ``iftype : vf`` or ``ifclass : platform`` and ``iftype : VLAN/AE/Ethernet``."
    "max_rx_rate (Optional)", "plain", "xsd:integer", "The Maximum Reception Rate of the interface, in Mbps. Only applicable if ``ifclass : platform`` and ``iftype : VLAN/AE/Ethernet``."
+   "ovs_access (Optional)", "plain", "xsd:boolean", "Whether OVS access is enabled for this interface; ``true`` or ``false``."
 
 ::
 
@@ -2721,6 +2722,7 @@ itemNotFound (404)
    "used_by (Optional)", "plain", "xsd:list", "Interfaces which use the current interface."
    "max_tx_rate (Optional)", "plain", "xsd:integer", "The Maximum Transmission Rate of the interface, in Mbps. Only applicable for combinations - ``ifclass : pci-sriov`` and ``iftype : vf`` or ``ifclass : platform`` and ``iftype : VLAN/AE/Ethernet``."
    "max_rx_rate (Optional)", "plain", "xsd:integer", "The Maximum Reception Rate of the interface, in Mbps. Only applicable if ``ifclass : platform`` and ``iftype : VLAN/AE/Ethernet``."
+   "ovs_access (Optional)", "plain", "xsd:boolean", "Whether OVS access is enabled for this interface; ``true`` or ``false``."
    "uuid (Optional)", "plain", "csapi:UUID", "The universally unique identifier for this object."
    "links (Optional)", "plain", "xsd:list", "For convenience, resources contain links to themselves. This allows a client to easily obtain rather than construct resource URIs. The following types of link relations are associated with resources: a self link containing a versioned link to the resource, and a bookmark link containing a permanent link to a resource that is appropriate for long term storage."
    "created_at (Optional)", "plain", "xsd:dateTime", "The time when the object was created."
@@ -2812,6 +2814,7 @@ badMediaType (415)
    "sriov_numvfs (Optional)", "plain", "xsd:integer", "The number of VFs to configure on the interface's port; only applicable if ``ifclass : pci-sriov`` where only a single port is associated with the interface."
    "max_tx_rate (Optional)", "plain", "xsd:integer", "The Maximum Transmission Rate of the interface, in Mbps. Only applicable for combinations - ``ifclass : pci-sriov`` and ``iftype : vf`` or ``ifclass : platform`` and ``iftype : VLAN/AE/Ethernet``."
    "max_rx_rate (Optional)", "plain", "xsd:integer", "The Maximum Reception Rate of the interface, in Mbps. Only applicable if ``ifclass : platform`` and ``iftype : VLAN/AE/Ethernet``."
+   "ovs_access (Optional)", "plain", "xsd:boolean", "Whether OVS access is enabled for this interface; ``true`` or ``false``."
    "ihost_uuid (Optional)", "plain", "csapi:UUID", "The UUID of the host to create the interface on."
 
 **Response parameters**
@@ -2839,6 +2842,7 @@ badMediaType (415)
    "used_by (Optional)", "plain", "xsd:list", "Interfaces which use the current interface."
    "max_tx_rate (Optional)", "plain", "xsd:integer", "The Maximum Transmission Rate of the interface, in Mbps. Only applicable for combinations - ``ifclass : pci-sriov`` and ``iftype : vf`` or ``ifclass : platform`` and ``iftype : VLAN/AE/Ethernet``."
    "max_rx_rate (Optional)", "plain", "xsd:integer", "The Maximum Reception Rate of the interface, in Mbps. Only applicable if ``ifclass : platform`` and ``iftype : VLAN/AE/Ethernet``."
+   "ovs_access (Optional)", "plain", "xsd:boolean", "Whether OVS access is enabled for this interface; ``true`` or ``false``."
    "uuid (Optional)", "plain", "csapi:UUID", "The universally unique identifier for this object."
    "links (Optional)", "plain", "xsd:list", "For convenience, resources contain links to themselves. This allows a client to easily obtain rather than construct resource URIs. The following types of link relations are associated with resources: a self link containing a versioned link to the resource, and a bookmark link containing a permanent link to a resource that is appropriate for long term storage."
    "created_at (Optional)", "plain", "xsd:dateTime", "The time when the object was created."
@@ -2947,6 +2951,7 @@ badMediaType (415)
    "sriov_numvfs (Optional)", "plain", "xsd:integer", "The number of VFs to configure on the interface's port; only applicable if ``ifclass : pci-sriov`` where only a single port is associated with the interface."
    "max_tx_rate (Optional)", "plain", "xsd:integer", "The Maximum Transmission Rate of the interface, in Mbps. Only applicable for combinations - ``ifclass : pci-sriov`` and ``iftype : vf`` or ``ifclass : platform`` and ``iftype : VLAN/AE/Ethernet``."
    "max_rx_rate (Optional)", "plain", "xsd:integer", "The Maximum Reception Rate of the interface, in Mbps. Only applicable if ``ifclass : platform`` and ``iftype : VLAN/AE/Ethernet``."
+   "ovs_access (Optional)", "plain", "xsd:boolean", "Whether OVS access is enabled for this interface; ``true`` or ``false``."
 
 **Response parameters**
 
@@ -2973,6 +2978,7 @@ badMediaType (415)
    "used_by (Optional)", "plain", "xsd:list", "Interfaces which use the current interface."
    "max_tx_rate (Optional)", "plain", "xsd:integer", "The Maximum Transmission Rate of the interface, in Mbps. Only applicable for combinations - ``ifclass : pci-sriov`` and ``iftype : vf`` or ``ifclass : platform`` and ``iftype : VLAN/AE/Ethernet``."
    "max_rx_rate (Optional)", "plain", "xsd:integer", "The Maximum Reception Rate of the interface, in Mbps. Only applicable if ``ifclass : platform`` and ``iftype : VLAN/AE/Ethernet``."
+   "ovs_access (Optional)", "plain", "xsd:boolean", "Whether OVS access is enabled for this interface; ``true`` or ``false``."
    "uuid (Optional)", "plain", "csapi:UUID", "The universally unique identifier for this object."
    "links (Optional)", "plain", "xsd:list", "For convenience, resources contain links to themselves. This allows a client to easily obtain rather than construct resource URIs. The following types of link relations are associated with resources: a self link containing a versioned link to the resource, and a bookmark link containing a permanent link to a resource that is appropriate for long term storage."
    "created_at (Optional)", "plain", "xsd:dateTime", "The time when the object was created."

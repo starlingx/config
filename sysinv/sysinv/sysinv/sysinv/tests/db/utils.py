@@ -1373,7 +1373,8 @@ def get_test_interface(**kw):
         'sriov_vf_pdevice_id': kw.get('sriov_vf_pdevice_id', None),
         'ptp_role': kw.get('ptp_role', None),
         'max_tx_rate': kw.get('max_tx_rate', None),
-        'max_rx_rate': kw.get('max_rx_rate', None)
+        'max_rx_rate': kw.get('max_rx_rate', None),
+        'ovs_access': kw.get('ovs_access', None)
     }
     return interface
 

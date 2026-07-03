@@ -511,12 +511,11 @@ class UploadCertsLocalEndpointTestCase(base.PuppetTestCaseMixin,
     def setUp(self):
         super(UploadCertsLocalEndpointTestCase, self).setUp()
         self.host = self._create_test_host(constants.CONTROLLER)
-        # Stop the base mock that replaces _get_host_join_command
-        # so we can exercise _get_kubernetes_join_cmd directly.
-        mock.patch.stopall()
-        # Re-apply only the mocks we still need
-        mock.patch('sysinv.common.utils.is_virtual',
-                   return_value=False).start()
+        self._update_context()
+
+    @puppet.puppet_context
+    def _update_context(self):
+        self.context = {}
 
     @mock.patch('sysinv.puppet.kubernetes.subprocess.run')
     @mock.patch('sysinv.puppet.kubernetes.subprocess.check_call')
