@@ -20615,7 +20615,7 @@ class ConductorManager(service.PeriodicService):
         if proc.returncode != 0:
             raise Exception("Failed to delete rook-ceph-recovery configmap (rc=%s)." % proc.returncode)
 
-    def generate_kubernetes_rootca_cert(self, context, subject, duration=None):
+    def generate_kubernetes_rootca_cert(self, context, subject, algorithm, key_size, duration=None):
         """ Generate a new k8s root CA
             this will consist on 5 steps:
                 1. Pre-check to assure all conditions are OK for the cert generation
@@ -20704,7 +20704,11 @@ class ConductorManager(service.PeriodicService):
                 'name': selfsigned_issuer_name,
                 'kind': 'Issuer'
             },
-            'keyEncoding': 'pkcs8'
+            'keyEncoding': 'pkcs8',
+            'privateKey': {
+                'algorithm': algorithm,
+                'size': key_size
+            }
         }
 
         spec = cutils.add_certificate_subject(subject, spec)
@@ -20857,7 +20861,7 @@ class ConductorManager(service.PeriodicService):
             LOG.error(msg)
             raise exception.SysinvException(_(msg))
 
-    def _build_k8s_controller_certificates(self, host, api_version, issuer_reference, usages):
+    def _build_k8s_controller_certificates(self, host, api_version, issuer_reference, usages, private_key_config):
         """ Build k8s resources to get certificates for the control plane components
             to be updated
 
@@ -20900,7 +20904,8 @@ class ConductorManager(service.PeriodicService):
                         'duration': str(duration) + 'h',
                         'renewBefore': renew_before,
                         'usages': usages,
-                        'issuerRef': issuer_reference
+                        'issuerRef': issuer_reference,
+                        'privateKey': private_key_config
                     }
                 }
                 if certificate_to_apply.subjectOrg:
@@ -20987,7 +20992,7 @@ class ConductorManager(service.PeriodicService):
         for certificate in certificates_to_be_applied:
             apply_certificate_to_k8s(certificate)
 
-    def _build_k8s_worker_certificates(self, host, api_version, issuer_reference, usages):
+    def _build_k8s_worker_certificates(self, host, api_version, issuer_reference, usages, private_key_config):
         kube_operator = kubernetes.KubeOperator()
 
         # Read apiserver cert duration information as a standard. For this
@@ -21020,7 +21025,8 @@ class ConductorManager(service.PeriodicService):
                     'organizations': ['system:nodes']
                 },
                 'usages': usages,
-                'issuerRef': issuer_reference
+                'issuerRef': issuer_reference,
+                'privateKey': private_key_config
             }
         }
 
@@ -21074,6 +21080,20 @@ class ConductorManager(service.PeriodicService):
 
             issuer_reference = {'name': constants.KUBE_ROOTCA_ISSUER, 'kind': 'Issuer'}
             usages = ['digital signature', 'key encipherment', 'client auth']
+
+            # Set best key algorithm and size supported for current Kubernetes version
+            kube_version = self._kube.kube_get_kubernetes_version()
+            if kubernetes.is_kube_version_supported(kube_version, min_version='v1.34.0'):
+                private_key_config = {
+                    'algorithm': 'ECDSA',
+                    'size': 384
+                }
+            else:
+                private_key_config = {
+                    'algorithm': 'RSA',
+                    'size': 4096
+                }
+
             update_certs = True
 
         if phase not in [constants.KUBE_CERT_UPDATE_TRUSTBOTHCAS,
@@ -21086,7 +21106,8 @@ class ConductorManager(service.PeriodicService):
         if host.personality == constants.CONTROLLER:
             if update_certs:
                 try:
-                    self._build_k8s_controller_certificates(host, api_version, issuer_reference, usages)
+                    self._build_k8s_controller_certificates(
+                        host, api_version, issuer_reference, usages, private_key_config)
                 except Exception:
                     self._failed_update_certs(host)
                     raise exception.SysinvException(_(
@@ -21099,7 +21120,8 @@ class ConductorManager(service.PeriodicService):
         else:
             if update_certs:
                 try:
-                    self._build_k8s_worker_certificates(host, api_version, issuer_reference, usages)
+                    self._build_k8s_worker_certificates(
+                        host, api_version, issuer_reference, usages, private_key_config)
                 except Exception:
                     self._failed_update_certs(host)
                     raise exception.SysinvException(_(
@@ -21128,6 +21150,40 @@ class ConductorManager(service.PeriodicService):
                                             config_uuid,
                                             config_dict)
 
+    def _update_kubeadm_configmap_encryption_algorithm(self, algorithm):
+        """
+        Edit the kubeadm configmap to update the encryption algorithm
+        """
+        configmap_name = 'kubeadm-config'
+
+        try:
+            configmap = self._kube.kube_read_config_map(configmap_name, 'kube-system')
+
+            stream = StringIO(configmap.data['ClusterConfiguration'])
+            if cutils.is_debian_bullseye():
+                kubeadm_config = yaml.safe_load(stream)
+            else:
+                local_yaml = YAML(typ='safe')
+                kubeadm_config = local_yaml.load(stream)
+
+            kubeadm_config['encryptionAlgorithm'] = algorithm
+            LOG.info("Setting encryptionAlgorithm=%s in kubeadm-config." % algorithm)
+
+            outstream = StringIO()
+            if cutils.is_debian_bullseye():
+                yaml.dump(kubeadm_config, outstream)
+            else:
+                yaml_dumper = YAML()
+                yaml_dumper.dump(kubeadm_config, outstream)
+            configmap = {'data': {'ClusterConfiguration': outstream.getvalue()}}
+
+            self._kube.kube_patch_config_map(configmap_name, 'kube-system', configmap)
+        except Exception as e:
+            LOG.exception("Unable to patch kubeadm config_map: %s" % e)
+            raise
+
+        LOG.info('Successfully updated encryptionAlgorithm kubeadm configmap.')
+
     def kube_certificate_update_for_pods(self, context, phase):
         """Update the kube certificate for pods"""
 
@@ -21147,6 +21203,16 @@ class ConductorManager(service.PeriodicService):
             raise exception.SysinvException(_(
                 "Invalid phase %s to update kube certificate for pods." %
                 phase))
+
+        # To ensure that kubeadm certs renew command does not revert to older
+        # key algorithm and size, the configmap must be updated
+        if phase == constants.KUBE_CERT_UPDATE_TRUSTNEWCA:
+            kube_version = self._kube.kube_get_kubernetes_version()
+            if kubernetes.is_kube_version_supported(kube_version, min_version='v1.34.0'):
+                algorithm = 'ECDSA-P384'
+            else:
+                algorithm = 'RSA-4096'
+            self._update_kubeadm_configmap_encryption_algorithm(algorithm)
 
         puppet_class = [
             'platform::kubernetes::master::rootca::pods::' + phase.replace('-', '') + '::runtime',

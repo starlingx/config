@@ -68,7 +68,7 @@ class FakeConductorAPI(object):
     def fake_config_certificate(self, context, pem):
         return self.config_certificate_return
 
-    def fake_generate_rootca(self, context, duration, subject):
+    def fake_generate_rootca(self, context, duration, subject, algorithm=None, key_size=None):
         return self.generate_rootca_return
 
     def setup_config_certificate(self, data):

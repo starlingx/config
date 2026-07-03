@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2021-2023,2025 Wind River Systems, Inc.
+# Copyright (c) 2021-2023,2025-2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -117,10 +117,26 @@ def do_kube_rootca_get_cert_id(cc, args):
                 'CN(CommonName) subject parameters. An example is an '
                 'entry like C=US ST=California L=San Francisco '
                 'O=StarlingX OU=Company1 CN=Subject Example')
+@utils.arg('--algorithm',
+           default=None,
+           choices=['ECDSA', 'RSA'],
+           help='Cryptographic algorithm for the generated root CA '
+                'private key. Valid values: ECDSA, RSA. '
+                '(default: ECDSA)')
+@utils.arg('--key-size',
+           default=None,
+           type=int,
+           help='Key size for the generated root CA private key. '
+                'Valid sizes for ECDSA: 384, 521. '
+                'Valid sizes for RSA: 4096. '
+                '(default: 384 for ECDSA, 4096 for RSA)')
 def do_kube_rootca_update_generate_cert(cc, args):
     """Generate new kubernetes rootCA"""
+    if args.key_size is not None and args.algorithm is None:
+        raise exc.CommandError('--key-size requires --algorithm')
 
-    certificate = cc.kube_rootca_update.rootCA_generate(args.expiry_date, args.subject)
+    certificate = cc.kube_rootca_update.rootCA_generate(
+        args.expiry_date, args.subject, args.algorithm, args.key_size)
 
     if certificate.error:
         print(certificate.error)
