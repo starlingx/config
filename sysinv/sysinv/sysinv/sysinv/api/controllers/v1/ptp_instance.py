@@ -391,6 +391,22 @@ class PtpInstanceController(rest.RestController):
                         # Already updated in-place, skip create/add
                         continue
 
+            # Validate synce4l monitoring parameters
+            if (ptp_instance['service'] ==
+                    constants.PTP_INSTANCE_TYPE_SYNCE4L and
+                    param_section == 'monitoring' and param_adding):
+                if param_name not in (
+                        constants
+                        .PTP_INSTANCE_TYPE_SYNCE4L_MONITORING_PARAMETERS):
+                    raise wsme.exc.ClientSideError(
+                        _("Unsupported synce4l monitoring parameter: "
+                          "%s. Supported: %s" % (
+                              param_name,
+                              ', '.join(
+                                  constants
+                                  .PTP_INSTANCE_TYPE_SYNCE4L_MONITORING_PARAMETERS
+                              ))))
+
             try:
                 # Check PTP parameter exists
                 ptp_parameter = \
