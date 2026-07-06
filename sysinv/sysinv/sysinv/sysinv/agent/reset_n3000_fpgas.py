@@ -41,6 +41,26 @@ EEPROM_UPDATE_STATUS_PATH = "pkvl/eeprom_update_status"
 # update as documented in the Intel FPGA N3000 User Guide
 EEPROM_UPDATE_SUCCESS = '0x1111'
 
+# In-tree DFL/m10-bmc secure-update (firmware-upload ABI, kernel >= 6.x).
+# The N3000 secure-update device shows up here on kernels where the old
+# /sys/class/fpga_sec_mgr subsystem has been removed.
+INTREE_SEC_UPDATE_GLOB = "/sys/class/firmware/secure-update*"
+# Legacy OPAE secure-manager ABI used by the 'rsu bmcimg' container.
+LEGACY_FPGA_SEC_MGR_PATH = "/sys/class/fpga_sec_mgr"
+
+
+def n3000_intree_stack_present():
+    """True if the N3000 is managed by the in-tree DFL/m10-bmc stack.
+
+    On these kernels the legacy /sys/class/fpga_sec_mgr subsystem no
+    longer exists (secure-update was migrated to the firmware-upload
+    framework), so the OPAE 'rsu bmcimg' container built for the old ABI
+    cannot run. Detect the new firmware-upload secure-update device and
+    the absence of the legacy sysfs class.
+    """
+    return bool(glob(INTREE_SEC_UPDATE_GLOB)) and \
+        not os.path.isdir(LEGACY_FPGA_SEC_MGR_PATH)
+
 
 def n3000_img_accessible():
     cmd = 'ctr -n=k8s.io image list name=="%s"' % fpga_constants.OPAE_IMG
@@ -177,6 +197,14 @@ def reset_n3000_fpgas():
         # Reset all N3000 FPGAs on the system.
         # TODO: make this run in parallel if there are multiple devices.
         LOG.info("Resetting N3000 FPGAs.")
+        if n3000_intree_stack_present():
+            LOG.info("N3000 managed by in-tree DFL/m10-bmc stack; "
+                     "legacy OPAE 'rsu bmcimg' ABI (/sys/class/fpga_sec_mgr) "
+                     "is not present. Skipping OPAE reset.")
+            utils.touch(fpga_constants.N3000_RESET_FLAG)
+            if os.path.exists(fpga_constants.N3000_RETIMER_FLAG):
+                os.remove(fpga_constants.N3000_RETIMER_FLAG)
+            return True
         got_exception = False
         try:
             fpga_addrs = fpga.FpgaOperator().get_n3000_devices()
