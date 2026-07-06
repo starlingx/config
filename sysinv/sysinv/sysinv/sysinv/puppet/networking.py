@@ -488,11 +488,6 @@ class NetworkingPuppet(base.BasePuppet):
             'extended_tlv': constants.PTP_SYNCE_EXTERNAL_TLV,
             'network_option': constants.PTP_SYNCE_NETWORK_OPTION,
             'recover_time': constants.PTP_SYNCE_RECOVER_TIME,
-            'eec_holdover_value': constants.PTP_SYNCE_EEC_HOLDOVER_VALUE,
-            'eec_locked_ho_value': constants.PTP_SYNCE_EEC_LOCKED_HO_VALUE,
-            'eec_locked_value': constants.PTP_SYNCE_EEC_LOCKED_VALUE,
-            'eec_freerun_value': constants.PTP_SYNCE_EEC_FREERUN_VALUE,
-            'eec_invalid_value': constants.PTP_SYNCE_EEC_INVALID_VALUE
         }
 
         ptp_config = {}
@@ -742,7 +737,6 @@ class NetworkingPuppet(base.BasePuppet):
             'dpll-mgr': {}
         }
         recover_clk_cmd_fmt = 'echo %s 0 > /sys/class/net/%s/device/phy/synce'
-        ecc_get_state_cmd_fmt = 'cat /sys/class/net/%s/device/dpll_0_state'
 
         for instance in ptp_instances:
             current_instance = ptp_instances[instance]
@@ -766,9 +760,6 @@ class NetworkingPuppet(base.BasePuppet):
                         iface['parameters'].update({'recover_clock_enable_cmd':
                             recover_clk_cmd_fmt % (1, port_name)})
                         base_port = self._get_base_port(host, port_name)
-                        if base_port:
-                            current_instance['device_parameters'].update({'eec_get_state_cmd':
-                                ecc_get_state_cmd_fmt % base_port})
                     # Handle synce4l external source parameters
                     current_instance['external_source'] = self._set_external_source_parameters(
                         iface['uuid'],
@@ -778,6 +769,70 @@ class NetworkingPuppet(base.BasePuppet):
                 for param in ptp_parameters_interface:
                     if iface['uuid'] in param['owners']:
                         iface['parameters'][param['name']] = param['value']
+
+        return ptp_instances
+
+    def _set_synce4l_dpll_parameters(self, host, ptp_instances):
+        """Auto-populate clock_id and module_name for synce4l DPLL netlink mode.
+
+        For synce4l instances using ice-based NICs, the DPLL netlink interface
+        requires clock_id (from phys_switch_id) and module_name (from port driver).
+        Without these, synce4l falls into legacy sysfs mode which requires the
+        removed eec_get_state_cmd.
+
+        Only sets these if not already user-specified.
+        """
+        for instance_name in ptp_instances:
+            instance = ptp_instances[instance_name]
+            if instance.get('service') != constants.PTP_INSTANCE_TYPE_SYNCE4L:
+                continue
+
+            # Skip if user already provided these parameters
+            device_params = instance.get('device_parameters', {})
+            if device_params.get('clock_id') and device_params.get('module_name'):
+                continue
+
+            # Get the first interface's base port to determine NIC driver and clock_id
+            interfaces = instance.get('interfaces', [])
+            if not interfaces:
+                continue
+
+            port_names = interfaces[0].get('port_names', [])
+            if not port_names:
+                continue
+
+            port_name = port_names[0]
+            base_port = self._get_base_port(host, port_name)
+            if not base_port:
+                base_port = port_name
+
+            # Look up port driver from DB
+            host_port_list = self.dbapi.port_get_all(hostid=host.id)
+            port_driver = None
+            for p in host_port_list:
+                if p['name'] == base_port:
+                    port_driver = p.get('driver', '')
+                    break
+
+            if port_driver != 'ice':
+                continue
+
+            # Set module_name if not already specified
+            if not device_params.get('module_name'):
+                instance['device_parameters']['module_name'] = 'ice'
+
+            # Read phys_switch_id from sysfs to get clock_id
+            if not device_params.get('clock_id'):
+                switch_id_path = '/sys/class/net/%s/phys_switch_id' % base_port
+                try:
+                    with open(switch_id_path) as f:
+                        switch_id_hex = f.readline().strip()
+                        if switch_id_hex:
+                            clock_id = str(int(switch_id_hex, 16))
+                            instance['device_parameters']['clock_id'] = clock_id
+                except Exception:
+                    LOG.warning("Cannot read %s for synce4l clock_id "
+                                "auto-detection" % switch_id_path)
 
         return ptp_instances
 
@@ -1067,6 +1122,7 @@ class NetworkingPuppet(base.BasePuppet):
                                                            ptp_interfaces)
             ptp_config = self._set_ptp_instance_interface_parameters(host, ptp_config,
                                                                      ptp_parameters_interface)
+            ptp_config = self._set_synce4l_dpll_parameters(host, ptp_config)
             ptp_config = self._set_ptp_instance_monitoring_parameters(ptp_config,
                                                                       ptp_parameters_instance)
             self._set_ptp_instance_dpll_mgr_config(ptp_config)
