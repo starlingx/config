@@ -419,7 +419,7 @@ class FluxDeploymentManager(object):
         """
 
         if len(history) == 0:
-            raise Exception("Flux release has an empty history")
+            raise ValueError("Flux release has an empty history")
 
         if f"-{target_version}" in history[-1]["chart"] and history[-1]["status"] == 'deployed':
             LOG.warning("Already running target Flux release. Skipping rollback.")
