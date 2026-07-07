@@ -84,6 +84,7 @@ Rules-Requires-Root: no
 Package: sysinv
 Architecture: all
 Depends: ${python3:Depends}, ${misc:Depends},
+ libjemalloc2,
  python3-sqlalchemy,
  python3-amqp,
  python3-boto3,
