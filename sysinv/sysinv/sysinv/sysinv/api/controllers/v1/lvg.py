@@ -631,8 +631,19 @@ def _check(op, lvg, rpc_lvg=None):
 
 
 def _check_pool_resize(current_lvg, new_lvg):
-    current_pool_size = current_lvg['capabilities'].get('lvm_pool_size', None)
-    new_pool_size = new_lvg['capabilities'].get('lvm_pool_size', None)
+    try:
+        current_pool_size = current_lvg['capabilities'].get('lvm_pool_size',
+                                                            None)
+        if current_pool_size is not None:
+            current_lvg['capabilities']['lvm_pool_size'] = int(
+                current_pool_size)
+
+        new_pool_size = new_lvg['capabilities'].get('lvm_pool_size', None)
+        if new_pool_size is not None:
+            new_lvg['capabilities']['lvm_pool_size'] = int(new_pool_size)
+    except (ValueError, TypeError):
+        raise wsme.exc.ClientSideError(
+                _("Pool Size only accepts integer values."))
 
     if new_pool_size is None or current_pool_size is None:
         return
