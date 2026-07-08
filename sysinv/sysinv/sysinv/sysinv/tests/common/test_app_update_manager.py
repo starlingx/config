@@ -50,7 +50,10 @@ class TestAppUpdateManager(unittest.TestCase):
             recover_ops = self.manager.apps_to_update[constants.APP_RECOVER_UPDATE_OP]
 
             self.assertIn({'class_type': 'critical', 'apps': ['app_critical']}, update_ops)
-            self.assertIn({'class_type': 'discovery', 'apps': ['app_discovery']}, update_ops)
+            self.assertIn(
+                {'class_type': 'discovery_optional_and_reporting', 'apps': ['app_discovery']},
+                update_ops
+            )
             self.assertIn({'class_type': 'dependent_apps', 'apps': ['app_dependent']}, update_ops)
             self.assertIn('app_storage', upload_ops)
             self.assertIn('app_optional', upload_ops)
