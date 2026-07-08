@@ -879,29 +879,52 @@ start()
             fatal_error "Failed to rename puppet temp cache directory ${PUPPET_CACHE_TMP} to cache directory ${PUPPET_CACHE}"
         fi
 
+        # Wait for LUKS filesystem to be mounted (up to ~2.5 minutes)
+        mount_retries=30
+        for retry in $(seq 1 ${mount_retries}); do
+            if ! /usr/bin/mountpoint -q "$LUKS_MOUNT"; then
+                echo "ERROR: LUKS mount point not available yet, retrying"
+                RC=1
+                sleep 5
+            else
+                RC=0
+                break
+            fi
+        done
+
+        if [ $RC -ne 0 ]; then
+            umount_platform_dir
+            fatal_error "LUKS mount point not available after ${mount_retries} retries: $LUKS_MOUNT"
+        fi
+
         # Handle secured vault based on controller type
         if [ "$HOST" = "controller-0" ]; then
             err_msg="copy"
-            # Wait for LUKS filesystem to be mounted
-            while ! /usr/bin/mountpoint -q "$LUKS_MOUNT"; do
-                echo "Waiting for LUKS mount point: $LUKS_MOUNT"
-                sleep 1
-            done
             echo "Mount point is now mounted: $LUKS_MOUNT, copying ${LUKS_KEYRING_PATH} to /tmp"
-            # Copy the keyring from LUKS filesystem
             cp -RL $LUKS_KEYRING_PATH /tmp
             RC=$?
         elif [ "$HOST" = "controller-1" ]; then
             err_msg="rsync"
-            echo "Syncing keyring from controller-0 via rsync: .keyring/${SW_VERSION}/python_keyring to /tmp"
-            # Sync the keyring from LUKS filesystem
-            /usr/bin/rsync -v -acv --delete rsync://controller/luksdata/.keyring/${SW_VERSION}/python_keyring /tmp
+            # Rsync directly into the persistent LUKS vault, then copy to
+            # /tmp for puppet. This ensures C-1's vault is always populated,
+            # even during upgrades when puppet's rsync_luks_folder is skipped
+            # (controller_sw_versions_match=false).
+            echo "LUKS mounted. Syncing keyring to vault: ${LUKS_KEYRING_PATH}"
+            mkdir -p "${LUKS_KEYRING_PATH}"
+            /usr/bin/rsync -v -acv --delete rsync://controller/luksdata/.keyring/${SW_VERSION}/python_keyring/ "${LUKS_KEYRING_PATH}/"
             RC=$?
+            if [ $RC -eq 0 ]; then
+                err_msg="copy"
+                chgrp -R sys_protected "${LUKS_MOUNT}/controller/.keyring"
+                echo "Copying keyring from vault to /tmp for puppet manifest apply"
+                cp -RL "${LUKS_KEYRING_PATH}" /tmp
+                RC=$?
+            fi
         fi
 
         if [ $RC -ne 0 ]; then
             umount_platform_dir
-            fatal_error "Failed to ${err_msg} keyring dir ${LUKS_KEYRING_PATH} to /tmp"
+            fatal_error "Failed to ${err_msg} keyring dir ${LUKS_KEYRING_PATH}"
         fi
     fi
 
