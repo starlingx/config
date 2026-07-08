@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2021,2024 Wind River Systems, Inc.
+# Copyright (c) 2013-2021,2024,2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -75,6 +75,11 @@ def do_storage_backend_show(cc, args):
            metavar='<deployment_model>',
            help=('Optional deployment_model, default: controller ( Required for ceph-rook '
                  'only). Allowed values: [controller, dedicated, open]'))
+@utils.arg('--failure-domain',
+           metavar='<failure_domain>',
+           help=('Optional failure_domain, default: osd for AIO-SX or host '
+                 'otherwise (ceph-rook only). '
+                 'Allowed values: [osd, host]'))
 @utils.arg('-c', '--ceph_conf',
            metavar='<ceph_conf>',
            help='Location of the Ceph configuration file used for provisioning'
@@ -121,6 +126,11 @@ def do_storage_backend_add(cc, args):
            metavar='<deployment_model>',
            help=('Optional deployment_model, default: controller ( Required for ceph-rook '
                  'only). Allowed values: [controller, dedicated, open]'))
+@utils.arg('--failure-domain',
+           metavar='<failure_domain>',
+           help=('Optional failure_domain, default: osd for AIO-SX or host '
+                 'otherwise (ceph-rook only). '
+                 'Allowed values: [osd, host]'))
 @utils.arg('-c', '--ceph_conf',
            metavar='<ceph_conf>',
            help=('Location of the Ceph configuration file used for provisioning'

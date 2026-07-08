@@ -48,6 +48,7 @@ LOG = log.getLogger(__name__)
 
 HIERA_DATA = {
     'backend': [constants.CEPH_ROOK_BACKEND_DEPLOYMENT_CAP,
+                constants.CEPH_ROOK_BACKEND_FAILURE_DOMAIN_CAP,
                 constants.CEPH_BACKEND_REPLICATION_CAP,
                 constants.CEPH_BACKEND_MIN_REPLICATION_CAP],
     constants. SB_SVC_CEPH_ROOK_BLOCK: [],
@@ -112,6 +113,10 @@ class StorageCephRook(base.APIBase):
     deployment = wtypes.text
     "The deployment model for the storage backend"
 
+    # Failure domain parameter: [API-only field]
+    failure_domain = wtypes.text
+    "The failure domain for the storage backend"
+
     def __init__(self, **kwargs):
         defaults = {'uuid': uuidutils.generate_uuid(),
                     'state': constants.SB_STATE_CONFIGURING_WITH_APP,
@@ -129,6 +134,10 @@ class StorageCephRook(base.APIBase):
         # 'deployment' is not part of objects.storage_backend.fields
         # (it's an API-only attribute)
         self.fields.append('deployment')
+
+        # 'failure_domain' is not part of objects.storage_backend.fields
+        # (it's an API-only attribute)
+        self.fields.append('failure_domain')
 
         # Set the value for any of the field
         for k in self.fields:
@@ -320,6 +329,29 @@ def _discover_and_validate_backend_hiera_data(caps_dict):
         if not v:
             raise wsme.exc.ClientSideError("Missing required backend "
                                            "parameter: %s" % k)
+
+        # Validate failure_domain
+        if k == constants.CEPH_ROOK_BACKEND_FAILURE_DOMAIN_CAP:
+            if v not in constants.CEPH_ROOK_FAILURE_DOMAINS_SUPPORTED:
+                raise wsme.exc.ClientSideError(
+                    "Failure domain '%s' is not supported. "
+                    "Allowed values: %s" % (v, constants.CEPH_ROOK_FAILURE_DOMAINS_SUPPORTED))
+            if (v == constants.CEPH_ROOK_CLUSTER_HOST_FAIL_DOMAIN and
+                    cutils.is_aio_simplex_system(pecan.request.dbapi)):
+                raise wsme.exc.ClientSideError(
+                    "Failure domain '%s' is not supported on AIO-SX. "
+                    "Only '%s' is allowed." % (v,
+                                               constants.CEPH_ROOK_CLUSTER_OSD_FAIL_DOMAIN))
+            if (not cutils.is_aio_simplex_system(pecan.request.dbapi) and
+                    deployment_model in (constants.CEPH_ROOK_DEPLOYMENT_CONTROLLER,
+                                         constants.CEPH_ROOK_DEPLOYMENT_DEDICATED) and
+                    v == constants.CEPH_ROOK_CLUSTER_OSD_FAIL_DOMAIN):
+                raise wsme.exc.ClientSideError(
+                    "Failure domain '%s' is not supported for "
+                    "deployment model '%s' on multi-node systems. "
+                    "Only '%s' is allowed." % (v, deployment_model,
+                                               constants.CEPH_ROOK_CLUSTER_HOST_FAIL_DOMAIN))
+            continue
 
         # Validate replication factor
         if k == constants.CEPH_BACKEND_REPLICATION_CAP:
@@ -601,6 +633,20 @@ def _set_initial_values(storage_ceph_rook):
 
     is_aio_simplex = cutils.is_aio_simplex_system(pecan.request.dbapi)
 
+    # Set failure_domain default based on system type
+    failure_domain = storage_ceph_rook.get('failure_domain', '')
+    if failure_domain:
+        if failure_domain not in constants.CEPH_ROOK_FAILURE_DOMAINS_SUPPORTED:
+            raise wsme.exc.ClientSideError(
+                "Failure domain '%s' is not supported. "
+                "Allowed values: %s" % (failure_domain,
+                                        constants.CEPH_ROOK_FAILURE_DOMAINS_SUPPORTED))
+    else:
+        if is_aio_simplex:
+            failure_domain = constants.CEPH_ROOK_CLUSTER_OSD_FAIL_DOMAIN
+        else:
+            failure_domain = constants.CEPH_ROOK_CLUSTER_HOST_FAIL_DOMAIN
+
     # If no replication was specified, use default values
     if constants.CEPH_BACKEND_REPLICATION_CAP not in capabilities:
         if is_aio_simplex:
@@ -629,6 +675,7 @@ def _set_initial_values(storage_ceph_rook):
     def_services = f'{constants.SB_SVC_CEPH_ROOK_BLOCK},{constants.SB_SVC_CEPH_ROOK_FILESYSTEM}'
     def_capabilities = {
         constants.CEPH_ROOK_BACKEND_DEPLOYMENT_CAP: deployment,
+        constants.CEPH_ROOK_BACKEND_FAILURE_DOMAIN_CAP: failure_domain,
         constants.CEPH_BACKEND_REPLICATION_CAP: def_replication,
         constants.CEPH_BACKEND_MIN_REPLICATION_CAP: def_min_replication
     }
@@ -710,6 +757,12 @@ def _hiera_data_semantic_checks(caps_dict):
         elif not value:
             raise wsme.exc.ClientSideError(
                 _("The '%s' capability has empty value." % cap))
+        elif cap == constants.CEPH_ROOK_BACKEND_FAILURE_DOMAIN_CAP:
+            if value not in constants.CEPH_ROOK_FAILURE_DOMAINS_SUPPORTED:
+                raise wsme.exc.ClientSideError(
+                    _("Failure domain '%s' is not supported. "
+                      "Allowed values: %s" % (value,
+                                              constants.CEPH_ROOK_FAILURE_DOMAINS_SUPPORTED)))
         elif cap in [constants.CEPH_BACKEND_REPLICATION_CAP,
                      constants.CEPH_BACKEND_MIN_REPLICATION_CAP]:
             try:
@@ -782,6 +835,16 @@ def _pre_patch_checks(storage_ceph_rook_obj, patch_obj):
             for k in (set(current_caps_dict.keys()) -
                       set(patch_caps_dict.keys())):
                 patch_caps_dict[k] = current_caps_dict[k]
+
+            # Ensure failure_domain is present (backwards compatibility for
+            # backends created before this capability existed)
+            if constants.CEPH_ROOK_BACKEND_FAILURE_DOMAIN_CAP not in patch_caps_dict:
+                if cutils.is_aio_simplex_system(pecan.request.dbapi):
+                    patch_caps_dict[constants.CEPH_ROOK_BACKEND_FAILURE_DOMAIN_CAP] = \
+                        constants.CEPH_ROOK_CLUSTER_OSD_FAIL_DOMAIN
+                else:
+                    patch_caps_dict[constants.CEPH_ROOK_BACKEND_FAILURE_DOMAIN_CAP] = \
+                        constants.CEPH_ROOK_CLUSTER_HOST_FAIL_DOMAIN
 
             p['value'] = patch_caps_dict
         elif p['path'] == '/services':
