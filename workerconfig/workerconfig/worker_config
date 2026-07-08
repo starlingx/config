@@ -22,6 +22,7 @@
 . /etc/platform/platform.conf
 
 LOGGER_TAG="worker_config"
+logger -t ${LOGGER_TAG} "worker_config script invoked with: $*"
 
 PLATFORM_DIR=/opt/platform
 CONFIG_DIR=$CONFIG_PATH
