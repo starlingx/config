@@ -40,7 +40,13 @@ class RestoreTestCase(base.BaseHostTestCase):
         self.mock_path_exists = mock.patch('os.path.exists', return_value=True)
         self.mock_path_exists.start()
 
+        # Mock _clean_lvm_resources to avoid runtime manifest apply during tests
+        self.mock_clean_lvm = mock.patch.object(
+            self.service, '_clean_lvm_resources')
+        self.mock_clean_lvm.start()
+
     def tearDown(self):
+        self.mock_clean_lvm.stop()
         self.mock_path_exists.stop()
         super(RestoreTestCase, self).tearDown()
 

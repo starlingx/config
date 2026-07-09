@@ -21152,6 +21152,8 @@ class ConductorManager(service.PeriodicService):
                 and cutils.is_aio_simplex_system(self.dbapi)):
             self._recover_cephfs()
 
+        self._clean_lvm_resources()
+
         if not os.path.exists(constants.SYSINV_REPORTED):
             message = "Cannot complete the restore procedure. System " \
                       "is not ready to apply runtime config. Try " \
@@ -21202,6 +21204,24 @@ class ConductorManager(service.PeriodicService):
 
         LOG.info(output)
         return output
+
+    def _clean_lvm_resources(self):
+        """Clean old lvm resources inherited from previous versions"""
+
+        personalities = [constants.CONTROLLER,
+                         constants.WORKER]
+        context = ctx.RequestContext('admin', 'admin', is_admin=True)
+        config_uuid = self._config_update_hosts(context, personalities)
+
+        config_dict = {
+            "personalities": personalities,
+            "classes": ['platform::lvm::csi::clean_restore::runtime'],
+        }
+
+        self._config_apply_runtime_manifest(context,
+                                            config_uuid,
+                                            config_dict,
+                                            force=True)
 
     def _recover_cephfs(self):
         """Recover CephFS MDS daemon damaged"""
