@@ -19804,20 +19804,23 @@ class ConductorManager(service.PeriodicService):
                                             "namespace. Details: %s" % str(e))
 
             # Copy registry secret to new namespaces (skip if already exists)
-            try:
-                self._kube.kube_get_secret('registry-local-secret', 'calico-system')
-                LOG.warning("Secret registry-local-secret already exists in calico-system, skipping.")
-            except Exception:
+            secret = self._kube.kube_get_secret('registry-local-secret', 'calico-system')
+            if secret:
+                LOG.info("Secret registry-local-secret already exists in calico-system, skipping.")
+            else:
                 try:
+                    LOG.info("Copying registry-local-secret to calico-system namespace.")
                     self._kube.kube_copy_secret('registry-local-secret', 'kube-system', 'calico-system')
                 except Exception as e:
                     raise exception.SysinvException("Could not copy secret to "
                                                 "calico-system: %s" % str(e))
-            try:
-                self._kube.kube_get_secret('registry-local-secret', 'tigera-operator')
-                LOG.warning("Secret registry-local-secret already exists in tigera-operator, skipping.")
-            except Exception:
+
+            secret = self._kube.kube_get_secret('registry-local-secret', 'tigera-operator')
+            if secret:
+                LOG.info("Secret registry-local-secret already exists in tigera-operator, skipping.")
+            else:
                 try:
+                    LOG.info("Copying registry-local-secret to tigera-operator namespace.")
                     self._kube.kube_copy_secret('registry-local-secret', 'kube-system', 'tigera-operator')
                 except Exception as e:
                     raise exception.SysinvException("Could not copy secret to "
@@ -20026,6 +20029,143 @@ class ConductorManager(service.PeriodicService):
                 raise exception.SysinvException("Failed to upgrade kubernetes networking "
                                                 "component: [%s]"
                                                 % (re.split('update_|\.', data[1])[1]))
+
+        # Phase 3: Calico Ingress Gateway (Gateway API + XListenerSet)
+        if LooseVersion(kube_version) >= LooseVersion('v1.35.2'):
+            # Create tigera-gateway namespace
+            try:
+                self._kube.kube_create_namespace('tigera-gateway')
+            except Exception as e:
+                raise exception.SysinvException(
+                    "Failed to create tigera-gateway "
+                    "namespace. Details: %s" % str(e))
+
+            # Label tigera-gateway namespace as platform component
+            try:
+                self._kube.kube_patch_namespace('tigera-gateway', label_body)
+            except Exception as e:
+                raise exception.SysinvException(
+                    "Failed to label platform in tigera-gateway "
+                    "namespace. Details: %s" % str(e))
+
+            # Copy registry secret to tigera-gateway namespace
+            secret = self._kube.kube_get_secret(
+                'registry-local-secret', 'tigera-gateway')
+            if secret:
+                LOG.info("Secret registry-local-secret already "
+                         "exists in tigera-gateway, skipping.")
+            else:
+                try:
+                    LOG.info("Copying registry-local-secret to tigera-gateway namespace.")
+                    self._kube.kube_copy_secret(
+                        'registry-local-secret',
+                        'kube-system', 'tigera-gateway')
+                except Exception as e:
+                    raise exception.SysinvException(
+                        "Could not copy secret to "
+                        "tigera-gateway: %s" % str(e))
+
+            # Apply EnvoyGateway config and GatewayAPI CR
+            gateway_entries_phase1 = [
+                [f"{version_subpath}/calico-gateway-api-envoy-config.yaml.j2",
+                 'update_calico-gateway-api-envoy-config.yaml', False, None],
+                [f"{version_subpath}/calico-gateway-api.yaml.j2",
+                 'update_calico-gateway-api.yaml', False, None],
+            ]
+
+            for data in gateway_entries_phase1:
+                source_template_path = os.path.join(
+                    full_template_path, data[0])
+                dest_manifest_path = os.path.join(
+                    kubernetes.KUBERNETES_CONF_DIR, data[1])
+                is_template = data[2]
+                values = data[3]
+                if self._generate_k8s_manifests_and_apply(
+                        source_template_path, dest_manifest_path,
+                        is_template=is_template, values=values):
+                    LOG.info("Gateway API component [%s] applied "
+                             "successfully."
+                             % (re.split('update_|\\.', data[1])[1]))
+                else:
+                    raise exception.SysinvException(
+                        "Failed to apply Gateway API "
+                        "component: [%s]"
+                        % (re.split('update_|\\.', data[1])[1]))
+
+            # Wait for Envoy Gateway pod to be created and running
+            LOG.info("Waiting for Envoy Gateway to be ready...")
+            envoy_gw_ready = False
+            for attempt in range(30):  # Wait up to 5 minutes
+                try:
+                    stdout, _ = cutils.execute(
+                        'kubectl',
+                        f'--kubeconfig={kubernetes.KUBERNETES_ADMIN_CONF}',
+                        'get', 'pods', '-n', 'tigera-gateway',
+                        '--no-headers',
+                        run_as_root=False)
+                    if 'envoy-gateway' in stdout and 'Running' in stdout:
+                        envoy_gw_ready = True
+                        LOG.info("Envoy Gateway is ready.")
+                        break
+                except Exception:
+                    pass
+                time.sleep(10)
+
+            if not envoy_gw_ready:
+                LOG.warning("Timed out waiting for Envoy Gateway. "
+                            "Gateway API may not be fully operational.")
+
+            # Wait for GatewayClass to be accepted
+            LOG.info("Waiting for GatewayClass to be accepted...")
+            gwclass_ready = False
+            for attempt in range(12):  # Wait up to 2 minutes
+                try:
+                    stdout, _ = cutils.execute(
+                        'kubectl',
+                        f'--kubeconfig={kubernetes.KUBERNETES_ADMIN_CONF}',
+                        'get', 'gatewayclass', 'tigera-gateway-class',
+                        '-o',
+                        'jsonpath={.status.conditions[?(@.type=="Accepted")].status}',
+                        run_as_root=False)
+                    if 'True' in stdout:
+                        gwclass_ready = True
+                        LOG.info("GatewayClass tigera-gateway-class "
+                                 "is accepted.")
+                        break
+                except Exception:
+                    pass
+                time.sleep(10)
+
+            if not gwclass_ready:
+                LOG.warning("Timed out waiting for GatewayClass "
+                            "to be accepted.")
+
+            # Apply XListenerSet CRD and RBAC
+            gateway_entries_phase2 = [
+                [f"{version_subpath}/calico-gateway-api-xlistenerset-crd.yaml.j2",
+                 'update_calico-gateway-api-xlistenerset-crd.yaml', False, None],
+                [f"{version_subpath}/calico-gateway-api-xlistenerset-rbac.yaml.j2",
+                 'update_calico-gateway-api-xlistenerset-rbac.yaml', False, None],
+            ]
+
+            for data in gateway_entries_phase2:
+                source_template_path = os.path.join(
+                    full_template_path, data[0])
+                dest_manifest_path = os.path.join(
+                    kubernetes.KUBERNETES_CONF_DIR, data[1])
+                is_template = data[2]
+                values = data[3]
+                if self._generate_k8s_manifests_and_apply(
+                        source_template_path, dest_manifest_path,
+                        is_template=is_template, values=values):
+                    LOG.info("XListenerSet component [%s] applied "
+                             "successfully."
+                             % (re.split('update_|\\.', data[1])[1]))
+                else:
+                    raise exception.SysinvException(
+                        "Failed to apply XListenerSet "
+                        "component: [%s]"
+                        % (re.split('update_|\\.', data[1])[1]))
 
         if not cluster_network_ipv4:
             check_ipv4_pools = True

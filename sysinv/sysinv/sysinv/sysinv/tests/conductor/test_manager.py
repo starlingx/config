@@ -11082,7 +11082,7 @@ class ManagerTestCase(base.DbTestCase):
         p.start()
         self.addCleanup(p.stop)
 
-        mocks['get_secret'] = mock.MagicMock(side_effect=Exception("not found"))
+        mocks['get_secret'] = mock.MagicMock(return_value=None)
         p = mock.patch.object(self.service._kube, 'kube_get_secret', mocks['get_secret'])
         p.start()
         self.addCleanup(p.stop)
@@ -11152,11 +11152,13 @@ class ManagerTestCase(base.DbTestCase):
 
         mocks['create_ns'].assert_any_call('calico-system')
         mocks['create_ns'].assert_any_call('tigera-operator')
-        self.assertEqual(mocks['create_ns'].call_count, 2)
+        mocks['create_ns'].assert_any_call('tigera-gateway')
+        self.assertEqual(mocks['create_ns'].call_count, 3)
         mocks['copy_secret'].assert_any_call('registry-local-secret', 'kube-system', 'calico-system')
         mocks['copy_secret'].assert_any_call('registry-local-secret', 'kube-system', 'tigera-operator')
+        mocks['copy_secret'].assert_any_call('registry-local-secret', 'kube-system', 'tigera-gateway')
         self.assertEqual(mocks['render'].call_count, 6)
-        self.assertEqual(mocks['kubectl_apply'].call_count, 7)
+        self.assertEqual(mocks['kubectl_apply'].call_count, 11)
 
         updated_upgrade = self.dbapi.kube_upgrade_get_one()
         self.assertEqual(updated_upgrade.state, kubernetes.KUBE_UPGRADED_NETWORKING)
@@ -11195,9 +11197,10 @@ class ManagerTestCase(base.DbTestCase):
 
         mocks['create_ns'].assert_any_call('calico-system')
         mocks['create_ns'].assert_any_call('tigera-operator')
+        mocks['create_ns'].assert_any_call('tigera-gateway')
         mocks['copy_secret'].assert_any_call('registry-local-secret', 'kube-system', 'calico-system')
         self.assertEqual(mocks['render'].call_count, 6)
-        self.assertEqual(mocks['kubectl_apply'].call_count, 7)
+        self.assertEqual(mocks['kubectl_apply'].call_count, 11)
 
         updated_upgrade = self.dbapi.kube_upgrade_get_one()
         self.assertEqual(updated_upgrade.state, kubernetes.KUBE_UPGRADED_NETWORKING)
@@ -11237,8 +11240,9 @@ class ManagerTestCase(base.DbTestCase):
         mocks['create_ns'].assert_any_call('calico-system')
         mocks['create_ns'].assert_any_call('tigera-operator')
         mocks['copy_secret'].assert_any_call('registry-local-secret', 'kube-system', 'calico-system')
+        mocks['create_ns'].assert_any_call('tigera-gateway')
         self.assertEqual(mocks['render'].call_count, 6)
-        self.assertEqual(mocks['kubectl_apply'].call_count, 7)
+        self.assertEqual(mocks['kubectl_apply'].call_count, 11)
 
         updated_upgrade = self.dbapi.kube_upgrade_get_one()
         self.assertEqual(updated_upgrade.state, kubernetes.KUBE_UPGRADED_NETWORKING)
@@ -11248,6 +11252,153 @@ class ManagerTestCase(base.DbTestCase):
         self.assertEqual(ctx.get('cluster_network_ipv4'), '172.16.0.0/16')
         self.assertEqual(ctx.get('cluster_network_ipv6'), 'fd00::/64')
         self.assertEqual(ctx.get('tigera_operator_img'), 'fake_tigera_operator_img')
+
+    def test_kube_upgrade_networking_gateway_api_namespace_created(self):
+        """Test tigera-gateway namespace is created during upgrade."""
+        config_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER, hostname='controller-0',
+            uuid=str(uuid.uuid4()), config_status=None,
+            config_applied=config_uuid, config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        FROM_VERSION = 'v1.34.1'
+        TO_VERSION = 'v1.35.2'
+        upgrade_overrides = {"cluster_pod_subnet": "172.16.0.0/16",
+                             "cluster_host_floating_address": "192.168.206.1",
+                             "cluster_host_node_0_address": "192.168.206.2"}
+
+        utils.create_test_kube_upgrade(from_version=FROM_VERSION,
+                                       to_version=TO_VERSION,
+                                       state=kubernetes.KUBE_UPGRADING_NETWORKING)
+
+        mocks = self._setup_operator_test_mocks(
+            self._get_calico_operator_network_images(), True, True,
+            upgrade_overrides)
+
+        self.service.kube_upgrade_networking(self.context, TO_VERSION)
+
+        # Verify tigera-gateway namespace is created
+        mocks['create_ns'].assert_any_call('tigera-gateway')
+        # Verify tigera-gateway namespace is labeled
+        mocks['patch_ns'].assert_any_call('tigera-gateway', mock.ANY)
+        # Verify registry secret is copied
+        mocks['copy_secret'].assert_any_call(
+            'registry-local-secret', 'kube-system', 'tigera-gateway')
+
+    def test_kube_upgrade_networking_gateway_api_not_applied_for_older_k8s(self):
+        """Test Gateway API is not applied for K8s < v1.35.2."""
+        config_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER, hostname='controller-0',
+            uuid=str(uuid.uuid4()), config_status=None,
+            config_applied=config_uuid, config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        FROM_VERSION = 'v1.32.2'
+        TO_VERSION = 'v1.32.13'
+        upgrade_overrides = {"cluster_pod_subnet": "172.16.0.0/16",
+                             "cluster_host_floating_address": "192.168.206.1",
+                             "cluster_host_node_0_address": "192.168.206.2"}
+
+        utils.create_test_kube_upgrade(from_version=FROM_VERSION,
+                                       to_version=TO_VERSION,
+                                       state=kubernetes.KUBE_UPGRADING_NETWORKING)
+
+        mocks = self._setup_operator_test_mocks(
+            self._get_calico_operator_network_images(), True, True,
+            upgrade_overrides)
+
+        self.service.kube_upgrade_networking(self.context, TO_VERSION)
+
+        # Verify tigera-gateway namespace is NOT created for older K8s
+        for call in mocks['create_ns'].call_args_list:
+            self.assertNotEqual(call[0][0], 'tigera-gateway')
+
+    def test_kube_upgrade_networking_gateway_api_manifests_applied(self):
+        """Test Gateway API manifests are applied in correct order."""
+        config_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER, hostname='controller-0',
+            uuid=str(uuid.uuid4()), config_status=None,
+            config_applied=config_uuid, config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        FROM_VERSION = 'v1.34.1'
+        TO_VERSION = 'v1.35.2'
+        upgrade_overrides = {"cluster_pod_subnet": "172.16.0.0/16",
+                             "cluster_host_floating_address": "192.168.206.1",
+                             "cluster_host_node_0_address": "192.168.206.2"}
+
+        utils.create_test_kube_upgrade(from_version=FROM_VERSION,
+                                       to_version=TO_VERSION,
+                                       state=kubernetes.KUBE_UPGRADING_NETWORKING)
+
+        mocks = self._setup_operator_test_mocks(
+            self._get_calico_operator_network_images(), True, True,
+            upgrade_overrides)
+
+        self.service.kube_upgrade_networking(self.context, TO_VERSION)
+
+        # Verify all 4 gateway manifests were applied
+        apply_calls = [str(call) for call in mocks['kubectl_apply'].call_args_list]
+        self.assertTrue(any('gateway-api-envoy-config' in c for c in apply_calls),
+                        "EnvoyGateway config manifest not applied")
+        self.assertTrue(any('calico-gateway-api.yaml' in c or
+                            'update_calico-gateway-api.yaml' in c
+                            for c in apply_calls),
+                        "GatewayAPI CR manifest not applied")
+        self.assertTrue(any('xlistenerset-crd' in c for c in apply_calls),
+                        "XListenerSet CRD manifest not applied")
+        self.assertTrue(any('xlistenerset-rbac' in c for c in apply_calls),
+                        "XListenerSet RBAC manifest not applied")
+
+    def test_kube_upgrade_networking_gateway_preserves_existing(self):
+        """Test upgrade from v1.35.2 to v1.36.0 preserves existing namespace."""
+        config_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER, hostname='controller-0',
+            uuid=str(uuid.uuid4()), config_status=None,
+            config_applied=config_uuid, config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        FROM_VERSION = 'v1.35.2'
+        TO_VERSION = 'v1.36.0'
+        upgrade_overrides = {"cluster_pod_subnet": "172.16.0.0/16",
+                             "cluster_host_floating_address": "192.168.206.1",
+                             "cluster_host_node_0_address": "192.168.206.2"}
+
+        utils.create_test_kube_upgrade(from_version=FROM_VERSION,
+                                       to_version=TO_VERSION,
+                                       state=kubernetes.KUBE_UPGRADING_NETWORKING)
+
+        mocks = self._setup_operator_test_mocks(
+            self._get_calico_operator_network_images(), True, True,
+            upgrade_overrides)
+
+        # Simulate secret already existing (namespace already there)
+        mocks['get_secret'].side_effect = None
+        mocks['get_secret'].return_value = mock.MagicMock()
+
+        self.service.kube_upgrade_networking(self.context, TO_VERSION)
+
+        # Namespace creation is idempotent (kube_create_namespace handles AlreadyExists)
+        mocks['create_ns'].assert_any_call('tigera-gateway')
+        # Secret should NOT be copied since it already exists
+        for call in mocks['copy_secret'].call_args_list:
+            self.assertNotEqual(call[0][2], 'tigera-gateway')
 
 
 class ManagerTestCaseInternal(base.BaseHostTestCase):
