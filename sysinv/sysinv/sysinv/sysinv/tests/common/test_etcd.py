@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2023 Wind River Systems, Inc.
+# Copyright (c) 2023, 2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -53,7 +53,7 @@ class TestEtcd(base.TestCase):
                                             '  extraVolumes:\n'
                                             '  - hostPath: '
                                             '/etc/kubernetes/encryption-provider.yaml\n'
-                                            'apiVersion: kubeadm.k8s.io/v1beta3\n'
+                                            'apiVersion: kubeadm.k8s.io/v1beta4\n'
                                             'controllerManager:\n'
                                             '  extraArgs:\n'
                                             '    feature-gates: CSIMigrationPortworx=false\n'

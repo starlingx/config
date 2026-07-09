@@ -5,7 +5,6 @@
 #
 
 from __future__ import absolute_import
-from distutils.version import LooseVersion
 from eventlet.green import subprocess
 # eventlet.green.subprocess defines its own TimeoutExpired, which differs
 # from the stdlib exception actually raised at runtime; import stdlib
@@ -55,7 +54,6 @@ API_RETRY_ATTEMPT_NUMBER = 20
 API_RETRY_INTERVAL = 10 * 1000
 
 # Kubeadm API reference
-KUBEADM_API_V1BETA3 = "kubeadm.k8s.io/v1beta3"
 KUBEADM_API_V1BETA4 = "kubeadm.k8s.io/v1beta4"
 
 
@@ -385,13 +383,7 @@ class KubernetesPuppet(base.BasePuppet):
                     ):
                         kubeadm_version = kube_version.kubelet_version
 
-                # Update API reference to kubeadm.k8s.io/v1beta3 when k8s
-                # version is less than 1.31
-                api_version = (
-                    KUBEADM_API_V1BETA3
-                    if LooseVersion(kubeadm_version) < LooseVersion("1.31.5")
-                    else KUBEADM_API_V1BETA4
-                )
+                api_version = KUBEADM_API_V1BETA4
 
                 # Append InitConfiguration to the kubeadm config with:
                 # - apiVersion: must match the kubeadm version to avoid
