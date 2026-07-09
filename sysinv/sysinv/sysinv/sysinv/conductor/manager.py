@@ -7672,6 +7672,20 @@ class ConductorManager(service.PeriodicService):
                     rc = self.dbapi.runtime_config_get(config_uuid, host_id=host_id)
                 except exception.NotFound:
                     rc = self.dbapi.runtime_config_get(config_uuid, host_id=None)
+
+                # If the config was already successfully applied, the alarm
+                # is stale due to a failed clear_fault() call. Retry clearing
+                # the alarm only — do not reapply the manifest
+                if rc.state == constants.RUNTIME_CONFIG_STATE_APPLIED:
+                    LOG.info(f"Config {config_uuid} already applied on "
+                             f"{host.hostname}, retrying alarm clear only.")
+                    entity_instance_id = "%s=%s" % (
+                        fm_constants.FM_ENTITY_TYPE_HOST, hostname)
+                    self.fm_api.clear_fault(
+                        fm_constants.FM_ALARM_ID_SYSCONFIG_OUT_OF_DATE,
+                        entity_instance_id)
+                    continue
+
                 config_dict = json.loads(rc.config_dict)
                 config_dict.update({"host_uuids": [host.uuid]})
                 config_type = config_dict["config_type"]
@@ -14250,9 +14264,44 @@ class ConductorManager(service.PeriodicService):
             LOG.info("SYS_I Clear system config alarm: %s target config %s" %
                      (ihost_obj.hostname, ihost_obj.config_target))
 
-            self.fm_api.clear_fault(
-                fm_constants.FM_ALARM_ID_SYSCONFIG_OUT_OF_DATE,
-                entity_instance_id)
+            # Retry clear_fault in case fm-mgr is temporarily unavailable
+            # (e.g. restarted by a puppet manifest). time.sleep() yields
+            # to other greenthreads via eventlet, so this does not block
+            # the conductor.
+            max_retries = 5
+            retry_delay = 3
+            for attempt in range(max_retries):
+                try:
+                    if attempt > 0:
+                        # Verify target hasn't changed during retry sleep.
+                        # If a new config arrived, skip the clear and let
+                        # the new config's flow handle the alarm.
+                        ihost_obj = self.dbapi.ihost_get(ihost_obj.uuid)
+                        if ihost_obj.config_target != ihost_obj.config_applied:
+                            LOG.info(f"Config target changed for "
+                                     f"{ihost_obj.hostname} during retry, "
+                                     f"skipping clear.")
+                            break
+                    result = self.fm_api.clear_fault(
+                        fm_constants.FM_ALARM_ID_SYSCONFIG_OUT_OF_DATE,
+                        entity_instance_id)
+                    if result:
+                        if attempt > 0:
+                            LOG.info(f"clear_fault succeeded for "
+                                     f"{ihost_obj.hostname} on "
+                                     f"attempt {attempt + 1}.")
+                        break
+                except Exception:
+                    pass
+                if attempt < max_retries - 1:
+                    LOG.warning(f"clear_fault failed for {ihost_obj.hostname} "
+                                f"(attempt {attempt + 1}/{max_retries}), "
+                                f"retrying in {retry_delay}s...")
+                    time.sleep(retry_delay)
+                    retry_delay *= 2
+                else:
+                    LOG.error(f"clear_fault failed for {ihost_obj.hostname} "
+                              f"after {max_retries} attempts.")
 
             self._clear_runtime_class_apply_in_progress(host_uuids=[ihost_obj.uuid])
 
