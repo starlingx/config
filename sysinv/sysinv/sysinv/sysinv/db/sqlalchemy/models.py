@@ -2087,8 +2087,8 @@ class KubeHostUpgrade(Base):
     id = Column(Integer, primary_key=True)
     uuid = Column(String(36))
 
-    target_version = Column(String(255), nullable=False)
-    status = Column(String(128), nullable=False)
+    target_version = Column(String(255), nullable=False, server_default='')
+    status = Column(String(128), nullable=False, server_default='')
     reserved_1 = Column(String(255))
     reserved_2 = Column(String(255))
     reserved_3 = Column(String(255))
