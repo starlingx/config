@@ -201,9 +201,94 @@ class AppOperator(object):
                               constants.APP_RECOVER_IN_PROGRESS,
                               constants.APP_REMOVE_IN_PROGRESS]:
                 app = AppOperator.Application(db_app)
+
+                # Detect interrupted update during upload phase:
+                # If an app is in 'updating' state but its manifest
+                # directory does not exist, it means the reboot occurred
+                # before the upload of the new version completed.
+                # The previous version (from_app) is inactive but still
+                # has valid data on disk. Restore it instead of leaving
+                # the app stuck in apply-failed.
+                if db_app.status == constants.APP_UPDATE_IN_PROGRESS:
+                    manifest_dir = cutils.generate_synced_fluxcd_dir(
+                        db_app.name, db_app.app_version)
+                    if not os.path.isdir(manifest_dir):
+                        LOG.info(
+                            "Application %s (%s) was interrupted during "
+                            "update upload (manifest dir missing). "
+                            "Restoring previous version." %
+                            (db_app.name, db_app.app_version))
+                        self._restore_from_app_after_failed_update(
+                            db_app)
+                        continue
+
                 self._abort_operation(app, app.status, reset_status=True)
             else:
                 continue
+
+    def _restore_from_app_after_failed_update(self, stuck_app):
+        """Restore the previous (inactive) app version after an update
+        was interrupted during the upload phase.
+
+        When a reboot occurs during the upload phase of an
+        application-update, the target app (new version) has status
+        'updating' but no files on disk. The previous version
+        (from_app) is 'inactive' in the DB but still has valid data.
+        This method restores from_app to 'applied/active' and removes
+        the incomplete target record.
+
+        :param stuck_app: DB object of the app stuck in 'updating'
+        """
+        try:
+            inactive_apps = self._dbapi.kube_app_get_inactive(
+                stuck_app.name)
+            if not inactive_apps:
+                LOG.warning(
+                    "Cannot restore previous version for app %s: "
+                    "no inactive version found. Falling back to "
+                    "abort." % stuck_app.name)
+                app = AppOperator.Application(stuck_app)
+                self._abort_operation(app, app.status, reset_status=True)
+                return
+
+            # The most recently applied version should be the one
+            # we restore. In normal flow there's only one inactive
+            # record (the from_app that was just set inactive).
+            from_app = inactive_apps[0]
+
+            LOG.info(
+                "Restoring app %s from version %s (inactive) to "
+                "applied state, removing incomplete version %s." %
+                (stuck_app.name, from_app.app_version,
+                 stuck_app.app_version))
+
+            # Restore previous version to applied/active
+            self._dbapi.kube_app_update(
+                from_app.id,
+                {'status': constants.APP_APPLY_SUCCESS,
+                 'progress': constants.APP_PROGRESS_COMPLETED,
+                 'active': True})
+
+            # Clean up the incomplete target app record
+            self._dbapi.kube_app_destroy(
+                stuck_app.name, version=stuck_app.app_version)
+
+            # Clean up any partial files for the incomplete version
+            incomplete_dir = cutils.generate_synced_fluxcd_dir(
+                stuck_app.name, stuck_app.app_version)
+            if os.path.exists(incomplete_dir):
+                shutil.rmtree(incomplete_dir)
+
+            # Clear any alarms that were raised for the update
+            self._clear_app_alarm(stuck_app.name)
+
+        except Exception as e:
+            LOG.error(
+                "Failed to restore previous version for app %s "
+                "after interrupted update: %s. Falling back to "
+                "abort." % (stuck_app.name, e))
+            app = AppOperator.Application(stuck_app)
+            self._abort_operation(app, app.status, reset_status=True)
 
     def _raise_app_alarm(self, app_name, app_action, alarm_id, severity,
                          reason_text, alarm_type, repair_action,
@@ -1417,13 +1502,29 @@ class AppOperator(object):
         # In the event include_disabed is set to True, make sure the file exists.
         # Possible that the file has not yet been created yet.
         if not os.path.exists(root_kustomization_path) and include_disabled:
+            original_root_kustomization_path = os.path.join(
+                manifest, constants.APP_ROOT_KUSTOMIZE_FILE
+            )
+            # Defensive check: if the source file is also missing, the
+            # application's manifest directory is in an inconsistent state,
+            # most likely caused by a reboot during application-update or
+            # application-apply. Raising a clear SysinvException prevents
+            # the previously-uncaught FileNotFoundError from propagating
+            # and gives the operator a meaningful error message.
+            if not os.path.isfile(original_root_kustomization_path):
+                raise exception.SysinvException(_(
+                    "Application manifest files for %(name)s (%(version)s) "
+                    "are missing or incomplete: %(path)s does not exist. "
+                    "This is most likely caused by an interrupted "
+                    "application-update operation. Re-uploading the "
+                    "application is recommended." % {
+                        'name': app.name,
+                        'version': app.version,
+                        'path': original_root_kustomization_path}))
             LOG.info(
                 "_get_list_of_charts: Function called with include_disabled=True, "
                 "but the kustomize-orig.yaml file does not exist yet. Creating it "
                 "now."
-            )
-            original_root_kustomization_path = os.path.join(
-                manifest, constants.APP_ROOT_KUSTOMIZE_FILE
             )
             shutil.copy(original_root_kustomization_path, root_kustomization_path)
 
