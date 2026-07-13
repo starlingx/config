@@ -1040,7 +1040,7 @@ class ConductorManager(service.PeriodicService):
         {'service': constants.SERVICE_TYPE_PLATFORM,
          'section': constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG,
          'name': constants.SERVICE_PARAM_NAME_CGROUP_V2_ENABLED,
-         'value': False
+         'value': True
          },
     ]
 
