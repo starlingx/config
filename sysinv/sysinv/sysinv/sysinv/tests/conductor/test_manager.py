@@ -10596,6 +10596,41 @@ class ManagerTestCase(base.DbTestCase):
         mock_config_update_hosts.assert_not_called()
         mock_apply_runtime_manifest.assert_not_called()
 
+    @mock.patch('sysinv.conductor.manager.'
+                'ConductorManager._config_apply_runtime_manifest')
+    @mock.patch('sysinv.conductor.manager.'
+                'ConductorManager._config_clear_reboot_required')
+    @mock.patch('sysinv.conductor.manager.'
+                'ConductorManager._config_update_hosts')
+    def test_update_security_feature_config(self,
+                                            mock_config_update_hosts,
+                                            mock_config_clear_reboot_required,
+                                            mock_config_apply_runtime_manifest):
+        """Test update_security_feature_config uses correct puppet class."""
+        self._create_test_ihosts()
+
+        config_uuid = str(uuid.uuid4())
+        cleared_config_uuid = str(uuid.uuid4())
+        mock_config_update_hosts.return_value = config_uuid
+        mock_config_clear_reboot_required.return_value = cleared_config_uuid
+
+        self.service.update_security_feature_config(context=self.context)
+
+        # Verify _config_update_hosts called with all personalities except EDGEWORKER
+        expected_personalities = [i for i in constants.PERSONALITIES
+                                  if i != constants.EDGEWORKER]
+        mock_config_update_hosts.assert_called_once_with(
+            self.context, expected_personalities, reboot=True)
+
+        # Verify correct puppet class is used (not the old 'platform::grub::runtime')
+        expected_config_dict = {
+            'personalities': expected_personalities,
+            'classes': ['platform::grub::security_features::runtime']
+        }
+        mock_config_clear_reboot_required.assert_called_once_with(config_uuid)
+        mock_config_apply_runtime_manifest.assert_called_once_with(
+            self.context, cleared_config_uuid, expected_config_dict, force=True)
+
     def test_host_kernel_mismatch_alarm(self):
         """Test raising and clearing 100.121 alarm id"""
         alarm_id = fm_constants.FM_ALARM_ID_PROVISIONED_KERNEL_MISMATCH
