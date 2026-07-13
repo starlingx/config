@@ -11082,6 +11082,11 @@ class ManagerTestCase(base.DbTestCase):
         p.start()
         self.addCleanup(p.stop)
 
+        mocks['get_secret'] = mock.MagicMock(side_effect=Exception("not found"))
+        p = mock.patch.object(self.service._kube, 'kube_get_secret', mocks['get_secret'])
+        p.start()
+        self.addCleanup(p.stop)
+
         captured_calico_ctx = {}
         orig_gen = self.service._generate_k8s_manifests_and_apply
 

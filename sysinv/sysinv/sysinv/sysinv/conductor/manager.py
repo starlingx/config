@@ -19870,17 +19870,25 @@ class ConductorManager(service.PeriodicService):
                 raise exception.SysinvException("Failed to label platform in tigera-operator "
                                             "namespace. Details: %s" % str(e))
 
-            # Copy registry secret to new namespaces
+            # Copy registry secret to new namespaces (skip if already exists)
             try:
-                self._kube.kube_copy_secret('registry-local-secret', 'kube-system', 'calico-system')
-            except Exception as e:
-                raise exception.SysinvException("Could not copy secret to "
-                                            "calico-system: %s" % str(e))
+                self._kube.kube_get_secret('registry-local-secret', 'calico-system')
+                LOG.warning("Secret registry-local-secret already exists in calico-system, skipping.")
+            except Exception:
+                try:
+                    self._kube.kube_copy_secret('registry-local-secret', 'kube-system', 'calico-system')
+                except Exception as e:
+                    raise exception.SysinvException("Could not copy secret to "
+                                                "calico-system: %s" % str(e))
             try:
-                self._kube.kube_copy_secret('registry-local-secret', 'kube-system', 'tigera-operator')
-            except Exception as e:
-                raise exception.SysinvException("Could not copy secret to "
-                                            "tigera-operator: %s" % str(e))
+                self._kube.kube_get_secret('registry-local-secret', 'tigera-operator')
+                LOG.warning("Secret registry-local-secret already exists in tigera-operator, skipping.")
+            except Exception:
+                try:
+                    self._kube.kube_copy_secret('registry-local-secret', 'kube-system', 'tigera-operator')
+                except Exception as e:
+                    raise exception.SysinvException("Could not copy secret to "
+                                                "tigera-operator: %s" % str(e))
 
             # 1. Create /opt/cni/bin symlink
             try:
@@ -19891,83 +19899,105 @@ class ConductorManager(service.PeriodicService):
                 raise exception.SysinvException("Could not create "
                                             "/opt/cni/bin symlink: %s" % str(e))
 
-            # 2. Patch calico-node DaemonSet cni-bin-dir volume hostPath
+            # Check if legacy calico-node DaemonSet exists in kube-system.
+            # If not, it has already been migrated to calico-system by the
+            # tigera operator (e.g. from a previous upgrade attempt), so
+            # steps 2-5 can be skipped.
+            legacy_calico_exists = True
             try:
-                stdout, _ = cutils.execute(
+                cutils.execute(
                     'kubectl', f'--kubeconfig={kubernetes.KUBERNETES_ADMIN_CONF}',
                     '-n', 'kube-system', 'get', 'ds', 'calico-node',
-                    '-o', 'jsonpath={.spec.template.spec.volumes[*].name}',
                     run_as_root=False)
-                volume_names = stdout.strip().split()
-                if 'cni-bin-dir' not in volume_names:
-                    raise Exception("Volume 'cni-bin-dir' not found in calico-node DaemonSet")
-                idx = volume_names.index('cni-bin-dir')
-                patch_json = ('[{"op":"replace","path":"/spec/template/spec/volumes/%d'
-                              '/hostPath/path","value":"/opt/cni/bin"}]' % idx)
-                cutils.execute(
-                    'kubectl', f'--kubeconfig={kubernetes.KUBERNETES_ADMIN_CONF}',
-                    '-n', 'kube-system', 'patch', 'ds', 'calico-node',
-                    '--type=json', f'-p={patch_json}',
-                    run_as_root=False)
-            except Exception as e:
-                raise exception.SysinvException("Could not patch calico-node "
-                                            "hostPath: %s" % str(e))
+            except exception.ProcessExecutionError as e:
+                if "NotFound" in str(e.stderr):
+                    legacy_calico_exists = False
+                    LOG.info("calico-node DaemonSet not found in kube-system. "
+                             "Already migrated to operator. "
+                             "Skipping legacy calico-node patching steps.")
+                else:
+                    raise exception.SysinvException(
+                        "Failed to check calico-node DaemonSet status "
+                        "in kube-system: %s" % str(e.stderr))
 
-            # 3. set FELIX_IPV6SUPPORT based on cluster network configuration
-            felix_ipv6_value = 'true' if cluster_network_ipv6 else 'false'
-            try:
-                cutils.execute(
-                    'bash', '-c',
-                    f"kubectl --kubeconfig={kubernetes.KUBERNETES_ADMIN_CONF} "
-                    f"-n kube-system set env ds/calico-node "
-                    f"--containers=calico-node FELIX_IPV6SUPPORT={felix_ipv6_value}",
-                    run_as_root=False)
-                LOG.info("Set FELIX_IPV6SUPPORT=%s on legacy calico-node." % felix_ipv6_value)
-            except Exception as e:
-                raise exception.SysinvException("Could not set "
-                                            "FELIX_IPV6SUPPORT=%s: %s" % (felix_ipv6_value, e))
-
-            # 4. Remove unsupported env vars from calico-node DaemonSet
-            # CALICO_ROUTER_ID=hash is needed only for IPv6-only (no IPv4 for BGP Router ID)
-            # Must be removed for IPv4-only and dual-stack configurations
-            unsupported_calico_node_envs = ['CALICO_STARTUP_LOGLEVEL', 'NO_DEFAULT_POOLS']
-            if cluster_network_ipv4:
-                unsupported_calico_node_envs.append('CALICO_ROUTER_ID')
-
-            unsupported_envs = {
-                'calico-node': unsupported_calico_node_envs,
-                'install-cni': ['UPDATE_CNI_BINARIES'],
-            }
-
-            for container, env_vars in unsupported_envs.items():
+            if legacy_calico_exists:
+                # 2. Patch calico-node DaemonSet cni-bin-dir volume hostPath
                 try:
-                    env_removals = ' '.join([f'{v}-' for v in env_vars])
+                    stdout, _ = cutils.execute(
+                        'kubectl', f'--kubeconfig={kubernetes.KUBERNETES_ADMIN_CONF}',
+                        '-n', 'kube-system', 'get', 'ds', 'calico-node',
+                        '-o', 'jsonpath={.spec.template.spec.volumes[*].name}',
+                        run_as_root=False)
+                    volume_names = stdout.strip().split()
+                    if 'cni-bin-dir' not in volume_names:
+                        raise Exception("Volume 'cni-bin-dir' not found in calico-node DaemonSet")
+                    idx = volume_names.index('cni-bin-dir')
+                    patch_json = ('[{"op":"replace","path":"/spec/template/spec/volumes/%d'
+                                  '/hostPath/path","value":"/opt/cni/bin"}]' % idx)
+                    cutils.execute(
+                        'kubectl', f'--kubeconfig={kubernetes.KUBERNETES_ADMIN_CONF}',
+                        '-n', 'kube-system', 'patch', 'ds', 'calico-node',
+                        '--type=json', f'-p={patch_json}',
+                        run_as_root=False)
+                except Exception as e:
+                    raise exception.SysinvException("Could not patch calico-node "
+                                                "hostPath: %s" % str(e))
+
+                # 3. set FELIX_IPV6SUPPORT based on cluster network configuration
+                felix_ipv6_value = 'true' if cluster_network_ipv6 else 'false'
+                try:
                     cutils.execute(
                         'bash', '-c',
                         f"kubectl --kubeconfig={kubernetes.KUBERNETES_ADMIN_CONF} "
                         f"-n kube-system set env ds/calico-node "
-                        f"--containers={container} {env_removals}",
+                        f"--containers=calico-node FELIX_IPV6SUPPORT={felix_ipv6_value}",
                         run_as_root=False)
+                    LOG.info("Set FELIX_IPV6SUPPORT=%s on legacy calico-node." % felix_ipv6_value)
                 except Exception as e:
-                    raise exception.SysinvException("Could not remove env vars from %s: %s"
-                                % (container, str(e)))
+                    raise exception.SysinvException("Could not set "
+                                                "FELIX_IPV6SUPPORT=%s: %s" % (felix_ipv6_value, e))
 
-            LOG.info("Calico-node DaemonSet prepared for operator migration.")
+                # 4. Remove unsupported env vars from calico-node DaemonSet
+                # CALICO_ROUTER_ID=hash is needed only for IPv6-only (no IPv4 for BGP Router ID)
+                # Must be removed for IPv4-only and dual-stack configurations
+                unsupported_calico_node_envs = ['CALICO_STARTUP_LOGLEVEL', 'NO_DEFAULT_POOLS']
+                if cluster_network_ipv4:
+                    unsupported_calico_node_envs.append('CALICO_ROUTER_ID')
 
-            # 5. Restart calico-node to pick up the env changes
-            try:
-                cutils.execute(
-                    'kubectl', f'--kubeconfig={kubernetes.KUBERNETES_ADMIN_CONF}',
-                    'rollout', 'restart', 'ds/calico-node', '-n', 'kube-system',
-                    run_as_root=False)
-                cutils.execute(
-                    'kubectl', f'--kubeconfig={kubernetes.KUBERNETES_ADMIN_CONF}',
-                    'rollout', 'status', 'ds/calico-node', '-n', 'kube-system',
-                    '--timeout=120s', run_as_root=False)
-                LOG.info("Calico-node rollout restart completed.")
-            except Exception as e:
-                raise exception.SysinvException("Could not restart "
-                                            "calico-node: %s" % str(e))
+                unsupported_envs = {
+                    'calico-node': unsupported_calico_node_envs,
+                    'install-cni': ['UPDATE_CNI_BINARIES'],
+                }
+
+                for container, env_vars in unsupported_envs.items():
+                    try:
+                        env_removals = ' '.join([f'{v}-' for v in env_vars])
+                        cutils.execute(
+                            'bash', '-c',
+                            f"kubectl --kubeconfig={kubernetes.KUBERNETES_ADMIN_CONF} "
+                            f"-n kube-system set env ds/calico-node "
+                            f"--containers={container} {env_removals}",
+                            run_as_root=False)
+                    except Exception as e:
+                        raise exception.SysinvException("Could not remove env vars from %s: %s"
+                                    % (container, str(e)))
+
+                LOG.info("Calico-node DaemonSet prepared for operator migration.")
+
+                # 5. Restart calico-node to pick up the env changes
+                try:
+                    cutils.execute(
+                        'kubectl', f'--kubeconfig={kubernetes.KUBERNETES_ADMIN_CONF}',
+                        'rollout', 'restart', 'ds/calico-node', '-n', 'kube-system',
+                        run_as_root=False)
+                    cutils.execute(
+                        'kubectl', f'--kubeconfig={kubernetes.KUBERNETES_ADMIN_CONF}',
+                        'rollout', 'status', 'ds/calico-node', '-n', 'kube-system',
+                        '--timeout=120s', run_as_root=False)
+                    LOG.info("Calico-node rollout restart completed.")
+                except Exception as e:
+                    raise exception.SysinvException("Could not restart "
+                                                "calico-node: %s" % str(e))
 
         if LooseVersion(kube_version) >= LooseVersion('v1.35.2'):
             # Phase 1: Apply operator first
