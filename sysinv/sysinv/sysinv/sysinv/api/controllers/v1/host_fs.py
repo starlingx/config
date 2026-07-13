@@ -532,7 +532,11 @@ def _check_capabilities(fs_name, functions, current_fs_list):
                 "to add/remove the monitor function." % constants.SB_TYPE_CEPH_ROOK)
         raise wsme.exc.ClientSideError(msg)
 
-    if not functions:
+    current_fs_functions = hostfs.get('capabilities', {})['functions']
+
+    # Block removal of the last monitor, regardless of whether OSD is kept
+    if (constants.FILESYSTEM_CEPH_FUNCTION_MONITOR in current_fs_functions and
+            constants.FILESYSTEM_CEPH_FUNCTION_MONITOR not in functions):
         if (cutils.count_local_monitors_assigned(pecan.request.dbapi) == 1 and
                 hostfs.get('state', None) == constants.HOST_FS_STATUS_IN_USE):
             msg = _("HostFs update failed: it is not possible to remove the last "
@@ -545,8 +549,6 @@ def _check_capabilities(fs_name, functions, current_fs_list):
                     "are supported: %s. Got '%s'." % (
                         str(constants.HOSTFS_CEPH_FUNCTIONS_SUPPORTED), function))
             raise wsme.exc.ClientSideError(msg)
-
-    current_fs_functions = hostfs.get('capabilities', {})['functions']
 
     if (constants.FILESYSTEM_CEPH_FUNCTION_OSD in functions and
             constants.FILESYSTEM_CEPH_FUNCTION_OSD not in current_fs_functions):
