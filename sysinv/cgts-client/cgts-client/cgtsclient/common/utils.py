@@ -17,13 +17,7 @@
 from __future__ import print_function
 import functools
 
-try:
-    import tsconfig.tsconfig as tsc
-    is_remote = False
-except Exception:
-    is_remote = True
-
-from cgtsclient.common import constants  # noqa: E402
+from cgtsclient.common import constants
 
 import argparse
 from collections import OrderedDict
@@ -985,15 +979,6 @@ def size_unit_conversion(size, step):
     """
     return math.floor(float(size) /  # pylint: disable=old-division
                       (1024 ** step) * 1000) / 1000.0
-
-
-def _get_system_info(cc):
-    """Gets the system mode and type"""
-    if is_remote:
-        system_info = cc.isystem.list()[0]
-        return system_info.system_type, system_info.system_mode
-    else:
-        return tsc.system_type, tsc.system_mode
 
 
 def input_with_timeout(prompt, timeout):
