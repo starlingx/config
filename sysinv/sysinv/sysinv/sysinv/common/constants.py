@@ -166,6 +166,9 @@ CPU_FUNCTIONS = [
     NO_FUNCTION
 ]
 
+# Sentinel value returned by sysfs/lspci when a device has no NUMA affinity
+NUMA_NODE_NONE = -1
+
 # Host Personality Sub-Types
 HOST_ADD = 'host_add'  # for personality sub-type validation
 HOST_DELETE = 'host_delete'  # for personality sub-type validation

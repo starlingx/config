@@ -3528,7 +3528,8 @@ class ConductorManager(service.PeriodicService):
         return str_found
 
     def _get_replaced_ports_on_pciaddr(self, ihost, inic_pciaddr_dict, replaced_ports,
-                                       unreported_ports, cannot_replace, updated_description):
+                                       unreported_ports, cannot_replace, updated_description,
+                                       updated_numa):
         """ Get port list of replaced port device on the same on a PCI address,
             if vendor is different or vendor is the same and device-id differs.
             It is necessary that the associated interface to be of class "none"
@@ -3589,6 +3590,18 @@ class ConductorManager(service.PeriodicService):
                         port.pvendor = inic_pciaddr_dict[port.pciaddr]['pvendor']
                         port.pdevice = inic_pciaddr_dict[port.pciaddr]['pdevice']
                         updated_description.append(port)
+
+                    # check for numa affinity changes
+                    inic_numa = inic_pciaddr_dict[port.pciaddr].get('numa_node')
+                    if inic_numa is not None:
+                        inic_numa = cutils.normalise_numa_node(int(inic_numa))
+                        db_numa = cutils.normalise_numa_node(port.numa_node)
+                        if inic_numa != db_numa:
+                            LOG.info("Detected numa_node change for port %s addr:%s "
+                                     "from %s to %s" % (port.name, port.pciaddr,
+                                                        port.numa_node, inic_numa))
+                            port.numa_node = inic_numa
+                            updated_numa.append(port)
             else:
                 if (iface.ifclass is None and not iface.used_by):
                     LOG.info('Detected port %s addr:%s unreported and class=none on DB "%s/%s"'
@@ -3629,9 +3642,11 @@ class ConductorManager(service.PeriodicService):
         replaced_ports = list()
         unreported_ports = list()
         updated_description = list()
+        updated_numa = list()
         # Get list of replaced device ports on each PCI address reported
         self._get_replaced_ports_on_pciaddr(ihost, inic_pciaddr_dict, replaced_ports,
-                                            unreported_ports, cannot_replace, updated_description)
+                                            unreported_ports, cannot_replace, updated_description,
+                                            updated_numa)
         # remove old port and interface, processing inic_dict_array will create the new ones
         to_destroy = replaced_ports + unreported_ports
         for port in to_destroy:
@@ -3665,6 +3680,10 @@ class ConductorManager(service.PeriodicService):
                                                                         port.pvendor, port.pdevice))
             self.dbapi.ethernet_port_update(port['id'], updates)
 
+        # update numa_node and node_id for ports with changed numa affinity
+        for port in updated_numa:
+            self._set_ethernet_port_node_id(ihost, port)
+
         return (len(to_destroy) > 0)
 
     def _set_ethernet_port_node_id(self, ihost, port):
@@ -3683,13 +3702,11 @@ class ConductorManager(service.PeriodicService):
             LOG.exception("Cannot find inodes for host %s" % ihost['uuid'])
             return
         for inode in inodes:
-            port_node = port['numa_node']
-            if port_node == -1:
-                port_node = 0  # special handling
+            port_node = cutils.normalise_numa_node(port['numa_node'])
             if port_node == inode['numa_node']:
-                attr = {'node_id': inode['id']}
-                LOG.debug("update port %s uuid %s with node_id %s" %
-                          (port['name'], port['uuid'], inode['id']))
+                attr = {'node_id': inode['id'], 'numa_node': port_node}
+                LOG.debug("update port %s uuid %s with node_id %s numa_node %s" %
+                          (port['name'], port['uuid'], inode['id'], port_node))
                 self.dbapi.ethernet_port_update(port['uuid'], attr)
 
     def _fix_db_pciaddr_for_n3000_i40(self, ihost, inic):
@@ -4554,6 +4571,17 @@ class ConductorManager(service.PeriodicService):
                                 pci_dev.get('sriov_vf_pdevice_id', None),
                             'driver': pci_dev['driver'],
                             'extra_info': dev.get('extra_info', None)}
+
+                        inic_numa = pci_dev.get('numa_node')
+                        if inic_numa is not None:
+                            inic_numa = cutils.normalise_numa_node(int(inic_numa))
+                            db_numa = cutils.normalise_numa_node(dev['numa_node'])
+                            if inic_numa != db_numa:
+                                LOG.info("Detected numa_node change for pci device %s "
+                                         "from %s to %s" % (pci_dev['pciaddr'],
+                                                            dev['numa_node'], inic_numa))
+                                attr['numa_node'] = inic_numa
+
                         LOG.info("update %s attr: %s" % (pci_dev['pciaddr'], attr))
 
                         if (host['administrative'] == constants.ADMIN_LOCKED
@@ -4612,8 +4640,7 @@ class ConductorManager(service.PeriodicService):
             else:
                 LOG.debug("Found device at address %s in DB" % device.pciaddr)
 
-    def inumas_update_by_ihost(self, context,
-                               ihost_uuid, inuma_dict_array):
+    def inumas_update_by_ihost(self, context, ihost_uuid, inuma_dict_array):
         """Create inumas for an ihost with the supplied data.
 
         This method allows records for inumas for ihost to be created.
@@ -4634,43 +4661,92 @@ class ConductorManager(service.PeriodicService):
 
         try:
             # Get host numa nodes which may already be in db
-            mynumas = self.dbapi.inode_get_by_ihost(ihost_uuid)
+            db_inodes = self.dbapi.inode_get_by_ihost(ihost_uuid)
         except exception.NodeNotFound:
             raise exception.SysinvException(_(
                 "Invalid ihost_uuid: host not found: %s") % ihost_uuid)
 
-        mynuma_nodes = [n.numa_node for n in mynumas]
+        db_numa_nodes = {db_inode.numa_node for db_inode in db_inodes}
+        reported_numa_nodes = {reported['numa_node'] for reported in inuma_dict_array}
 
-        # perform update for ports
-        ports = self.dbapi.ethernet_port_get_by_host(ihost_uuid)
-        for i in inuma_dict_array:
-            if 'numa_node' in i and i['numa_node'] in mynuma_nodes:
-                LOG.info("Already in db numa_node=%s mynuma_nodes=%s" %
-                         (i['numa_node'], mynuma_nodes))
+        # Intentionally additive only — if a numa node disappears (e.g. SNC BIOS
+        # change, NPS reconfiguration) the stale i_node record is left in place to
+        # preserve user-configured memory (platform_reserved_mib, hugepages).
+        # is_active in capabilities tracks whether the node is currently present in
+        # hardware so consumers (worker_reserved.conf, cgroup cpuset) can filter.
+
+        db_ports = self.dbapi.ethernet_port_get_by_host(ihost_uuid)
+        for reported_numa in inuma_dict_array:
+            reported_numa_node = reported_numa['numa_node']
+            if reported_numa_node in db_numa_nodes:
+                LOG.info("numa_node=%s already in db, existing_nodes=%s" %
+                         (reported_numa_node, db_numa_nodes))
+                # re-activate node in case it was previously marked inactive
+                for db_inode in db_inodes:
+                    if db_inode.numa_node == reported_numa_node:
+                        capabilities = db_inode.capabilities or {}
+                        capabilities['is_active'] = True
+                        self.dbapi.inode_update(db_inode.uuid,
+                                                {'capabilities': capabilities})
+                        break
                 continue
 
             try:
-                inuma_dict = {'forihostid': ihost['id']}
+                new_inode_dict = {'forihostid': ihost['id']}
+                new_inode_dict.update(reported_numa)
+                capabilities = new_inode_dict.get('capabilities') or {}
+                capabilities['is_active'] = True
+                new_inode_dict['capabilities'] = capabilities
+                new_inode = self.dbapi.inode_create(ihost['id'], new_inode_dict)
 
-                inuma_dict.update(i)
-
-                inuma = self.dbapi.inode_create(ihost['id'], inuma_dict)
-
-                for port in ports:
-                    port_node = port['numa_node']
-                    if port_node == -1:
-                        port_node = 0  # special handling
-
-                    if port_node == inuma['numa_node']:
-                        attr = {'node_id': inuma['id']}
-                        self.dbapi.ethernet_port_update(port['uuid'], attr)
+                for db_port in db_ports:
+                    port_numa_node = db_port['numa_node']
+                    if port_numa_node is None:
+                        LOG.error("port %s has no numa_node, skipping node_id update"
+                                  % db_port['uuid'])
+                        continue
+                    port_numa_node = cutils.normalise_numa_node(port_numa_node)
+                    if port_numa_node == new_inode['numa_node']:
+                        self.dbapi.ethernet_port_update(db_port['uuid'],
+                                                        {'node_id': new_inode['id']})
 
             except exception.NodeNotFound:
                 raise exception.SysinvException(_(
                     "Invalid ihost_uuid: host not found: %s") %
                     ihost_uuid)
-            except Exception:  # this info may have been posted previously, update ?
-                pass
+            except Exception as e:  # this info may have been posted previously, update ?
+                LOG.warning("inumas_update_by_ihost: failed to create inode for "
+                            "numa_node=%s on host %s: %s" %
+                            (reported_numa.get('numa_node'), ihost_uuid, e))
+
+        # Mark stale nodes inactive and remap any ports referencing them.
+        # Re-fetch inodes to include any just created above.
+        stale_numa_nodes = db_numa_nodes - reported_numa_nodes
+        if stale_numa_nodes:
+            all_db_inodes = self.dbapi.inode_get_by_ihost(ihost_uuid)
+            active_nodeid = {
+                inode.numa_node: inode.id for inode in all_db_inodes
+                if inode.numa_node in reported_numa_nodes
+            }
+            stale_nodeids = {
+                inode.id for inode in all_db_inodes
+                if inode.numa_node in stale_numa_nodes
+            }
+            for db_inode in all_db_inodes:
+                if db_inode.numa_node in stale_numa_nodes:
+                    capabilities = db_inode.capabilities or {}
+                    capabilities['is_active'] = False
+                    self.dbapi.inode_update(db_inode.uuid, {'capabilities': capabilities})
+            for db_port in db_ports:
+                if db_port['node_id'] in stale_nodeids:
+                    port_numa_node = cutils.normalise_numa_node(db_port['numa_node'])
+                    new_node_id = active_nodeid.get(port_numa_node)
+                    if new_node_id is None:
+                        LOG.warning("port %s numa_node=%s has no active inode mapping, "
+                                    "node_id cleared and will be updated on next update"
+                                    % (db_port['uuid'], port_numa_node))
+                    self.dbapi.ethernet_port_update(db_port['uuid'],
+                                                    {'node_id': new_node_id})
 
     def _get_default_platform_cpu_count(self, ihost, node,
                                         cpu_count, hyperthreading):
@@ -4718,8 +4794,8 @@ class ConductorManager(service.PeriodicService):
         use.  This can be overridden later by the end user."""
         return 0
 
-    def _sort_by_socket_and_coreid(self, icpu_dict):
-        """Sort a list of cpu dict objects such that lower numbered sockets
+    def _sort_by_numa_and_coreid(self, icpu_dict):
+        """Sort a list of cpu dict objects such that lower numbered numa nodes
         appear first and that threads of the same core are adjacent in the
         list with the lowest thread number appearing first."""
         return (int(icpu_dict['numa_node']), int(icpu_dict['core']), int(icpu_dict['thread']))
@@ -4765,52 +4841,52 @@ class ConductorManager(service.PeriodicService):
 
     def print_cpu_topology(self, hostname=None, subfunctions=None,
                            reference=None,
-                           sockets=None, cores=None, threads=None):
+                           numa_nodes=None, cores=None, threads=None):
         """Print logical cpu topology table (for debug reasons).
 
         :param hostname: hostname
         :param subfunctions: subfunctions
         :param reference: reference label
-        :param sockets: dictionary of socket_ids, sockets[cpu_id]
+        :param numa_nodes: dictionary of numa_nodes, numa_nodes[cpu_id]
         :param cores:   dictionary of core_ids,   cores[cpu_id]
         :param threads: dictionary of thread_ids, threads[cpu_id]
         :returns: None
         """
-        if sockets is None or cores is None or threads is None:
+        if numa_nodes is None or cores is None or threads is None:
             LOG.error("print_cpu_topology: topology not defined. "
-                      "sockets=%s, cores=%s, threads=%s"
-                      % (sockets, cores, threads))
+                      "numa_nodes=%s, cores=%s, threads=%s"
+                      % (numa_nodes, cores, threads))
             return
 
         # calculate overall cpu topology stats
-        n_sockets = len(set(sockets.values()))
+        n_numa_nodes = len(set(numa_nodes.values()))
         n_cores = len(set(cores.values()))
         n_threads = len(set(threads.values()))
-        if n_sockets < 1 or n_cores < 1 or n_threads < 1:
+        if n_numa_nodes < 1 or n_cores < 1 or n_threads < 1:
             LOG.error("print_cpu_topology: unexpected topology. "
-                      "n_sockets=%d, n_cores=%d, n_threads=%d"
-                      % (n_sockets, n_cores, n_threads))
+                      "n_numa_nodes=%d, n_cores=%d, n_threads=%d"
+                      % (n_numa_nodes, n_cores, n_threads))
             return
 
         # build each line of output
-        ll = ''
-        s = ''
-        c = ''
-        t = ''
+        logical_cpu = ''
+        numa_node = ''
+        core = ''
+        thread = ''
         for cpu in sorted(cores.keys()):
-            ll += '%3d' % cpu
-            s += '%3d' % sockets[cpu]
-            c += '%3d' % cores[cpu]
-            t += '%3d' % threads[cpu]
+            logical_cpu += '%3d' % cpu
+            numa_node += '%3d' % numa_nodes[cpu]
+            core += '%3d' % cores[cpu]
+            thread += '%3d' % threads[cpu]
 
         LOG.info('Logical CPU topology: host:%s (%s), '
-                 'sockets:%d, cores/socket=%d, threads/core=%d, reference:%s'
-                 % (hostname, subfunctions, n_sockets, n_cores, n_threads,
+                 'numa_nodes:%d, cores/numa_node=%d, threads/core=%d, reference:%s'
+                 % (hostname, subfunctions, n_numa_nodes, n_cores, n_threads,
                     reference))
-        LOG.info('%9s : %s' % ('cpu_id', ll))
-        LOG.info('%9s : %s' % ('socket_id', s))
-        LOG.info('%9s : %s' % ('core_id', c))
-        LOG.info('%9s : %s' % ('thread_id', t))
+        LOG.info('%9s : %s' % ('cpu_id', logical_cpu))
+        LOG.info('%9s : %s' % ('numa_node', numa_node))
+        LOG.info('%9s : %s' % ('core_id', core))
+        LOG.info('%9s : %s' % ('thread_id', thread))
 
     def icpus_update_by_ihost(self, context,
                               ihost_uuid, icpu_dict_array,
@@ -4834,63 +4910,63 @@ class ConductorManager(service.PeriodicService):
             return
 
         forihostid = ihost['id']
-        ihost_inodes = self.dbapi.inode_get_by_ihost(ihost_uuid)
-
-        icpus = self.dbapi.icpu_get_by_ihost(ihost_uuid)
+        db_inodes_active = self.dbapi.inode_active_get_by_ihost(ihost_uuid)
+        db_inodes_all = self.dbapi.inode_get_by_ihost(ihost_uuid)
+        db_icpus = self.dbapi.icpu_get_by_ihost(ihost_uuid)
 
         num_cpus_dict = len(icpu_dict_array)
-        num_cpus_db = len(icpus)
+        num_cpus_db = len(db_icpus)
 
         # Capture 'current' topology in dictionary format
-        cs = {}
-        cc = {}
-        ct = {}
+        cpu_numa = {}
+        cpu_core = {}
+        cpu_thread = {}
         if num_cpus_dict > 0:
             for icpu in icpu_dict_array:
                 cpu_id = icpu.get('cpu')
-                cs[cpu_id] = icpu.get('numa_node')
-                cc[cpu_id] = icpu.get('core')
-                ct[cpu_id] = icpu.get('thread')
+                cpu_numa[cpu_id] = icpu.get('numa_node')
+                cpu_core[cpu_id] = icpu.get('core')
+                cpu_thread[cpu_id] = icpu.get('thread')
 
         # Capture 'previous' topology in dictionary format
-        pu = {}
-        ps = {}
-        pc = {}
-        pt = {}
+        prev_uuid = {}
+        prev_numa = {}
+        prev_core = {}
+        prev_thread = {}
         if num_cpus_db > 0:
-            for icpu in icpus:
+            for icpu in db_icpus:
                 cpu_id = icpu.get('cpu')
                 cpu_uuid = icpu.get('uuid')
                 core_id = icpu.get('core')
                 thread_id = icpu.get('thread')
                 forinodeid = icpu.get('forinodeid')
-                socket_id = None
-                for inode in ihost_inodes:
+                numa_node = None
+                for inode in db_inodes_all:
                     if forinodeid == inode.get('id'):
-                        socket_id = inode.get('numa_node')
+                        numa_node = inode.get('numa_node')
                         break
-                pu[cpu_id] = cpu_uuid
-                ps[cpu_id] = socket_id
-                pc[cpu_id] = core_id
-                pt[cpu_id] = thread_id
+                prev_uuid[cpu_id] = cpu_uuid
+                prev_numa[cpu_id] = numa_node
+                prev_core[cpu_id] = core_id
+                prev_thread[cpu_id] = thread_id
 
         if num_cpus_dict > 0 and num_cpus_db == 0:
             self.print_cpu_topology(hostname=ihost.get('hostname'),
                                     subfunctions=ihost.get('subfunctions'),
                                     reference='current (initial)',
-                                    sockets=cs, cores=cc, threads=ct)
+                                    numa_nodes=cpu_numa, cores=cpu_core, threads=cpu_thread)
 
         if num_cpus_dict > 0 and num_cpus_db > 0:
             LOG.debug("num_cpus_dict=%d num_cpus_db= %d. "
                       "icpud_dict_array= %s icpus.as_dict= %s" %
-                      (num_cpus_dict, num_cpus_db, icpu_dict_array, icpus))
+                      (num_cpus_dict, num_cpus_db, icpu_dict_array, db_icpus))
 
             # Skip update if topology has not changed
-            if ps == cs and pc == cc and pt == ct:
+            if prev_numa == cpu_numa and prev_core == cpu_core and prev_thread == cpu_thread:
                 self.print_cpu_topology(hostname=ihost.get('hostname'),
                                         subfunctions=ihost.get('subfunctions'),
                                         reference='current (unchanged)',
-                                        sockets=cs, cores=cc, threads=ct)
+                                        numa_nodes=cpu_numa, cores=cpu_core, threads=cpu_thread)
                 if ihost.administrative == constants.ADMIN_LOCKED:
                     self.update_grub_config(context, ihost_uuid, force_grub_update)
                 return
@@ -4898,11 +4974,11 @@ class ConductorManager(service.PeriodicService):
             self.print_cpu_topology(hostname=ihost.get('hostname'),
                                     subfunctions=ihost.get('subfunctions'),
                                     reference='previous',
-                                    sockets=ps, cores=pc, threads=pt)
+                                    numa_nodes=prev_numa, cores=prev_core, threads=prev_thread)
             self.print_cpu_topology(hostname=ihost.get('hostname'),
                                     subfunctions=ihost.get('subfunctions'),
                                     reference='current (CHANGED)',
-                                    sockets=cs, cores=cc, threads=ct)
+                                    numa_nodes=cpu_numa, cores=cpu_core, threads=cpu_thread)
 
             # During HW replacement (and randomly during normal operation),
             # topology can change for identical CPU models.
@@ -4910,16 +4986,16 @@ class ConductorManager(service.PeriodicService):
             # This will cause a divergence in the core ID enumeration posted by firmware.
             # Even though technically the CPUs are functionally equivalent.
             if (
-                ps == cs
-                and pt == ct
-                and pc != cc
+                prev_numa == cpu_numa
+                and prev_thread == cpu_thread
+                and prev_core != cpu_core
             ):
                 # NOTE: We only support fixing core id.
                 # We will use the CPU ID to fix the core ID.
                 LOG.info('Detected core_id divergence during startup')
-                for cpu_id, previous_core_id in pc.items():
-                    cpu_uuid = pu[cpu_id]
-                    current_core_id = cc[cpu_id]
+                for cpu_id, previous_core_id in prev_core.items():
+                    cpu_uuid = prev_uuid[cpu_id]
+                    current_core_id = cpu_core[cpu_id]
                     if previous_core_id == current_core_id:
                         continue
                     LOG.info(
@@ -4939,36 +5015,36 @@ class ConductorManager(service.PeriodicService):
                 'CPU configuration will be reset.'
             )
 
-            for icpu in icpus:
+            for icpu in db_icpus:
                 self.dbapi.icpu_destroy(icpu.uuid)
 
-        # sort the list of cpus by socket and coreid
-        cpu_list = sorted(icpu_dict_array, key=self._sort_by_socket_and_coreid)
+        # sort the list of cpus by numa_node and coreid
+        reported_cpu_list = sorted(icpu_dict_array, key=self._sort_by_numa_and_coreid)
 
         # determine if hyperthreading is enabled
-        hyperthreading = self._get_hyperthreading_enabled(cpu_list)
+        hyperthreading = self._get_hyperthreading_enabled(reported_cpu_list)
 
         # build the list of functions to be assigned to each cpu
         functions = {}
-        for n in ihost_inodes:
-            numa_node = int(n.numa_node)
+        for inode_active in db_inodes_active:
+            numa_node = int(inode_active.numa_node)
             functions[numa_node] = self._get_default_cpu_functions(
-                ihost, numa_node, cpu_list, hyperthreading)
+                ihost, numa_node, reported_cpu_list, hyperthreading)
 
-        for data in cpu_list:
+        for reported_cpu in reported_cpu_list:
             try:
                 forinodeid = None
-                for n in ihost_inodes:
-                    numa_node = int(n.numa_node)
-                    if numa_node == int(data['numa_node']):
-                        forinodeid = n['id']
+                for inode_active in db_inodes_active:
+                    numa_node = int(inode_active.numa_node)
+                    if numa_node == int(reported_cpu['numa_node']):
+                        forinodeid = inode_active['id']
                         break
 
                 cpu_dict = {'forihostid': forihostid,
                             'forinodeid': forinodeid,
-                            'allocated_function': functions[numa_node].pop(0)}
+                            'allocated_function': functions[int(reported_cpu['numa_node'])].pop(0)}
 
-                cpu_dict.update(data)
+                cpu_dict.update(reported_cpu)
 
                 self.dbapi.icpu_create(forihostid, cpu_dict)
 
@@ -5021,6 +5097,15 @@ class ConductorManager(service.PeriodicService):
             LOG.exception("Invalid ihost_uuid %s" % ihost_uuid)
             return
 
+        ihost_inodes = self.dbapi.inode_active_get_by_ihost(ihost_uuid)
+        for node in ihost_inodes:
+            # Determine configured memory for this numa node
+            imems = self.dbapi.imemory_get_by_inode(node['id'])
+            if not imems:
+                # numa node change detected.
+                force_update = True
+                break
+
         if ihost['administrative'] == constants.ADMIN_LOCKED and \
             ihost['invprovision'] in [constants.PROVISIONED, constants.UPGRADING] and \
                 not force_update:
@@ -5034,7 +5119,6 @@ class ConductorManager(service.PeriodicService):
             return
 
         forihostid = ihost['id']
-        ihost_inodes = self.dbapi.inode_get_by_ihost(ihost_uuid)
 
         for i in imemory_dict_array:
             forinodeid = None
@@ -6875,9 +6959,27 @@ class ConductorManager(service.PeriodicService):
         Currently requesting updates for:
         - ipv:  if state is not 'provisioned'
         - ilvg: if state is not 'provisioned'
+        - imemory: if node memory is not 'provisioned'
         """
         LOG.debug("Calling _agent_update_request")
         update_hosts = {}
+
+        def update_hosts_dict(host_id, val):
+            if host_id not in update_hosts:
+                update_hosts[host_id] = set()
+            update_hosts[host_id].add(val)
+
+        # Check Memory.
+        hosts = self.dbapi.ihost_get_list()
+        for host in hosts:
+            if host.availability == constants.AVAILABILITY_OFFLINE:
+                continue
+            nodes = self.dbapi.inode_active_get_by_ihost(host.uuid)
+            for node in nodes:
+                imems = self.dbapi.imemory_get_by_inode(node.id)
+                if not imems:
+                    update_hosts_dict(host.id, constants.MEMORY_AUDIT_REQUEST)
+                    break
 
         # Check if the LVM backend is in flux. If so, skip the audit as we know
         # VG/PV states are going to be transitory. Otherwise, maintain the
@@ -6890,11 +6992,6 @@ class ConductorManager(service.PeriodicService):
         if not skip_lvm_audit:
             ipvs = self.dbapi.ipv_get_all()
             ilvgs = self.dbapi.ilvg_get_all()
-
-            def update_hosts_dict(host_id, val):
-                if host_id not in update_hosts:
-                    update_hosts[host_id] = set()
-                update_hosts[host_id].add(val)
 
             # Check LVGs
             for ilvg in ilvgs:
@@ -6909,7 +7006,6 @@ class ConductorManager(service.PeriodicService):
                     update_hosts_dict(host_id, constants.PV_AUDIT_REQUEST)
 
             # Make sure we get at least one good report for PVs & LVGs
-            hosts = self.dbapi.ihost_get_list()
             for host in hosts:
                 if host.availability != constants.AVAILABILITY_OFFLINE:
                     idisks = self.dbapi.idisk_get_by_ihost(host.uuid)

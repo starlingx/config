@@ -1594,6 +1594,16 @@ class Connection(api.Connection):
                                sort_key, sort_dir, query)
 
     @db_objects.objectify(objects.node)
+    def inode_active_get_by_ihost(self, ihost):
+        # Nodes lacking 'is_active' in capabilities are legacy rows created
+        # before the field was introduced; treat them as active so they are
+        # not silently dropped during a re-audit on an upgraded host.
+        query = model_query(models.inode)
+        query = add_inode_filter_by_ihost(query, ihost)
+        return [n for n in query.all()
+                if (n.capabilities or {}).get('is_active') is not False]
+
+    @db_objects.objectify(objects.node)
     def inode_update(self, inode_id, values):
         with _session_for_write() as session:
             # May need to reserve in multi controller system; ref sysinv

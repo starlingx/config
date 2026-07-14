@@ -298,6 +298,20 @@ class Connection(object):
         """
 
     @abc.abstractmethod
+    def inode_active_get_by_ihost(self, ihost):
+        """List active NUMA nodes for a given ihost.
+
+        Returns only nodes where capabilities['is_active'] is not False.
+        Nodes whose capabilities dict lacks the 'is_active' key are treated
+        as active. This legacy case occurs for NUMA node rows that were
+        created before the is_active field was introduced (e.g. hosts
+        inventoried on an older software release and not yet re-audited).
+
+        :param ihost: The id or uuid of an ihost.
+        :returns: A list of active inodes.
+        """
+
+    @abc.abstractmethod
     def inode_update(self, inode_id, values):
         """Update properties of a cpu.
 
