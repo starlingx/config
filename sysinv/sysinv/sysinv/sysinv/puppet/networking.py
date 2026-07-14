@@ -526,13 +526,9 @@ class NetworkingPuppet(base.BasePuppet):
                 uds_address_path = '/var/run/' + instance['service'] + '-' + instance['name']
                 instance['global_parameters'].update({
                     'message_tag': instance['name'],
-                    'uds_address': uds_address_path
+                    'uds_address': uds_address_path,
+                    'uds_ro_address': uds_address_path + 'ro'
                 })
-                if utils.is_centos():
-                    # Currently only CentOS's linuxptp has support to UDS-RO
-                    instance['global_parameters'].update({
-                        'uds_ro_address': uds_address_path + 'ro'
-                    })
             elif instance['service'] == constants.PTP_INSTANCE_TYPE_PHC2SYS:
                 instance['global_parameters'].update({
                     'message_tag': instance['name']
