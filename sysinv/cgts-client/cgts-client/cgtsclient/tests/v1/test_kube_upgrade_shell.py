@@ -302,3 +302,52 @@ class KubeUpgradeTest(test_shell.ShellTest):
         self.make_env()
         results = self.shell("kube-upgrade-delete --yes")
         self.assertIn("Kubernetes upgrade deleted", results)
+
+    @mock.patch('os.path.exists')
+    @mock.patch('cgtsclient.v1.kube_upgrade.KubeUpgradeManager.update')
+    def test_kube_upgrade_abort(self, mock_update, mock_os_path_exists):
+        fake_kube_upgrade = {'from_version': 'v1.42.1',
+                             'to_version': 'v1.42.2',
+                             'state': 'upgrade-aborting',
+                             'uuid': 'cb737aba-1820-4184-b0dc-9b073822af48',
+                             'created_at': 'fake-created-time',
+                             'updated_at': 'fake-updated-time',
+                             }
+        mock_update.return_value = KubeUpgrade(None, fake_kube_upgrade, True)
+        mock_os_path_exists.return_value = False
+
+        self.make_env()
+        results = self.shell("kube-upgrade-abort")
+        self.assertIn(fake_kube_upgrade['from_version'], results)
+        self.assertIn(fake_kube_upgrade['to_version'], results)
+        self.assertIn(fake_kube_upgrade['state'], results)
+        self.assertIn(fake_kube_upgrade['uuid'], results)
+        self.assertIn(fake_kube_upgrade['created_at'], results)
+        self.assertIn(fake_kube_upgrade['updated_at'], results)
+
+    @mock.patch('os.path.exists')
+    @mock.patch('cgtsclient.v1.kube_upgrade.KubeUpgradeManager.update')
+    def test_kube_upgrade_abort_blocked(self, mock_update, mock_os_path_exists):
+        """Test that kube-upgrade-abort is blocked when combined p&k upgrade is in progress.
+        """
+        fake_kube_upgrade = {'from_version': 'v1.42.1',
+                             'to_version': 'v1.42.2',
+                             'state': 'upgrade-aborting',
+                             'uuid': 'cb737aba-1820-4184-b0dc-9b073822af48',
+                             'created_at': 'fake-created-time',
+                             'updated_at': 'fake-updated-time',
+                             }
+        mock_update.return_value = KubeUpgrade(None, fake_kube_upgrade, True)
+        mock_os_path_exists.return_value = True
+
+        self.make_env()
+        results = self.shell("kube-upgrade-abort")
+        self.assertIn("This operation is not supported at this time. Kubernetes upgrade can only "
+                      "be aborted by running command 'software deploy abort' which aborts both "
+                      "platform upgrade and kubernetes upgrade together.", results)
+        self.assertNotIn(fake_kube_upgrade['from_version'], results)
+        self.assertNotIn(fake_kube_upgrade['to_version'], results)
+        self.assertNotIn(fake_kube_upgrade['state'], results)
+        self.assertNotIn(fake_kube_upgrade['uuid'], results)
+        self.assertNotIn(fake_kube_upgrade['created_at'], results)
+        self.assertNotIn(fake_kube_upgrade['updated_at'], results)

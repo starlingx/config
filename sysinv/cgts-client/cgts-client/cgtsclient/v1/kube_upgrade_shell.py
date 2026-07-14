@@ -186,6 +186,13 @@ def do_kube_post_application_update(cc, args):
 def do_kube_upgrade_abort(cc, args):
     """Kubernetes upgrade aborting."""
 
+    # Check if it is combined P&K upgrade or legacy k8s upgrade.
+    if os.path.exists(SYSTEM_DEPLOY_JSON_FILE):
+        print("This operation is not supported at this time. Kubernetes upgrade can only be "
+              "aborted by running command 'software deploy abort' which aborts both platform "
+              "upgrade and kubernetes upgrade together.")
+        return
+
     data = dict()
     data['state'] = KUBE_UPGRADE_STATE_ABORTING
 
