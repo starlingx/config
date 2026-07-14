@@ -199,10 +199,13 @@ class StoragePuppet(base.BasePuppet):
         nova_transition_devices = []
         ceph_mon_devices = []
         rook_osd_devices = []
-        lvm_csi_thick_vg = ""
-        lvm_csi_thick_devices = []
-        lvm_csi_thin_vg = ""
-        lvm_csi_thin_devices = []
+        lvm_csi_values = {
+            "thick_vg": "",
+            "thick_devices": [],
+            "thin_vg": "",
+            "thin_devices": [],
+            "devices": []
+        }
         cgts_thin_pool_enabled = False
         cgts_thin_pool_size = 0
         removing_lvgs = []
@@ -232,41 +235,42 @@ class StoragePuppet(base.BasePuppet):
                     cgts_thin_pool_enabled = True
                     cgts_thin_pool_size = lvm_pool_size
 
-                if not lvm_type or \
-                   lvm_type == constants.LVM_CSI_PROVISIONING_MODE_THICK:
-                    lvm_csi_thick_vg = vg.lvm_vg_name
-                elif lvm_type == constants.LVM_CSI_PROVISIONING_MODE_THIN:
-                    lvm_csi_thin_vg = vg.lvm_vg_name
-
         # Go through the PVs and
         pvs = self.dbapi.ipv_get_by_ihost(host.id)
         for pv in pvs:
+            function = pv.capabilities.get('lvm_function', None)
+
             if pv.lvm_vg_name == constants.LVG_CGTS_VG:
-                # PVs for this volume group are only ever added, therefore the state of the PV doesn't matter. Make
-                # sure it's added to the global filter
+                # PVs for this volume group are only ever added, therefore the
+                # state of the PV doesn't matter. Make sure it's added to the
+                # global filter
                 cgts_devices.append(pv.disk_or_part_device_path)
             elif pv.lvm_vg_name == constants.LVG_NOVA_LOCAL:
-                # Nova PV configurations may change. PVs that will be delete need to be temporarily added
+                # Nova PV configurations may change. PVs that will be delete
+                # need to be temporarily added
                 if pv.pv_state == constants.PV_DEL:
                     nova_transition_devices.append(pv.disk_or_part_device_path)
                 else:
                     nova_final_devices.append(pv.disk_or_part_device_path)
-            elif pv.lvm_vg_name == lvm_csi_thick_vg:
-                # Associated with VGs with lvm-csi function and thick
-                # provisioning mode
-                lvm_csi_thick_devices.append(pv.disk_or_part_device_path)
-            elif pv.lvm_vg_name == lvm_csi_thin_vg:
-                # Associated with VGs with lvm-csi function and thin
-                # provisioning mode
-                lvm_csi_thin_devices.append(pv.disk_or_part_device_path)
+            elif function and \
+                    function == constants.LVM_CSI_PROVISIONING_FUNCTION:
+                lvm_csi_values['devices'].append(pv.disk_or_part_device_path)
+                if pv.pv_state == constants.PV_ADD:
+                    vg_obj = next((vg for vg in vgs if vg.id == pv.forilvgid),
+                                  None)
+                    if vg_obj:
+                        lvm_type = vg_obj.capabilities.get('lvm_type', 'thick')
+                        lvm_csi_values[f"{lvm_type}_vg"] = pv.lvm_vg_name
+                        lvm_csi_values[f"{lvm_type}_devices"].append(
+                            pv.disk_or_part_device_path)
             elif pv.lvm_vg_name.startswith("ceph"):
                 rook_osd_devices.append(pv.disk_or_part_device_path)
 
-        # The final_filter contain only the final global_filter devices, while the transition_filter
-        # contains the transient list of removing devices as well
+        # The final_filter contain only the final global_filter devices, while
+        # the transition_filter contains the transient list of removing devices
+        # as well
         final_devices = cgts_devices + nova_final_devices + ceph_mon_devices
-        final_devices += rook_osd_devices
-        final_devices += lvm_csi_thick_devices + lvm_csi_thin_devices
+        final_devices += rook_osd_devices + lvm_csi_values['devices']
         final_filter = self._operator.storage.format_lvm_filter(final_devices)
 
         transition_filter = self._operator.storage.format_lvm_filter(
@@ -295,14 +299,17 @@ class StoragePuppet(base.BasePuppet):
             'platform::lvm::params::csi_service_enabled': csi_service_enabled,
 
             'platform::lvm::vg::cgts_vg::physical_volumes': cgts_devices,
-            'platform::lvm::vg::nova_local::physical_volumes': nova_final_devices,
+            'platform::lvm::vg::nova_local::physical_volumes':
+                nova_final_devices,
 
-            'platform::lvm::csi::params::thick::vg_name': lvm_csi_thick_vg,
+            'platform::lvm::csi::params::thick::vg_name':
+                lvm_csi_values['thick_vg'],
             'platform::lvm::csi::params::thick::physical_volumes':
-                lvm_csi_thick_devices,
-            'platform::lvm::csi::params::thin::vg_name': lvm_csi_thin_vg,
+                lvm_csi_values['thick_devices'],
+            'platform::lvm::csi::params::thin::vg_name':
+                lvm_csi_values['thin_vg'],
             'platform::lvm::csi::params::thin::physical_volumes':
-                lvm_csi_thin_devices,
+                lvm_csi_values['thin_devices'],
         }
 
     def set_lvm_devices(self, devices):

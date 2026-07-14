@@ -2551,7 +2551,7 @@ class ConductorManager(service.PeriodicService):
             "classes": ['platform::lvm::csi::remove_pv::runtime'],
             "host_uuid": host_uuid,
             "lvm_lvg_uuid": lvg['uuid'],
-            "lvm_pv_uuid": pv.uuid,
+            "lvm_pv_uuids": pv,
             puppet_common.REPORT_STATUS_CFG:
                 puppet_common.REPORT_LVM_CSI_PV_DELETION
         }
@@ -11242,13 +11242,13 @@ class ConductorManager(service.PeriodicService):
                 [host_uuid, lvm_vg_uuid, lvm_pv_uuid, error]
             )
         elif reported_cfg == puppet_common.REPORT_LVM_CSI_PV_DELETION:
-            lvm_pv_uuid = iconfig['lvm_pv_uuid']
+            lvm_pv_uuids = iconfig['lvm_pv_uuids']
             lvm_lvg_uuid = iconfig['lvm_lvg_uuid']
             success = _process_config_report(
                 self.report_lvm_csi_lvg_pv_deletion_success,
-                [context, host_uuid, lvm_lvg_uuid, lvm_pv_uuid],
+                [context, host_uuid, lvm_lvg_uuid, lvm_pv_uuids],
                 self.report_lvm_csi_lvg_pv_deletion_failure,
-                [host_uuid, lvm_lvg_uuid, lvm_pv_uuid, error]
+                [host_uuid, lvm_lvg_uuid, lvm_pv_uuids, error]
             )
         elif reported_cfg == puppet_common.REPORT_LVM_CSI_THIN_POOL_CONFIG:
             lvm_vg_uuid = iconfig['lvm_vg_uuid']
@@ -11745,7 +11745,7 @@ class ConductorManager(service.PeriodicService):
         self.dbapi.ilvg_update(lvm_vg_uuid, {"vg_state": constants.LVG_ADD})
 
     def report_lvm_csi_lvg_pv_deletion_success(self, context, host_uuid,
-                                              lvm_lvg_uuid, lvm_pv_uuid):
+                                               lvm_lvg_uuid, lvm_pv_uuids):
         """ Callback for Sysinv Agent
 
         Deleting LVM CSI LVG and PV was successful, finalize operation.
@@ -11753,44 +11753,50 @@ class ConductorManager(service.PeriodicService):
         Both controllers have to get their manifests applied before accepting
         the entire operation as successful.
         """
-        args = {'host': host_uuid, 'pv': lvm_pv_uuid, 'vg': lvm_lvg_uuid}
+        args = {'host': host_uuid, 'pv': lvm_pv_uuids, 'vg': lvm_lvg_uuid}
+        # For multiple PVs for the same VG we need to delete individually
+        for pv_uuid in lvm_pv_uuids:
+            try:
+                pv = self.dbapi.ipv_get(pv_uuid)
+                if pv:
+                    if pv.pv_type == constants.PV_TYPE_DISK:
+                        idisks = self.dbapi.idisk_get_all(foripvid=pv.id)
+                        for d in idisks:
+                            if d['uuid'] == pv['disk_or_part_uuid']:
+                                values = {'foripvid': None}
+                                self.dbapi.idisk_update(d.id, values)
+                    elif pv.pv_type == constants.PV_TYPE_PARTITION:
+                        partitions = self.dbapi.partition_get_all(
+                            foripvid=pv.id)
+                        for p in partitions:
+                            if p['uuid'] == pv['disk_or_part_uuid']:
+                                values = {'foripvid': None}
+                                self.dbapi.partition_update(p.id, values)
 
+                    self.dbapi.ipv_destroy(pv_uuid)
+                    LOG.info("LVM CSI pv successfully deleted on host "
+                             "%(host)s VG %(vg)s and PV %(pv)s." % args)
+            except Exception as ex:
+                args['error'] = ex
+                LOG.error("LVM CSI PV was successfully deleted on host "
+                          "%s VG %s and PV %s, but an error happened during "
+                          "the database update" %
+                          (host_uuid, lvm_lvg_uuid, pv_uuid))
+
+        # Destroy LVG only once, after all PVs are processed,
         try:
-            pv = self.dbapi.ipv_get(lvm_pv_uuid)
-            if pv:
-                if pv.pv_type == constants.PV_TYPE_DISK:
-                    idisks = self.dbapi.idisk_get_all(foripvid=pv.id)
-                    for d in idisks:
-                        if d['uuid'] == pv['disk_or_part_uuid']:
-                            values = {'foripvid': None}
-                            self.dbapi.idisk_update(d.id, values)
-                elif pv.pv_type == constants.PV_TYPE_PARTITION:
-                    partitions = self.dbapi.partition_get_all(foripvid=pv.id)
-                    for p in partitions:
-                        if p['uuid'] == pv['disk_or_part_uuid']:
-                            values = {'foripvid': None}
-                            self.dbapi.partition_update(p.id, values)
-
-                self.dbapi.ipv_destroy(lvm_pv_uuid)
-                self.dbapi.ilvg_destroy(lvm_lvg_uuid)
+            self.dbapi.ilvg_destroy(lvm_lvg_uuid)
         except Exception as ex:
-            args['error'] = ex
-            LOG.error("LVM CSI PV was successfully deleted on host %(host)s "
-                      "VG %(vg)s and PV %(pv)s, but an error happened during "
-                      "the database update" % args)
-            return
-
-        LOG.info("LVM CSI pv successfully deleted on host %(host)s "
-                 "VG %(vg)s and PV %(pv)s." % args)
+            LOG.error("Failed to destroy LVG %s: %s" % (lvm_lvg_uuid, ex))
 
     def report_lvm_csi_lvg_pv_deletion_failure(self, host_uuid, lvm_lvg_uuid,
-                                               lvm_pv_uuid, error):
+                                               lvm_pv_uuids, error):
         """ Callback for Sysinv Agent
 
         Deleting LVM CSI VG and PV failed, set to err and raise alarm
         The agent calls this if LVM CSI manifests failed to apply
         """
-        args = {'host': host_uuid, 'pv': lvm_pv_uuid, 'vg': lvm_lvg_uuid,
+        args = {'host': host_uuid, 'pv': lvm_pv_uuids, 'vg': lvm_lvg_uuid,
                 'error': error}
         LOG.error("LVM CSI failed to delete VG/PV on host %(host)s "
                   "PV %(pv)s and VG %(vg)s. Error: %(error)s" % args)
