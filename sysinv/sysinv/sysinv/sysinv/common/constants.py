@@ -2662,6 +2662,15 @@ PTP_INSTANCE_TYPE_DPLL_MGR_SUPPORTED_SECTIONS = [
     'inputs_ql',
 ]
 
+PTP_INSTANCE_TYPE_SYNCE4L_MONITORING_PARAMETERS = [
+    'smc_socket_path',
+    'interface',
+    'source',
+    'holdover_ql',
+    'freerun_ql',
+    'static_ql',
+]
+
 # PTP instances created during migration
 PTP_INSTANCE_LEGACY_PTP4L = 'ptp4l-legacy'
 PTP_INSTANCE_LEGACY_PHC2SYS = 'phc2sys-legacy'
