@@ -9,6 +9,7 @@ import re
 
 from sysinv.common import constants
 from sysinv.common import exception
+from sysinv.common import kubernetes
 from sysinv.common import utils
 from sysinv.puppet import base
 
@@ -26,6 +27,8 @@ class StoragePuppet(base.BasePuppet):
         config.update(self._get_partition_config(host))
         config.update(self._get_lvm_config(host))
         config.update(self._get_host_fs_config(host))
+        config.update(self._get_persistent_volumes_by_host("topolvm.io",
+                                                           host.hostname))
         if constants.WORKER in host.subfunctions:
             config.update(self._get_worker_config(host))
         return config
@@ -502,3 +505,66 @@ class StoragePuppet(base.BasePuppet):
             list(set(removing_disks + filtered_disks)))
 
         return global_filter, update_filter
+
+    def _get_persistent_volumes_by_host(self, csi_driver, hostname):
+        """Returns the volumeHandle list for a CSI Driver in a specific host.
+
+        :param hostname: Node's hostname.
+        :return: List of volumeHandle strings.
+        """
+
+        # Check if there is a restore in progress
+        try:
+            self.dbapi.restore_get_one(
+                filters={'state': constants.RESTORE_STATE_IN_PROGRESS})
+        except exception.NotFound:
+            pass
+        else:
+            return {'platform::lvm::csi::params::clean_restore::kube_pvs': []}
+
+        volume_handles = []
+        try:
+            kube_op = kubernetes.KubeOperator()
+            c = kube_op._get_kubernetesclient_core()
+
+            api_response = c.list_persistent_volume()
+            for pv in api_response.items:
+                if (not pv.spec.csi or pv.spec.csi.driver != csi_driver):
+                    continue
+
+                if not self._is_pv_on_host(pv, hostname):
+                    continue
+
+                volume_handles.append(pv.spec.csi.volume_handle)
+
+        except Exception:
+            return {
+                'platform::lvm::csi::params::clean_restore::kube_pvs': []
+            }
+
+        return {
+            'platform::lvm::csi::params::clean_restore::kube_pvs':
+                volume_handles
+        }
+
+    def _is_pv_on_host(self, pv, hostname):
+        """Check if a PersistentVolume is allocated on a specific host.
+
+        :param pv: PersistentVolume object.
+        :param hostname (str): Node hostname.
+
+        :return: True if the PV is allocated on the host,
+                    False otherwise.
+        """
+        node_affinity = pv.spec.node_affinity
+        if not node_affinity or not node_affinity.required:
+            return False
+
+        topology_keys = ("kubernetes.io/hostname",
+                         "topology.topolvm.io/node")
+        return any(
+            expr.key in topology_keys and hostname in expr.values
+            for term in node_affinity.required.node_selector_terms
+            if term.match_expressions
+            for expr in term.match_expressions
+        )
