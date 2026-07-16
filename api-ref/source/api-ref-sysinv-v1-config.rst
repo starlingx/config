@@ -12997,12 +12997,16 @@ unauthorized (401), forbidden (403), badMethod (405), overLimit (413)
 
    "expiry_date (Optional)", "plain", "xsd:string", "An ISO 8601 (YYYY-MM-DD) string representing the date in which the certificate should expire."
    "subject (Optional)", "plain", "xsd:string", "A string representing the subject to be set on the generated certificate. It should be given in the format <parameter_initials>=<value> and supports C(Country), ST(State/Province), L(Locality), O(Organization), OU(OrganizationalUnit) and CN(CommonName)."
+   "algorithm (Optional)", "plain", "xsd:string", "Cryptographic algorithm for the generated root CA private key. Valid values: ``ECDSA``, ``RSA``. Default: ``ECDSA``."
+   "key_size (Optional)", "plain", "xsd:integer", "Key size for the generated root CA private key. Valid sizes for ECDSA: 384, 521. Valid sizes for RSA: 4096. Defaults to 384 for ECDSA, 4096 for RSA."
 
 ::
 
    {
       "expiry_date": "2022-03-14",
-      "subject": "CN=kubernetes C=US"
+      "subject": "CN=kubernetes C=US",
+      "algorithm": "ECDSA",
+      "key_size": 384
    }
 
 **Response parameters**
