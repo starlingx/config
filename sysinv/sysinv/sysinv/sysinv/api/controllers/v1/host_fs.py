@@ -468,7 +468,7 @@ def _check_fs_resizing(fs_name, size, current_host_fs_list, current_host_lvg_lis
         raise wsme.exc.ClientSideError(msg)
 
 
-def _check_ceph_floating_monitor(operation):
+def _check_ceph_floating_monitor(operation, ihost=None):
     """Check if the floating monitor (ceph-float controllerfs) prevents
     changes to a fixed monitor.
 
@@ -481,7 +481,21 @@ def _check_ceph_floating_monitor(operation):
 
     :param operation: string describing the operation (e.g. "add", "update",
                       "delete") used in error messages.
+    :param ihost: optional host object. If the host is not yet provisioned,
+                  skip the floating monitor check (DX deployment scenario).
     """
+
+    # Skip validation for controllers that have not yet been
+    # provisioned. During initial DX deployment, the standby
+    # controller won't have host-fs ceph until after it is
+    # unlocked and configured.
+    if ihost and ihost['invprovision'] in [constants.UNPROVISIONED,
+                                           constants.PROVISIONING]:
+        LOG.info("Skipping floating monitor check for %s "
+                 "(invprovision=%s)." %
+                 (ihost['hostname'], ihost['invprovision']))
+        return
+
     try:
         controller_fs = pecan.request.dbapi.controller_fs_get_by_name(
             constants.FILESYSTEM_NAME_CEPH_DRBD)
@@ -499,10 +513,10 @@ def _check_ceph_floating_monitor(operation):
         pass
 
     if cutils.is_floating_monitor_assigned(pecan.request.dbapi):
-        msg = _("HostFs %s failed: cannot modify a fixed monitor "
+        msg = _("HostFs %s failed: cannot %s a fixed monitor "
                 "while the floating monitor (%s controllerfs) is "
                 "configured. Please remove the floating monitor first."
-                % (operation, constants.FILESYSTEM_NAME_CEPH_DRBD))
+                % (operation, operation, constants.FILESYSTEM_NAME_CEPH_DRBD))
         raise wsme.exc.ClientSideError(msg)
 
 
@@ -732,7 +746,7 @@ def _create(host_fs):
             # If the floating monitor is configured or pending
             # reconfiguration, the user must remove it before creating
             # a new fixed monitor host-fs.
-            _check_ceph_floating_monitor("create")
+            _check_ceph_floating_monitor("create", ihost=ihost)
 
         elif parent == 'istors':
             capabilities['functions'] = [constants.FILESYSTEM_CEPH_FUNCTION_OSD]

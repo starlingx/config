@@ -560,22 +560,44 @@ def _check_fixed_monitors_on_controllers(operation):
         constants.CONTROLLER)
 
     for chost in controller_hosts:
+        # Skip validation for controllers that have not yet been
+        # provisioned. During initial DX deployment, the standby
+        # controller won't have host-fs ceph until after it is
+        # unlocked and configured.
+        if chost['invprovision'] in [constants.UNPROVISIONED,
+                                     constants.PROVISIONING]:
+            LOG.info("Skipping fixed monitor check for %s "
+                     "(invprovision=%s)." %
+                     (chost.hostname, chost['invprovision']))
+            continue
+
         try:
             host_fs = pecan.request.dbapi.host_fs_get_by_name_ihost(
                 chost.uuid, constants.FILESYSTEM_NAME_CEPH)
 
-            # If host_fs is in "Reconfigure with App" state, the current
-            # functions have not been applied yet. The user must apply the
-            # app before proceeding.
-            if host_fs.get('state') == constants.HOST_FS_STATUS_RECONFIGURE_WITH_APP:
+            # Only allow proceeding if the host-fs ceph is in a stable
+            # state (Ready, In-Use or Creating (On Unlock)). Any other state means
+            # the filesystem is being deleted, or modified.
+            reason = f"The host-fs ceph must be in '{constants.HOST_FS_STATUS_READY}', " \
+                     f"'{constants.HOST_FS_STATUS_IN_USE}' or " \
+                     f"'{constants.HOST_FS_STATUS_CREATE_ON_UNLOCK}' state " \
+                      "before proceeding with this operation."
+            host_fs_state = host_fs.get('state')
+            if host_fs_state not in (constants.HOST_FS_STATUS_READY,
+                                     constants.HOST_FS_STATUS_IN_USE,
+                                     constants.HOST_FS_STATUS_CREATE_ON_UNLOCK):
+
+                if host_fs_state == constants.HOST_FS_STATUS_RECONFIGURE_WITH_APP:
+                    reason = "Please apply the application to complete the " \
+                             "pending configuration before retrying this command."
+
                 msg = _("Failed to %s controller filesystem %s: "
-                        "host %s has ceph host-fs in '%s' state. "
-                        "Please apply the application to complete the "
-                        "pending configuration before retrying this command."
+                        "host %s has ceph host-fs in '%s' state. %s"
                         % (operation,
                            constants.FILESYSTEM_NAME_CEPH_DRBD,
                            chost.hostname,
-                           constants.HOST_FS_STATUS_RECONFIGURE_WITH_APP))
+                           host_fs_state,
+                           reason))
                 raise wsme.exc.ClientSideError(msg)
 
             functions = host_fs['capabilities'].get('functions', [])

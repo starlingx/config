@@ -951,7 +951,538 @@ class ApiControllerFSPostTestSuiteMixin(ApiControllerFSTestCaseMixin):
         self.assertIn("Both controllers must have fixed monitors",
                       response.json['error_message'])
 
+    def test_post_success_controller_1_unprovisioned(self):
+        """Test that creating ceph-float succeeds when controller-1 is
+        unprovisioned (skips fixed monitor check for that host)."""
+
+        # Rook Ceph must be as storage backend
+        backend = dbutils.get_test_storage_backend(backend=constants.SB_TYPE_CEPH_ROOK)
+        self.dbapi.storage_ceph_rook_create(backend)
+
+        self._create_controller_1(
+            invprovision=constants.UNPROVISIONED,
+            administrative=constants.ADMIN_LOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Must be AIO-DX
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_DUPLEX
+        system_dict['system_type'] = constants.TIS_AIO_BUILD
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+
+        # Create host-fs ceph with monitor function only on controller-0
+        # (controller-1 is unprovisioned, so it should be skipped)
+        dbutils.create_test_host_fs(id=90,
+                                    name='ceph',
+                                    forihostid=self.host.id,
+                                    state=constants.HOST_FS_STATUS_IN_USE,
+                                    capabilities={"functions": ["monitor"]})
+
+        # Create a logical volume
+        dbutils.create_test_lvg(lvm_vg_name='cgts-vg',
+                                forihostid=self.host.id)
+
+        response = self.post_json('/controller_fs',
+                                  {'name': 'ceph-float',
+                                   'size': 20},
+                                  headers=self.API_HEADERS,
+                                  expect_errors=False)
+
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
+
+    def test_post_success_controller_1_provisioning(self):
+        """Test that creating ceph-float succeeds when controller-1 is
+        in provisioning state (skips fixed monitor check for that host)."""
+
+        # Rook Ceph must be as storage backend
+        backend = dbutils.get_test_storage_backend(backend=constants.SB_TYPE_CEPH_ROOK)
+        self.dbapi.storage_ceph_rook_create(backend)
+
+        self._create_controller_1(
+            invprovision=constants.PROVISIONING,
+            administrative=constants.ADMIN_LOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Must be AIO-DX
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_DUPLEX
+        system_dict['system_type'] = constants.TIS_AIO_BUILD
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+
+        # Create host-fs ceph with monitor function only on controller-0
+        # (controller-1 is provisioning, so it should be skipped)
+        dbutils.create_test_host_fs(id=90,
+                                    name='ceph',
+                                    forihostid=self.host.id,
+                                    state=constants.HOST_FS_STATUS_IN_USE,
+                                    capabilities={"functions": ["monitor"]})
+
+        # Create a logical volume
+        dbutils.create_test_lvg(lvm_vg_name='cgts-vg',
+                                forihostid=self.host.id)
+
+        response = self.post_json('/controller_fs',
+                                  {'name': 'ceph-float',
+                                   'size': 20},
+                                  headers=self.API_HEADERS,
+                                  expect_errors=False)
+
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
+
+    def test_post_fail_host_fs_creating_state(self):
+        """Test that creating ceph-float fails when host-fs ceph is in
+        Creating state."""
+
+        # Rook Ceph must be as storage backend
+        backend = dbutils.get_test_storage_backend(backend=constants.SB_TYPE_CEPH_ROOK)
+        self.dbapi.storage_ceph_rook_create(backend)
+
+        controller_1 = self._create_controller_1(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_LOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Must be AIO-DX
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_DUPLEX
+        system_dict['system_type'] = constants.TIS_AIO_BUILD
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+
+        # Controller-0 must be provisioned to not be skipped
+        self.dbapi.ihost_update(self.host.uuid,
+                                {'invprovision': constants.PROVISIONED})
+
+        # Create host-fs ceph with monitor function but in "Creating" state
+        dbutils.create_test_host_fs(id=90,
+                                    name='ceph',
+                                    forihostid=self.host.id,
+                                    state=constants.HOST_FS_STATUS_CREATE_IN_SVC,
+                                    capabilities={"functions": ["monitor"]})
+        dbutils.create_test_host_fs(id=91,
+                                    name='ceph',
+                                    forihostid=controller_1.id,
+                                    state=constants.HOST_FS_STATUS_IN_USE,
+                                    capabilities={"functions": ["monitor"]})
+
+        # Create a logical volume
+        dbutils.create_test_lvg(lvm_vg_name='cgts-vg',
+                                forihostid=self.host.id)
+
+        response = self.post_json('/controller_fs',
+                                  {'name': 'ceph-float',
+                                   'size': 20},
+                                  headers=self.API_HEADERS,
+                                  expect_errors=True)
+
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+        self.assertIn("must be in", response.json['error_message'])
+        self.assertIn(constants.HOST_FS_STATUS_CREATE_IN_SVC,
+                      response.json['error_message'])
+
+    def test_post_fail_host_fs_reconfigure_with_app_state(self):
+        """Test that creating ceph-float fails when host-fs ceph is in
+        Reconfigure with App state."""
+
+        # Rook Ceph must be as storage backend
+        backend = dbutils.get_test_storage_backend(backend=constants.SB_TYPE_CEPH_ROOK)
+        self.dbapi.storage_ceph_rook_create(backend)
+
+        controller_1 = self._create_controller_1(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_LOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Must be AIO-DX
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_DUPLEX
+        system_dict['system_type'] = constants.TIS_AIO_BUILD
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+
+        # Controller-0 must be provisioned to not be skipped
+        self.dbapi.ihost_update(self.host.uuid,
+                                {'invprovision': constants.PROVISIONED})
+
+        # Create host-fs ceph with monitor function but in
+        # "Reconfigure with App" state
+        dbutils.create_test_host_fs(id=90,
+                                    name='ceph',
+                                    forihostid=self.host.id,
+                                    state=constants.HOST_FS_STATUS_RECONFIGURE_WITH_APP,
+                                    capabilities={"functions": ["monitor"]})
+        dbutils.create_test_host_fs(id=91,
+                                    name='ceph',
+                                    forihostid=controller_1.id,
+                                    state=constants.HOST_FS_STATUS_IN_USE,
+                                    capabilities={"functions": ["monitor"]})
+
+        # Create a logical volume
+        dbutils.create_test_lvg(lvm_vg_name='cgts-vg',
+                                forihostid=self.host.id)
+
+        response = self.post_json('/controller_fs',
+                                  {'name': 'ceph-float',
+                                   'size': 20},
+                                  headers=self.API_HEADERS,
+                                  expect_errors=True)
+
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+        self.assertIn(constants.HOST_FS_STATUS_RECONFIGURE_WITH_APP,
+                      response.json['error_message'])
+        self.assertIn("Please apply the application",
+                      response.json['error_message'])
+
+    def test_post_fail_host_fs_modifying_state(self):
+        """Test that creating ceph-float fails when host-fs ceph is in
+        Modifying state."""
+
+        # Rook Ceph must be as storage backend
+        backend = dbutils.get_test_storage_backend(backend=constants.SB_TYPE_CEPH_ROOK)
+        self.dbapi.storage_ceph_rook_create(backend)
+
+        controller_1 = self._create_controller_1(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_LOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Must be AIO-DX
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_DUPLEX
+        system_dict['system_type'] = constants.TIS_AIO_BUILD
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+
+        # Create host-fs ceph with monitor function but in "Modifying" state
+        dbutils.create_test_host_fs(id=90,
+                                    name='ceph',
+                                    forihostid=self.host.id,
+                                    state=constants.HOST_FS_STATUS_IN_USE,
+                                    capabilities={"functions": ["monitor"]})
+        dbutils.create_test_host_fs(id=91,
+                                    name='ceph',
+                                    forihostid=controller_1.id,
+                                    state=constants.HOST_FS_STATUS_MODIFYING,
+                                    capabilities={"functions": ["monitor"]})
+
+        # Create a logical volume
+        dbutils.create_test_lvg(lvm_vg_name='cgts-vg',
+                                forihostid=self.host.id)
+
+        response = self.post_json('/controller_fs',
+                                  {'name': 'ceph-float',
+                                   'size': 20},
+                                  headers=self.API_HEADERS,
+                                  expect_errors=True)
+
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+        self.assertIn("must be in", response.json['error_message'])
+        self.assertIn(constants.HOST_FS_STATUS_MODIFYING,
+                      response.json['error_message'])
+
+    def test_post_fail_host_fs_deleting_state(self):
+        """Test that creating ceph-float fails when host-fs ceph is in
+        Deleting state."""
+
+        # Rook Ceph must be as storage backend
+        backend = dbutils.get_test_storage_backend(backend=constants.SB_TYPE_CEPH_ROOK)
+        self.dbapi.storage_ceph_rook_create(backend)
+
+        controller_1 = self._create_controller_1(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_LOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Must be AIO-DX
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_DUPLEX
+        system_dict['system_type'] = constants.TIS_AIO_BUILD
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+
+        # Create host-fs ceph with monitor function but in "Deleting" state
+        dbutils.create_test_host_fs(id=90,
+                                    name='ceph',
+                                    forihostid=self.host.id,
+                                    state=constants.HOST_FS_STATUS_IN_USE,
+                                    capabilities={"functions": ["monitor"]})
+        dbutils.create_test_host_fs(id=91,
+                                    name='ceph',
+                                    forihostid=controller_1.id,
+                                    state=constants.HOST_FS_STATUS_DELETING,
+                                    capabilities={"functions": ["monitor"]})
+
+        # Create a logical volume
+        dbutils.create_test_lvg(lvm_vg_name='cgts-vg',
+                                forihostid=self.host.id)
+
+        response = self.post_json('/controller_fs',
+                                  {'name': 'ceph-float',
+                                   'size': 20},
+                                  headers=self.API_HEADERS,
+                                  expect_errors=True)
+
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+        self.assertIn("must be in", response.json['error_message'])
+        self.assertIn(constants.HOST_FS_STATUS_DELETING,
+                      response.json['error_message'])
+
+    def test_post_fail_host_fs_deleting_on_unlock_state(self):
+        """Test that creating ceph-float fails when host-fs ceph is in
+        Deleting (on unlock) state."""
+
+        # Rook Ceph must be as storage backend
+        backend = dbutils.get_test_storage_backend(backend=constants.SB_TYPE_CEPH_ROOK)
+        self.dbapi.storage_ceph_rook_create(backend)
+
+        controller_1 = self._create_controller_1(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_LOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Must be AIO-DX
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_DUPLEX
+        system_dict['system_type'] = constants.TIS_AIO_BUILD
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+
+        # Create host-fs ceph with monitor function but in
+        # "Deleting (on unlock)" state
+        dbutils.create_test_host_fs(id=90,
+                                    name='ceph',
+                                    forihostid=self.host.id,
+                                    state=constants.HOST_FS_STATUS_IN_USE,
+                                    capabilities={"functions": ["monitor"]})
+        dbutils.create_test_host_fs(id=91,
+                                    name='ceph',
+                                    forihostid=controller_1.id,
+                                    state=constants.HOST_FS_STATUS_DELETING_ON_UNLOCK,
+                                    capabilities={"functions": ["monitor"]})
+
+        # Create a logical volume
+        dbutils.create_test_lvg(lvm_vg_name='cgts-vg',
+                                forihostid=self.host.id)
+
+        response = self.post_json('/controller_fs',
+                                  {'name': 'ceph-float',
+                                   'size': 20},
+                                  headers=self.API_HEADERS,
+                                  expect_errors=True)
+
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+        self.assertIn("must be in", response.json['error_message'])
+        self.assertIn(constants.HOST_FS_STATUS_DELETING_ON_UNLOCK,
+                      response.json['error_message'])
+
+    def test_post_fail_host_fs_update_error_state(self):
+        """Test that creating ceph-float fails when host-fs ceph is in
+        Error state."""
+
+        # Rook Ceph must be as storage backend
+        backend = dbutils.get_test_storage_backend(backend=constants.SB_TYPE_CEPH_ROOK)
+        self.dbapi.storage_ceph_rook_create(backend)
+
+        controller_1 = self._create_controller_1(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_LOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Must be AIO-DX
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_DUPLEX
+        system_dict['system_type'] = constants.TIS_AIO_BUILD
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+
+        # Create host-fs ceph with monitor function but in "Error" state
+        dbutils.create_test_host_fs(id=90,
+                                    name='ceph',
+                                    forihostid=self.host.id,
+                                    state=constants.HOST_FS_STATUS_IN_USE,
+                                    capabilities={"functions": ["monitor"]})
+        dbutils.create_test_host_fs(id=91,
+                                    name='ceph',
+                                    forihostid=controller_1.id,
+                                    state=constants.HOST_FS_STATUS_UPDATE_ERROR,
+                                    capabilities={"functions": ["monitor"]})
+
+        # Create a logical volume
+        dbutils.create_test_lvg(lvm_vg_name='cgts-vg',
+                                forihostid=self.host.id)
+
+        response = self.post_json('/controller_fs',
+                                  {'name': 'ceph-float',
+                                   'size': 20},
+                                  headers=self.API_HEADERS,
+                                  expect_errors=True)
+
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+        self.assertIn("must be in", response.json['error_message'])
+        self.assertIn(constants.HOST_FS_STATUS_UPDATE_ERROR,
+                      response.json['error_message'])
+
+    def test_post_success_host_fs_creating_on_unlock_state(self):
+        """Test that creating ceph-float succeeds when host-fs ceph is in
+        Creating (on unlock) state."""
+
+        # Rook Ceph must be as storage backend
+        backend = dbutils.get_test_storage_backend(backend=constants.SB_TYPE_CEPH_ROOK)
+        self.dbapi.storage_ceph_rook_create(backend)
+
+        controller_1 = self._create_controller_1(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_LOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Must be AIO-DX
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_DUPLEX
+        system_dict['system_type'] = constants.TIS_AIO_BUILD
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+
+        # Controller-0 must be provisioned to not be skipped
+        self.dbapi.ihost_update(self.host.uuid,
+                                {'invprovision': constants.PROVISIONED})
+
+        # Create host-fs ceph with monitor function but in
+        # "Creating (on unlock)" state
+        dbutils.create_test_host_fs(id=90,
+                                    name='ceph',
+                                    forihostid=self.host.id,
+                                    state=constants.HOST_FS_STATUS_IN_USE,
+                                    capabilities={"functions": ["monitor"]})
+        dbutils.create_test_host_fs(id=91,
+                                    name='ceph',
+                                    forihostid=controller_1.id,
+                                    state=constants.HOST_FS_STATUS_CREATE_ON_UNLOCK,
+                                    capabilities={"functions": ["monitor"]})
+
+        # Create a logical volume
+        dbutils.create_test_lvg(lvm_vg_name='cgts-vg',
+                                forihostid=self.host.id)
+
+        response = self.post_json('/controller_fs',
+                                  {'name': 'ceph-float',
+                                   'size': 20},
+                                  headers=self.API_HEADERS,
+                                  expect_errors=False)
+
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
+
+    def test_post_success_host_fs_ready_state(self):
+        """Test that creating ceph-float succeeds when host-fs ceph is in
+        Ready state."""
+
+        # Rook Ceph must be as storage backend
+        backend = dbutils.get_test_storage_backend(backend=constants.SB_TYPE_CEPH_ROOK)
+        self.dbapi.storage_ceph_rook_create(backend)
+
+        controller_1 = self._create_controller_1(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_LOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Must be AIO-DX
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_DUPLEX
+        system_dict['system_type'] = constants.TIS_AIO_BUILD
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+
+        # Controller-0 must be provisioned to not be skipped
+        self.dbapi.ihost_update(self.host.uuid,
+                                {'invprovision': constants.PROVISIONED})
+
+        # Create host-fs ceph with monitor function in "Ready" state
+        dbutils.create_test_host_fs(id=90,
+                                    name='ceph',
+                                    forihostid=self.host.id,
+                                    state=constants.HOST_FS_STATUS_READY,
+                                    capabilities={"functions": ["monitor"]})
+        dbutils.create_test_host_fs(id=91,
+                                    name='ceph',
+                                    forihostid=controller_1.id,
+                                    state=constants.HOST_FS_STATUS_READY,
+                                    capabilities={"functions": ["monitor"]})
+
+        # Create a logical volume
+        dbutils.create_test_lvg(lvm_vg_name='cgts-vg',
+                                forihostid=self.host.id)
+
+        response = self.post_json('/controller_fs',
+                                  {'name': 'ceph-float',
+                                   'size': 20},
+                                  headers=self.API_HEADERS,
+                                  expect_errors=False)
+
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
+
+    def test_post_success_host_fs_in_use_state(self):
+        """Test that creating ceph-float succeeds when host-fs ceph is in
+        In-Use state."""
+
+        # Rook Ceph must be as storage backend
+        backend = dbutils.get_test_storage_backend(backend=constants.SB_TYPE_CEPH_ROOK)
+        self.dbapi.storage_ceph_rook_create(backend)
+
+        controller_1 = self._create_controller_1(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_LOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Must be AIO-DX
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_DUPLEX
+        system_dict['system_type'] = constants.TIS_AIO_BUILD
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+
+        # Controller-0 must be provisioned to not be skipped
+        self.dbapi.ihost_update(self.host.uuid,
+                                {'invprovision': constants.PROVISIONED})
+
+        # Create host-fs ceph with monitor function in "In-Use" state
+        dbutils.create_test_host_fs(id=90,
+                                    name='ceph',
+                                    forihostid=self.host.id,
+                                    state=constants.HOST_FS_STATUS_IN_USE,
+                                    capabilities={"functions": ["monitor"]})
+        dbutils.create_test_host_fs(id=91,
+                                    name='ceph',
+                                    forihostid=controller_1.id,
+                                    state=constants.HOST_FS_STATUS_IN_USE,
+                                    capabilities={"functions": ["monitor"]})
+
+        # Create a logical volume
+        dbutils.create_test_lvg(lvm_vg_name='cgts-vg',
+                                forihostid=self.host.id)
+
+        response = self.post_json('/controller_fs',
+                                  {'name': 'ceph-float',
+                                   'size': 20},
+                                  headers=self.API_HEADERS,
+                                  expect_errors=False)
+
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
+
     def test_post_not_allowed(self):
+        """Test that creating ceph-float fails when controller-0 is
+        provisioned but does not have ceph host-fs configured."""
 
         # Rook Ceph must be as storage backend
         backend = dbutils.get_test_storage_backend(backend=constants.SB_TYPE_CEPH_ROOK)
@@ -962,6 +1493,48 @@ class ApiControllerFSPostTestSuiteMixin(ApiControllerFSTestCaseMixin):
         system_dict['system_mode'] = constants.SYSTEM_MODE_DUPLEX
         system_dict['system_type'] = constants.TIS_AIO_BUILD
         self.dbapi.isystem_update(self.system.uuid, system_dict)
+
+        # Controller-0 must be provisioned to not be skipped
+        self.dbapi.ihost_update(self.host.uuid,
+                                {'invprovision': constants.PROVISIONED})
+
+        # Create a logical volume
+        dbutils.create_test_lvg(lvm_vg_name='cgts-vg',
+                                forihostid=self.host.id)
+
+        response = self.post_json('/controller_fs',
+                                  {'name': 'ceph-float',
+                                   'size': 20},
+                                  headers=self.API_HEADERS,
+                                  expect_errors=True)
+
+        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+        self.assertIn("does not have a ceph host-fs configured",
+                      response.json['error_message'])
+
+    def test_post_not_allowed_controller_unprovisioned(self):
+        """Test that creating ceph-float fails when controller-0 is
+        unprovisioned (skipped) and controller-1 is provisioned but
+        does not have ceph host-fs configured."""
+
+        # Rook Ceph must be as storage backend
+        backend = dbutils.get_test_storage_backend(backend=constants.SB_TYPE_CEPH_ROOK)
+        self.dbapi.storage_ceph_rook_create(backend)
+
+        # Controller-1 provisioned but without ceph host-fs
+        self._create_controller_1(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_LOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Must be AIO-DX
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_DUPLEX
+        system_dict['system_type'] = constants.TIS_AIO_BUILD
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+
+        # Controller-0 remains unprovisioned (default) — will be skipped
 
         # Create a logical volume
         dbutils.create_test_lvg(lvm_vg_name='cgts-vg',
