@@ -238,6 +238,7 @@ CONFIG_UPDATE_FILE = 'config_update_file'
 
 LOCK_NAME_UPDATE_CONFIG = 'update_config_'
 LOCK_APP_AUTO_MANAGE = 'AppAutoManageLock'
+LOCK_EVALUATE_APPS_REAPPLY = 'EvaluateAppsReapplyLock'
 LOCK_IMAGE_PULL = 'image_pull_'
 
 MAX_UPTIME_TO_CLEAR_REBOOT_REQUIRED = 1200
@@ -17232,6 +17233,7 @@ class ConductorManager(service.PeriodicService):
 
         return ordered_active_apps
 
+    @cutils.synchronized(LOCK_EVALUATE_APPS_REAPPLY)
     def evaluate_apps_reapply(self, context, trigger, app_name=None, flag=None):
         """Synchronously, determine whether an application
         re-apply is needed, and if so, raise the re-apply flag.
@@ -17281,107 +17283,29 @@ class ConductorManager(service.PeriodicService):
 
         metadata_map = constants.APP_EVALUATE_REAPPLY_TRIGGER_TO_METADATA_MAP
 
-        for app in apps:
-            # For on-demand single-app reapply, skip apps that don't match
-            # the target app_name. When flag is reapply-all, all apps are
-            # evaluated so no filtering is applied.
-            if (
-                flag == constants.HELM_OVERRIDE_UPDATE_WITH_REAPPLY
-                and trigger["type"] == constants.APP_EVALUATE_REAPPLY_TYPE_ON_DEMAND_REAPPLY
-                and app.name != app_name
-            ):
-                continue
-            # We need to get an updated app status before moving on. It may have
-            # changed during the for loop execution. This avoids race conditions
-            # during upgrade activation.
-            try:
-                updated_app = self.dbapi.kube_app_get(app.name)
-                LOG.info(f"{app.name} status for reapply evaluation: {updated_app.status}.")
-            except exception.KubeAppNotFound:
-                LOG.warning(f"Application {app.name} not found to be reapplied.")
-                continue
-
-            if (updated_app.status == constants.APP_UPDATE_IN_PROGRESS or
-                    updated_app.progress == constants.APP_PROGRESS_UPDATE_STARTING):
-                # If the app is evaluated for reapplication during the update, the old plugin
-                # folder is recreated, causing any operations performed with the apps to fail.
-                LOG.info(f"Skipping reapply evaluation for {app.name}, "
-                         "reason: update in progress.")
-            else:
-                app_metadata_dict = self.apps_metadata[constants.APP_METADATA_APPS].get(
-                    app.name, {})
+        # Evaluate apps reapply in parallel using threads
+        updated_app = None
+        core_count = cutils.get_platform_core_count(self.dbapi)
+        with ThreadPoolExecutor(max_workers=min(len(apps), core_count) if apps else 1) as executor:
+            futures = {executor.submit(self._evaluate_single_app_reapply,
+                                       context, app, trigger, flag,
+                                       app_name, metadata_map): app
+                       for app in apps}
+            for future in as_completed(futures):
                 try:
-                    app_triggers = app_metadata_dict[constants.APP_METADATA_BEHAVIOR][
-                        constants.APP_METADATA_EVALUATE_REAPPLY][
-                        constants.APP_METADATA_TRIGGERS]
-                except KeyError:
-                    continue
-
-                try:
-                    hook_info = LifecycleHookInfo()
-                    hook_info.init(LifecycleConstants.APP_LIFECYCLE_MODE_AUTO,
-                                   LifecycleConstants.APP_LIFECYCLE_TYPE_SEMANTIC_CHECK,
-                                   None,
-                                   constants.APP_EVALUATE_REAPPLY_OP)
-                    hook_info.extra[LifecycleConstants.EVALUATE_REAPPLY_TRIGGER] = trigger
-                    self.app_lifecycle_actions(context=context, rpc_app=app, hook_info=hook_info)
-                except exception.LifecycleSemanticCheckException as e:
-                    LOG.info("Evaluate reapply for {} rejected: {}".format(app.name, e))
-                    continue
-                except exception.LifecycleMissingInfo as e:
-                    LOG.error("Evaluate reapply for {} error: {}".format(app.name, e))
-                    continue
+                    result = future.result()
+                    # Keep track of the last updated_app for single-app reapply path
+                    if result is not None:
+                        if (
+                            flag == constants.HELM_OVERRIDE_UPDATE_WITH_REAPPLY
+                                and trigger["type"] ==
+                                constants.APP_EVALUATE_REAPPLY_TYPE_ON_DEMAND_REAPPLY
+                                and futures[future].name == app_name):
+                            updated_app = result
                 except Exception as e:
-                    LOG.error("Unexpected error during hook for app {}, error: {}"
-                            "".format(app.name, e))
-                    continue
-
-                if trigger['type'] in metadata_map.keys():
-                    # Check if the app subscribes to this trigger type
-                    if [t for t in app_triggers if t.get('type', None) ==
-                                        metadata_map[trigger['type']]]:
-                        # Get the first trigger with a specific type in the metadata
-                        app_trigger = [x for x in app_triggers if
-                                       x.get(constants.APP_METADATA_TYPE, None) ==
-                                       metadata_map[trigger['type']]][0]
-
-                        # Get the filters for the trigger
-                        trigger_filters = app_trigger.get(constants.APP_METADATA_FILTERS, [])
-
-                        # Get which field inside the trigger should have the filters applied on
-                        # Default is the trigger dictionary itself, but can be redirected to
-                        # a sub-dictionary
-                        target_for_filters_field = app_trigger.get(
-                            constants.APP_METADATA_FILTER_FIELD, None)
-                        if target_for_filters_field is None:
-                            target_for_filters = trigger
-                        else:
-                            if target_for_filters_field not in trigger:
-                                LOG.error("Trigger {} does not have field {}"
-                                        "".format(trigger, target_for_filters_field))
-                                continue
-                            target_for_filters = trigger[target_for_filters_field]
-
-                        allow = True
-                        # All filters must match, if any doesn't match then reject
-                        # the evaluation
-                        for filter_ in trigger_filters:
-                            # Each filter is a single entry dict
-                            k = list(filter_.keys())[0]
-                            if k not in target_for_filters:
-                                LOG.info("Evaluate reapply for {} rejected: "
-                                        "trigger field {} absent".format(app.name, k))
-                                allow = False
-                                break
-                            elif str(target_for_filters[k]) != str(filter_[k]):
-                                LOG.info("Evaluate reapply for {} rejected: "
-                                        "trigger field {} expected {} but got {} "
-                                        "".format(app.name, k, filter_[k], target_for_filters[k]))
-                                allow = False
-                                break
-
-                        if allow:
-                            self.evaluate_app_reapply(context, app.name)
+                    app_obj = futures[future]
+                    LOG.error("Unexpected error evaluating reapply for app {}: {}"
+                              "".format(app_obj.name, e))
 
         if (
             trigger["type"] == constants.APP_EVALUATE_REAPPLY_TYPE_ON_DEMAND_REAPPLY
@@ -17410,7 +17334,8 @@ class ConductorManager(service.PeriodicService):
             and self.can_proceed_with_reapply()
         ):
             if (
-                updated_app.status == constants.APP_APPLY_SUCCESS
+                updated_app is not None
+                and updated_app.status == constants.APP_APPLY_SUCCESS
                 and self._app.needs_reapply(app_name)
             ):
                 # Reapply on only targeted app if flag is set to 'reapply'.
@@ -17419,6 +17344,121 @@ class ConductorManager(service.PeriodicService):
                 except Exception as e:
                     LOG.exception("Failed to perform on-demand reapply for "
                                   "application '%s'. Error: %s", app_name, e)
+
+    def _evaluate_single_app_reapply(self, context, app, trigger, flag,
+                                     app_name, metadata_map):
+        """Evaluate reapply for a single app. Returns the updated_app
+        object if the app was found and processed, or None otherwise.
+
+        :param context: request context.
+        :param app: application object to evaluate.
+        :param trigger: dictionary containing at least the 'type' field.
+        :param flag: optional flag indicating reapply mode.
+        :param app_name: optional application name to restrict reapply.
+        :param metadata_map: trigger-to-metadata mapping dictionary.
+        """
+        # For on-demand single-app reapply, skip apps that don't match
+        # the target app_name. When flag is reapply-all, all apps are
+        # evaluated so no filtering is applied.
+        if (
+            flag == constants.HELM_OVERRIDE_UPDATE_WITH_REAPPLY
+            and trigger["type"] == constants.APP_EVALUATE_REAPPLY_TYPE_ON_DEMAND_REAPPLY
+            and app.name != app_name
+        ):
+            return None
+        # We need to get an updated app status before moving on. It may have
+        # changed during the for loop execution. This avoids race conditions
+        # during upgrade activation.
+        try:
+            cur_updated_app = self.dbapi.kube_app_get(app.name)
+            LOG.info(f"{app.name} status for reapply evaluation: {cur_updated_app.status}.")
+        except exception.KubeAppNotFound:
+            LOG.warning(f"Application {app.name} not found to be reapplied.")
+            return None
+
+        if (cur_updated_app.status == constants.APP_UPDATE_IN_PROGRESS or
+                cur_updated_app.progress == constants.APP_PROGRESS_UPDATE_STARTING):
+            # If the app is evaluated for reapplication during the update, the old plugin
+            # folder is recreated, causing any operations performed with the apps to fail.
+            LOG.info(f"Skipping reapply evaluation for {app.name}, "
+                     "reason: update in progress.")
+        else:
+            app_metadata_dict = self.apps_metadata[constants.APP_METADATA_APPS].get(
+                app.name, {})
+            try:
+                app_triggers = app_metadata_dict[constants.APP_METADATA_BEHAVIOR][
+                    constants.APP_METADATA_EVALUATE_REAPPLY][
+                    constants.APP_METADATA_TRIGGERS]
+            except KeyError:
+                return cur_updated_app
+
+            try:
+                hook_info = LifecycleHookInfo()
+                hook_info.init(LifecycleConstants.APP_LIFECYCLE_MODE_AUTO,
+                               LifecycleConstants.APP_LIFECYCLE_TYPE_SEMANTIC_CHECK,
+                               None,
+                               constants.APP_EVALUATE_REAPPLY_OP)
+                hook_info.extra[LifecycleConstants.EVALUATE_REAPPLY_TRIGGER] = trigger
+                self.app_lifecycle_actions(context=context, rpc_app=app, hook_info=hook_info)
+            except exception.LifecycleSemanticCheckException as e:
+                LOG.info("Evaluate reapply for {} rejected: {}".format(app.name, e))
+                return cur_updated_app
+            except exception.LifecycleMissingInfo as e:
+                LOG.error("Evaluate reapply for {} error: {}".format(app.name, e))
+                return cur_updated_app
+            except Exception as e:
+                LOG.error("Unexpected error during hook for app {}, error: {}"
+                        "".format(app.name, e))
+                return cur_updated_app
+
+            if trigger['type'] in metadata_map.keys():
+                # Check if the app subscribes to this trigger type
+                if [t for t in app_triggers if t.get('type', None) ==
+                                    metadata_map[trigger['type']]]:
+                    # Get the first trigger with a specific type in the metadata
+                    app_trigger = [x for x in app_triggers if
+                                   x.get(constants.APP_METADATA_TYPE, None) ==
+                                   metadata_map[trigger['type']]][0]
+
+                    # Get the filters for the trigger
+                    trigger_filters = app_trigger.get(constants.APP_METADATA_FILTERS, [])
+
+                    # Get which field inside the trigger should have the filters applied on
+                    # Default is the trigger dictionary itself, but can be redirected to
+                    # a sub-dictionary
+                    target_for_filters_field = app_trigger.get(
+                        constants.APP_METADATA_FILTER_FIELD, None)
+                    if target_for_filters_field is None:
+                        target_for_filters = trigger
+                    else:
+                        if target_for_filters_field not in trigger:
+                            LOG.error("Trigger {} does not have field {}"
+                                    "".format(trigger, target_for_filters_field))
+                            return cur_updated_app
+                        target_for_filters = trigger[target_for_filters_field]
+
+                    allow = True
+                    # All filters must match, if any doesn't match then reject
+                    # the evaluation
+                    for filter_ in trigger_filters:
+                        # Each filter is a single entry dict
+                        k = list(filter_.keys())[0]
+                        if k not in target_for_filters:
+                            LOG.info("Evaluate reapply for {} rejected: "
+                                    "trigger field {} absent".format(app.name, k))
+                            allow = False
+                            break
+                        elif str(target_for_filters[k]) != str(filter_[k]):
+                            LOG.info("Evaluate reapply for {} rejected: "
+                                    "trigger field {} expected {} but got {} "
+                                    "".format(app.name, k, filter_[k], target_for_filters[k]))
+                            allow = False
+                            break
+
+                    if allow:
+                        self.evaluate_app_reapply(context, app.name)
+
+        return cur_updated_app
 
     def evaluate_app_reapply(self, context, app_name):
         """Synchronously, determine whether an application
