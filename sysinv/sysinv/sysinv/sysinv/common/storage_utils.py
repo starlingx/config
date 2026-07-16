@@ -1,7 +1,7 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 
 #
-# Copyright (c) 2025 Wind River Systems, Inc.
+# Copyright (c) 2025-2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -82,15 +82,19 @@ class StorageRookUtils(object):
         else:
             return tiers
 
-    def get_failure_domain(self):
-        # based on deployment model and installation type
+    def get_failure_domain(self, only_default=False):
+        # When only_default=True, skip reading from backend and return system default
+        if not only_default and self.storage_backend:
+            failure_domain = self.storage_backend.capabilities.get(
+                constants.CEPH_ROOK_BACKEND_FAILURE_DOMAIN_CAP, None)
+            if failure_domain:
+                return failure_domain
+
+        # System default based on system type
         if utils.is_aio_simplex_system(self.dbapi):
             return constants.CEPH_ROOK_CLUSTER_OSD_FAIL_DOMAIN
-        elif self.get_deployment_model() in [constants.CEPH_ROOK_DEPLOYMENT_CONTROLLER,
-                                             constants.CEPH_ROOK_DEPLOYMENT_DEDICATED]:
-            return constants.CEPH_ROOK_CLUSTER_HOST_FAIL_DOMAIN
         else:
-            return constants.CEPH_ROOK_CLUSTER_OSD_FAIL_DOMAIN
+            return constants.CEPH_ROOK_CLUSTER_HOST_FAIL_DOMAIN
 
     def get_replication_factor(self):
         if not self.storage_backend:

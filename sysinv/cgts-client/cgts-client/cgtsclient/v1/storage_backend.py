@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2018,2024-2025 Wind River Systems, Inc.
+# Copyright (c) 2013-2018,2024-2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -202,6 +202,9 @@ def backend_modify(cc, args):
 
     if backend == constants.SB_TYPE_CEPH_ROOK and vars(args).get('deployment'):
         attr_dict['deployment_model'] = vars(args).get('deployment')
+
+    if backend == constants.SB_TYPE_CEPH_ROOK and vars(args).get('failure_domain'):
+        attr_dict['failure_domain'] = vars(args).get('failure_domain')
 
     # Move the rest of the attributes to the capabilities, used for hiera data
     # overrides

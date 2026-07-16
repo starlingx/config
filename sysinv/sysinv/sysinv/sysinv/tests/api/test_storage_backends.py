@@ -596,6 +596,20 @@ class StorageBackendTestCases(base.FunctionalTest):
                                        response.json['uuid'])['capabilities']
                                        [constants.CEPH_ROOK_BACKEND_DEPLOYMENT_CAP])  # Result
 
+    def test_post_rook_ceph_valid_failure_domain_and_confirm(self):
+        vals = {
+            'backend': constants.SB_TYPE_CEPH_ROOK,
+            'capabilities': {constants.CEPH_ROOK_BACKEND_FAILURE_DOMAIN_CAP:
+                             constants.CEPH_ROOK_CLUSTER_HOST_FAIL_DOMAIN},
+            'confirmed': True
+        }
+        response = self.post_json('/storage_backend', vals, expect_errors=False)
+        self.assertEqual(http_client.OK, response.status_int)
+        self.assertEqual(constants.CEPH_ROOK_CLUSTER_HOST_FAIL_DOMAIN,  # Expected
+                         self.get_json('/storage_backend/%s/' %
+                                       response.json['uuid'])['capabilities']
+                                       [constants.CEPH_ROOK_BACKEND_FAILURE_DOMAIN_CAP])  # Result
+
 
 class StorageFileTestCases(base.FunctionalTest):
 
@@ -1123,6 +1137,302 @@ class StorageCephRookTestCases(base.FunctionalTest):
                          self.get_json('/storage_ceph_rook/%s/' %
                                        response.json['uuid'])['capabilities']['deployment_model'])  # Result
 
+    def test_post_with_valid_failure_domain_osd_and_confirm(self):
+        vals = {
+            'backend': constants.SB_TYPE_CEPH_ROOK,
+            'deployment': constants.CEPH_ROOK_DEPLOYMENT_OPEN,
+            'failure_domain': constants.CEPH_ROOK_CLUSTER_OSD_FAIL_DOMAIN,
+            'confirmed': True
+        }
+        response = self.post_json('/storage_ceph_rook', vals, expect_errors=False)
+        self.assertEqual(http_client.OK, response.status_int)
+        self.assertEqual(constants.CEPH_ROOK_CLUSTER_OSD_FAIL_DOMAIN,  # Expected
+                         self.get_json('/storage_ceph_rook/%s/' %
+                                       response.json['uuid'])['capabilities']['failure_domain'])  # Result
+
+    def test_post_with_valid_failure_domain_host_and_confirm(self):
+        vals = {
+            'backend': constants.SB_TYPE_CEPH_ROOK,
+            'failure_domain': constants.CEPH_ROOK_CLUSTER_HOST_FAIL_DOMAIN,
+            'confirmed': True
+        }
+        response = self.post_json('/storage_ceph_rook', vals, expect_errors=False)
+        self.assertEqual(http_client.OK, response.status_int)
+        self.assertEqual(constants.CEPH_ROOK_CLUSTER_HOST_FAIL_DOMAIN,  # Expected
+                         self.get_json('/storage_ceph_rook/%s/' %
+                                       response.json['uuid'])['capabilities']['failure_domain'])  # Result
+
+    def test_post_with_invalid_failure_domain_and_confirm(self):
+        vals = {
+            'backend': constants.SB_TYPE_CEPH_ROOK,
+            'failure_domain': 'invalid_failure_domain',
+            'confirmed': True
+        }
+        response = self.post_json('/storage_ceph_rook', vals, expect_errors=True)
+        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+        self.assertEqual('application/json', response.content_type)
+        self.assertTrue(response.json['error_message'])
+        self.assertIn('is not supported',
+                      response.json['error_message'])
+
+    def test_post_with_failure_domain_host_rejected_on_sx(self):
+        self.dbapi.isystem_update(self.system.uuid,
+                                  {'system_type': constants.TIS_AIO_BUILD,
+                                   'system_mode': constants.SYSTEM_MODE_SIMPLEX})
+        vals = {
+            'backend': constants.SB_TYPE_CEPH_ROOK,
+            'failure_domain': constants.CEPH_ROOK_CLUSTER_HOST_FAIL_DOMAIN,
+            'confirmed': True
+        }
+        response = self.post_json('/storage_ceph_rook', vals, expect_errors=True)
+        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+        self.assertEqual('application/json', response.content_type)
+        self.assertTrue(response.json['error_message'])
+        self.assertIn('is not supported on AIO-SX',
+                      response.json['error_message'])
+
+    def test_post_with_failure_domain_osd_rejected_on_multinode_controller(self):
+        vals = {
+            'backend': constants.SB_TYPE_CEPH_ROOK,
+            'deployment': constants.CEPH_ROOK_DEPLOYMENT_CONTROLLER,
+            'failure_domain': constants.CEPH_ROOK_CLUSTER_OSD_FAIL_DOMAIN,
+            'confirmed': True
+        }
+        response = self.post_json('/storage_ceph_rook', vals, expect_errors=True)
+        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+        self.assertEqual('application/json', response.content_type)
+        self.assertTrue(response.json['error_message'])
+        self.assertIn('is not supported for deployment model',
+                      response.json['error_message'])
+
+    def test_post_with_failure_domain_osd_rejected_on_multinode_dedicated(self):
+        vals = {
+            'backend': constants.SB_TYPE_CEPH_ROOK,
+            'deployment': constants.CEPH_ROOK_DEPLOYMENT_DEDICATED,
+            'failure_domain': constants.CEPH_ROOK_CLUSTER_OSD_FAIL_DOMAIN,
+            'confirmed': True
+        }
+        response = self.post_json('/storage_ceph_rook', vals, expect_errors=True)
+        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+        self.assertEqual('application/json', response.content_type)
+        self.assertTrue(response.json['error_message'])
+        self.assertIn('is not supported for deployment model',
+                      response.json['error_message'])
+
+    def test_post_and_confirm_modify_failure_domain_osd_rejected_on_multinode_controller(self):
+        vals = {
+            'backend': constants.SB_TYPE_CEPH_ROOK,
+            'confirmed': True
+        }
+        response = self.post_json('/storage_ceph_rook', vals, expect_errors=False)
+        self.assertEqual(http_client.OK, response.status_int)
+
+        patch_response = self.patch_dict_json('/storage_ceph_rook/%s' % response.json['uuid'],
+                                              headers={'User-Agent': 'sysinv'},
+                                              capabilities=jsonutils.dumps({
+                                                  constants.CEPH_ROOK_BACKEND_FAILURE_DOMAIN_CAP:
+                                                  constants.CEPH_ROOK_CLUSTER_OSD_FAIL_DOMAIN}),
+                                              expect_errors=True)
+        self.assertEqual(http_client.BAD_REQUEST, patch_response.status_int)
+        self.assertEqual('application/json', patch_response.content_type)
+        self.assertTrue(patch_response.json['error_message'])
+        self.assertIn('is not supported for deployment model',
+                      patch_response.json['error_message'])
+
+    def test_post_and_confirm_modify_failure_domain_osd_rejected_on_multinode_dedicated(self):
+        vals = {
+            'backend': constants.SB_TYPE_CEPH_ROOK,
+            'deployment': constants.CEPH_ROOK_DEPLOYMENT_DEDICATED,
+            'confirmed': True
+        }
+        response = self.post_json('/storage_ceph_rook', vals, expect_errors=False)
+        self.assertEqual(http_client.OK, response.status_int)
+
+        patch_response = self.patch_dict_json('/storage_ceph_rook/%s' % response.json['uuid'],
+                                              headers={'User-Agent': 'sysinv'},
+                                              capabilities=jsonutils.dumps({
+                                                  constants.CEPH_ROOK_BACKEND_FAILURE_DOMAIN_CAP:
+                                                  constants.CEPH_ROOK_CLUSTER_OSD_FAIL_DOMAIN}),
+                                              expect_errors=True)
+        self.assertEqual(http_client.BAD_REQUEST, patch_response.status_int)
+        self.assertEqual('application/json', patch_response.content_type)
+        self.assertTrue(patch_response.json['error_message'])
+        self.assertIn('is not supported for deployment model',
+                      patch_response.json['error_message'])
+
+    def test_post_without_failure_domain_defaults_to_host(self):
+        """Non-SX systems default failure_domain to 'host'."""
+        vals = {
+            'backend': constants.SB_TYPE_CEPH_ROOK,
+            'confirmed': True
+        }
+        response = self.post_json('/storage_ceph_rook', vals, expect_errors=False)
+        self.assertEqual(http_client.OK, response.status_int)
+        self.assertEqual(constants.CEPH_ROOK_CLUSTER_HOST_FAIL_DOMAIN,  # Expected
+                         self.get_json('/storage_ceph_rook/%s/' %
+                                       response.json['uuid'])['capabilities']['failure_domain'])  # Result
+
+    def test_post_without_failure_domain_defaults_to_osd_on_sx(self):
+        """AIO-SX systems default failure_domain to 'osd'."""
+        self.dbapi.isystem_update(self.system.uuid,
+                                  {'system_type': constants.TIS_AIO_BUILD,
+                                   'system_mode': constants.SYSTEM_MODE_SIMPLEX})
+        vals = {
+            'backend': constants.SB_TYPE_CEPH_ROOK,
+            'confirmed': True
+        }
+        response = self.post_json('/storage_ceph_rook', vals, expect_errors=False)
+        self.assertEqual(http_client.OK, response.status_int)
+        self.assertEqual(constants.CEPH_ROOK_CLUSTER_OSD_FAIL_DOMAIN,  # Expected
+                         self.get_json('/storage_ceph_rook/%s/' %
+                                       response.json['uuid'])['capabilities']['failure_domain'])  # Result
+
+    def test_post_with_valid_failure_domain_osd_on_sx(self):
+        self.dbapi.isystem_update(self.system.uuid,
+                                  {'system_type': constants.TIS_AIO_BUILD,
+                                   'system_mode': constants.SYSTEM_MODE_SIMPLEX})
+        vals = {
+            'backend': constants.SB_TYPE_CEPH_ROOK,
+            'failure_domain': constants.CEPH_ROOK_CLUSTER_OSD_FAIL_DOMAIN,
+            'confirmed': True
+        }
+        response = self.post_json('/storage_ceph_rook', vals, expect_errors=False)
+        self.assertEqual(http_client.OK, response.status_int)
+        self.assertEqual(constants.CEPH_ROOK_CLUSTER_OSD_FAIL_DOMAIN,  # Expected
+                         self.get_json('/storage_ceph_rook/%s/' %
+                                       response.json['uuid'])['capabilities']['failure_domain'])  # Result
+
+    def test_post_and_confirm_modify_with_valid_failure_domain(self):
+        vals = {
+            'backend': constants.SB_TYPE_CEPH_ROOK,
+            'deployment': constants.CEPH_ROOK_DEPLOYMENT_OPEN,
+            'confirmed': True
+        }
+        response = self.post_json('/storage_ceph_rook', vals, expect_errors=False)
+        self.assertEqual(http_client.OK, response.status_int)
+        self.assertEqual(constants.SB_TYPE_CEPH_ROOK,  # Expected
+                         self.get_json('/storage_ceph_rook/%s/' %
+                                       response.json['uuid'])['backend'])  # Result
+
+        patch_response = self.patch_dict_json('/storage_ceph_rook/%s' % response.json['uuid'],
+                                              headers={'User-Agent': 'sysinv'},
+                                              capabilities=jsonutils.dumps({
+                                                  constants.CEPH_ROOK_BACKEND_FAILURE_DOMAIN_CAP:
+                                                  constants.CEPH_ROOK_CLUSTER_OSD_FAIL_DOMAIN}),
+                                              expect_errors=False)
+        self.assertEqual(http_client.OK, patch_response.status_int)
+        self.assertEqual(constants.CEPH_ROOK_CLUSTER_OSD_FAIL_DOMAIN,  # Expected
+                         self.get_json('/storage_ceph_rook/%s/' %
+                                       response.json['uuid'])['capabilities']['failure_domain'])  # Result
+
+    def test_post_and_confirm_modify_with_valid_failure_domain_host(self):
+        vals = {
+            'backend': constants.SB_TYPE_CEPH_ROOK,
+            'deployment': constants.CEPH_ROOK_DEPLOYMENT_OPEN,
+            'failure_domain': constants.CEPH_ROOK_CLUSTER_OSD_FAIL_DOMAIN,
+            'confirmed': True
+        }
+        response = self.post_json('/storage_ceph_rook', vals, expect_errors=False)
+        self.assertEqual(http_client.OK, response.status_int)
+
+        patch_response = self.patch_dict_json('/storage_ceph_rook/%s' % response.json['uuid'],
+                                              headers={'User-Agent': 'sysinv'},
+                                              capabilities=jsonutils.dumps({
+                                                  constants.CEPH_ROOK_BACKEND_FAILURE_DOMAIN_CAP:
+                                                  constants.CEPH_ROOK_CLUSTER_HOST_FAIL_DOMAIN}),
+                                              expect_errors=False)
+        self.assertEqual(http_client.OK, patch_response.status_int)
+        self.assertEqual(constants.CEPH_ROOK_CLUSTER_HOST_FAIL_DOMAIN,  # Expected
+                         self.get_json('/storage_ceph_rook/%s/' %
+                                       response.json['uuid'])['capabilities']['failure_domain'])  # Result
+
+    def test_post_and_confirm_modify_with_valid_failure_domain_osd(self):
+        vals = {
+            'backend': constants.SB_TYPE_CEPH_ROOK,
+            'deployment': constants.CEPH_ROOK_DEPLOYMENT_OPEN,
+            'failure_domain': constants.CEPH_ROOK_CLUSTER_HOST_FAIL_DOMAIN,
+            'confirmed': True
+        }
+        response = self.post_json('/storage_ceph_rook', vals, expect_errors=False)
+        self.assertEqual(http_client.OK, response.status_int)
+
+        patch_response = self.patch_dict_json('/storage_ceph_rook/%s' % response.json['uuid'],
+                                              headers={'User-Agent': 'sysinv'},
+                                              capabilities=jsonutils.dumps({
+                                                  constants.CEPH_ROOK_BACKEND_FAILURE_DOMAIN_CAP:
+                                                  constants.CEPH_ROOK_CLUSTER_OSD_FAIL_DOMAIN}),
+                                              expect_errors=False)
+        self.assertEqual(http_client.OK, patch_response.status_int)
+        self.assertEqual(constants.CEPH_ROOK_CLUSTER_OSD_FAIL_DOMAIN,  # Expected
+                         self.get_json('/storage_ceph_rook/%s/' %
+                                       response.json['uuid'])['capabilities']['failure_domain'])  # Result
+
+    def test_post_and_confirm_modify_with_invalid_failure_domain(self):
+        vals = {
+            'backend': constants.SB_TYPE_CEPH_ROOK,
+            'confirmed': True
+        }
+        response = self.post_json('/storage_ceph_rook', vals, expect_errors=False)
+        self.assertEqual(http_client.OK, response.status_int)
+        self.assertEqual(constants.SB_TYPE_CEPH_ROOK,  # Expected
+                         self.get_json('/storage_ceph_rook/%s/' %
+                                       response.json['uuid'])['backend'])  # Result
+
+        patch_response = self.patch_dict_json('/storage_ceph_rook/%s' % response.json['uuid'],
+                                              headers={'User-Agent': 'sysinv'},
+                                              capabilities=jsonutils.dumps({
+                                                  constants.CEPH_ROOK_BACKEND_FAILURE_DOMAIN_CAP:
+                                                  'invalid_domain'}),
+                                              expect_errors=True)
+        self.assertEqual(http_client.BAD_REQUEST, patch_response.status_int)
+        self.assertEqual('application/json', patch_response.content_type)
+        self.assertTrue(patch_response.json['error_message'])
+        self.assertIn('is not supported',
+                      patch_response.json['error_message'])
+
+    def test_post_and_confirm_modify_with_failure_domain_host_rejected_on_sx(self):
+        self.dbapi.isystem_update(self.system.uuid,
+                                  {'system_type': constants.TIS_AIO_BUILD,
+                                   'system_mode': constants.SYSTEM_MODE_SIMPLEX})
+        vals = {
+            'backend': constants.SB_TYPE_CEPH_ROOK,
+            'confirmed': True
+        }
+        response = self.post_json('/storage_ceph_rook', vals, expect_errors=False)
+        self.assertEqual(http_client.OK, response.status_int)
+
+        patch_response = self.patch_dict_json('/storage_ceph_rook/%s' % response.json['uuid'],
+                                              headers={'User-Agent': 'sysinv'},
+                                              capabilities=jsonutils.dumps({
+                                                  constants.CEPH_ROOK_BACKEND_FAILURE_DOMAIN_CAP:
+                                                  constants.CEPH_ROOK_CLUSTER_HOST_FAIL_DOMAIN}),
+                                              expect_errors=True)
+        self.assertEqual(http_client.BAD_REQUEST, patch_response.status_int)
+        self.assertEqual('application/json', patch_response.content_type)
+        self.assertTrue(patch_response.json['error_message'])
+        self.assertIn('is not supported on AIO-SX',
+                      patch_response.json['error_message'])
+
+    def test_post_and_confirm_modify_no_changes_detected(self):
+        vals = {
+            'backend': constants.SB_TYPE_CEPH_ROOK,
+            'confirmed': True
+        }
+        response = self.post_json('/storage_ceph_rook', vals, expect_errors=False)
+        self.assertEqual(http_client.OK, response.status_int)
+
+        patch_response = self.patch_dict_json('/storage_ceph_rook/%s' % response.json['uuid'],
+                                              headers={'User-Agent': 'sysinv'},
+                                              capabilities=jsonutils.dumps({
+                                                  constants.CEPH_ROOK_BACKEND_FAILURE_DOMAIN_CAP:
+                                                  constants.CEPH_ROOK_CLUSTER_HOST_FAIL_DOMAIN}),
+                                              expect_errors=True)
+        self.assertEqual(http_client.BAD_REQUEST, patch_response.status_int)
+        self.assertEqual('application/json', patch_response.content_type)
+        self.assertTrue(patch_response.json['error_message'])
+        self.assertIn('No changes to the existing backend settings were detected',
+                      patch_response.json['error_message'])
+
     def test_post_and_confirm_modify_with_invalid_svc(self):
         vals = {
             'backend': constants.SB_TYPE_CEPH_ROOK,
@@ -1191,6 +1501,7 @@ class StorageCephRookTestCases(base.FunctionalTest):
                          self.get_json('/storage_ceph_rook/%s/' %
                                        response.json['uuid'])['services'])  # Result
         self.assertEqual({constants.CEPH_ROOK_BACKEND_DEPLOYMENT_CAP: constants.CEPH_ROOK_DEPLOYMENT_CONTROLLER,
+                          constants.CEPH_ROOK_BACKEND_FAILURE_DOMAIN_CAP: constants.CEPH_ROOK_CLUSTER_HOST_FAIL_DOMAIN,
                           constants.CEPH_BACKEND_REPLICATION_CAP:
                             constants.CEPH_BACKEND_CAP_DEFAULT[constants.CEPH_BACKEND_REPLICATION_CAP],
                           constants.CEPH_BACKEND_MIN_REPLICATION_CAP: '1',
@@ -1219,6 +1530,77 @@ class StorageCephRookTestCases(base.FunctionalTest):
         self.assertEqual(constants.CEPH_ROOK_DEPLOYMENT_OPEN,  # Expected
                          self.get_json('/storage_ceph_rook/%s/' %
                                        response.json['uuid'])['capabilities']['deployment_model'])  # Result
+
+    def test_modify_deployment_model_adds_failure_domain_default(self):
+        """Modify deployment_model on a backend without failure_domain should
+        auto-populate failure_domain with the default value (host for non-SX).
+        This simulates upgrade from an older version that didn't have failure_domain."""
+        vals = {
+            'backend': constants.SB_TYPE_CEPH_ROOK,
+            'confirmed': True
+        }
+        response = self.post_json('/storage_ceph_rook', vals, expect_errors=False)
+        self.assertEqual(http_client.OK, response.status_int)
+
+        # Simulate legacy backend: remove failure_domain from capabilities
+        backend_uuid = response.json['uuid']
+        backend = self.dbapi.storage_ceph_rook_get(backend_uuid)
+        caps = dict(backend.capabilities)
+        caps.pop(constants.CEPH_ROOK_BACKEND_FAILURE_DOMAIN_CAP, None)
+        self.dbapi.storage_ceph_rook_update(backend.id, {'capabilities': caps})
+
+        # Verify failure_domain is gone
+        caps = self.get_json('/storage_ceph_rook/%s/' % backend_uuid)['capabilities']
+        self.assertNotIn(constants.CEPH_ROOK_BACKEND_FAILURE_DOMAIN_CAP, caps)
+
+        # Modify deployment_model only
+        patch_response = self.patch_dict_json('/storage_ceph_rook/%s' % backend_uuid,
+                                              headers={'User-Agent': 'sysinv'},
+                                              capabilities=jsonutils.dumps({
+                                                  constants.CEPH_ROOK_BACKEND_DEPLOYMENT_CAP:
+                                                  constants.CEPH_ROOK_DEPLOYMENT_OPEN}),
+                                              expect_errors=False)
+        self.assertEqual(http_client.OK, patch_response.status_int)
+
+        # failure_domain should be auto-populated (default for non-SX is 'host')
+        updated_caps = self.get_json('/storage_ceph_rook/%s/' % backend_uuid)['capabilities']
+        self.assertIn(constants.CEPH_ROOK_BACKEND_FAILURE_DOMAIN_CAP, updated_caps)
+        self.assertEqual(constants.CEPH_ROOK_CLUSTER_HOST_FAIL_DOMAIN,
+                         updated_caps[constants.CEPH_ROOK_BACKEND_FAILURE_DOMAIN_CAP])
+
+    @mock.patch('sysinv.common.utils.is_aio_simplex_system')
+    def test_modify_deployment_model_adds_failure_domain_osd_on_sx(self, mock_sx):
+        """Modify deployment_model on AIO-SX backend without failure_domain should
+        auto-populate failure_domain with 'osd'."""
+        mock_sx.return_value = True
+        vals = {
+            'backend': constants.SB_TYPE_CEPH_ROOK,
+            'confirmed': True
+        }
+        response = self.post_json('/storage_ceph_rook', vals, expect_errors=False)
+        self.assertEqual(http_client.OK, response.status_int)
+
+        # Simulate legacy backend: remove failure_domain
+        backend_uuid = response.json['uuid']
+        backend = self.dbapi.storage_ceph_rook_get(backend_uuid)
+        caps = dict(backend.capabilities)
+        caps.pop(constants.CEPH_ROOK_BACKEND_FAILURE_DOMAIN_CAP, None)
+        self.dbapi.storage_ceph_rook_update(backend.id, {'capabilities': caps})
+
+        # Modify deployment_model only
+        patch_response = self.patch_dict_json('/storage_ceph_rook/%s' % backend_uuid,
+                                              headers={'User-Agent': 'sysinv'},
+                                              capabilities=jsonutils.dumps({
+                                                  constants.CEPH_ROOK_BACKEND_DEPLOYMENT_CAP:
+                                                  constants.CEPH_ROOK_DEPLOYMENT_OPEN}),
+                                              expect_errors=False)
+        self.assertEqual(http_client.OK, patch_response.status_int)
+
+        # failure_domain should be auto-populated as 'osd' on SX
+        updated_caps = self.get_json('/storage_ceph_rook/%s/' % backend_uuid)['capabilities']
+        self.assertIn(constants.CEPH_ROOK_BACKEND_FAILURE_DOMAIN_CAP, updated_caps)
+        self.assertEqual(constants.CEPH_ROOK_CLUSTER_OSD_FAIL_DOMAIN,
+                         updated_caps[constants.CEPH_ROOK_BACKEND_FAILURE_DOMAIN_CAP])
 
     def test_post_and_confirm_modify_with_invalid_deployment_model(self):
         vals = {
@@ -1287,7 +1669,6 @@ class StorageCephRookTestCases(base.FunctionalTest):
         self.assertEqual(constants.SB_TIER_STATUS_DEFINED,
                          tier_list['storage_tiers'][0]['status'])
         saved_tier_uuid = tier_list['storage_tiers'][0]['uuid']
-        print(tier_list['storage_tiers'])
 
         # get cluster
         cluster_list = self.get_json('/clusters', expect_errors=False)

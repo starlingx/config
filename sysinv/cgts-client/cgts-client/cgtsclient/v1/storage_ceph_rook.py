@@ -1,6 +1,6 @@
 #
 # Copyright (c) 2020 Intel Corporation, Inc.
-# Copyright (c) 2024 Wind River Systems, Inc.
+# Copyright (c) 2024,2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -12,7 +12,7 @@ from cgtsclient.common import base
 from cgtsclient import exc
 
 CREATION_ATTRIBUTES = ['confirmed', 'name', 'services', 'capabilities',
-                       'deployment']
+                       'deployment', 'failure_domain']
 DISPLAY_ATTRIBUTES = []
 PATCH_ATTRIBUTES = []
 
