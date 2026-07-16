@@ -1199,6 +1199,7 @@ class HostController(rest.RestController):
         'downgrade': ['POST'],
         'install_progress': ['POST'],
         'wipe_osds': ['GET'],
+        'wipe_lvm_mode': ['GET'],
         'update_mgmt_ipsec_state': ['POST'],
         'mgmt_ip': ['GET'],
         'kube_upgrade_control_plane': ['POST'],
@@ -1359,6 +1360,11 @@ class HostController(rest.RestController):
         if (os.path.isfile(tsc.SKIP_CEPH_OSD_WIPING)):
             return False
         return True
+
+    @wsme_pecan.wsexpose(wtypes.text)
+    def wipe_lvm_mode(self):
+        LOG.debug("Checking if host LVM needs to be wiped.")
+        return cutils.get_lvm_mode_flag()
 
     @wsme_pecan.wsexpose(wtypes.text, six.text_type)
     def mgmt_ip(self, mac):

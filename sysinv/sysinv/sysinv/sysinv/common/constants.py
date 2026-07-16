@@ -631,6 +631,7 @@ LVM_CSI_PROVISIONING_MODE_THIN = 'thin'
 LVM_CSI_PROVISIONING_MODE_THICK = 'thick'
 LVM_CSI_PROVISIONING_FUNCTION = 'lvm-csi'
 LVM_CSI_POOL_NAME = 'lvmcsi-pool'
+WIPE_LVM_MODE_FLAG = "/etc/platform/.wipe_lvm_mode"
 
 # Host-fs States
 HOST_FS_STATUS_CREATE_IN_SVC = "Creating"
