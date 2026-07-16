@@ -569,6 +569,13 @@ def _check(op, lvg, rpc_lvg=None):
                     raise wsme.exc.ClientSideError(
                         _("It's not possible to set pool size parameter "
                           "when the function is set to none"))
+                thin_cur_lv = rpc_lvg['capabilities'].get('thin_cur_lv', 0)
+                if thin_cur_lv > 0:
+                    raise wsme.exc.ClientSideError(
+                        _("The %s volume group (VG) have %d logical volumes "
+                          "(LV) provisioned for lvm-csi applications. It's "
+                          "not possible to remove lvm-csi function with the "
+                          "VG in use.") % (constants.LVG_CGTS_VG, thin_cur_lv))
                 rpc_lvg['capabilities'].pop('lvm_function', None)
                 rpc_lvg['capabilities'].pop('lvm_pool_size', None)
                 rpc_lvg['capabilities'].pop('lvm_type', None)
@@ -623,6 +630,13 @@ def _check(op, lvg, rpc_lvg=None):
         elif lvg['lvm_vg_name'] == constants.LVG_NOVA_LOCAL:
             # We never have more than 1 LV in nova-local VG
             pass
+
+        if lvg['lvm_function'] and lvg['lvm_function'] == constants \
+           .LVM_CSI_PROVISIONING_FUNCTION and lvg['lvm_cur_lv'] > 0:
+            raise wsme.exc.ClientSideError(
+                _("The %s volume group (VG) have %d logical volumes (LV) "
+                  "provisioned. It's not possible to delete a VG in use.") % (
+                    lvg['lvm_vg_name'], lvg['lvm_cur_lv']))
     else:
         raise wsme.exc.ClientSideError(
             _("Internal Error: Invalid Volume Group operation: %s" % op))

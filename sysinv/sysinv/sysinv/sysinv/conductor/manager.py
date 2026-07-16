@@ -5316,6 +5316,16 @@ class ConductorManager(service.PeriodicService):
 
                     # Update the database
                     self.dbapi.ilvg_update(ilvg['uuid'], lvg_dict)
+
+                    # If rpc dict has capabilities attributes, merge with
+                    # current lvg to avoid data loss
+                    if (lvg_dict.get('capabilities', None) is not None and
+                            ilvg.capabilities is not None):
+                        new_capabilities = dict(ilvg.capabilities)
+                        new_capabilities.update(lvg_dict['capabilities'])
+                        self.dbapi.ilvg_update(
+                            ilvg['uuid'],
+                            {'capabilities': new_capabilities})
                     break
 
             if not found:

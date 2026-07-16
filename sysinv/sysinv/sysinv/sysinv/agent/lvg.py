@@ -32,6 +32,21 @@ class LVGOperator(object):
         LOG.error("%s @ %s:%s" % (e, traceback.tb_frame.f_code.co_filename,
                                   traceback.tb_lineno))
 
+    def count_lvs_in_thinpool(self, vg, thin_pool):
+        """Return number lvs in thinpools in the specified vg. """
+        try:
+            selection = f"pool_lv={thin_pool} && vg_name={vg}"
+            command = ['lvs', '--noheadings', '-o', 'lv_name',
+                       '--select', selection]
+            output = subprocess.check_output(command, universal_newlines=True)  # pylint: disable=not-callable
+        except Exception as e:
+            self.handle_exception("Could not retrieve LV information: %s" % e)
+            output = ""
+
+        thinpools = len(output.strip().splitlines())
+
+        return thinpools
+
     def thinpools_in_vg(self, vg, cinder_device=None):
         """Return number of thinpools in the specified vg. """
         try:
@@ -155,6 +170,14 @@ class LVGOperator(object):
             if 'lvm_cur_lv' in attr:
                 attr['lvm_cur_lv'] -= self.thinpools_in_vg(attr['lvm_vg_name'],
                                                            cinder_device)
+
+            # Search for lvm-csi thin LVs in CGTS-VG
+            vg_name = attr.get('lvm_vg_name', None)
+            if vg_name and vg_name == constants.LVG_CGTS_VG:
+                thin_cur_lv = self.count_lvs_in_thinpool(
+                    constants.LVG_CGTS_VG,
+                    constants.LVM_CSI_POOL_NAME)
+                attr['capabilities'] = {'thin_cur_lv': thin_cur_lv}
 
             # Make sure we have attributes
             if attr:
