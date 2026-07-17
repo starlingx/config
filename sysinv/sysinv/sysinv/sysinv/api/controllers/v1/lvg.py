@@ -761,8 +761,10 @@ def _delete(lvg):
     # Update physical volumes
     ihost = pecan.request.dbapi.ihost_get(lvg['forihostid']).as_dict()
     ipvs = pecan.request.dbapi.ipv_get_all(forihostid=ihost['id'])
+    ipvs_to_remove = []
     for pv in ipvs:
         if pv.forilvgid == lvg['id']:
+            ipvs_to_remove.append(pv.uuid)
             values = {'forilvgid': None,
                       'pv_state': constants.LVG_DEL}
             try:
@@ -830,7 +832,7 @@ def _delete(lvg):
                     pecan.request.context,
                     lvg['ihost_uuid'],
                     lvg,
-                    pv)
+                    ipvs_to_remove)
         except exception.HTTPNotFound:
             msg = _("Deleting LVG failed: host %s lvg %s"
                     % (ihost['hostname'], lvg['lvm_vg_name']))
