@@ -17225,8 +17225,7 @@ class ConductorManager(service.PeriodicService):
         if app.status in [constants.APP_APPLY_IN_PROGRESS,
                           constants.APP_APPLY_SUCCESS,
                           constants.APP_APPLY_FAILURE]:
-            overrides = self._helm.get_helm_chart_overrides(chart_name,
-                                                            cnamespace)
+            overrides = self._helm.get_helm_chart_overrides(chart_name, cnamespace, app_name)
         else:
             app = self._app.Application(app)
             self._helm.plugins.activate_plugins(
@@ -17236,8 +17235,7 @@ class ConductorManager(service.PeriodicService):
                 sync_plugins_dir=app.sync_plugins_dir,
                 args=(self._helm,)
             )
-            overrides = self._helm.get_helm_chart_overrides(chart_name,
-                                                            cnamespace)
+            overrides = self._helm.get_helm_chart_overrides(chart_name, cnamespace, app_name)
             self._helm.plugins.deactivate_plugins(
                 app_name=app.name,
                 app_version=app.version,

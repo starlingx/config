@@ -30,24 +30,6 @@ LOG = logging.getLogger(__name__)
 # Disable yaml feature 'alias' for clean and readable output
 yaml.Dumper.ignore_aliases = lambda *data: True
 
-# Number of characters to strip off from helm plugin name defined in setup.cfg,
-# in order to allow controlling the order of the helm plugins, without changing
-# the names of the plugins.
-# The convention here is for the helm plugins to be named ###_PLUGINNAME.
-HELM_PLUGIN_PREFIX_LENGTH = 4
-
-# Number of optional characters appended to FluxCD kustomize operator name, to
-# allow overriding with a newer version of the FluxCD kustomize operator. The
-# convention here is for the FluxCD kustomize operator plugins to allow an
-# optional suffix, as in PLUGINNAME_###.
-FLUXCD_PLUGIN_SUFFIX_LENGTH = 4
-
-# Number of optional characters appended to AppLifecycle operator name,
-# to allow overriding with a newer version of the AppLifecycle operator.
-# The convention here is for the AppLifecycle operator plugins to allow an
-# optional suffix, as in PLUGINNAME_###.
-LIFECYCLE_PLUGIN_SUFFIX_LENGTH = 4
-
 
 def helm_context(func):
     """Decorate to initialize the local threading context"""
@@ -116,11 +98,18 @@ class HelmOperator(object):
             plugin_name
         )
 
-    def get_chart_operator(self, plugin_name):
+    def get_chart_operator(self, plugin_name, app_name=None):
+        """Get the chart operator for a given chart plugin name.
+
+        :param plugin_name: name of the chart plugin
+        :param app_name: optional application name to disambiguate when
+                         multiple apps share the same chart name.
+        """
         plugin = self.plugins.get_plugin(
             namespace=plugin_manager.PLUGIN_NS_HELM_APPLICATIONS,
             plugin_name=plugin_name,
-            fallback_to_generic=False
+            fallback_to_generic=False,
+            app_name=utils.find_app_plugin_name(app_name) if app_name else None
         )
         if plugin:
             return plugin.operator
@@ -143,7 +132,7 @@ class HelmOperator(object):
         """
 
         namespaces = []
-        chart_op = self.get_chart_operator(chart_name)
+        chart_op = self.get_chart_operator(chart_name, app_name=app_name)
         if chart_op:
             app_plugin_name = utils.find_app_plugin_name(app_name)
             namespaces = chart_op.get_namespaces_by_app(app_plugin_name)
@@ -166,11 +155,11 @@ class HelmOperator(object):
         return namespaces
 
     @helm_context
-    def get_helm_chart_overrides(self, chart_name, cnamespace=None):
+    def get_helm_chart_overrides(self, chart_name, cnamespace=None, app_name=None):
         """ RPCApi: Gets the *chart* overrides for a supported chart. """
-        return self._get_helm_chart_overrides(chart_name, cnamespace)
+        return self._get_helm_chart_overrides(chart_name, cnamespace, app_name)
 
-    def _get_helm_chart_overrides(self, chart_name, cnamespace=None):
+    def _get_helm_chart_overrides(self, chart_name, cnamespace=None, app_name=None):
         """Get the overrides for a supported chart.
 
         This method retrieves overrides for a supported chart. Overrides for
@@ -179,6 +168,7 @@ class HelmOperator(object):
 
         :param chart_name: name of a supported chart
         :param cnamespace: (optional) namespace
+        :param app_name: (optional) application name for disambiguation
         :returns: dict of overrides.
 
         Example Without a cnamespace parameter:
@@ -207,7 +197,7 @@ class HelmOperator(object):
         }
         """
         overrides = {}
-        chart_op = self.get_chart_operator(chart_name)
+        chart_op = self.get_chart_operator(chart_name, app_name=app_name)
         if chart_op:
             try:
                 overrides.update(chart_op.get_overrides(cnamespace))
@@ -311,7 +301,11 @@ class HelmOperator(object):
             thread_context = eventlet.greenthread.getcurrent()
             setattr(thread_context, '_helm_context', parent_context)
             try:
-                return chart_name, self._get_helm_chart_overrides(chart_name, cnamespace)
+                return chart_name, self._get_helm_chart_overrides(
+                    chart_name,
+                    cnamespace,
+                    app_name=app_name
+                )
             except exception.InvalidHelmNamespace as e:
                 LOG.info(e)
                 return chart_name, None
@@ -454,7 +448,7 @@ class HelmOperator(object):
         kustomize_op.load(fluxcd_manifests_dir)
 
         if self.get_helm_system_application_relation(plugin_name):
-            app_overrides = self._get_helm_application_overrides(plugin_name, cnamespace)
+            app_overrides = self._get_helm_application_overrides(app.name, cnamespace)
             for (chart_name, overrides) in iteritems(app_overrides):
                 if combined:
                     # The overrides at this point are the system overrides. For
@@ -506,7 +500,7 @@ class HelmOperator(object):
                 # GenericFluxCDKustomizeOperator is used and chart specific
                 # operations can be skipped.
                 if kustomize_op.APP:
-                    chart_op = self.get_chart_operator(chart_name)
+                    chart_op = self.get_chart_operator(chart_name, app_name=app_name)
                     if chart_op:
                         chart_op.execute_kustomize_updates(kustomize_op)
 
@@ -561,9 +555,10 @@ class HelmOperator(object):
         return utils.find_kube_app(self.dbapi, app_name), \
                utils.find_app_plugin_name(app_name)
 
-    def remove_helm_chart_overrides(self, path, chart_name, cnamespace=None):
+    def remove_helm_chart_overrides(self, path, chart_name, cnamespace=None,
+                                    app_name=None):
         """Remove the overrides files for a chart"""
-        chart_op = self.get_chart_operator(chart_name)
+        chart_op = self.get_chart_operator(chart_name, app_name=app_name)
         if chart_op:
             namespaces = chart_op.SUPPORTED_NAMESPACES
 
