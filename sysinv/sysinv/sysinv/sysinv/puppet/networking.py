@@ -4,7 +4,6 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-import glob
 import ipaddress
 import json
 import netaddr
@@ -482,9 +481,6 @@ class NetworkingPuppet(base.BasePuppet):
         }
 
         default_device_parameters = {
-            'input_mode': constants.PTP_SYNCE_INPUT_MODE_LINE,
-            'input_QL': constants.PTP_SYNCE_EXTERNAL_INPUT_QL,
-            'input_ext_QL': constants.PTP_SYNCE_EXTERNAL_INPUT_EXT_QL,
             'extended_tlv': constants.PTP_SYNCE_EXTERNAL_TLV,
             'network_option': constants.PTP_SYNCE_NETWORK_OPTION,
             'recover_time': constants.PTP_SYNCE_RECOVER_TIME,
@@ -757,11 +753,18 @@ class NetworkingPuppet(base.BasePuppet):
                         iface['parameters'].update({'recover_clock_enable_cmd':
                             recover_clk_cmd_fmt % (1, port_name)})
                         base_port = self._get_base_port(host, port_name)
+                    # Detect GNR-D (E825/zl3073x) for external source handling
+                    is_gnrd = False
+                    if base_port:
+                        host_port_list = self.dbapi.ethernet_port_get_by_host(
+                            host.id)
+                        is_gnrd = self._is_gnrd(host_port_list, base_port)
                     # Handle synce4l external source parameters
                     current_instance['external_source'] = self._set_external_source_parameters(
                         iface['uuid'],
                         ptp_parameters_interface,
-                        base_port)
+                        base_port,
+                        is_gnrd=is_gnrd)
                 # Add supplied params to the interface
                 for param in ptp_parameters_interface:
                     if iface['uuid'] in param['owners']:
@@ -804,32 +807,69 @@ class NetworkingPuppet(base.BasePuppet):
                 base_port = port_name
 
             # Look up port driver from DB
-            host_port_list = self.dbapi.port_get_all(hostid=host.id)
-            port_driver = None
-            for p in host_port_list:
-                if p['name'] == base_port:
-                    port_driver = p.get('driver', '')
-                    break
+            host_port_list = self.dbapi.ethernet_port_get_by_host(host.id)
+            port_obj = self._find_port_by_name(host_port_list, base_port)
+            if not port_obj:
+                continue
+            port_driver = port_obj.get('driver', '')
 
             if port_driver != 'ice':
                 continue
 
-            # Set module_name if not already specified
-            if not device_params.get('module_name'):
-                instance['device_parameters']['module_name'] = 'ice'
+            # Determine NIC type for DPLL netlink configuration.
+            # All ice-driver NICs use DPLL netlink mode with clock_id +
+            # module_name. The difference is the DPLL module identity:
+            #   E825 (GNR-D): module_name=zl3073x, clock_id from sysfs
+            #     /sys/module/zl3073x/parameters/clock_id (firmware ID)
+            #   E810/E830: module_name=ice, clock_id derived from base
+            #     port MAC as EUI-64 (same value as phys_switch_id)
+            is_gnrd = self._is_gnrd(host_port_list, base_port)
 
-            # Read phys_switch_id from sysfs to get clock_id
+            # Set module_name based on NIC type
+            if not device_params.get('module_name'):
+                if is_gnrd:
+                    instance['device_parameters']['module_name'] = 'zl3073x'
+                else:
+                    instance['device_parameters']['module_name'] = 'ice'
+
+            # Derive clock_id based on NIC type.
             if not device_params.get('clock_id'):
-                switch_id_path = '/sys/class/net/%s/phys_switch_id' % base_port
-                try:
-                    with open(switch_id_path) as f:
-                        switch_id_hex = f.readline().strip()
-                        if switch_id_hex:
-                            clock_id = str(int(switch_id_hex, 16))
-                            instance['device_parameters']['clock_id'] = clock_id
-                except Exception:
-                    LOG.warning("Cannot read %s for synce4l clock_id "
-                                "auto-detection" % switch_id_path)
+                if is_gnrd:
+                    # E825/zl3073x: firmware identity from sysfs param.
+                    # NOTE: reads local sysfs — correct because all
+                    # controllers on GNR-D share the same chip.
+                    zl_path = '/sys/module/zl3073x/parameters/clock_id'
+                    try:
+                        with open(zl_path) as f:
+                            clock_id = f.readline().strip()
+                            if clock_id and clock_id != '0':
+                                instance['device_parameters'][
+                                    'clock_id'] = clock_id
+                    except Exception:
+                        LOG.warning(
+                            "Cannot read %s for synce4l clock_id"
+                            % zl_path)
+                else:
+                    # E810/E830: EUI-64 derived from base port MAC.
+                    # Uses DB value to avoid sysfs reads on remote
+                    # DX controllers during hiera generation.
+                    base_mac = getattr(port_obj, 'mac', '')
+                    if base_mac:
+                        mac_hex = base_mac.replace(':', '').lower()
+                        if len(mac_hex) == 12:
+                            eui64 = mac_hex[:6] + 'ffff' + mac_hex[6:]
+                            clock_id = str(int(eui64, 16))
+                            instance['device_parameters'][
+                                'clock_id'] = clock_id
+                        else:
+                            LOG.warning(
+                                "Invalid MAC '%s' for base port %s"
+                                % (base_mac, base_port))
+                    else:
+                        LOG.warning(
+                            "Cannot find MAC for base port %s on "
+                            "host %s for synce4l clock_id"
+                            % (base_port, host.hostname))
 
         return ptp_instances
 
@@ -962,9 +1002,24 @@ class NetworkingPuppet(base.BasePuppet):
                         port_dict[port]['base_port'] = base_port
         return port_dict
 
+    def _find_port_by_name(self, host_port_list, port_name):
+        """Find a port object by name from a list of port objects."""
+        for p in host_port_list:
+            if p.name == port_name:
+                return p
+        return None
+
+    def _is_gnrd(self, host_port_list, port_name):
+        """Detect if a port is on GNR-D (E825/zl3073x) hardware."""
+        port_obj = self._find_port_by_name(host_port_list, port_name)
+        if not port_obj:
+            return False
+        pdevice = getattr(port_obj, 'pdevice', '') or ''
+        return 'E825' in pdevice
+
     def _get_base_port(self, host, port_name):
         base_port = ""
-        host_port_list = self.dbapi.port_get_all(hostid=host.id)
+        host_port_list = self.dbapi.ethernet_port_get_by_host(host.id)
         # Get port 0 for the configured NIC
         for p in host_port_list:
             if port_name == p['name']:
@@ -979,39 +1034,70 @@ class NetworkingPuppet(base.BasePuppet):
                         break
         return base_port
 
-    def _get_ptp_dev_info(self, base_port, meta_params_dict):
+    def _get_ptp_dev_info(self, base_port, meta_params_dict, is_gnrd=False):
         pin = meta_params_dict['external_source']
         direction_map = {'input': 1, 'output': 2}
         default_pin_map = {'SMA1': 'input',
                            'SMA2': 'output',
                            'U.FL1': 'input',
                            'U.FL2': 'output',
+                           'GNSS_1PPS_IN': 'input',
+                           'GNSS_10M_IN': 'input',
+                           '1EPPS_IN': 'input',
                            }
 
-        # Validate PTP dev and get pin path
-        path = '/sys/class/net/%s/device/ptp/*/pins/%s' % (base_port, pin)
-        path_list = glob.glob(path)
-        if len(path_list) != 1:
-            LOG.error(f'Cannot find a PTP device in {path}')
+        if is_gnrd:
+            # GNR-D (E825/zl3073x): synce4l matches external source pins
+            # via board_label in DPLL netlink mode. No sysfs commands needed.
+            # The board_label must match the kernel DPLL pin's board_label
+            # attribute exactly (e.g. "GNSS_1PPS_IN").
+            direction = meta_params_dict.get(
+                'external_source_direction',
+                default_pin_map.get(pin, 'input'))
+            if direction not in direction_map:
+                LOG.error("Bad PTP pin direction: '%s'" % direction)
+                return None
+            return {'board_label': pin, 'dpll_mode': True,
+                    'func': direction_map[direction]}
+
+        # E810 (ice): Use sysfs pin path with shell glob for runtime
+        # expansion. The ptp device number varies by PCI probe order.
+        # Pin-to-channel mapping for E810 WPC/Logan Beach NICs.
+        # SMA connectors use DPLL channel 1; U.FL use channel 0.
+        pin_channel_map = {'SMA1': '1',
+                           'SMA2': '1',
+                           'U.FL1': '0',
+                           'U.FL2': '0',
+                           }
+
+        if pin not in pin_channel_map:
+            LOG.error("Unknown PTP pin '%s' for external source, "
+                      "cannot determine channel" % pin)
             return None
-        pin_path = path_list[0]
-        # Get the pin channel
-        try:
-            with open(pin_path) as f:
-                line = f.readline().strip('\n')
-                channel = line.split(' ')[1]
-        except Exception:
-            LOG.error(f'Cannot find a PTP pin channel device in {pin_path}')
-            return None
+
+        # Use a glob path so the command resolves correctly on any host
+        # at runtime. The ptp device number varies by PCI probe order and
+        # cannot be determined from a remote host during hiera generation.
+        # synce4l executes these via system() which expands shell globs.
+        pin_path = '/sys/class/net/%s/device/ptp/ptp*/pins/%s' % (
+            base_port, pin)
+        channel = pin_channel_map[pin]
+
         if 'external_source_direction' in meta_params_dict:
             direction = meta_params_dict['external_source_direction']
         else:
+            if pin not in default_pin_map:
+                LOG.error("Cannot determine default direction for pin '%s'" %
+                          pin)
+                return None
             direction = default_pin_map[pin]
-            LOG.info(f'PTP pin {pin} direction not specified, using the default: {direction}')
+            LOG.info('PTP pin %s direction not specified, using the '
+                     'default: %s' % (pin, direction))
         if direction not in direction_map.keys():
-            LOG.error(f'Bad PTP pin direction: \'{direction}\'')
+            LOG.error("Bad PTP pin direction: '%s'" % direction)
             return None
-        return {'func': direction_map[direction], 'channel': channel, 'path': pin_path}
+        return {'func': direction_map[direction], 'channel': channel,
+                'path': pin_path}
 
     def _ptp_parameters_interface_del(self, ptp_parameters_interface, param, iface_uuid):
         if len(param['owners']) > 1:
@@ -1019,7 +1105,7 @@ class NetworkingPuppet(base.BasePuppet):
         else:
             ptp_parameters_interface.remove(param)
 
-    def _set_external_source_parameters(self, iface_uuid, ptp_parameters_interface, base_port):
+    def _set_external_source_parameters(self, iface_uuid, ptp_parameters_interface, base_port, is_gnrd=False):
         if not base_port:
             LOG.warning('Cannot set synce4l external source, no base port')
             return
@@ -1031,7 +1117,9 @@ class NetworkingPuppet(base.BasePuppet):
         }
 
         meta_params = ('external_source', 'external_source_direction')
-        synce4l_params = ('input_QL', 'input_ext_QL', 'internal_prio', 'external_enable_cmd', 'external_disable_cmd')
+        synce4l_params = ('input_QL', 'input_ext_QL', 'internal_prio',
+                          'external_enable_cmd', 'external_disable_cmd',
+                          'board_label')
 
         # Handle meta parameters first (not forwarded to the sync4l config)
         meta_params_dict = {}
@@ -1045,16 +1133,24 @@ class NetworkingPuppet(base.BasePuppet):
         # Create the external source section
         external_source = {}
         if 'external_source' in meta_params_dict:
-            info = self._get_ptp_dev_info(base_port, meta_params_dict)
+            info = self._get_ptp_dev_info(base_port, meta_params_dict,
+                                          is_gnrd=is_gnrd)
             if info:
                 external_source['name'] = meta_params_dict['external_source']
-                external_source['params'] = default_params
-                external_source['params'].update({'external_disable_cmd':
-                    'echo %s %s > %s' % (0, info['channel'], info['path'])})
-                external_source['params'].update({'external_enable_cmd':
-                    'echo %s %s > %s' % (info['func'], info['channel'], info['path'])})
+                external_source['params'] = default_params.copy()
+                if info.get('dpll_mode'):
+                    # GNR-D DPLL mode: synce4l matches pins by board_label
+                    # via DPLL netlink. No sysfs enable/disable commands needed.
+                    external_source['params']['board_label'] = \
+                        info['board_label']
+                else:
+                    # E810 legacy/sysfs mode: generate enable/disable commands
+                    external_source['params'].update({'external_disable_cmd':
+                        'echo %s %s > %s' % (0, info['channel'], info['path'])})
+                    external_source['params'].update({'external_enable_cmd':
+                        'echo %s %s > %s' % (info['func'], info['channel'], info['path'])})
 
-        # Finish handling the real parameters
+        # Finish handling the real parameters (user overrides)
         if 'name' in external_source:
             for param in ptp_parameters_interface[:]:
                 if iface_uuid not in param['owners']:
@@ -1109,7 +1205,7 @@ class NetworkingPuppet(base.BasePuppet):
         # Generate the nic clock config
         if len(nic_clocks) > 0:
             nic_clock_enabled = True
-            host_port_list = self.dbapi.port_get_all(hostid=host.id)
+            host_port_list = self.dbapi.ethernet_port_get_by_host(host.id)
             nic_clock_config = self._set_ptp_instance_interfaces(host, nic_clocks, ptp_interfaces)
             nic_clock_config = self._set_ptp_instance_interface_parameters(host, nic_clock_config,
                                                                            ptp_parameters_interface)
