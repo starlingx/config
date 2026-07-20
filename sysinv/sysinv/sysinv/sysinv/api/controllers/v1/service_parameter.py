@@ -838,8 +838,6 @@ class ServiceParameterController(rest.RestController):
                     parameter.name)
             raise wsme.exc.ClientSideError(msg)
 
-        self._check_read_only_parameter(parameter.as_dict())
-
         # delete parameter from sysinv database
         pecan.request.dbapi.service_parameter_destroy_uuid(uuid)
 
