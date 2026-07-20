@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2024 Wind River Systems, Inc.
+# Copyright (c) 2024,2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -15,11 +15,14 @@ import subprocess
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives import serialization
 from cryptography.x509.oid import NameOID
 
 from oslo_log import log as logging
+
+from sysinv.common import utils as cutils
 
 from sysinv.ipsec_auth.client import config
 from sysinv.ipsec_auth.common import constants
@@ -56,13 +59,19 @@ class Client(object):
 
         return json.dumps(message)
 
-    # Generate IPsec prk2 (RSA - PRK2)
+    # Generate IPsec prk2
     def _generate_prk2(self):
-        prk2 = rsa.generate_private_key(
-            public_exponent=65537,
-            key_size=2048,
-            backend=default_backend()
-        )
+        if cutils.is_debian_bullseye():
+            prk2 = rsa.generate_private_key(
+                public_exponent=65537,
+                key_size=2048,
+                backend=default_backend()
+            )
+        else:
+            prk2 = ec.generate_private_key(
+                curve=ec.SECP384R1(),
+                backend=default_backend()
+            )
 
         prk2_bytes = prk2.private_bytes(
             encoding=serialization.Encoding.PEM,
@@ -108,7 +117,7 @@ class Client(object):
         puk1_data = utils.load_data(constants.LUKS_PUK1_FILE)
         puc_data = utils.load_data(constants.TRUSTED_CA_CERT_1_PATH)
 
-        LOG.info("Generate RSA Private Key (PRK2).")
+        LOG.info("Generate Private Key (PRK2).")
         prk2 = self._generate_prk2()
 
         LOG.info("Generate AES Key (AK1).")
