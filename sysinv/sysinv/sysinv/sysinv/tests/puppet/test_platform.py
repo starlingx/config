@@ -4,6 +4,7 @@
 #
 
 import mock
+import re
 from sysinv.common import constants
 from sysinv.common import utils
 from sysinv.tests.db import base as dbbase
@@ -528,3 +529,83 @@ class PlatformTestCaseStalldConfig(base.PuppetTestCaseMixin,
             f"platform::stalld::params::{custom_parameter2}":
                 f"'{value2}'"
         })
+
+
+class PlatformTestCaseDisableNohzFullIsolcpus(base.PuppetTestCaseMixin,
+                                              dbbase.BaseHostTestCase):
+    """Test that disable-nohz-full label correctly removes 'nohz' from
+    the isolcpus kernel boot parameter prefix.
+
+    Regression test for 2160971: commit dd490273c unconditionally
+    added 'nohz' to isolcpus prefix, ignoring the disable-nohz-full label.
+    """
+
+    def _create_test_host_cpus(self, host,
+                               platform=0, application=0, isolated=0):
+        nodes = self.dbapi.inode_get_by_ihost(host.id)
+        for node in nodes:
+            cpu = 0
+            for count, function in [(platform, constants.PLATFORM_FUNCTION),
+                                    (application, constants.APPLICATION_FUNCTION),
+                                    (isolated, constants.ISOLATED_FUNCTION)]:
+                for _ in range(count):
+                    self.dbapi.icpu_create(host.id,
+                        dbutils.get_test_icpu(
+                            forinodeid=node.id,
+                            cpu=cpu, thread=0,
+                            allocated_function=function))
+                    cpu = cpu + 1
+
+    def _create_host_labels_in_db(self, labels):
+        for label_str in labels:
+            k, v = label_str.split('=')
+            self.dbapi.label_create(self.host.id,
+                                    {'host_id': self.host.id,
+                                     'label_key': k,
+                                     'label_value': v})
+
+    def _get_cpu_options(self):
+        """Extract cpu_options string from the puppet hieradata."""
+        config = self.mock_write_config.call_args[0][1]
+        return config.get('platform::compute::grub::params::cpu_options', '')
+
+    def _get_isolcpus_value(self):
+        """Extract the isolcpus= value from cpu_options."""
+        cpu_options = self._get_cpu_options()
+        match = re.search(r'isolcpus=(\S+)', cpu_options)
+        return match.group(1) if match else None
+
+    def setUp(self):
+        super(PlatformTestCaseDisableNohzFullIsolcpus, self).setUp()
+        self.host = self._create_test_host(constants.WORKER)
+        self._create_test_host_cpus(self.host,
+                                    platform=2, application=6, isolated=2)
+        self._create_test_host_addresses(self.host.hostname)
+
+    def test_isolcpus_includes_nohz_without_disable_label(self):
+        """Without disable-nohz-full label, isolcpus should include 'nohz'."""
+        self.operator.update_host_config(self.host)
+        isolcpus = self._get_isolcpus_value()
+        self.assertIsNotNone(isolcpus)
+        self.assertIn('nohz', isolcpus.split(','))
+
+    def test_isolcpus_excludes_nohz_with_disable_label(self):
+        """With disable-nohz-full=enabled label, isolcpus must NOT contain 'nohz'.
+
+        This is the regression test for 2160971.
+        """
+        self._create_host_labels_in_db(['disable-nohz-full=enabled'])
+        self.operator.update_host_config(self.host)
+        isolcpus = self._get_isolcpus_value()
+        self.assertIsNotNone(isolcpus)
+        self.assertNotIn('nohz', isolcpus.split(','))
+        # Should still have domain and managed_irq
+        self.assertIn('domain', isolcpus.split(','))
+        self.assertIn('managed_irq', isolcpus.split(','))
+
+    def test_nohz_full_disabled_with_disable_label(self):
+        """With disable-nohz-full=enabled, nohz_full should be 'disabled'."""
+        self._create_host_labels_in_db(['disable-nohz-full=enabled'])
+        self.operator.update_host_config(self.host)
+        cpu_options = self._get_cpu_options()
+        self.assertIn('nohz_full=disabled', cpu_options)
