@@ -18864,6 +18864,32 @@ class ConductorManager(service.PeriodicService):
                 self.dbapi.kube_host_upgrade_update(kube_host_upgrade.id,
                                                     {'status': fail_status})
 
+        # Ensure the kube upgrade in-progress alarm is raised.
+        # During a combined platform and k8s upgrade on AIO-SX, the host
+        # reboots into the new release after deploy-host. The FM database
+        # may not preserve the alarm across the major release transition,
+        # so re-raise it if the kube upgrade is still in progress.
+        entity_instance_id = "%s=%s" % (fm_constants.FM_ENTITY_TYPE_HOST,
+                                        constants.CONTROLLER_HOSTNAME)
+        existing_alarm = self.fm_api.get_fault(
+            fm_constants.FM_ALARM_ID_KUBE_UPGRADE_IN_PROGRESS,
+            entity_instance_id)
+        if existing_alarm is None:
+            fault = fm_api.Fault(
+                alarm_id=fm_constants.FM_ALARM_ID_KUBE_UPGRADE_IN_PROGRESS,
+                alarm_state=fm_constants.FM_ALARM_STATE_SET,
+                entity_type_id=fm_constants.FM_ENTITY_TYPE_HOST,
+                entity_instance_id=entity_instance_id,
+                severity=fm_constants.FM_ALARM_SEVERITY_MINOR,
+                reason_text="Kubernetes upgrade in progress.",
+                alarm_type=fm_constants.FM_ALARM_TYPE_7,
+                probable_cause=fm_constants.ALARM_PROBABLE_CAUSE_8,
+                proposed_repair_action="No action required.",
+                service_affecting=False)
+            self.fm_api.set_fault(fault)
+            LOG.info("Re-raised kube upgrade in-progress alarm "
+                     "(upgrade state: %s)" % kube_upgrade.state)
+
     def _retry_on_etcd_operation_failure(ex):  # pylint: disable=no-self-argument
         if isinstance(ex, (subprocess.TimeoutExpired, exception.EtcdOperationFailure)):
             LOG.warn('Caught exception etcd operation failure. '
