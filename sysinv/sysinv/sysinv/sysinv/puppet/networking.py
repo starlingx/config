@@ -490,16 +490,6 @@ class NetworkingPuppet(base.BasePuppet):
             'recover_time': constants.PTP_SYNCE_RECOVER_TIME,
         }
 
-        # Parameters read by collectd synce plugin from the config file,
-        # but not recognized by synce4l itself. Stored in monitoring_parameters
-        # and rendered in a comment block by the config template.
-        default_synce_monitoring_parameters = {
-            'synce_holdover_ql': constants.PTP_SYNCE_HOLDOVER_QL,
-            'synce_freerun_ql': constants.PTP_SYNCE_FREERUN_QL,
-            'synce_holdover_timer': constants.PTP_SYNCE_HOLDOVER_TIMER,
-            'synce_source_priority': constants.PTP_SYNCE_SOURCE_PRIORITY,
-        }
-
         ptp_config = {}
 
         for instance in ptp_instances:
@@ -544,9 +534,6 @@ class NetworkingPuppet(base.BasePuppet):
                     'smc_socket_path': '/tmp/synce4l_socket_%s' % instance['name']
                 })
                 instance['device_parameters'].update(default_device_parameters)
-                instance['monitoring_parameters'].update(default_synce_monitoring_parameters)
-                instance['monitoring_parameters']['smc_socket_path'] = (
-                    '/tmp/synce4l_socket_%s' % instance['name'])
             elif instance['service'] == constants.PTP_INSTANCE_TYPE_TS2PHC:
                 instance['global_parameters'].update({
                     'message_tag': instance['name']
@@ -564,11 +551,6 @@ class NetworkingPuppet(base.BasePuppet):
                                                     'verbose', 'message_tag',
                                                     'smc_socket_path']:
                             instance['global_parameters'][global_param['name']] = global_param['value']
-                        elif global_param['name'] in ['synce_holdover_ql',
-                                                      'synce_freerun_ql',
-                                                      'synce_holdover_timer',
-                                                      'synce_source_priority']:
-                            instance['monitoring_parameters'][global_param['name']] = global_param['value']
                         else:
                             instance['device_parameters'][global_param['name']] = global_param['value']
                 # Add the supplied instance parameters other than global section to section_parameters
@@ -879,7 +861,12 @@ class NetworkingPuppet(base.BasePuppet):
                 'holdover_seconds': constants.PTP_MONITORING_HOLDOVER_SECONDS,
                 'locked_to_holdover_threshold_seconds': constants.PTP_MONITORING_LOCKED_TO_HOLDOVER_THRESHOLD_SECONDS
             },
-            'synce4l': {},  # No default monitoring parameters for synce4l
+            'synce4l': {
+                'holdover_ql': constants.PTP_SYNCE_HOLDOVER_QL,
+                'freerun_ql': constants.PTP_SYNCE_FREERUN_QL,
+                'holdover_timer': constants.PTP_SYNCE_HOLDOVER_TIMER,
+                'source': constants.PTP_SYNCE_SOURCE_PRIORITY,
+            },
             'dpll-mgr': {}
         }
         for instance_name in ptp_instances:
@@ -903,6 +890,22 @@ class NetworkingPuppet(base.BasePuppet):
                 instance['section_parameters'].get('monitoring')
             ):
                 instance['section_parameters'].pop('monitoring')
+
+            # For synce4l instances, auto-populate the interface field from
+            # the assigned ptp-interface if not explicitly set by the user.
+            # The collectd synce plugin requires this field to function.
+            # Also set smc_socket_path based on instance name.
+            if instance['service'] == constants.PTP_INSTANCE_TYPE_SYNCE4L:
+                if 'smc_socket_path' not in instance['monitoring_parameters']:
+                    instance['monitoring_parameters']['smc_socket_path'] = (
+                        '/tmp/synce4l_socket_%s' % instance_name)
+                if 'interface' not in instance['monitoring_parameters']:
+                    interfaces = instance.get('interfaces', [])
+                    if interfaces:
+                        port_names = interfaces[0].get('port_names', [])
+                        if port_names:
+                            instance['monitoring_parameters']['interface'] = \
+                                port_names[0]
 
         return ptp_instances
 
