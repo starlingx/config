@@ -243,6 +243,12 @@ def _check_extoam_data(extoam_orig, extoam, region_config=False):
             if utils.get_system_mode() == constants.SYSTEM_MODE_SIMPLEX:
                 if k == "oam_c0_ip" or k == 'oam_c1_ip':
                     continue
+            if v is None:
+                raise wsme.exc.ClientSideError(_(
+                    "Invalid address %s in %s."
+                    " Please configure a valid"
+                    " IPv%s address"
+                ) % (v, k, str(subnet.version)))
             try:
                 v = IPAddress(v)
             except (AddrFormatError, ValueError):
@@ -264,7 +270,7 @@ def _check_extoam_data(extoam_orig, extoam, region_config=False):
             "oam_c0_ip=%s and oam_c1_ip=%s must be unique. "
         ) % (oam_c0_ip, oam_c1_ip))
 
-    if gateway_ip and (gateway_ip == oam_c0_ip) or (gateway_ip == oam_c1_ip):
+    if gateway_ip and ((gateway_ip == oam_c0_ip) or (gateway_ip == oam_c1_ip)):
         raise wsme.exc.ClientSideError(_(
             "Invalid address: "
             "oam_c0_ip=%s, oam_c1_ip=%s, oam_gateway_ip=%s must be unique."
@@ -273,9 +279,19 @@ def _check_extoam_data(extoam_orig, extoam, region_config=False):
     # Region Mode, check if addresses are within start and end range
     # Gateway address is not used in region mode
     subnet = IPNetwork(extoam.get('oam_subnet'))
-    floating_address = IPAddress(extoam.get('oam_floating_ip'))
-    start_address = IPAddress(extoam.get('oam_start_ip'))
-    end_address = IPAddress(extoam.get('oam_end_ip'))
+    oam_floating_ip = extoam.get('oam_floating_ip')
+    oam_start_ip = extoam.get('oam_start_ip')
+    oam_end_ip = extoam.get('oam_end_ip')
+    if not oam_floating_ip:
+        raise wsme.exc.ClientSideError(_(
+            "Invalid oam_floating_ip=%s. Please configure a valid IP address")
+            % oam_floating_ip)
+    if not oam_start_ip or not oam_end_ip:
+        raise wsme.exc.ClientSideError(_(
+            "Invalid oam address range. Please configure valid start/end IPs"))
+    floating_address = IPAddress(oam_floating_ip)
+    start_address = IPAddress(oam_start_ip)
+    end_address = IPAddress(oam_end_ip)
     # check whether start and end addresses are within the oam_subnet range
     if start_address != subnet[1]:
         if region_config:

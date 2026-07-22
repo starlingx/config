@@ -681,6 +681,69 @@ def _check_endpoint_domain_exists():
     return endpoint_domain, msg
 
 
+def _match_hostname(cert_dict, hostname):
+    """Match hostname against certificate CN or SAN entries.
+
+    Replacement for ssl.match_hostname() which was removed in Python 3.12.
+    Supports wildcard matching per RFC 6125: a wildcard '*' in the
+    leftmost label matches exactly one label (no dots).
+    e.g., *.example.com matches foo.example.com but NOT a.b.example.com.
+    """
+    san = cert_dict.get('subjectAltName', ())
+    dns_names = [value for field, value in san if field == 'DNS']
+
+    if not dns_names:
+        # Fall back to CN
+        for sub in cert_dict.get('subject', ()):
+            for key, value in sub:
+                if key == 'commonName':
+                    dns_names.append(value)
+
+    for pattern in dns_names:
+        if _ssl_wildcard_match(pattern.lower(), hostname.lower()):
+            return
+
+    raise ssl.SSLCertVerificationError(
+        "hostname '%s' doesn't match %s"
+        % (hostname, ', '.join(map(repr, dns_names)) or 'certificate'))
+
+
+def _ssl_wildcard_match(pattern, hostname):
+    """Match a DNS pattern against a hostname per RFC 6125.
+
+    Wildcard '*' is only allowed in the leftmost label and matches
+    exactly one label (does not cross dot boundaries).
+    """
+    if not pattern or not hostname:
+        return False
+
+    pattern_labels = pattern.split('.')
+    hostname_labels = hostname.split('.')
+
+    if len(pattern_labels) != len(hostname_labels):
+        return False
+
+    for i, (pat_label, host_label) in enumerate(
+            zip(pattern_labels, hostname_labels)):
+        if '*' in pat_label:
+            # Wildcard only valid in the first (leftmost) label
+            if i != 0:
+                return False
+            # Match prefix*suffix against host_label
+            prefix, suffix = pat_label.split('*', 1)
+            if not host_label.startswith(prefix):
+                return False
+            if not host_label.endswith(suffix):
+                return False
+            if len(host_label) < len(prefix) + len(suffix):
+                return False
+        else:
+            if pat_label != host_label:
+                return False
+
+    return True
+
+
 def _check_cert_dns_name(cert, endpoint_domain):
     # Prepend the domain with any service name
     service_endpoint_domain = 'keystone.' + endpoint_domain
@@ -702,7 +765,7 @@ def _check_cert_dns_name(cert, endpoint_domain):
         LOG.debug("certificate has common name %s" % cn)
         cert_cn = {'subject': ((('commonName', cn),),)}
         try:
-            ssl.match_hostname(cert_cn, service_endpoint_domain)
+            _match_hostname(cert_cn, service_endpoint_domain)
         except Exception as e:
             LOG.info("Failed to match CN: %s" % e)
             return e
@@ -713,7 +776,7 @@ def _check_cert_dns_name(cert, endpoint_domain):
             dns_list.append(('DNS', name))
         cert_san = {'subjectAltName': dns_list}
         try:
-            ssl.match_hostname(cert_san, service_endpoint_domain)
+            _match_hostname(cert_san, service_endpoint_domain)
         except Exception as e:
             LOG.info("Failed to match SAN: %s" % e)
             return e

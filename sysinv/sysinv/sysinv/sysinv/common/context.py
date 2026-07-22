@@ -85,6 +85,15 @@ class RequestContext(context.RequestContext):
             self.service_catalog = []
 
     @property
+    def tenant(self):
+        """Compatibility property for oslo.context 5.7+ which removed .tenant."""
+        return self.project_id
+
+    @tenant.setter
+    def tenant(self, value):
+        self.project_id = value
+
+    @property
     def session(self):
         if self._session is None:
             self._session = dbapi.get_instance().get_session(autocommit=True)

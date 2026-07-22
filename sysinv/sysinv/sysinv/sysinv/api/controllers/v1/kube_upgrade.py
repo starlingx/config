@@ -743,7 +743,7 @@ class KubeUpgradeController(rest.RestController):
             # The global kubelet version is set, clear the per-host status.
             for kube_host_upgrade in kube_host_upgrades:
                 pecan.request.dbapi.kube_host_upgrade_update(
-                    kube_host_upgrade.id, {'status': None})
+                    kube_host_upgrade.id, {'status': ''})
 
             # All is well, mark the upgrade as complete
             kube_upgrade_obj.state = kubernetes.KUBE_UPGRADE_COMPLETE

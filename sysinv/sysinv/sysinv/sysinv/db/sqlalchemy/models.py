@@ -848,7 +848,8 @@ class PtpParameters(Base):
                     "foreign(PtpParameterOwnerships.parameter_uuid)",
         secondaryjoin="PtpParameterOwners.uuid == "
                       "foreign(PtpParameterOwnerships.owner_uuid)",
-        back_populates="ptp_parameters", lazy="selectin", join_depth=1)
+        back_populates="ptp_parameters", lazy="selectin", join_depth=1,
+        overlaps="parameter,owner")
 
 
 class PtpParameterOwners(Base):
@@ -868,7 +869,8 @@ class PtpParameterOwners(Base):
                     "foreign(PtpParameterOwnerships.owner_uuid)",
         secondaryjoin="PtpParameters.uuid == "
                       "foreign(PtpParameterOwnerships.parameter_uuid)",
-        back_populates="ptp_parameter_owners", lazy="selectin", join_depth=1)
+        back_populates="ptp_parameter_owners", lazy="selectin", join_depth=1,
+        overlaps="parameter,owner,ptp_parameter_owners")
 
     __mapper_args__ = {
         'polymorphic_identity': 'ptp_parameter_owner',
@@ -952,8 +954,10 @@ class PtpParameterOwnerships(Base):
                                    ondelete='CASCADE'),
                         nullable=False)
 
-    parameter = relationship("PtpParameters", lazy="selectin", join_depth=1)
-    owner = relationship("PtpParameterOwners", lazy="selectin", join_depth=1)
+    parameter = relationship("PtpParameters", lazy="selectin", join_depth=1,
+                             overlaps="ptp_parameter_owners,ptp_parameters")
+    owner = relationship("PtpParameterOwners", lazy="selectin", join_depth=1,
+                         overlaps="ptp_parameter_owners,ptp_parameters")
 
 
 class PtpInstanceMaps(Base):
@@ -1375,6 +1379,12 @@ class Networks(Base):
 
 class NetworkAddressPools(Base):
     __tablename__ = 'network_addresspools'
+
+    __table_args__ = (
+        UniqueConstraint('network_id', 'address_pool_id',
+                         name='u_network_id_address_pool_id'),
+    )
+
     id = Column(Integer, primary_key=True, nullable=False)
     uuid = Column(String(36), unique=True)
 
@@ -1387,8 +1397,6 @@ class NetworkAddressPools(Base):
     network = relationship("Networks", lazy="selectin",
                            backref=backref("network_addresspools",
                                            cascade="all, delete"))
-
-    UniqueConstraint('network_id', 'address_pool_id', name='u_network_id@address_pool_id')
 
 
 class InterfaceNetworks(Base):
