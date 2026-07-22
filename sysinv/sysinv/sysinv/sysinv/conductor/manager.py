@@ -13349,7 +13349,10 @@ class ConductorManager(service.PeriodicService):
                     personalities = [constants.CONTROLLER]
                     config_dict = {
                         "personalities": personalities,
-                        "classes": ['platform::params::config_oidc_role_binding::runtime']
+                        "classes": [
+                            'platform::params::config_oidc_role_binding::runtime',
+                            'openstack::keystone::server::runtime'
+                        ]
                     }
                     self._config_apply_runtime_manifest(context, config_uuid, config_dict)
                 elif section == constants.SERVICE_PARAM_SECTION_SECURITY_COMPLIANCE:

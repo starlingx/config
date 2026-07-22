@@ -277,6 +277,25 @@ def _validate_identity_role_bindings(name, value):
                 "Parameter '%s' invalid domain %s: valid domains: %s"
                 % (name, rhs[-3], valid_domains)))
 
+    # Check for group name substring collisions
+    group_names = []
+    for line in lines:
+        subject = line.split(":")[0]
+        if subject.startswith('%'):
+            group_names.append(subject[1:])
+
+    # Deduplicate (same group with multiple roles is valid)
+    unique_groups = list(set(group_names))
+    for i, g1 in enumerate(unique_groups):
+        for g2 in unique_groups[i + 1:]:
+            if g1 in g2 or g2 in g1:
+                shorter = g1 if len(g1) <= len(g2) else g2
+                longer = g2 if len(g1) <= len(g2) else g1
+                raise wsme.exc.ClientSideError(_(
+                    "Parameter '%s': group name '%s' is a substring of '%s'. "
+                    "Use distinct group names to avoid ambiguous matching."
+                    % (name, shorter, longer)))
+
 
 def _validate_ip_address(name, value):
     """Check if ip value is valid"""
