@@ -318,6 +318,12 @@ def _create(storage_lvm):
             _("It's not possible to add the backend. Only one %s backend "
               "is allowed.") % constants.SB_TYPE_LVM)
 
+    upgrade_running, __ = cutils.is_upgrade_in_progress(pecan.request.dbapi)
+    if upgrade_running:
+        raise wsme.exc.ClientSideError(
+            _("It's not possible to add %s storage backend during upgrade") %
+            constants.SB_TYPE_LVM)
+
     # Execute the common semantic checks for all backends, if a specific backend
     # is not specified this will not return
     api_helper.common_checks(constants.SB_API_OP_CREATE,
