@@ -3145,8 +3145,12 @@ class ManagerTestCase(base.DbTestCase):
         self.addCleanup(p.stop)
 
         mock_os_path_exists = mock.MagicMock()
+        mock_os_path_exists.side_effect = lambda path: (
+            False if path == "/etc/cni/net.d/05-multus.conf"
+            else upgrade_overrides_file_exists
+        )
         p = mock.patch('os.path.exists', mock_os_path_exists)
-        p.start().return_value = upgrade_overrides_file_exists
+        p.start()
         self.addCleanup(p.stop)
 
         mock_open = mock.mock_open()
@@ -3345,8 +3349,12 @@ class ManagerTestCase(base.DbTestCase):
         self.addCleanup(p.stop)
 
         mock_os_path_exists = mock.MagicMock()
+        mock_os_path_exists.side_effect = lambda path: (
+            False if path == "/etc/cni/net.d/05-multus.conf"
+            else upgrade_overrides_file_exists
+        )
         p = mock.patch('os.path.exists', mock_os_path_exists)
-        p.start().return_value = upgrade_overrides_file_exists
+        p.start()
         self.addCleanup(p.stop)
 
         mock_open = mock.mock_open()
@@ -3547,8 +3555,12 @@ class ManagerTestCase(base.DbTestCase):
         self.addCleanup(p.stop)
 
         mock_os_path_exists = mock.MagicMock()
+        mock_os_path_exists.side_effect = lambda path: (
+            False if path == "/etc/cni/net.d/05-multus.conf"
+            else upgrade_overrides_file_exists
+        )
         p = mock.patch('os.path.exists', mock_os_path_exists)
-        p.start().return_value = upgrade_overrides_file_exists
+        p.start()
         self.addCleanup(p.stop)
 
         mock_open = mock.mock_open()
@@ -3748,8 +3760,12 @@ class ManagerTestCase(base.DbTestCase):
         self.addCleanup(p.stop)
 
         mock_os_path_exists = mock.MagicMock()
+        mock_os_path_exists.side_effect = lambda path: (
+            False if path == "/etc/cni/net.d/05-multus.conf"
+            else upgrade_overrides_file_exists
+        )
         p = mock.patch('os.path.exists', mock_os_path_exists)
-        p.start().return_value = upgrade_overrides_file_exists
+        p.start()
         self.addCleanup(p.stop)
 
         mock_open = mock.mock_open()
@@ -11060,8 +11076,13 @@ class ManagerTestCase(base.DbTestCase):
         p.start()
         self.addCleanup(p.stop)
 
-        p = mock.patch('os.path.exists', mock.MagicMock())
-        p.start().return_value = upgrade_overrides_file_exists
+        mock_os_path_exists = mock.MagicMock()
+        mock_os_path_exists.side_effect = lambda path: (
+            False if path == "/etc/cni/net.d/05-multus.conf"
+            else upgrade_overrides_file_exists
+        )
+        p = mock.patch('os.path.exists', mock_os_path_exists)
+        p.start()
         self.addCleanup(p.stop)
 
         p = mock.patch('builtins.open', mock.mock_open())
