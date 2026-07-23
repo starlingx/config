@@ -4,6 +4,7 @@ After=syslog.target network.target remote-fs.target sysinv-agent.service
 After=network-online.target
 After=luks-fs-mgr.service
 Before=config.service
+ConditionHost=!localhost
 
 [Service]
 Type=simple
