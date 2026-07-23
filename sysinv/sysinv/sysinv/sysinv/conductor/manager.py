@@ -550,16 +550,56 @@ class ConductorManager(service.PeriodicService):
                          "platform.conf=%s, DB=%s. "
                          "Updating DB to match platform.conf."
                          % (ahost.hostname, tsc.host_uuid, ahost.uuid))
+                old_uuid = ahost.uuid
                 try:
                     self.dbapi.ihost_update(ahost.uuid,
                                             {'uuid': tsc.host_uuid})
-                    return tsc.host_uuid
                 except Exception as e:
                     LOG.exception("Failed to update host UUID in DB: %s" % e)
                     raise
+                self._migrate_barbican_secret(old_uuid, tsc.host_uuid)
+                return tsc.host_uuid
             return ahost.uuid
         else:
             return None
+
+    def _migrate_barbican_secret(self, old_name, new_name):
+        """Migrate a Barbican secret from old_name to new_name.
+
+        When the host UUID changes, any Barbican secret stored under
+        the old UUID becomes unreachable. This method retrieves the
+        secret payload stored under old_name, creates a new secret
+        under new_name, and deletes the old one.
+        """
+        try:
+            openstack_op = openstack.OpenStackOperator(self.dbapi)
+            context = ctx.RequestContext(user_id='admin',
+                                         project_id='admin',
+                                         is_admin=True)
+            secret = openstack_op.get_barbican_secret_by_name(
+                context, old_name)
+            if not secret:
+                LOG.debug("No Barbican secret found under old host UUID %s, "
+                          "nothing to migrate." % old_name)
+                return
+            # Retrieve the payload from the existing secret
+            payload = secret.payload
+            if payload:
+                # Create the secret under the new name
+                openstack_op.create_barbican_secret(
+                    context, new_name, payload)
+                # Delete the old secret
+                openstack_op.delete_barbican_secret(context, old_name)
+                LOG.info("Migrated Barbican secret from %s to %s"
+                         % (old_name, new_name))
+            else:
+                LOG.warning("Barbican secret %s has no payload, "
+                            "deleting orphaned secret." % old_name)
+                openstack_op.delete_barbican_secret(context, old_name)
+        except Exception:
+            LOG.warning("Failed to migrate Barbican secret from %s to %s. "
+                        "BMC credentials may need to be re-entered."
+                        % (old_name, new_name))
 
     def _get_keystone_callback_endpoints(self):
         """ Get call back endpoints for keystone listener"""
