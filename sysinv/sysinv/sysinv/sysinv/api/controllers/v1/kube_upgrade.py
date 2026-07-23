@@ -54,6 +54,7 @@ DEFAULT_KUBE_UPGRADE_ALARM_IGNORE_LIST = [
     '900.022',  # Clean up deployment data
     '900.023',  # Software release deploy operation in progress
                 # (enable combined platform + Kubernetes upgrade)
+    '900.024',  # Obsolete release in system
     '900.401',  # kube-upgrade-auto-apply-inprogress
     '900.402',  # Kubernetes upgrade auto-apply aborting
     '900.701',  # Node tainted
