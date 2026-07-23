@@ -508,6 +508,19 @@ def _check(op, lvg, rpc_lvg=None):
             _("Volume Group name (%s) must be \"%s\"") % (lvg['lvm_vg_name'],
                                                           grp))
 
+    rpc_lvg_func = rpc_lvg['capabilities'].get('lvm_function', None) \
+        if rpc_lvg else None
+    upgrade_running, __ = cutils.is_upgrade_in_progress(pecan.request.dbapi)
+    # Rejects any operation with lvm-csi volume groups during upgrade
+    if ((lvg['lvm_function'] and
+       lvg['lvm_function'] == constants.LVM_CSI_PROVISIONING_FUNCTION) or
+       (rpc_lvg_func and
+       rpc_lvg_func == constants.LVM_CSI_PROVISIONING_FUNCTION)) \
+       and upgrade_running:
+        raise wsme.exc.ClientSideError(
+            _("%s volume groups operations are not supported during upgrade") %
+            constants.LVM_CSI_PROVISIONING_FUNCTION)
+
     if op == "add":
         if lvg['lvm_vg_name'] == constants.LVG_CGTS_VG:
             raise wsme.exc.ClientSideError(
