@@ -62,21 +62,39 @@ DEVICE_IMAGE_CACHE_DIR = DEVICE_IMAGE_CACHE_ROOT_DIR + \
 # OPAE 'fpgasupdate' tool, provided by the opae package installed on the host.
 FPGASUPDATE_CMD = "/usr/bin/fpgasupdate"
 
-SYSFS_DEVICE_PATH = "/sys/bus/pci/devices/"
-FME_PATH = "/fpga/intel-fpga-dev.*/intel-fpga-fme.*/"
-SPI_PATH = "spi-altera.*.auto/spi_master/spi*/spi*.*/"
+# OPAE 'fpgainfo' tool, provided by the opae package installed on the host.
+FPGAINFO_CMD = "/usr/bin/fpgainfo"
 
-# These are relative to FME_PATH
+SYSFS_DEVICE_PATH = "/sys/bus/pci/devices/"
+
+# The FME of a card, relative to its PCI device directory.
+FME_PATH = "/fpga_region/region*/dfl-fme.*/"
+
+# This is relative to FME_PATH
 BITSTREAM_ID_PATH = "bitstream_id"
 
-# These are relative to SPI_PATH
-ROOT_HASH_PATH = "ifpga_sec_mgr/ifpga_sec*/security/sr_root_hash"
-CANCELLED_CSKS_PATH = "ifpga_sec_mgr/ifpga_sec*/security/sr_canceled_csks"
-IMAGE_LOAD_PATH = "fpga_flash_ctrl/fpga_image_load"
-BMC_FW_VER_PATH = "bmcfw_flash_ctrl/bmcfw_version"
-BMC_BUILD_VER_PATH = "max10_version"
-RETIMER_A_VER_PATH = "pkvl/pkvl_a_version"
-RETIMER_B_VER_PATH = "pkvl/pkvl_b_version"
+# The m10-bmc secure update devices, one per card. They sit several levels
+# below the PCI device, so a card is matched by resolving these symlinks
+# rather than by walking down the PCI device directory.
+SEC_UPDATE_DRIVER_PATH = "/sys/bus/platform/drivers/intel-m10bmc-sec-update/"
+SEC_UPDATE_DEVICE_GLOB = "*.auto"
+
+# These are relative to the secure update device
+ROOT_HASH_PATH = "security/sr_root_entry_hash"
+CANCELLED_CSKS_PATH = "security/sr_canceled_csks"
+
+# These are relative to the m10-bmc device, the parent of the secure update
+# device
+BMC_FW_VER_PATH = "bmcfw_version"
+BMC_BUILD_VER_PATH = "bmc_version"
+
+# The boot page and the C827 retimer versions are not exported through sysfs
+# by the in-tree drivers, so they are read from the output of fpgainfo, which
+# gets them from the board through the OPAE library. These are the labels it
+# prints them under.
+BOOT_PAGE_LABEL = "Boot Page"
+RETIMER_A_LABEL = "Retimer A Version"
+RETIMER_B_LABEL = "Retimer B Version"
 
 # Length of the retimer version in database
 RETIMER_VERSION_LENGTH = 32
@@ -193,11 +211,38 @@ class FpgaOperator(object):
             infile.close()
         return ""
 
+    def get_n3000_sec_update_device(self, pci_addr):
+        # Find the secure update device of the N3000 at the specified PCI
+        # address. It is a platform device several levels below the PCI
+        # device, so match on the PCI address in its resolved sysfs path.
+        # The result is an empty string if there is no matching device.
+        for device in glob(SEC_UPDATE_DRIVER_PATH + SEC_UPDATE_DEVICE_GLOB):
+            if pci_addr in os.path.realpath(device):
+                return device
+        LOG.warn("No secure update device found for %s" % pci_addr)
+        return ""
+
+    def read_n3000_sec_update_file(self, pci_addr, path):
+        # Read a file relative to the secure update device of the N3000 at
+        # the specified PCI address.
+        sec_update_device = self.get_n3000_sec_update_device(pci_addr)
+        if not sec_update_device:
+            return ""
+        return self.read_n3000_sysfs_file(
+            os.path.join(sec_update_device, path))
+
+    def read_n3000_bmc_file(self, pci_addr, path):
+        # Read a file relative to the m10-bmc device of the N3000 at the
+        # specified PCI address. It is the parent of the secure update device.
+        sec_update_device = self.get_n3000_sec_update_device(pci_addr)
+        if not sec_update_device:
+            return ""
+        return self.read_n3000_sysfs_file(
+            os.path.join(sec_update_device, os.pardir, path))
+
     def get_n3000_root_hash(self, pci_addr):
         # Query sysfs for the root key of the N3000 at the specified PCI address
-        root_key_pattern = (SYSFS_DEVICE_PATH + pci_addr + FME_PATH +
-                        SPI_PATH + ROOT_HASH_PATH)
-        root_key = self.read_n3000_sysfs_file(root_key_pattern)
+        root_key = self.read_n3000_sec_update_file(pci_addr, ROOT_HASH_PATH)
         # If the root key hasn't been programmed, return an empty string.
         if root_key == "hash not programmed":
             root_key = ""
@@ -205,9 +250,8 @@ class FpgaOperator(object):
 
     def get_n3000_revoked_keys(self, pci_addr):
         # Query sysfs for revoked keys of the N3000 at the specified PCI address
-        revoked_key_pattern = (SYSFS_DEVICE_PATH + pci_addr + FME_PATH +
-                            SPI_PATH + CANCELLED_CSKS_PATH)
-        revoked_keys = self.read_n3000_sysfs_file(revoked_key_pattern)
+        revoked_keys = self.read_n3000_sec_update_file(pci_addr,
+                                                       CANCELLED_CSKS_PATH)
         return revoked_keys
 
     def get_n3000_bitstream_id(self, pci_addr):
@@ -217,23 +261,32 @@ class FpgaOperator(object):
         bitstream_id = self.read_n3000_sysfs_file(bitstream_id_pattern)
         return bitstream_id
 
-    def get_n3000_boot_page(self, pci_addr):
-        # Query sysfs for boot page of the N3000 at the specified PCI address
-        image_load_pattern = (SYSFS_DEVICE_PATH + pci_addr + FME_PATH +
-                            SPI_PATH + IMAGE_LOAD_PATH)
-        image_load = self.read_n3000_sysfs_file(image_load_pattern)
-        if image_load == "0":
-            return "factory"
-        elif image_load == "1":
-            return "user"
-        else:
-            LOG.warn("Reading image load gave unexpected result: %s" % image_load)
-            return ""
+    def get_fpgainfo_fields(self, subcommand, pci_addr):
+        # Run fpgainfo against the N3000 at the specified PCI address and
+        # return the values it printed, keyed by the label they were
+        # printed under. The result is empty if the tool can't be run.
+        cmd = [FPGAINFO_CMD, subcommand, pci_addr]
+        try:
+            output = subprocess.check_output(  # pylint: disable=not-callable
+                cmd, stderr=subprocess.STDOUT, universal_newlines=True)
+        except (subprocess.CalledProcessError, OSError) as exc:
+            LOG.warn("Unable to run %s: %s" % (" ".join(cmd), exc))
+            return {}
+
+        fields = {}
+        for line in output.splitlines():
+            label, separator, value = line.partition(":")
+            if separator:
+                fields[label.strip()] = value.strip()
+        return fields
+
+    def get_n3000_boot_page(self, fpgainfo_fme):
+        # The boot page as reported by "fpgainfo fme", already spelled the
+        # way we report it, ie. "factory" or "user".
+        return fpgainfo_fme.get(BOOT_PAGE_LABEL, "")
 
     def get_n3000_bmc_version(self, pci_addr, path):
-        version_pattern = (SYSFS_DEVICE_PATH + pci_addr + FME_PATH +
-                        SPI_PATH + path)
-        version = self.read_n3000_sysfs_file(version_pattern)
+        version = self.read_n3000_bmc_file(pci_addr, path)
 
         # If we couldn't read the file, return an empty string.
         if version == "":
@@ -247,7 +300,7 @@ class FpgaOperator(object):
 
         if vint >= 1 << 32:
             LOG.warn("String (%s) read from file %s doesn't match the "
-                    "expected pattern" % (version, version_pattern))
+                    "expected pattern" % (version, path))
             return ""
         # There's probably a better way than this.
         # We want to match the version that Intel's "fpgainfo" tool reports.
@@ -260,22 +313,21 @@ class FpgaOperator(object):
     def get_n3000_bmc_build_version(self, pci_addr):
         return self.get_n3000_bmc_version(pci_addr, BMC_BUILD_VER_PATH)
 
-    def get_n3000_retimer_version(self, pci_addr, path):
-        version_pattern = (SYSFS_DEVICE_PATH + pci_addr + FME_PATH +
-                        SPI_PATH + path)
-        version = self.read_n3000_sysfs_file(version_pattern)
+    def get_n3000_retimer_version(self, fpgainfo_phy, label):
+        # The C827 retimer versions as reported by "fpgainfo phy".
+        version = fpgainfo_phy.get(label, "")
         if len(version) > RETIMER_VERSION_LENGTH:
-            LOG.warn("Retimer version string (%s) read from file %s is "
+            LOG.warn("Retimer version string (%s) reported under %s is "
                     "unexpectedly long. It is truncating." %
-                    (version, version_pattern))
+                    (version, label))
             version = version[:RETIMER_VERSION_LENGTH]
         return version
 
-    def get_n3000_retimer_a_version(self, pci_addr):
-        return self.get_n3000_retimer_version(pci_addr, RETIMER_A_VER_PATH)
+    def get_n3000_retimer_a_version(self, fpgainfo_phy):
+        return self.get_n3000_retimer_version(fpgainfo_phy, RETIMER_A_LABEL)
 
-    def get_n3000_retimer_b_version(self, pci_addr):
-        return self.get_n3000_retimer_version(pci_addr, RETIMER_B_VER_PATH)
+    def get_n3000_retimer_b_version(self, fpgainfo_phy):
+        return self.get_n3000_retimer_version(fpgainfo_phy, RETIMER_B_LABEL)
 
     def get_n3000_devices(self):
         # First get the PCI addresses of each supported FPGA device
@@ -392,13 +444,18 @@ class FpgaOperator(object):
         # Next, get additional information information for devices in the list.
         fpgainfo_list = []
         for addr in fpga_addrs:
+            # The boot page and the retimer versions are not in sysfs, so
+            # collect them from fpgainfo, once per subcommand and device.
+            fpgainfo_fme = self.get_fpgainfo_fields("fme", addr)
+            fpgainfo_phy = self.get_fpgainfo_fields("phy", addr)
+
             # Store information for this FPGA
             fpgainfo = {'pciaddr': addr}
             fpgainfo['bmc_build_version'] = self.get_n3000_bmc_build_version(addr)
             fpgainfo['bmc_fw_version'] = self.get_n3000_bmc_fw_version(addr)
-            fpgainfo['retimer_a_version'] = self.get_n3000_retimer_a_version(addr)
-            fpgainfo['retimer_b_version'] = self.get_n3000_retimer_b_version(addr)
-            fpgainfo['boot_page'] = self.get_n3000_boot_page(addr)
+            fpgainfo['retimer_a_version'] = self.get_n3000_retimer_a_version(fpgainfo_phy)
+            fpgainfo['retimer_b_version'] = self.get_n3000_retimer_b_version(fpgainfo_phy)
+            fpgainfo['boot_page'] = self.get_n3000_boot_page(fpgainfo_fme)
             fpgainfo['bitstream_id'] = self.get_n3000_bitstream_id(addr)
             fpgainfo['root_key'] = self.get_n3000_root_hash(addr)
             fpgainfo['revoked_key_ids'] = self.get_n3000_revoked_keys(addr)
