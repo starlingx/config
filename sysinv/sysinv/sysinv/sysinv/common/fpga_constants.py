@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2020-2022 Wind River Systems, Inc.
+# Copyright (c) 2020-2022, 2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -25,11 +25,6 @@ N3000_DEVICES = [
     N3000_FEC_PF_DEVICE,
     N3000_DEFAULT_DEVICE,
 ]
-
-# TODO: Make this specified in the config file.
-# This is the docker image containing the OPAE tools to access the FPGA device.
-OPAE_IMG_PREV = "registry.local:9001/docker.io/starlingx/n3000-opae:stx.6.0-v1.0.1"
-OPAE_IMG = "registry.local:9001/docker.io/starlingx/n3000-opae:stx.8.0-v1.0.2"
 
 N3000_RESET_FLAG = os.path.join(tsc.VOLATILE_PATH, ".sysinv_n3000_reset")
 N3000_RESET_TIMEOUT = 600
