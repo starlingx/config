@@ -60,17 +60,20 @@ class TestSynce4lParameters(test_base.TestCase):
         self.operator._set_ptp_instance_global_parameters(
             instances, [])
         inst = instances[0]
-        self.assertIn('synce_holdover_ql', inst['monitoring_parameters'])
-        self.assertIn('synce_freerun_ql', inst['monitoring_parameters'])
-        self.assertIn('synce_holdover_timer', inst['monitoring_parameters'])
-        self.assertIn('synce_source_priority', inst['monitoring_parameters'])
-        self.assertEqual(inst['monitoring_parameters']['synce_holdover_ql'],
+        ptp_config = {inst['name']: inst}
+        self.operator._set_ptp_instance_monitoring_parameters(
+            ptp_config, [])
+        self.assertIn('holdover_ql', inst['monitoring_parameters'])
+        self.assertIn('freerun_ql', inst['monitoring_parameters'])
+        self.assertIn('holdover_timer', inst['monitoring_parameters'])
+        self.assertIn('source', inst['monitoring_parameters'])
+        self.assertEqual(inst['monitoring_parameters']['holdover_ql'],
                          constants.PTP_SYNCE_HOLDOVER_QL)
-        self.assertEqual(inst['monitoring_parameters']['synce_freerun_ql'],
+        self.assertEqual(inst['monitoring_parameters']['freerun_ql'],
                          constants.PTP_SYNCE_FREERUN_QL)
-        self.assertEqual(inst['monitoring_parameters']['synce_holdover_timer'],
+        self.assertEqual(inst['monitoring_parameters']['holdover_timer'],
                          constants.PTP_SYNCE_HOLDOVER_TIMER)
-        self.assertEqual(inst['monitoring_parameters']['synce_source_priority'],
+        self.assertEqual(inst['monitoring_parameters']['source'],
                          constants.PTP_SYNCE_SOURCE_PRIORITY)
 
     def test_synce4l_smc_socket_path_in_global_and_monitoring(self):
@@ -79,6 +82,9 @@ class TestSynce4lParameters(test_base.TestCase):
         self.operator._set_ptp_instance_global_parameters(
             instances, [])
         inst = instances[0]
+        ptp_config = {inst['name']: inst}
+        self.operator._set_ptp_instance_monitoring_parameters(
+            ptp_config, [])
         expected_socket = '/tmp/synce4l_socket_synce_test'
         self.assertEqual(inst['global_parameters']['smc_socket_path'],
                          expected_socket)
@@ -86,11 +92,35 @@ class TestSynce4lParameters(test_base.TestCase):
                          expected_socket)
 
     def test_synce4l_user_override_routes_to_monitoring(self):
-        """User-supplied synce_holdover_ql routes to monitoring_parameters."""
-        uuid_val = 'test-uuid-override'
+        """User-supplied holdover_ql via monitoring section overrides default."""
+        uuid_val = str(uuidutils.uuid4())
+        instances = [self._make_instance(uuid_val=uuid_val)]
+        self.operator._set_ptp_instance_global_parameters(
+            instances, [])
+        inst = instances[0]
+        inst['interfaces'] = [
+            {'ifname': 'enp81s0f1', 'port_names': ['enp81s0f1'],
+             'parameters': {}, 'uuid': str(uuidutils.uuid4())}
+        ]
+        # User sets holdover_ql via --section monitoring
+        monitoring_param = {
+            'name': 'holdover_ql',
+            'value': '0x02',
+            'section': 'monitoring',
+            'owners': [uuid_val],
+        }
+        ptp_config = {inst['name']: inst}
+        self.operator._set_ptp_instance_monitoring_parameters(
+            ptp_config, [monitoring_param])
+        self.assertEqual(inst['monitoring_parameters']['holdover_ql'],
+                         '0x02')
+
+    def test_synce4l_monitoring_params_in_global_go_to_device(self):
+        """Monitoring params in global section fall through to device_parameters."""
+        uuid_val = str(uuidutils.uuid4())
         instances = [self._make_instance(uuid_val=uuid_val)]
         user_param = {
-            'name': 'synce_holdover_ql',
+            'name': 'holdover_ql',
             'value': '0x02',
             'section': 'global',
             'owners': [uuid_val],
@@ -98,10 +128,14 @@ class TestSynce4lParameters(test_base.TestCase):
         self.operator._set_ptp_instance_global_parameters(
             instances, [user_param])
         inst = instances[0]
-        self.assertEqual(inst['monitoring_parameters']['synce_holdover_ql'],
-                         '0x02')
-        self.assertNotIn('synce_holdover_ql', inst['device_parameters'])
-        self.assertNotIn('synce_holdover_ql', inst['global_parameters'])
+        ptp_config = {inst['name']: inst}
+        self.operator._set_ptp_instance_monitoring_parameters(
+            ptp_config, [])
+        # Goes to device_parameters (synce4l ignores unknown params)
+        self.assertEqual(inst['device_parameters']['holdover_ql'], '0x02')
+        # Default monitoring value remains unchanged
+        self.assertEqual(inst['monitoring_parameters']['holdover_ql'],
+                         constants.PTP_SYNCE_HOLDOVER_QL)
 
     @mock.patch('sysinv.common.utils.is_centos', return_value=False)
     def test_ptp4l_instance_no_monitoring_params(self, mock_centos):
@@ -111,6 +145,65 @@ class TestSynce4lParameters(test_base.TestCase):
             instances, [])
         inst = instances[0]
         self.assertEqual(inst['monitoring_parameters'], {})
+
+    # ===================================================================
+    # CGTS-102081: Interface auto-populated in monitoring_parameters
+    # ===================================================================
+
+    def test_synce4l_interface_auto_populated_in_monitoring(self):
+        """interface auto-populated from assigned ptp-interface port."""
+        instances = [self._make_instance()]
+        self.operator._set_ptp_instance_global_parameters(
+            instances, [])
+        inst = instances[0]
+        # Simulate interfaces already resolved by _set_ptp_instance_interfaces
+        inst['interfaces'] = [
+            {'ifname': 'enp81s0f1', 'port_names': ['enp81s0f1'],
+             'parameters': {}, 'uuid': str(uuidutils.uuid4())}
+        ]
+        ptp_config = {inst['name']: inst}
+        self.operator._set_ptp_instance_monitoring_parameters(
+            ptp_config, [])
+        self.assertIn('interface', inst['monitoring_parameters'])
+        self.assertEqual(inst['monitoring_parameters']['interface'],
+                         'enp81s0f1')
+
+    def test_synce4l_interface_not_overridden_when_explicit(self):
+        """User-supplied interface in monitoring section is not overridden."""
+        uuid_val = str(uuidutils.uuid4())
+        instances = [self._make_instance(uuid_val=uuid_val)]
+        self.operator._set_ptp_instance_global_parameters(
+            instances, [])
+        inst = instances[0]
+        inst['interfaces'] = [
+            {'ifname': 'enp81s0f1', 'port_names': ['enp81s0f1'],
+             'parameters': {}, 'uuid': str(uuidutils.uuid4())}
+        ]
+        # User explicitly set interface in monitoring section
+        monitoring_param = {
+            'name': 'interface',
+            'value': 'enp81s0f0',
+            'section': 'monitoring',
+            'owners': [uuid_val],
+        }
+        ptp_config = {inst['name']: inst}
+        self.operator._set_ptp_instance_monitoring_parameters(
+            ptp_config, [monitoring_param])
+        # Should keep the user-supplied value, not override with port_names
+        self.assertEqual(inst['monitoring_parameters']['interface'],
+                         'enp81s0f0')
+
+    def test_synce4l_no_interface_when_no_ports_assigned(self):
+        """No interface set when instance has no assigned interfaces."""
+        instances = [self._make_instance()]
+        self.operator._set_ptp_instance_global_parameters(
+            instances, [])
+        inst = instances[0]
+        inst['interfaces'] = []
+        ptp_config = {inst['name']: inst}
+        self.operator._set_ptp_instance_monitoring_parameters(
+            ptp_config, [])
+        self.assertNotIn('interface', inst['monitoring_parameters'])
 
     # ===================================================================
     # CGTS-100134: No sysfs eec_get_state_cmd
@@ -150,7 +243,7 @@ class TestSynce4lParameters(test_base.TestCase):
 
     def test_synce4l_user_supplied_eec_get_state_cmd_allowed(self):
         """User can still explicitly supply eec_get_state_cmd."""
-        uuid_val = 'test-uuid-eec'
+        uuid_val = str(uuidutils.uuid4())
         instances = [self._make_instance(uuid_val=uuid_val)]
         user_param = {
             'name': 'eec_get_state_cmd',
@@ -175,12 +268,13 @@ class TestSynce4lParameters(test_base.TestCase):
         mock_glob.return_value = [
             '/sys/class/net/enp81s0f0/device/ptp/ptp0/pins/SMA1'
         ]
+        iface_uuid = str(uuidutils.uuid4())
         iface_params = [
             {'name': 'external_source', 'value': 'SMA1',
-             'owners': ['iface-uuid-1']},
+             'owners': [iface_uuid]},
         ]
         result = self.operator._set_external_source_parameters(
-            'iface-uuid-1', iface_params, 'enp81s0f0')
+            iface_uuid, iface_params, 'enp81s0f0')
         self.assertIn('name', result)
         self.assertEqual(result['name'], 'SMA1')
         self.assertIn('params', result)
@@ -189,22 +283,24 @@ class TestSynce4lParameters(test_base.TestCase):
 
     def test_external_source_empty_when_no_param(self):
         """external_source empty when no external_source param on interface."""
+        iface_uuid = str(uuidutils.uuid4())
         iface_params = [
             {'name': 'recover_time', 'value': '20',
-             'owners': ['iface-uuid-1']},
+             'owners': [iface_uuid]},
         ]
         result = self.operator._set_external_source_parameters(
-            'iface-uuid-1', iface_params, 'enp81s0f0')
+            iface_uuid, iface_params, 'enp81s0f0')
         self.assertEqual(result, {})
 
     @mock.patch('glob.glob')
     def test_external_source_empty_when_pin_not_found(self, mock_glob):
         """external_source gracefully empty when NIC pin sysfs not found."""
         mock_glob.return_value = []
+        iface_uuid = str(uuidutils.uuid4())
         iface_params = [
             {'name': 'external_source', 'value': 'SMA1',
-             'owners': ['iface-uuid-1']},
+             'owners': [iface_uuid]},
         ]
         result = self.operator._set_external_source_parameters(
-            'iface-uuid-1', iface_params, 'enp81s0f0')
+            iface_uuid, iface_params, 'enp81s0f0')
         self.assertEqual(result, {})
