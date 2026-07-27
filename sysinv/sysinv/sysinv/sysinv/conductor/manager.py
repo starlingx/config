@@ -7321,6 +7321,36 @@ class ConductorManager(service.PeriodicService):
                     ihost.save(context)
                 self._clear_device_image_alarm(context)
 
+                # Form the etcd cluster only after maintenance has completed
+                # the controller unlock. Running this in the initial-unlock
+                # manifest can delay the unlock-ready flag until systemd
+                # times out while the fixed learner synchronizes.
+                # Applies to all duplex modes (AIO-DX and Standard).
+                system = self.dbapi.isystem_get_one()
+                if (ihost.personality == constants.CONTROLLER and
+                        system.system_mode != constants.SYSTEM_MODE_SIMPLEX and
+                        cutils.is_initial_config_complete()):
+                    self._apply_etcd_runtime_manifest(context, ihost)
+
+    def _apply_etcd_runtime_manifest(self, context, host):
+        """Configure the local etcd member after a controller unlock."""
+        personalities = [constants.CONTROLLER]
+        host_uuids = [host.uuid]
+        if host.uuid == self.host_uuid:
+            runtime_class = 'platform::etcd::runtime'
+        else:
+            runtime_class = 'platform::etcd::fixed::runtime'
+
+        config_uuid = self._config_update_hosts(
+            context, personalities, host_uuids=host_uuids)
+        config_dict = {
+            'personalities': personalities,
+            'host_uuids': host_uuids,
+            'classes': [runtime_class],
+        }
+        self._config_apply_runtime_manifest(
+            context, config_uuid, config_dict, force=True)
+
     def _handle_reboot_completion(self, ihost, config_uuid):
         """Handle reboot completion"""
         LOG.info("Host %s completed reboot for config %s" % (ihost.hostname, config_uuid))

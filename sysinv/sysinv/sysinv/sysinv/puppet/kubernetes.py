@@ -121,14 +121,26 @@ class KubernetesPuppet(base.BasePuppet):
         cert_file = 'undef'
         key_file = 'undef'
         endpoints = 'undef'
+        desired_endpoints = []
         try:
             etcd_config = etcd.get_cluster_information()
             ca_cert = etcd_config['caFile']
             cert_file = etcd_config['certFile']
             key_file = etcd_config['keyFile']
-            endpoints = ",".join(etcd_config['endpoints'])
+            desired_endpoints = etcd_config['endpoints']
         except Exception:
             LOG.warning("Unable to retrieve etcd cluster details")
+
+        try:
+            system = self._get_system()
+            if system.system_mode != constants.SYSTEM_MODE_SIMPLEX:
+                desired_endpoints = etcd.get_cluster_endpoints(
+                    self.dbapi, self.ETCD_SERVICE_PORT)
+        except Exception:
+            LOG.warning("Unable to generate etcd cluster endpoints")
+
+        if desired_endpoints:
+            endpoints = ",".join(desired_endpoints)
 
         config.update({'platform::kubernetes::params::etcd_ca_cert': ca_cert,
                        'platform::kubernetes::params::etcd_cert_file': cert_file,

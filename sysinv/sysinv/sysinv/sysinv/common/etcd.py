@@ -49,6 +49,9 @@ ETCD_CONFIG_CERT_FILE = 'certFile'
 ETCD_CONFIG_KEY_FILE = 'keyFile'
 ETCD_CONFIG_ENDPOINTS = 'endpoints'
 
+# Default etcd client service port.
+ETCD_SERVICE_PORT = '2379'
+
 # etcd versioned directories and symlinks paths
 ETCD_VERSIONED_BINARIES_ROOT = '/usr/local/etcd/'
 ETCD_SYMLINKS_ROOT = '/var/lib/etcd/'
@@ -100,6 +103,36 @@ def get_cluster_information():
             raise exception.SysinvException("Error retrieving etcd cluster details from the etcd "
                                             "config file: %s" % (ex))
     return etcd_config
+
+
+def get_cluster_endpoints(dbapi, port=ETCD_SERVICE_PORT):
+    """Return all etcd cluster endpoints on the cluster-host network.
+
+    Returns the fixed-0, fixed-1 and floating endpoints for the 3-member
+    etcd cluster. The fixed instances are addressed by their per-controller
+    cluster-host unit IPs; the floating instance uses the floating IP.
+
+    :param dbapi: the database api reference used to resolve addresses.
+    :param port: etcd client service port.
+    :returns: list of ``https://<addr>:<port>`` endpoint URLs, with IPv6
+              addresses formatted per RFC 2732.
+    """
+    def _address(hostname):
+        name = utils.format_address_name(
+            hostname, constants.NETWORK_TYPE_CLUSTER_HOST)
+        return utils.get_primary_address_by_name(
+            dbapi, name, constants.NETWORK_TYPE_CLUSTER_HOST, True).address
+
+    addresses = [
+        _address(constants.CONTROLLER_0_HOSTNAME),
+        _address(constants.CONTROLLER_1_HOSTNAME),
+        _address(constants.CONTROLLER_HOSTNAME),
+    ]
+
+    return [
+        "https://%s:%s" % (utils.format_url_address(address), port)
+        for address in addresses
+    ]
 
 
 def get_etcd_version_from_symlink():
