@@ -19130,12 +19130,24 @@ class ConductorManager(service.PeriodicService):
         # Update hieradata to persist etcd_version symlinks after reboots
         if success:
             try:
-                hieradata_file_path = os.path.join(
-                    tsc.PUPPET_PATH, 'hieradata', 'static.yaml')
-                configs_to_be_updated = {
-                    'platform::etcd::params::etcd_version': target_etcd_version
-                }
-                self._update_hieradata_file(hieradata_file_path, configs_to_be_updated)
+                # Never downgrade etcd version in hieradata - etcd does not
+                # support running a lower version binary against a data
+                # directory written by a higher version.
+                current_etcd_version = etcd.get_etcd_version_from_symlink()
+                if current_etcd_version and \
+                        LooseVersion(target_etcd_version) <= LooseVersion(current_etcd_version):
+                    LOG.warning("Skipping etcd hieradata update: target "
+                                "version %s is not higher than current "
+                                "version %s."
+                                % (target_etcd_version, current_etcd_version))
+                    target_etcd_version = current_etcd_version
+                else:
+                    hieradata_file_path = os.path.join(
+                        tsc.PUPPET_PATH, 'hieradata', 'static.yaml')
+                    configs_to_be_updated = {
+                        'platform::etcd::params::etcd_version': target_etcd_version
+                    }
+                    self._update_hieradata_file(hieradata_file_path, configs_to_be_updated)
             except Exception as ex:
                 LOG.warning("Failed to update etcd version in hieradata after "
                             "control-plane upgrade on host: [%s]. Error was: [%s]"
