@@ -4363,6 +4363,15 @@ class AppImageParser(object):
                     registry: <str>
                     repository: <str>
 
+              7. image:                (images nested second level or deeper)
+                   <group>:
+                     <name>: <registry>/<repository>:<tag>
+
+              8. image:                (nested image paired with a tag)
+                   <group>:
+                     image: <str>
+                     tag(imageTag/imagetag): <str>
+
         :param var_dict: dict
         :return: a list of image references
         """
@@ -4381,7 +4390,7 @@ class AppImageParser(object):
                         pass
 
                 elif dict_key == 'image':
-                    try:
+                    if isinstance(v, dict):
                         image = {}
                         keys = v.keys()
                         if 'registry' in keys and 'repository' in keys:
@@ -4393,11 +4402,17 @@ class AppImageParser(object):
                             image.update({'registry': v['registry']})
                         if 'tag' in keys:
                             image.update({'tag': v['tag']})
+                        # Look for images nested deeper within the 'image'
+                        # section (e.g. image.csi.csiResizer) which are not
+                        # part of the direct registry/repository/tag
+                        # reference. These would otherwise be discarded.
+                        nested = self._find_nested_images(v, top_level=True)
+                        if nested:
+                            image.update(nested)
                         if image:
                             yield {k: image}
-                    except (KeyError, TypeError, AttributeError):
-                        if isinstance(v, str) or v is None:
-                            yield {k: v}
+                    elif isinstance(v, str) or v is None:
+                        yield {k: v}
 
                 elif dict_key in self.TAG_LIST:
                     if isinstance(v, str) or v is None:
@@ -4406,6 +4421,62 @@ class AppImageParser(object):
                 elif isinstance(v, dict):
                     for result in self._find_images_in_dict(v):
                         yield {k: result}
+
+    def _find_nested_images(self, var, top_level=False):
+        """Find image references nested within an 'image' section.
+
+        Some charts (e.g. the upstream topolvm chart) declare sidecar
+        images nested at the second level or deeper inside the 'image'
+        section, using arbitrary keys instead of the
+        registry/repository/tag fields. Example::
+
+            image:
+              repository: <str>
+              tag: <str>
+              csi:
+                csiResizer: <registry>/<repository>:<tag>
+
+        This helper traverses those nested dictionaries. A string leaf is
+        only treated as an image reference when it has the
+        '<registry_or_path>/<repository>:<tag>' shape, so non-image string
+        values (e.g. 'image.name: glance') are ignored. Recognized image
+        and tag keys found deeper are preserved as well.
+
+        :param var: the value of an 'image' key (or a subtree of it)
+        :param top_level: True when 'var' is the value of the 'image' key
+                          itself, in which case its direct
+                          registry/repository/tag fields are skipped
+                          because the caller already handles them. Nested
+                          levels keep those fields (e.g. a nested
+                          image/tag pair).
+        :return: a dict mirroring the nested structure and keeping only
+                 image-bearing leaves, or None when nothing is found
+        """
+        if isinstance(var, dict):
+            nested = {}
+            for k, v in six.iteritems(var):
+                dict_key = k.lower() if isinstance(k, str) else k
+                if top_level and dict_key in ('registry', 'repository', 'tag'):
+                    # Part of the direct image spec, handled by the caller.
+                    continue
+                if dict_key == 'image' or dict_key in self.TAG_LIST:
+                    if isinstance(v, str) or v is None:
+                        nested[k] = v
+                    elif isinstance(v, dict):
+                        result = self._find_nested_images(v)
+                        if result:
+                            nested[k] = result
+                else:
+                    result = self._find_nested_images(v)
+                    if result is not None:
+                        nested[k] = result
+            return nested if nested else None
+        if isinstance(var, str):
+            # Only treat as an image reference when it looks like one, to
+            # avoid picking up arbitrary string values nested under 'image'.
+            if re.search(r'/.+:.+$', var):
+                return var
+        return None
 
     def find_images_in_dict(self, var_dict):
         """Find image references in a nested dictionary.
@@ -4520,6 +4591,57 @@ class AppImageParser(object):
                     self.update_images_with_local_registry(v)
         return imgs_dict
 
+    def _collect_nested_download_images(self, var, download_imgs_list):
+        """Collect image references nested within an 'image' section.
+
+        Handles the nested forms that can appear under 'image':
+
+          * a bare image reference string
+            ('<registry_or_path>/<repository>:<tag>');
+          * a group pairing an 'image' string with a sibling 'tag'
+            (or 'imageTag'), combined into a single '<image>:<tag>'
+            reference, e.g.::
+
+                image:
+                  <group>:
+                    image: <image>
+                    tag: <tag>
+
+          * deeper nested dictionaries, traversed recursively.
+
+        :param var: a subtree nested under an 'image' key
+        :param download_imgs_list: list accumulating image references
+        """
+        if isinstance(var, str):
+            if re.search(r'/.+:.+$', var):
+                download_imgs_list.append(var)
+            return
+
+        if not isinstance(var, dict):
+            return
+
+        # Combine an 'image' string paired with a sibling tag at this
+        # level into a single image reference.
+        image_value = var.get('image')
+        if isinstance(image_value, str):
+            img = image_value
+            for tag_key in self.TAG_LIST:
+                if var.get(tag_key):
+                    img = '{}:{}'.format(image_value, var[tag_key])
+                    break
+            if re.search(r'/.+:.+$', img):
+                download_imgs_list.append(img)
+
+        # Recurse into the remaining nested structures. The 'image' string
+        # handled above and tag values are skipped to avoid duplicates.
+        for key, value in six.iteritems(var):
+            lower_key = key.lower() if isinstance(key, str) else key
+            if lower_key in self.TAG_LIST:
+                continue
+            if lower_key == 'image' and isinstance(value, str):
+                continue
+            self._collect_nested_download_images(value, download_imgs_list)
+
     def generate_download_images_list(self, download_imgs_dict, download_imgs_list):
         """Generate a list of images that is required to be downloaded.
         """
@@ -4560,6 +4682,17 @@ class AppImageParser(object):
                                 break
                 if re.search(r'/.+:.+$', img):
                     download_imgs_list.append(img)
+                # Collect images nested deeper within the 'image' section
+                # (e.g. image.csi.csiResizer) which are not part of the
+                # direct registry/repository/tag reference.
+                if isinstance(v, dict):
+                    for sub_key, sub_value in six.iteritems(v):
+                        lower_sub_key = (sub_key.lower()
+                                         if isinstance(sub_key, str) else sub_key)
+                        if lower_sub_key in ('registry', 'repository', 'tag'):
+                            continue
+                        self._collect_nested_download_images(
+                            sub_value, download_imgs_list)
 
             elif isinstance(v, dict):
                 self.generate_download_images_list(v, download_imgs_list)
