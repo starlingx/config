@@ -2674,6 +2674,7 @@ PTP_INSTANCE_TYPE_SYNCE4L_MONITORING_PARAMETERS = [
     'holdover_ql',
     'freerun_ql',
     'static_ql',
+    'holdover_timer',
 ]
 
 # PTP instances created during migration
