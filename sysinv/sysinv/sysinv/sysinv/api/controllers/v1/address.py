@@ -274,13 +274,51 @@ class AddressController(rest.RestController):
                     family=constants.IP_FAMILIES[family])
         return
 
-    def _check_duplicate_address(self, address):
+    def _is_convertible_detached_pool_address(self, existing, host_id,
+                                            requested):
+        if existing.interface_id is not None or existing.pool_id is None:
+            return False
+
+        if (existing.prefix != requested['prefix'] or
+                existing.family != requested['family']):
+            return False
+
+        host = pecan.request.dbapi.ihost_get(host_id)
+        network_pools = (
+            pecan.request.dbapi.network_addrpool_get_by_pool_id(
+                existing.pool_id))
+
+        for network_pool in network_pools:
+            expected_names = {
+                cutils.format_address_name(
+                    host.hostname, network_pool.network_type)
+            }
+
+            # AIO-SX controller platform addresses use the logical
+            # "controller" hostname instead of "controller-0".
+            if (host.personality == constants.CONTROLLER and
+                    cutils.is_aio_simplex_system(pecan.request.dbapi)):
+                expected_names.add(
+                    cutils.format_address_name(
+                        constants.CONTROLLER_HOSTNAME,
+                        network_pool.network_type))
+
+            if existing.name in expected_names:
+                return True
+
+        return False
+
+    def _check_duplicate_address(self, address, host_id=None):
         result = self._query_address(address)
         if not result:
             return
         elif result.interface_id is None and result.pool_id is None \
                 and result.name is None:
             # this entry can be reused
+            return
+        elif (host_id is not None and
+              self._is_convertible_detached_pool_address(
+                  result, host_id, address)):
             return
         else:
             raise exception.AddressAlreadyExists(address=address['address'],
@@ -331,7 +369,7 @@ class AddressController(rest.RestController):
 
     def _check_address_conflicts(self, host_id, interface_id, address):
         self._check_address_count(interface_id, host_id)
-        self._check_duplicate_address(address)
+        self._check_duplicate_address(address, host_id)
         self._check_duplicate_subnet(host_id, address)
 
     def _check_host_state(self, host_id):
@@ -419,9 +457,23 @@ class AddressController(rest.RestController):
                     and address.pool_id is None \
                     and address.name is None:
                 # we can reuse this entry, delete and create to have an updated creation time
-                LOG.info(f"address db entry for {address_dict['address']} is unused, update with new db entry")
+                LOG.info("address db entry for %s is unused, update with "
+                         "new db entry", address_dict['address'])
                 pecan.request.dbapi.address_destroy(address.uuid)
                 address = pecan.request.dbapi.address_create(address_dict)
+            elif self._is_convertible_detached_pool_address(
+                    address, host_id, address_dict):
+                LOG.info("converting detached pool address %s to a static "
+                         "interface address", address.uuid)
+                address = pecan.request.dbapi.address_update(
+                    address.uuid,
+                    {'interface_id': interface_id,
+                     'address_pool_id': None,
+                     'name': None})
+            else:
+                raise exception.AddressAlreadyExists(
+                    address=address_dict['address'],
+                    prefix=address_dict['prefix'])
         except exception.AddressNotFoundByAddress:
             # Attempt to create the new address record
             address = pecan.request.dbapi.address_create(address_dict)

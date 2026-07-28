@@ -14,6 +14,7 @@ from six.moves import http_client
 
 from oslo_utils import uuidutils
 from sysinv.common import constants
+from sysinv.common import utils as cutils
 
 from sysinv.tests.api import base
 from sysinv.tests.db import base as dbbase
@@ -307,6 +308,74 @@ class TestPostMixin(AddressTestCase):
         self._test_create_address_fail(None, addr[0], addr[1], None, http_client.CONFLICT,
                                 f"Address {addr[0]}/{addr[1]} already exists on this interface.",
                                 interface.uuid)
+
+    def _create_static_platform_interface(self, host, ifname):
+        ipv4_mode, ipv6_mode = (constants.IPV4_STATIC,
+                                constants.IPV6_DISABLED)
+        if self.oam_subnet.version == 6:
+            ipv4_mode, ipv6_mode = (constants.IPV4_DISABLED,
+                                    constants.IPV6_STATIC)
+        return dbutils.create_test_interface(
+            ifname=ifname,
+            ifclass=constants.INTERFACE_CLASS_PLATFORM,
+            forihostid=host.id,
+            ihost_uuid=host.uuid,
+            ipv4_mode=ipv4_mode,
+            ipv6_mode=ipv6_mode)
+
+    def test_create_static_address_from_detached_pool_address(self):
+        interface = self._create_static_platform_interface(self.worker,
+                                                           'pool-to-static')
+        ip_address = str(self.oam_subnet[26])
+        address = dbutils.create_test_address(
+            name=cutils.format_address_name(self.worker.hostname,
+                                            constants.NETWORK_TYPE_OAM),
+            family=self.oam_subnet.version,
+            prefix=self.oam_subnet.prefixlen,
+            address=ip_address,
+            address_pool_id=self.address_pools[2].id,
+            interface_id=interface.id)
+        original_uuid = address.uuid
+
+        self.dbapi.address_remove_interface(address.uuid)
+        detached = self.dbapi.address_get(address.uuid)
+        self.assertIsNone(detached.interface_id)
+        self.assertEqual(self.address_pools[2].id, detached.pool_id)
+
+        self._test_create_address_success(
+            None, ip_address, self.oam_subnet.prefixlen, None,
+            interface.uuid)
+
+        static_address = self.dbapi.address_get_by_address(ip_address)
+        self.assertEqual(interface.id, static_address.interface_id)
+        self.assertIsNone(static_address.pool_id)
+        self.assertIsNone(static_address.name)
+        self.assertEqual(original_uuid, static_address.uuid)
+
+    def test_reject_detached_pool_address_owned_by_another_host(self):
+        interface = self._create_static_platform_interface(self.worker,
+                                                           'pool-conflict')
+        other_host = self._create_test_host(
+            constants.WORKER,
+            unit=1,
+            administrative=constants.ADMIN_LOCKED)
+
+        ip_address = str(self.oam_subnet[27])
+        address = dbutils.create_test_address(
+            name=cutils.format_address_name(other_host.hostname,
+                                            constants.NETWORK_TYPE_OAM),
+            family=self.oam_subnet.version,
+            prefix=self.oam_subnet.prefixlen,
+            address=ip_address,
+            address_pool_id=self.address_pools[2].id)
+
+        self._test_create_address_fail(
+            None, ip_address, self.oam_subnet.prefixlen, None,
+            http_client.CONFLICT,
+            'already exists on this interface', interface.uuid)
+        retained = self.dbapi.address_get(address.uuid)
+        self.assertIsNone(retained.interface_id)
+        self.assertEqual(self.address_pools[2].id, retained.pool_id)
 
 
 class TestDelete(AddressTestCase):
