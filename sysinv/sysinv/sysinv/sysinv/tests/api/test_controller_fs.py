@@ -1033,6 +1033,51 @@ class ApiControllerFSPostTestSuiteMixin(ApiControllerFSTestCaseMixin):
         self.assertEqual(response.content_type, 'application/json')
         self.assertEqual(response.status_code, http_client.OK)
 
+    def test_post_success_dx_single_controller(self):
+        """Test that creating ceph-float succeeds in a DX system when
+        only controller-0 exists (controller-1 not yet installed).
+
+        During initial DX deployment, the system is configured as duplex
+        but only controller-0 is present. The fixed monitor check should
+        pass with only controller-0's monitor configured.
+        """
+
+        # Rook Ceph must be as storage backend
+        backend = dbutils.get_test_storage_backend(backend=constants.SB_TYPE_CEPH_ROOK)
+        self.dbapi.storage_ceph_rook_create(backend)
+
+        # No controller-1 created — only controller-0 exists
+
+        # Must be AIO-DX
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_DUPLEX
+        system_dict['system_type'] = constants.TIS_AIO_BUILD
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+
+        # Controller-0 must be provisioning for the monitor check
+        self.dbapi.ihost_update(self.host.uuid,
+                                {'invprovision': constants.PROVISIONING})
+
+        # Create host-fs ceph with monitor function on controller-0
+        dbutils.create_test_host_fs(id=90,
+                                    name='ceph',
+                                    forihostid=self.host.id,
+                                    state=constants.HOST_FS_STATUS_IN_USE,
+                                    capabilities={"functions": ["monitor"]})
+
+        # Create a logical volume
+        dbutils.create_test_lvg(lvm_vg_name='cgts-vg',
+                                forihostid=self.host.id)
+
+        response = self.post_json('/controller_fs',
+                                  {'name': 'ceph-float',
+                                   'size': 20},
+                                  headers=self.API_HEADERS,
+                                  expect_errors=False)
+
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
+
     def test_post_fail_host_fs_creating_state(self):
         """Test that creating ceph-float fails when host-fs ceph is in
         Creating state."""

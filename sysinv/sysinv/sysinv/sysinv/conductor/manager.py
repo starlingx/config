@@ -12264,7 +12264,9 @@ class ConductorManager(service.PeriodicService):
         # Note that even if nodes are degraded we still accept the answer.
         valid_ctrls = [ctrl for ctrl in ctrls if
                        (ctrl.administrative == constants.ADMIN_LOCKED and
-                        ctrl.availability == constants.AVAILABILITY_ONLINE) or
+                        ctrl.availability == constants.AVAILABILITY_ONLINE and
+                        ctrl.invprovision in [constants.PROVISIONED,
+                                              constants.PROVISIONING]) or
                        (ctrl.administrative == constants.ADMIN_UNLOCKED and
                         ctrl.operational == constants.OPERATIONAL_ENABLED)]
 

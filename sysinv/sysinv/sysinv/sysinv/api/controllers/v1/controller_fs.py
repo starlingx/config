@@ -680,7 +680,7 @@ def _create(controller_fs):
             len(controller_hosts) == 1):
         data['state'] = str({'status': constants.CONTROLLER_FS_CREATING_ON_UNLOCK})
 
-    if not (any(chost.get('administrative') == constants.ADMIN_LOCKED and
+    elif not (any(chost.get('administrative') == constants.ADMIN_LOCKED and
           chost.get('availability') == constants.AVAILABILITY_ONLINE
           for chost in controller_hosts) and len(controller_hosts) > 1):
         msg = _("Failed to create: It is only possible to create the "
