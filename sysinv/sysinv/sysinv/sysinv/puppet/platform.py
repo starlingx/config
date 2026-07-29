@@ -34,8 +34,12 @@ if codename == constants.OS_DEBIAN_BULLSEYE:
 else:
     from ruamel.yaml import YAML
     from io import StringIO
-# 28 bytes string mask for drdb cpu mask
-CPU_MASK_28 = 2 ** 112 - 1
+# Maximum CPU bitmask for DRBD cpu-mask configuration.
+# The drbd-utils hex string buffer is 256 bytes (commit e404ad9),
+# which holds 227 hex digits after accounting for separators and
+# null terminator. Each hex digit represents 4 CPUs, giving a
+# maximum of 227 * 4 = 908 CPUs.
+CPU_MASK_MAX = 2 ** 908 - 1
 
 
 class PlatformPuppet(base.BasePuppet):
@@ -733,14 +737,15 @@ class PlatformPuppet(base.BasePuppet):
                 for cpu in platform_cpus:
                     platform_cpumask |= 1 << cpu.cpu
 
-                # Truncate to 31 bytes drbd cpu mask string to avoid
-                # parameter error by overflow length
-                # But we need to mask 28 bytes because later comma is
-                # added for every 8 bytes by header.res.erb
-                # Comma needs to be added because of launchpad 1900174
-                if len('%x' % platform_cpumask) > 28:
-                    LOG.warn("Truncate to 31 bytes drbd cpu mask string")
-                    platform_cpumask = platform_cpumask & CPU_MASK_28
+                # Truncate drbd cpu mask to fit drbdsetup's buffer limit.
+                # The cpu-mask format uses comma-separated groups of 8 hex
+                # chars (e.g. "FFFFFFFF,FFFFFFFF,..."). The max buffer is
+                # 256 bytes (255 usable + null terminator), which fits
+                # 227 hex chars + 28 commas = 255 chars = 908 CPUs.
+                # See upstream drbd-utils commit e404ad9.
+                if len('%x' % platform_cpumask) > 227:
+                    LOG.warn("Truncate drbd cpu mask string to 908 CPUs")
+                    platform_cpumask = platform_cpumask & CPU_MASK_MAX
 
             drbd_cpumask = '%x' % platform_cpumask
 
