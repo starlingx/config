@@ -337,7 +337,11 @@ class AppOperator(object):
     def _clear_app_alarm(self, app_name):
         entity_instance_id = "%s=%s" % (fm_constants.FM_ENTITY_TYPE_APPLICATION,
                                         app_name)
-        app_alarms = self._fm_api.get_faults(entity_instance_id)
+        app_alarms = self._fm_api.get_faults_strict(entity_instance_id)
+        if app_alarms is False:
+            LOG.error(f"FM communication error while clearing alarm for {app_name}. "
+                      f"Alarm will be cleared by audit.")
+            return
         if app_alarms:
             # There can only exist one alarm per app
             self._fm_api.clear_fault(app_alarms[0].alarm_id,

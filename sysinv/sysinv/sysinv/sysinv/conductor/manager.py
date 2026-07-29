@@ -9034,7 +9034,10 @@ class ConductorManager(service.PeriodicService):
 
         alarms = []
         for alarm_id in target_alarms:
-            alarm_list = self.fm_api.get_faults_by_id(alarm_id)
+            alarm_list = self.fm_api.get_faults_by_id_strict(alarm_id)
+            if alarm_list is False:
+                LOG.error(f"FM communication failure querying {alarm_id}")
+                continue
             if not alarm_list:
                 continue
             alarms.extend(alarm_list)
