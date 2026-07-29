@@ -14,37 +14,93 @@
 
 source /etc/platform/openrc
 
+SCRIPT_NAME="kube-cert-rotation"
+
+log_info() {
+    logger -t "${SCRIPT_NAME}" -p user.info "$1"
+}
+
+log_warn() {
+    logger -t "${SCRIPT_NAME}" -p user.warning "$1"
+}
+
+log_error() {
+    logger -t "${SCRIPT_NAME}" -p user.err "$1"
+}
+
 # Check if a Kubernetes upgrade is in progress
+# Returns 0 if safe to proceed, 1 if upgrade is in progress or status is unknown.
 check_k8s_upgrade_status() {
     local kube_upgrade_status
-    kube_upgrade_status=$(system kube-upgrade-show)
-    # The above command may not work as this script is used for system recovery
-    # when services are down. So, if the command fails, return 0 to avoid
-    # blocking the script
-    if [ $? -ne 0 ]; then
-        return 0
-    elif [ "$kube_upgrade_status" == "A kubernetes upgrade is not in progress" ]; then
+    local rc
+    local retries=3
+    local retry_delay=10
+
+    for ((i=1; i<=retries; i++)); do
+        kube_upgrade_status=$(system kube-upgrade-show 2>&1)
+        rc=$?
+        if [ $rc -eq 0 ]; then
+            break
+        fi
+        if [ $i -lt $retries ]; then
+            log_warn "system kube-upgrade-show failed (attempt ${i}/${retries}), retrying in ${retry_delay}s..."
+            sleep $retry_delay
+        fi
+    done
+
+    if [ $rc -ne 0 ]; then
+        # Cannot determine upgrade status. Err on the side of caution and
+        # skip cert rotation — it will be retried by cron the next day.
+        log_warn "system kube-upgrade-show failed after ${retries} attempts (rc=${rc})."
+        log_warn "Cannot determine kube-upgrade status. Skipping cert rotation to avoid interference."
+        return 1
+    fi
+
+    if echo "${kube_upgrade_status}" | grep -qi "upgrade is not in progress"; then
+        log_info "No Kubernetes upgrade in progress. Proceeding with cert rotation."
         return 0
     fi
+
+    log_info "Kubernetes upgrade is in progress. Certificate rotation will be deferred."
     return 1
 }
 
 # Check if the platform is upgraded in progress
+# Returns 0 if safe to proceed, 1 if upgrade is in progress or status is unknown.
 check_platform_upgrade_status() {
     local platform_upgrade_status
-    platform_upgrade_status=$(software deploy show)
-    # The above command may not work as this script is used for system recovery
-    # when services are down. So, if the command fails, return 0 to avoid
-    # blocking the script
-    if [ $? -ne 0 ]; then
-        return 0
-    elif [ "$platform_upgrade_status" == "No deploy in progress" ]; then
+    local rc
+    local retries=3
+    local retry_delay=10
+
+    for ((i=1; i<=retries; i++)); do
+        platform_upgrade_status=$(software deploy show 2>&1)
+        rc=$?
+        if [ $rc -eq 0 ]; then
+            break
+        fi
+        if [ $i -lt $retries ]; then
+            log_warn "software deploy show failed (attempt ${i}/${retries}), retrying in ${retry_delay}s..."
+            sleep $retry_delay
+        fi
+    done
+
+    if [ $rc -ne 0 ]; then
+        log_warn "software deploy show failed after ${retries} attempts (rc=${rc})."
+        log_warn "Cannot determine platform upgrade status. Skipping cert rotation to avoid interference."
+        return 1
+    fi
+
+    if echo "${platform_upgrade_status}" | grep -qi "No deploy in progress"; then
+        log_info "No platform upgrade in progress. Proceeding with cert rotation."
         return 0
     fi
+
+    log_info "Platform upgrade is in progress. Certificate rotation will be deferred."
     return 1
 }
 
-# Number of attempts to check upgrade status
+# Number of attempts to check upgrade status (outer loop)
 MAX_ATTEMPTS=2
 ATTEMPT=0
 K8S_UPGRADE_WAITING_TIME=3600
@@ -54,10 +110,12 @@ PLATFORM_UPGRADE_WAITING_TIME=7200
 while ! check_k8s_upgrade_status; do
     ATTEMPT=$((ATTEMPT + 1))
     if [ $ATTEMPT -ge $MAX_ATTEMPTS ]; then
+        log_info "Kubernetes upgrade still in progress or status unknown after ${ATTEMPT} attempts. Exiting."
         echo "Kubernetes upgrade is still in progress after $ATTEMPT attempts. Exiting script."
         # Exit here is OK since this will be called via cron next day.
-        exit 1
+        exit 0
     fi
+    log_info "Waiting ${K8S_UPGRADE_WAITING_TIME}s before rechecking kube-upgrade status (attempt ${ATTEMPT}/${MAX_ATTEMPTS})..."
     sleep $K8S_UPGRADE_WAITING_TIME
 done
 
@@ -65,10 +123,12 @@ done
 while ! check_platform_upgrade_status; do
     ATTEMPT=$((ATTEMPT + 1))
     if [ $ATTEMPT -ge $MAX_ATTEMPTS ]; then
+        log_info "Platform upgrade still in progress or status unknown after ${ATTEMPT} attempts. Exiting."
         echo "Platform upgrade is still in progress after $ATTEMPT attempts. Exiting script."
         # Exit here is OK since this will be called via cron next day.
-        exit 1
+        exit 0
     fi
+    log_info "Waiting ${PLATFORM_UPGRADE_WAITING_TIME}s before rechecking platform upgrade status (attempt ${ATTEMPT}/${MAX_ATTEMPTS})..."
     sleep $PLATFORM_UPGRADE_WAITING_TIME
 done
 
@@ -94,7 +154,7 @@ CERT_EXP_DATES=$(kubeadm $CERT_CMD check-expiration)
 # Here we save the return code so that it can be used later in the time_left_s function
 RC_CERT_EXP_DATES=$?
 if [ $RC_CERT_EXP_DATES -ne 0 ]; then
-    echo "Failed to read certificates with 'kubeadm $CERT_CMD check-expiration. Will assume certs are expired."
+    log_warn "Failed to read certificates with 'kubeadm $CERT_CMD check-expiration'. Will assume certs are expired."
 fi
 
 # Check if k8s certificate exist. Return 0 for no and 1 for yes.
@@ -137,33 +197,45 @@ time_left_s_by_openssl() {
 renew_cert() {
     local ret=0
     local time_left_s=""
+    local days_left=""
 
     # A bad return code from kubeadm means we can safely assume all k8s certs have expired
     if [ $RC_CERT_EXP_DATES -ne 0 ]; then
+        log_info "Certificate '$1': assumed expired (kubeadm check-expiration failed). Attempting renewal."
         kubeadm $CERT_CMD renew $1
         if [ $? -ne 0 ]; then
+            log_error "Certificate '$1': renewal failed."
             ret=1
+        else
+            log_info "Certificate '$1': renewed successfully."
         fi
         return ${ret}
     fi
 
     k8s_cert_exists "$1"
     if [ $? -ne 0 ]; then
-        echo "Skipping certificate ${1} as it does exist in 'kubeadm certs check-expiration'"
+        log_info "Certificate '$1': not found in 'kubeadm certs check-expiration'. Skipping."
         return ${ret}
     fi
 
     time_left_s=$(time_left_s "$1")
     if [ "x${time_left_s}" != "x" ]; then
+        days_left=$((time_left_s / 86400))
         if [ ${time_left_s} -lt ${CUTOFF_DAYS_S} ]; then
+            log_info "Certificate '$1': expires in ${days_left} days (< ${CUTOFF_DAYS} day threshold). Attempting renewal."
             kubeadm $CERT_CMD renew $1
             if [ $? -ne 0 ]; then
+                log_error "Certificate '$1': renewal failed."
                 ret=1
+            else
+                log_info "Certificate '$1': renewed successfully."
             fi
         else
+            log_info "Certificate '$1': ${days_left} days remaining. No renewal needed."
             ret=255
         fi
     else
+        log_error "Certificate '$1': unable to determine expiry date."
         ret=1
     fi
     return ${ret}
@@ -177,12 +249,16 @@ renew_cert() {
 renew_cert_by_openssl() {
     local ret=0
     local time_left_s=""
+    local days_left=""
     if [ ! -f "$1/$2.crt" ]; then
+        log_info "Certificate '$2': file $1/$2.crt not found. Skipping."
         return 255
     fi
     time_left_s=$(time_left_s_by_openssl "$1/$2.crt")
     if [ "x${time_left_s}" != "x" ]; then
+        days_left=$((time_left_s / 86400))
         if [ ${time_left_s} -lt ${CUTOFF_DAYS_S} ]; then
+            log_info "Certificate '$2': expires in ${days_left} days (< ${CUTOFF_DAYS} day threshold). Attempting renewal."
             # Create csr config file
             echo "$3" > "${TEMP_WORK_DIR}/$2_csr.conf"
             if [ $? -ne 0 ]; then
@@ -224,10 +300,17 @@ renew_cert_by_openssl() {
                     ret=1
                 fi
             fi
+            if [ $ret -eq 0 ]; then
+                log_info "Certificate '$2': renewed successfully."
+            else
+                log_error "Certificate '$2': renewal failed."
+            fi
         else
+            log_info "Certificate '$2': ${days_left} days remaining. No renewal needed."
             ret=255
         fi
     else
+        log_error "Certificate '$2': unable to determine expiry date."
         ret=1
     fi
     return ${ret}
@@ -540,9 +623,11 @@ fi
 
 if [ ${ERR} -eq 2 ]; then
     # Notify admin to lock and unlock this master node if restart k8s components failed
+    log_error "Certificate rotation completed with service restart failures. Reason: ${ERR_REASON}"
     /usr/local/bin/fmClientCli -c "### ###250.003###set###host###host=${HOSTNAME}### ###major###Kubernetes certificates have been renewed but not all services have been updated.###operational-violation### ###Lock and unlock the host to update services with new certificates (Manually renew kubernetes certificates first if renewal failed). Reason: ${ERR_REASON}### ### ###"
 elif [ ${ERR} -eq 1 ]; then
     # Notify admin to renew kube cert manually and restart services by lock/unlock if cert renew or config failed
+    log_error "Certificate rotation failed. Reason: ${ERR_REASON}"
     /usr/local/bin/fmClientCli -c "### ###250.003###set###host###host=${HOSTNAME}### ###major###Kubernetes certificates renewal failed.###operational-violation### ###Lock and unlock the host to update services with new certificates (Manually renew kubernetes certificates first if renewal failed). Reason: ${ERR_REASON}### ### ###"
 else
     # Clear the alarm if cert rotation completed
@@ -550,5 +635,12 @@ else
     /usr/local/bin/fmClientCli -A "250.003" &> /dev/null
     if [ $? -eq 0 ]; then
         /usr/local/bin/fmClientCli -d "###250.003###host=${HOSTNAME}###"
+    fi
+    if [ ${RESTART_APISERVER} -eq 1 ] || [ ${RESTART_CONTROLLER_MANAGER} -eq 1 ] || \
+       [ ${RESTART_SCHEDULER} -eq 1 ] || [ ${RESTART_SYSINV} -eq 1 ] || \
+       [ ${RESTART_ETCD} -eq 1 ] || [ ${RESTART_HAPROXY} -eq 1 ]; then
+        log_info "Certificate rotation completed successfully. Certificates were renewed and services restarted."
+    else
+        log_info "All certificates are up to date. No renewal required."
     fi
 fi
