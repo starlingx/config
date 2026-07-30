@@ -13002,6 +13002,13 @@ class ConductorManager(service.PeriodicService):
             # kube apiserver service parameters can be applied without a reboot
             if section == constants.SERVICE_PARAM_SECTION_KUBERNETES_APISERVER:
                 reboot = False
+            # kube volumes service parameters are applied at runtime via
+            # change_apiserver_parameters and do not require a reboot
+            if section in [
+                    constants.SERVICE_PARAM_SECTION_KUBERNETES_APISERVER_VOLUMES,
+                    constants.SERVICE_PARAM_SECTION_KUBERNETES_CONTROLLER_MANAGER_VOLUMES,
+                    constants.SERVICE_PARAM_SECTION_KUBERNETES_SCHEDULER_VOLUMES]:
+                reboot = False
             if section == constants.SERVICE_PARAM_SECTION_KUBERNETES_CONTROLLER_MANAGER and \
                     name == "pod-eviction-timeout":
                 reboot = False
