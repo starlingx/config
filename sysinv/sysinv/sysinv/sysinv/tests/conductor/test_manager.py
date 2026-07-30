@@ -3063,21 +3063,15 @@ class ManagerTestCase(base.DbTestCase):
 
         FROM_VERSION = 'v1.29.2'
         TO_VERSION = 'v1.30.6'
-        network_images = {'calico_apiserver_img': 'fake_calico_apiserver_img',
-                          'calico_cni_img': 'fake_calico_cni_img',
-                          'calico_csi_img': 'fake_calico_csi_img',
+        network_images = {'calico_cni_img': 'fake_calico_cni_img',
                           'calico_ctl_img': 'fake_calico_ctl_img',
                           'calico_dikastes_img': 'fake_calico_dikastes_img',
                           'calico_envoy_gateway_img': 'fake_calico_envoy_gateway_img',
                           'calico_envoy_proxy_img': 'fake_calico_envoy_proxy_img',
-                          'calico_goldmane_img': 'fake_calico_goldmane_img',
                           'calico_kube_controllers_img': 'fake_calico_kube_controllers_img',
-                          'calico_node_driver_registrar_img': 'fake_calico_node_driver_registrar_img',
                           'calico_node_img': 'fake_calico_node_img',
                           'calico_pod2daemon_flexvol_img': 'fake_calico_pod2daemon_flexvol_img',
                           'calico_typha_img': 'fake_calico_typha_img',
-                          'calico_whisker_backend_img': 'fake_calico_whisker_backend_img',
-                          'calico_whisker_img': 'fake_calico_whisker_img',
                           'multus_img': 'fake_multus_img',
                           'sriov_cni_img': 'fake_sriov_cni_img',
                           'sriov_network_device_img': 'fake_sriov_network_device_img',
@@ -3268,21 +3262,15 @@ class ManagerTestCase(base.DbTestCase):
 
         FROM_VERSION = 'v1.29.2'
         TO_VERSION = 'v1.30.6'
-        network_images = {'calico_apiserver_img': 'fake_calico_apiserver_img',
-                          'calico_cni_img': 'fake_calico_cni_img',
-                          'calico_csi_img': 'fake_calico_csi_img',
+        network_images = {'calico_cni_img': 'fake_calico_cni_img',
                           'calico_ctl_img': 'fake_calico_ctl_img',
                           'calico_dikastes_img': 'fake_calico_dikastes_img',
                           'calico_envoy_gateway_img': 'fake_calico_envoy_gateway_img',
                           'calico_envoy_proxy_img': 'fake_calico_envoy_proxy_img',
-                          'calico_goldmane_img': 'fake_calico_goldmane_img',
                           'calico_kube_controllers_img': 'fake_calico_kube_controllers_img',
-                          'calico_node_driver_registrar_img': 'fake_calico_node_driver_registrar_img',
                           'calico_node_img': 'fake_calico_node_img',
                           'calico_pod2daemon_flexvol_img': 'fake_calico_pod2daemon_flexvol_img',
                           'calico_typha_img': 'fake_calico_typha_img',
-                          'calico_whisker_backend_img': 'fake_calico_whisker_backend_img',
-                          'calico_whisker_img': 'fake_calico_whisker_img',
                           'multus_img': 'fake_multus_img',
                           'sriov_cni_img': 'fake_sriov_cni_img',
                           'sriov_network_device_img': 'fake_sriov_network_device_img',
@@ -3471,21 +3459,15 @@ class ManagerTestCase(base.DbTestCase):
 
         FROM_VERSION = 'v1.29.2'
         TO_VERSION = 'v1.30.6'
-        network_images = {'calico_apiserver_img': 'fake_calico_apiserver_img',
-                          'calico_cni_img': 'fake_calico_cni_img',
-                          'calico_csi_img': 'fake_calico_csi_img',
+        network_images = {'calico_cni_img': 'fake_calico_cni_img',
                           'calico_ctl_img': 'fake_calico_ctl_img',
                           'calico_dikastes_img': 'fake_calico_dikastes_img',
                           'calico_envoy_gateway_img': 'fake_calico_envoy_gateway_img',
                           'calico_envoy_proxy_img': 'fake_calico_envoy_proxy_img',
-                          'calico_goldmane_img': 'fake_calico_goldmane_img',
                           'calico_kube_controllers_img': 'fake_calico_kube_controllers_img',
-                          'calico_node_driver_registrar_img': 'fake_calico_node_driver_registrar_img',
                           'calico_node_img': 'fake_calico_node_img',
                           'calico_pod2daemon_flexvol_img': 'fake_calico_pod2daemon_flexvol_img',
                           'calico_typha_img': 'fake_calico_typha_img',
-                          'calico_whisker_backend_img': 'fake_calico_whisker_backend_img',
-                          'calico_whisker_img': 'fake_calico_whisker_img',
                           'multus_img': 'fake_multus_img',
                           'sriov_cni_img': 'fake_sriov_cni_img',
                           'sriov_network_device_img': 'fake_sriov_network_device_img',
@@ -3679,21 +3661,15 @@ class ManagerTestCase(base.DbTestCase):
 
         FROM_VERSION = 'v1.29.2'
         TO_VERSION = 'v1.30.6'
-        network_images = {'calico_apiserver_img': 'fake_calico_apiserver_img',
-                          'calico_cni_img': 'fake_calico_cni_img',
-                          'calico_csi_img': 'fake_calico_csi_img',
+        network_images = {'calico_cni_img': 'fake_calico_cni_img',
                           'calico_ctl_img': 'fake_calico_ctl_img',
                           'calico_dikastes_img': 'fake_calico_dikastes_img',
                           'calico_envoy_gateway_img': 'fake_calico_envoy_gateway_img',
                           'calico_envoy_proxy_img': 'fake_calico_envoy_proxy_img',
-                          'calico_goldmane_img': 'fake_calico_goldmane_img',
                           'calico_kube_controllers_img': 'fake_calico_kube_controllers_img',
-                          'calico_node_driver_registrar_img': 'fake_calico_node_driver_registrar_img',
                           'calico_node_img': 'fake_calico_node_img',
                           'calico_pod2daemon_flexvol_img': 'fake_calico_pod2daemon_flexvol_img',
                           'calico_typha_img': 'fake_calico_typha_img',
-                          'calico_whisker_backend_img': 'fake_calico_whisker_backend_img',
-                          'calico_whisker_img': 'fake_calico_whisker_img',
                           'multus_img': 'fake_multus_img',
                           'sriov_cni_img': 'fake_sriov_cni_img',
                           'sriov_network_device_img': 'fake_sriov_network_device_img',
@@ -4389,21 +4365,15 @@ class ManagerTestCase(base.DbTestCase):
         FAKE_AUTH = "fake_username:fake_password"
 
         FAKE_IMAGES = {
-            'calico_apiserver_img': 'img7',
             'calico_cni_img': 'img1',
-            'calico_csi_img': 'img8',
             'calico_ctl_img': 'img9',
             'calico_dikastes_img': 'img10',
             'calico_envoy_gateway_img': 'img11',
             'calico_envoy_proxy_img': 'img12',
-            'calico_goldmane_img': 'img13',
             'calico_kube_controllers_img': 'img3',
-            'calico_node_driver_registrar_img': 'img14',
             'calico_node_img': 'img2',
             'calico_pod2daemon_flexvol_img': 'img15',
             'calico_typha_img': 'img16',
-            'calico_whisker_backend_img': 'img17',
-            'calico_whisker_img': 'img18',
             'multus_img': 'img4',
             'sriov_cni_img': 'img5',
             'sriov_network_device_img': 'img6',
@@ -4575,21 +4545,15 @@ class ManagerTestCase(base.DbTestCase):
 
         # Proper image mocking (CRITICAL FIX)
         FAKE_IMAGES = {
-            'calico_apiserver_img': 'img7',
             'calico_cni_img': 'img1',
-            'calico_csi_img': 'img8',
             'calico_ctl_img': 'img9',
             'calico_dikastes_img': 'img10',
             'calico_envoy_gateway_img': 'img11',
             'calico_envoy_proxy_img': 'img12',
-            'calico_goldmane_img': 'img13',
             'calico_kube_controllers_img': 'img3',
-            'calico_node_driver_registrar_img': 'img14',
             'calico_node_img': 'img2',
             'calico_pod2daemon_flexvol_img': 'img15',
             'calico_typha_img': 'img16',
-            'calico_whisker_backend_img': 'img17',
-            'calico_whisker_img': 'img18',
             'multus_img': 'img4',
             'sriov_cni_img': 'img5',
             'sriov_network_device_img': 'img6',
@@ -11160,21 +11124,15 @@ class ManagerTestCase(base.DbTestCase):
         return mocks
 
     def _get_calico_operator_network_images(self):
-        return {'calico_apiserver_img': 'fake_calico_apiserver_img',
-                'calico_cni_img': 'fake_calico_cni_img',
-                'calico_csi_img': 'fake_calico_csi_img',
+        return {'calico_cni_img': 'fake_calico_cni_img',
                 'calico_ctl_img': 'fake_calico_ctl_img',
                 'calico_dikastes_img': 'fake_calico_dikastes_img',
                 'calico_envoy_gateway_img': 'fake_calico_envoy_gateway_img',
                 'calico_envoy_proxy_img': 'fake_calico_envoy_proxy_img',
-                'calico_goldmane_img': 'fake_calico_goldmane_img',
                 'calico_kube_controllers_img': 'fake_calico_kube_controllers_img',
-                'calico_node_driver_registrar_img': 'fake_calico_node_driver_registrar_img',
                 'calico_node_img': 'fake_calico_node_img',
                 'calico_pod2daemon_flexvol_img': 'fake_calico_pod2daemon_flexvol_img',
                 'calico_typha_img': 'fake_calico_typha_img',
-                'calico_whisker_backend_img': 'fake_calico_whisker_backend_img',
-                'calico_whisker_img': 'fake_calico_whisker_img',
                 'multus_img': 'fake_multus_img',
                 'sriov_cni_img': 'fake_sriov_cni_img',
                 'sriov_network_device_img': 'fake_sriov_network_device_img',
@@ -11208,13 +11166,11 @@ class ManagerTestCase(base.DbTestCase):
 
         mocks['create_ns'].assert_any_call('calico-system')
         mocks['create_ns'].assert_any_call('tigera-operator')
-        mocks['create_ns'].assert_any_call('tigera-gateway')
-        self.assertEqual(mocks['create_ns'].call_count, 3)
+        self.assertEqual(mocks['create_ns'].call_count, 2)
         mocks['copy_secret'].assert_any_call('registry-local-secret', 'kube-system', 'calico-system')
         mocks['copy_secret'].assert_any_call('registry-local-secret', 'kube-system', 'tigera-operator')
-        mocks['copy_secret'].assert_any_call('registry-local-secret', 'kube-system', 'tigera-gateway')
         self.assertEqual(mocks['render'].call_count, 6)
-        self.assertEqual(mocks['kubectl_apply'].call_count, 11)
+        self.assertEqual(mocks['kubectl_apply'].call_count, 7)
 
         updated_upgrade = self.dbapi.kube_upgrade_get_one()
         self.assertEqual(updated_upgrade.state, kubernetes.KUBE_UPGRADED_NETWORKING)
@@ -11253,10 +11209,9 @@ class ManagerTestCase(base.DbTestCase):
 
         mocks['create_ns'].assert_any_call('calico-system')
         mocks['create_ns'].assert_any_call('tigera-operator')
-        mocks['create_ns'].assert_any_call('tigera-gateway')
         mocks['copy_secret'].assert_any_call('registry-local-secret', 'kube-system', 'calico-system')
         self.assertEqual(mocks['render'].call_count, 6)
-        self.assertEqual(mocks['kubectl_apply'].call_count, 11)
+        self.assertEqual(mocks['kubectl_apply'].call_count, 7)
 
         updated_upgrade = self.dbapi.kube_upgrade_get_one()
         self.assertEqual(updated_upgrade.state, kubernetes.KUBE_UPGRADED_NETWORKING)
@@ -11296,9 +11251,8 @@ class ManagerTestCase(base.DbTestCase):
         mocks['create_ns'].assert_any_call('calico-system')
         mocks['create_ns'].assert_any_call('tigera-operator')
         mocks['copy_secret'].assert_any_call('registry-local-secret', 'kube-system', 'calico-system')
-        mocks['create_ns'].assert_any_call('tigera-gateway')
         self.assertEqual(mocks['render'].call_count, 6)
-        self.assertEqual(mocks['kubectl_apply'].call_count, 11)
+        self.assertEqual(mocks['kubectl_apply'].call_count, 7)
 
         updated_upgrade = self.dbapi.kube_upgrade_get_one()
         self.assertEqual(updated_upgrade.state, kubernetes.KUBE_UPGRADED_NETWORKING)
@@ -11308,153 +11262,6 @@ class ManagerTestCase(base.DbTestCase):
         self.assertEqual(ctx.get('cluster_network_ipv4'), '172.16.0.0/16')
         self.assertEqual(ctx.get('cluster_network_ipv6'), 'fd00::/64')
         self.assertEqual(ctx.get('tigera_operator_img'), 'fake_tigera_operator_img')
-
-    def test_kube_upgrade_networking_gateway_api_namespace_created(self):
-        """Test tigera-gateway namespace is created during upgrade."""
-        config_uuid = str(uuid.uuid4())
-        self._create_test_ihost(
-            personality=constants.CONTROLLER, hostname='controller-0',
-            uuid=str(uuid.uuid4()), config_status=None,
-            config_applied=config_uuid, config_target=config_uuid,
-            invprovision=constants.PROVISIONED,
-            administrative=constants.ADMIN_UNLOCKED,
-            operational=constants.OPERATIONAL_ENABLED,
-            availability=constants.AVAILABILITY_ONLINE)
-
-        FROM_VERSION = 'v1.34.1'
-        TO_VERSION = 'v1.35.2'
-        upgrade_overrides = {"cluster_pod_subnet": "172.16.0.0/16",
-                             "cluster_host_floating_address": "192.168.206.1",
-                             "cluster_host_node_0_address": "192.168.206.2"}
-
-        utils.create_test_kube_upgrade(from_version=FROM_VERSION,
-                                       to_version=TO_VERSION,
-                                       state=kubernetes.KUBE_UPGRADING_NETWORKING)
-
-        mocks = self._setup_operator_test_mocks(
-            self._get_calico_operator_network_images(), True, True,
-            upgrade_overrides)
-
-        self.service.kube_upgrade_networking(self.context, TO_VERSION)
-
-        # Verify tigera-gateway namespace is created
-        mocks['create_ns'].assert_any_call('tigera-gateway')
-        # Verify tigera-gateway namespace is labeled
-        mocks['patch_ns'].assert_any_call('tigera-gateway', mock.ANY)
-        # Verify registry secret is copied
-        mocks['copy_secret'].assert_any_call(
-            'registry-local-secret', 'kube-system', 'tigera-gateway')
-
-    def test_kube_upgrade_networking_gateway_api_not_applied_for_older_k8s(self):
-        """Test Gateway API is not applied for K8s < v1.35.2."""
-        config_uuid = str(uuid.uuid4())
-        self._create_test_ihost(
-            personality=constants.CONTROLLER, hostname='controller-0',
-            uuid=str(uuid.uuid4()), config_status=None,
-            config_applied=config_uuid, config_target=config_uuid,
-            invprovision=constants.PROVISIONED,
-            administrative=constants.ADMIN_UNLOCKED,
-            operational=constants.OPERATIONAL_ENABLED,
-            availability=constants.AVAILABILITY_ONLINE)
-
-        FROM_VERSION = 'v1.32.2'
-        TO_VERSION = 'v1.32.13'
-        upgrade_overrides = {"cluster_pod_subnet": "172.16.0.0/16",
-                             "cluster_host_floating_address": "192.168.206.1",
-                             "cluster_host_node_0_address": "192.168.206.2"}
-
-        utils.create_test_kube_upgrade(from_version=FROM_VERSION,
-                                       to_version=TO_VERSION,
-                                       state=kubernetes.KUBE_UPGRADING_NETWORKING)
-
-        mocks = self._setup_operator_test_mocks(
-            self._get_calico_operator_network_images(), True, True,
-            upgrade_overrides)
-
-        self.service.kube_upgrade_networking(self.context, TO_VERSION)
-
-        # Verify tigera-gateway namespace is NOT created for older K8s
-        for call in mocks['create_ns'].call_args_list:
-            self.assertNotEqual(call[0][0], 'tigera-gateway')
-
-    def test_kube_upgrade_networking_gateway_api_manifests_applied(self):
-        """Test Gateway API manifests are applied in correct order."""
-        config_uuid = str(uuid.uuid4())
-        self._create_test_ihost(
-            personality=constants.CONTROLLER, hostname='controller-0',
-            uuid=str(uuid.uuid4()), config_status=None,
-            config_applied=config_uuid, config_target=config_uuid,
-            invprovision=constants.PROVISIONED,
-            administrative=constants.ADMIN_UNLOCKED,
-            operational=constants.OPERATIONAL_ENABLED,
-            availability=constants.AVAILABILITY_ONLINE)
-
-        FROM_VERSION = 'v1.34.1'
-        TO_VERSION = 'v1.35.2'
-        upgrade_overrides = {"cluster_pod_subnet": "172.16.0.0/16",
-                             "cluster_host_floating_address": "192.168.206.1",
-                             "cluster_host_node_0_address": "192.168.206.2"}
-
-        utils.create_test_kube_upgrade(from_version=FROM_VERSION,
-                                       to_version=TO_VERSION,
-                                       state=kubernetes.KUBE_UPGRADING_NETWORKING)
-
-        mocks = self._setup_operator_test_mocks(
-            self._get_calico_operator_network_images(), True, True,
-            upgrade_overrides)
-
-        self.service.kube_upgrade_networking(self.context, TO_VERSION)
-
-        # Verify all 4 gateway manifests were applied
-        apply_calls = [str(call) for call in mocks['kubectl_apply'].call_args_list]
-        self.assertTrue(any('gateway-api-envoy-config' in c for c in apply_calls),
-                        "EnvoyGateway config manifest not applied")
-        self.assertTrue(any('calico-gateway-api.yaml' in c or
-                            'update_calico-gateway-api.yaml' in c
-                            for c in apply_calls),
-                        "GatewayAPI CR manifest not applied")
-        self.assertTrue(any('xlistenerset-crd' in c for c in apply_calls),
-                        "XListenerSet CRD manifest not applied")
-        self.assertTrue(any('xlistenerset-rbac' in c for c in apply_calls),
-                        "XListenerSet RBAC manifest not applied")
-
-    def test_kube_upgrade_networking_gateway_preserves_existing(self):
-        """Test upgrade from v1.35.2 to v1.36.0 preserves existing namespace."""
-        config_uuid = str(uuid.uuid4())
-        self._create_test_ihost(
-            personality=constants.CONTROLLER, hostname='controller-0',
-            uuid=str(uuid.uuid4()), config_status=None,
-            config_applied=config_uuid, config_target=config_uuid,
-            invprovision=constants.PROVISIONED,
-            administrative=constants.ADMIN_UNLOCKED,
-            operational=constants.OPERATIONAL_ENABLED,
-            availability=constants.AVAILABILITY_ONLINE)
-
-        FROM_VERSION = 'v1.35.2'
-        TO_VERSION = 'v1.36.0'
-        upgrade_overrides = {"cluster_pod_subnet": "172.16.0.0/16",
-                             "cluster_host_floating_address": "192.168.206.1",
-                             "cluster_host_node_0_address": "192.168.206.2"}
-
-        utils.create_test_kube_upgrade(from_version=FROM_VERSION,
-                                       to_version=TO_VERSION,
-                                       state=kubernetes.KUBE_UPGRADING_NETWORKING)
-
-        mocks = self._setup_operator_test_mocks(
-            self._get_calico_operator_network_images(), True, True,
-            upgrade_overrides)
-
-        # Simulate secret already existing (namespace already there)
-        mocks['get_secret'].side_effect = None
-        mocks['get_secret'].return_value = mock.MagicMock()
-
-        self.service.kube_upgrade_networking(self.context, TO_VERSION)
-
-        # Namespace creation is idempotent (kube_create_namespace handles AlreadyExists)
-        mocks['create_ns'].assert_any_call('tigera-gateway')
-        # Secret should NOT be copied since it already exists
-        for call in mocks['copy_secret'].call_args_list:
-            self.assertNotEqual(call[0][2], 'tigera-gateway')
 
 
 class ManagerTestCaseInternal(base.BaseHostTestCase):
