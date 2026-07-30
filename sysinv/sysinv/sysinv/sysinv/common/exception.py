@@ -1514,6 +1514,10 @@ class DeviceImageStateNotFoundByKey(NotFound):
 #
 
 
+class KubeHealthFailure(SysinvException):
+    message = _("Kubernetes health check failure: %(reason)s")
+
+
 class KubeAppUploadFailure(SysinvException):
     message = _("Upload of application %(name)s (%(version)s) failed: %(reason)s")
 
