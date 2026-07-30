@@ -4,6 +4,8 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
+from distutils.version import LooseVersion
+
 from oslo_log import log
 
 from sysinv.common import exception
@@ -48,7 +50,26 @@ class KubeVersion(base.SysinvObject):
         raise exception.KubeVersionNotFound(version)
 
     def can_upgrade_from(self, version):
-        return version in self.upgrade_from
+        """Determine if this version can be upgraded from the given version.
+
+        Allowed upgrade paths:
+        - Same major.minor, lower patch version
+        - Same major, minor is exactly 1 less than target
+
+        K8S version 'v1.34.2' has major.minor.patch mapping to [0].[1].[2]
+        e.g., LooseVersion('1.34.2').version = [1, 34, 2]
+        """
+        # target is the next K8S version to upgrade to (self)
+        target = LooseVersion(self.version.lstrip('v')).version
+        # source is the K8S version we are evaluating upgrade eligibility from
+        source = LooseVersion(version.lstrip('v')).version
+        # Same major.minor and lower patch version
+        if source[0] == target[0] and source[1] == target[1]:
+            return source[2] < target[2]
+        # Same major, and minor is 1 less than target
+        if source[0] == target[0] and source[1] == target[1] - 1:
+            return True
+        return False
 
     def can_downgrade_to(self, version):
         return version in self.downgrade_to

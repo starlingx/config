@@ -25,13 +25,13 @@ FAKE_KUBE_VERSIONS = [
      'available_patches': ['KUBE.3'],
      },
     {'version': 'v1.43.1',
-     'upgrade_from': ['v1.42.2'],
+     'upgrade_from': ['v1.42.1', 'v1.42.2'],
      'downgrade_to': [],
      'applied_patches': ['KUBE.11', 'KUBE.12'],
      'available_patches': ['KUBE.13'],
      },
     {'version': 'v1.43.2',
-     'upgrade_from': ['v1.43.1', 'v1.42.2'],
+     'upgrade_from': ['v1.42.1', 'v1.42.2', 'v1.43.1'],
      'downgrade_to': ['v1.43.1'],
      'applied_patches': ['KUBE.14', 'KUBE.15'],
      'available_patches': ['KUBE.16'],
@@ -55,8 +55,6 @@ class TestKubeVersionObject(base.TestCase):
         version_obj = objects.kube_version.get_by_version('v1.42.2')
         self.assertEqual(version_obj.version,
                          FAKE_KUBE_VERSIONS[1]['version'])
-        self.assertEqual(version_obj.upgrade_from,
-                         FAKE_KUBE_VERSIONS[1]['upgrade_from'])
         self.assertEqual(version_obj.downgrade_to,
                          FAKE_KUBE_VERSIONS[1]['downgrade_to'])
         self.assertEqual(version_obj.applied_patches,
@@ -73,9 +71,38 @@ class TestKubeVersionObject(base.TestCase):
     def test_can_upgrade_from(self):
         version = objects.kube_version.get_by_version('v1.43.2')
 
+        # Same minor, lower patch - allowed
         self.assertEqual(version.can_upgrade_from('v1.43.1'), True)
+        # Adjacent minor (1 less) - allowed
         self.assertEqual(version.can_upgrade_from('v1.42.2'), True)
-        self.assertEqual(version.can_upgrade_from('v1.42.1'), False)
+        self.assertEqual(version.can_upgrade_from('v1.42.1'), True)
+        # Non-adjacent minor (2 less) - not allowed
+        self.assertEqual(version.can_upgrade_from('v1.41.5'), False)
+        # Same version - not allowed
+        self.assertEqual(version.can_upgrade_from('v1.43.2'), False)
+        # Higher minor - not allowed
+        self.assertEqual(version.can_upgrade_from('v1.44.1'), False)
+
+    def test_can_upgrade_from_same_minor(self):
+        version = objects.kube_version.get_by_version('v1.42.2')
+
+        # Same minor, lower patch - allowed
+        self.assertEqual(version.can_upgrade_from('v1.42.1'), True)
+        # Same version - not allowed
+        self.assertEqual(version.can_upgrade_from('v1.42.2'), False)
+        # Adjacent minor (1 less) - allowed
+        self.assertEqual(version.can_upgrade_from('v1.41.1'), True)
+
+    def test_can_upgrade_from_adjacent_minor(self):
+        version = objects.kube_version.get_by_version('v1.43.1')
+
+        # Adjacent minor (1 less) - allowed regardless of patch
+        self.assertEqual(version.can_upgrade_from('v1.42.1'), True)
+        self.assertEqual(version.can_upgrade_from('v1.42.2'), True)
+        # Same version - not allowed
+        self.assertEqual(version.can_upgrade_from('v1.43.1'), False)
+        # Different major - not allowed
+        self.assertEqual(version.can_upgrade_from('v2.42.1'), False)
 
     def test_can_downgrade_to(self):
         version = objects.kube_version.get_by_version('v1.43.2')
