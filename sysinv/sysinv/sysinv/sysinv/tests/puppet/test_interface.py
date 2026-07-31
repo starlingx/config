@@ -104,6 +104,8 @@ class InterfaceTestCaseMixin(base.PuppetTestCaseMixin):
                      'sriov_vf_driver': kwargs.get('iface_sriov_vf_driver', None),
                      'max_tx_rate': kwargs.get('max_tx_rate', None),
                      'max_rx_rate': kwargs.get('max_rx_rate', None),
+                     'sriov_vf_channels': kwargs.get('sriov_vf_channels', None),
+                     'channels': kwargs.get('channels', None),
                      'ipv4_mode': kwargs.get('ipv4_mode', None),
                      'ipv6_mode': kwargs.get('ipv6_mode', None),
                      'ipv4_pool': kwargs.get('ipv4_pool', None),
@@ -130,7 +132,11 @@ class InterfaceTestCaseMixin(base.PuppetTestCaseMixin):
                 'dev_id': kwargs.get('dev_id', 0),
                 'sriov_vf_driver': kwargs.get('port_sriov_vf_driver', None),
                 'sriov_vf_pdevice_id': kwargs.get('sriov_vf_pdevice_id', None),
-                'sriov_vfs_pci_address': kwargs.get('sriov_vfs_pci_address', '')}
+                'sriov_vfs_pci_address': kwargs.get('sriov_vfs_pci_address', ''),
+                'numchannels': kwargs.get('numchannels', None),
+                'maxchannels': kwargs.get('maxchannels', None),
+                'sriov_vf_numchannels': kwargs.get('sriov_vf_numchannels', None),
+                'sriov_vf_maxchannels': kwargs.get('sriov_vf_maxchannels', None)}
         db_port = dbutils.create_test_ethernet_port(**port)
         self.ports.append(db_port)
         if hostname:
@@ -215,7 +221,8 @@ class InterfaceTestCaseMixin(base.PuppetTestCaseMixin):
                      'ipv4_pool': kwargs.get('ipv4_pool', None),
                      'ipv6_pool': kwargs.get('ipv6_pool', None),
                      'max_tx_rate': kwargs.get('max_tx_rate', None),
-                     'max_rx_rate': kwargs.get('max_rx_rate', None)}
+                     'max_rx_rate': kwargs.get('max_rx_rate', None),
+                     'channels': kwargs.get('channels', None)}
 
         aemode = kwargs.get('aemode', None)
         if aemode:
@@ -1385,6 +1392,7 @@ class InterfaceTestCase2(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
                   'num_vfs': num_vfs,
                   'port_name': port_name,
                   'up_requirement': up_requirement,
+                  'num_channels': self.port['numchannels'],
                   'vf_config': vf_config}
 
         return config
@@ -2074,7 +2082,8 @@ class InterfaceTestCase2(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         self.assertEqual(expected, configs)
 
     def _create_sriov_vf_config(self, iface_vf_driver, port_vf_driver,
-                                vf_addr_list, num_vfs, max_tx_rate=None):
+                                vf_addr_list, num_vfs, max_tx_rate=None,
+                                sriov_vf_channels=None):
         self._create_host_and_interface(
             constants.INTERFACE_CLASS_PCI_SRIOV,
             constants.NETWORK_TYPE_PCI_SRIOV,
@@ -2082,6 +2091,7 @@ class InterfaceTestCase2(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
             iface_sriov_vf_driver=iface_vf_driver,
             sriov_numvfs=num_vfs,
             max_tx_rate=max_tx_rate,
+            sriov_vf_channels=sriov_vf_channels,
             port_sriov_vf_driver=port_vf_driver,
             sriov_vfs_pci_address=vf_addr_list)
         self._do_update_context()
@@ -2272,6 +2282,66 @@ class InterfaceTestCase2(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
             vf_config=expected_vf_config)
         self.assertEqual(expected, config)
 
+    def test_get_sriov_config_with_vf_channels(self):
+        vf_addr1 = "0000:81:00.0"
+        vf_addr2 = "0000:81:01.0"
+        device_id = '1572'
+        port_name = 'eth0'
+        vf_addr_list = "{},{}".format(vf_addr1, vf_addr2)
+        num_vfs = 4
+        sriov_vf_channels = 4
+
+        config = self._create_sriov_vf_config(
+            constants.SRIOV_DRIVER_TYPE_VFIO, 'i40evf', vf_addr_list,
+            num_vfs, sriov_vf_channels=sriov_vf_channels)
+        expected_vf_config = {
+            '0000:81:00.0': {'addr': '0000:81:00.0', 'driver': 'vfio-pci',
+                             'vf_channels': 4},
+            '0000:81:01.0': {'addr': '0000:81:01.0', 'driver': 'vfio-pci',
+                             'vf_channels': 4}
+        }
+        expected = self._get_sriov_config(
+            ifname=self.iface['ifname'],
+            vf_driver='vfio-pci',
+            num_vfs=num_vfs,
+            device_id=device_id,
+            port_name=port_name,
+            vf_config=expected_vf_config)
+        self.assertEqual(expected, config)
+
+    @mock.patch.object(utils, 'get_sriov_vf_index')
+    def test_get_sriov_config_with_ratelimit_and_vf_channels(self, mock_get_sriov_vf_index):
+        vf_addr1 = "0000:81:00.0"
+        vf_addr2 = "0000:81:01.0"
+        device_id = '1572'
+        port_name = 'eth0'
+        vf_addr_list = "{},{}".format(vf_addr1, vf_addr2)
+        num_vfs = 4
+        max_tx_rate = 1000
+        sriov_vf_channels = 4
+
+        mock_get_sriov_vf_index.side_effect = [0, 1]
+        config = self._create_sriov_vf_config(
+            constants.SRIOV_DRIVER_TYPE_VFIO, 'i40evf', vf_addr_list,
+            num_vfs, max_tx_rate=max_tx_rate,
+            sriov_vf_channels=sriov_vf_channels)
+        expected_vf_config = {
+            '0000:81:00.0': {'addr': '0000:81:00.0', 'driver': 'vfio-pci',
+                             'max_tx_rate': 1000, 'vfnumber': 0,
+                             'vf_channels': 4},
+            '0000:81:01.0': {'addr': '0000:81:01.0', 'driver': 'vfio-pci',
+                             'max_tx_rate': 1000, 'vfnumber': 1,
+                             'vf_channels': 4}
+        }
+        expected = self._get_sriov_config(
+            ifname=self.iface['ifname'],
+            vf_driver='vfio-pci',
+            num_vfs=num_vfs,
+            device_id=device_id,
+            port_name=port_name,
+            vf_config=expected_vf_config)
+        self.assertEqual(expected, config)
+
     def test_get_sriov_config_vf_sibling_with_ratelimit(self):
         self._create_host_and_interface(
             constants.INTERFACE_CLASS_PCI_SRIOV,
@@ -2373,6 +2443,179 @@ class InterfaceTestCase2(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
             constants.NETWORK_TYPE_PCI_SRIOV,
             driver=constants.DRIVER_MLX_CX4, sriov_numvfs=vf_num, **kwargs)
         return port, iface
+
+    def test_channel_config_skipped_when_maxchannels_unsupported(self):
+        """Test that channel hieradata is NOT generated when maxchannels is None.
+
+        This emulates a virtual NIC (e.g. VirtualBox e1000) where
+        'ethtool -l' is not supported, so the agent reports
+        maxchannels=None for the port.
+        """
+        self._create_host_and_interface(
+            constants.INTERFACE_CLASS_PLATFORM,
+            constants.NETWORK_TYPE_MGMT,
+            name='mgmt0',
+            maxchannels=None,
+            numchannels=None)
+        self._do_update_context()
+        # Ensure platform_cpu_count > 0 so the default channels logic runs
+        # (test DB has no CPU entries, so _get_cpu_count returns 0)
+        self.context['platform_cpu_count'] = 4
+
+        config = {
+            interface.CHANNEL_CONFIG_RESOURCE: {},
+        }
+        interface.generate_data_iface_channels(
+            self.context, config, self.dbapi)
+
+        # Channel config should be empty — NIC doesn't support channels
+        self.assertEqual(config[interface.CHANNEL_CONFIG_RESOURCE], {})
+
+    def test_channel_config_generated_for_platform_interface(self):
+        """Test that channel hieradata IS generated when maxchannels is known.
+
+        This emulates a real NIC (e.g. i40e) where 'ethtool -l' reports
+        valid channel counts.
+        """
+        self._create_host_and_interface(
+            constants.INTERFACE_CLASS_PLATFORM,
+            constants.NETWORK_TYPE_MGMT,
+            name='mgmt0',
+            maxchannels=64,
+            numchannels=32)
+        self._do_update_context()
+        # Ensure platform_cpu_count > 0 so the default channels logic runs
+        # (test DB has no CPU entries, so _get_cpu_count returns 0)
+        self.context['platform_cpu_count'] = 4
+
+        config = {
+            interface.CHANNEL_CONFIG_RESOURCE: {},
+        }
+        interface.generate_data_iface_channels(
+            self.context, config, self.dbapi)
+
+        # Channel config should have an entry for this interface
+        channel_config = config[interface.CHANNEL_CONFIG_RESOURCE]
+        self.assertTrue(len(channel_config) > 0)
+        # The os_ifname for the port is 'eth0' (first port)
+        self.assertIn('eth0', channel_config)
+        # channels should be capped at maxchannels (64) and set to
+        # platform CPU count (which may be <= 64)
+        channels = channel_config['eth0'].get('channels')
+        self.assertIsNotNone(channels)
+        self.assertLessEqual(channels, 64)
+
+    def test_channel_config_capped_at_maxchannels(self):
+        """Test that channels are capped at the port's maxchannels.
+
+        If platform CPU count exceeds maxchannels, channels should
+        be set to maxchannels.
+        """
+        # Use maxchannels=1 to guarantee capping regardless of CPU count
+        self._create_host_and_interface(
+            constants.INTERFACE_CLASS_PLATFORM,
+            constants.NETWORK_TYPE_MGMT,
+            name='mgmt0',
+            maxchannels=1,
+            numchannels=1)
+        self._do_update_context()
+        # Set platform_cpu_count > maxchannels so capping is triggered
+        # (test DB has no CPU entries, so _get_cpu_count returns 0)
+        self.context['platform_cpu_count'] = 4
+
+        config = {
+            interface.CHANNEL_CONFIG_RESOURCE: {},
+        }
+        interface.generate_data_iface_channels(
+            self.context, config, self.dbapi)
+
+        channel_config = config[interface.CHANNEL_CONFIG_RESOURCE]
+        self.assertIn('eth0', channel_config)
+        # Channels must be capped at maxchannels=1
+        self.assertEqual(channel_config['eth0']['channels'], 1)
+
+    def test_channel_config_ae_propagated_to_members(self):
+        """Test that AE interface channels are propagated to member ports.
+
+        When channels is set on a bond (AE) interface, the hieradata
+        should emit channel_config entries for each underlying member
+        port, not the bond device itself.
+        """
+        self._create_host(constants.CONTROLLER)
+        port1, iface1 = self._create_ethernet_test(
+            'eth0', constants.INTERFACE_CLASS_NONE,
+            constants.NETWORK_TYPE_NONE,
+            maxchannels=64, numchannels=32)
+        port2, iface2 = self._create_ethernet_test(
+            'eth1', constants.INTERFACE_CLASS_NONE,
+            constants.NETWORK_TYPE_NONE,
+            maxchannels=64, numchannels=32)
+
+        self._create_bond_test(
+            'bond0',
+            ifclass=constants.INTERFACE_CLASS_PLATFORM,
+            networktype=constants.NETWORK_TYPE_MGMT,
+            iface1=iface1, iface2=iface2,
+            channels=16)
+
+        self._do_update_context()
+        self.context['platform_cpu_count'] = 4
+
+        config = {
+            interface.CHANNEL_CONFIG_RESOURCE: {},
+        }
+        interface.generate_data_iface_channels(
+            self.context, config, self.dbapi)
+
+        channel_config = config[interface.CHANNEL_CONFIG_RESOURCE]
+        # Bond device itself should NOT be in channel_config
+        self.assertNotIn('bond0', channel_config)
+        # Both member ports should have entries
+        self.assertIn(port1['name'], channel_config)
+        self.assertIn(port2['name'], channel_config)
+        # Channels should be the explicit value from the AE (16)
+        self.assertEqual(channel_config[port1['name']]['channels'], 16)
+        self.assertEqual(channel_config[port2['name']]['channels'], 16)
+
+    def test_channel_config_ae_default_capped_at_member_maxchannels(self):
+        """Test that AE default channels are capped at member maxchannels.
+
+        When channels is not explicitly set on the AE, the default
+        (platform_cpu_count) should be capped at the minimum
+        maxchannels across all member ports.
+        """
+        self._create_host(constants.CONTROLLER)
+        port1, iface1 = self._create_ethernet_test(
+            'eth0', constants.INTERFACE_CLASS_NONE,
+            constants.NETWORK_TYPE_NONE,
+            maxchannels=2, numchannels=2)
+        port2, iface2 = self._create_ethernet_test(
+            'eth1', constants.INTERFACE_CLASS_NONE,
+            constants.NETWORK_TYPE_NONE,
+            maxchannels=8, numchannels=4)
+
+        self._create_bond_test(
+            'bond0',
+            ifclass=constants.INTERFACE_CLASS_PLATFORM,
+            networktype=constants.NETWORK_TYPE_MGMT,
+            iface1=iface1, iface2=iface2)
+
+        self._do_update_context()
+        # Set platform_cpu_count higher than both maxchannels
+        self.context['platform_cpu_count'] = 16
+
+        config = {
+            interface.CHANNEL_CONFIG_RESOURCE: {},
+        }
+        interface.generate_data_iface_channels(
+            self.context, config, self.dbapi)
+
+        channel_config = config[interface.CHANNEL_CONFIG_RESOURCE]
+        # Should be capped at the minimum maxchannels (2)
+        self.assertIn(port1['name'], channel_config)
+        self.assertIn(port2['name'], channel_config)
+        self.assertEqual(channel_config[port1['name']]['channels'], 2)
+        self.assertEqual(channel_config[port2['name']]['channels'], 2)
 
 
 class InterfaceHostTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):

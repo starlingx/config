@@ -385,6 +385,8 @@ class Interfaces(Base):
     max_rx_rate = Column(Integer)
     ptp_role = Column(String(255), default='none')  # TODO: deprecate it
     ovs_access = Column(Boolean, default=False)
+    channels = Column(Integer)
+    sriov_vf_channels = Column(Integer)
 
     used_by = relationship(
         "Interfaces",
@@ -516,6 +518,10 @@ class Ports(Base):
     sriov_vfs_pci_address = Column(String(1020))
     driver = Column(String(255))
     capabilities = Column(JSONEncodedDict)
+    numchannels = Column(Integer)
+    maxchannels = Column(Integer)
+    sriov_vf_numchannels = Column(Integer)
+    sriov_vf_maxchannels = Column(Integer)
     # JSON{'speed':1000,'MTU':9600, 'duplex':'', 'autonegotiation':'false'}
 
     node = relationship("inode", backref="ports", lazy="selectin", join_depth=1)

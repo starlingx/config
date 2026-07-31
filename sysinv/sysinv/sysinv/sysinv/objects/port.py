@@ -45,6 +45,10 @@ class Port(base.SysinvObject):
             'sriov_vf_pdevice_id': utils.str_or_none,
             'driver': utils.str_or_none,
             'capabilities': utils.dict_or_none,
+            'numchannels': utils.int_or_none,
+            'maxchannels': utils.int_or_none,
+            'sriov_vf_numchannels': utils.int_or_none,
+            'sriov_vf_maxchannels': utils.int_or_none
              }
 
     _foreign_fields = {'host_uuid': 'host:uuid',

@@ -8322,7 +8322,9 @@ class ManagerTestCase(base.DbTestCase):
             'mac': '3c:fd:fe:b5:72:e0', 'prevision': '-r01', 'sriov_vf_pdevice_id': None,
             'sriov_totalvfs': 64, 'pciaddr': '0000:19:00.0', 'dpdksupport': True,
             'pname': 'enp25s0f0', 'speed': 10000, 'psvendor': 'Intel Corporation [8086]',
-            'sriov_vf_driver': None, 'pvendor': 'Intel Corporation [8086]'}
+            'sriov_vf_driver': None, 'pvendor': 'Intel Corporation [8086]',
+            'numchannels': 32, 'maxchannels': 64, 'sriov_vf_numchannels': 2,
+            'sriov_vf_maxchannels': 4}
         enp25s0f1 = {'dev_id': 0, 'numa_node': 0, 'sriov_numvfs': 0, 'sriov_vfs_pci_address': '',
             'pdevice': 'Ethernet Controller X710 for 10GbE SFP+ [1572]', 'link_mode': '0',
             'driver': 'i40e', 'pclass': 'Ethernet controller [0200]', 'mtu': 1500,
@@ -8330,7 +8332,9 @@ class ManagerTestCase(base.DbTestCase):
             'mac': '3c:fd:fe:b5:72:e1', 'prevision': '-r01', 'sriov_vf_pdevice_id': None,
             'sriov_totalvfs': 64, 'pciaddr': '0000:19:00.1', 'dpdksupport': True,
             'pname': 'enp25s0f1', 'speed': 10000, 'psvendor': 'Intel Corporation [8086]',
-            'sriov_vf_driver': None, 'pvendor': 'Intel Corporation [8086]'}
+            'sriov_vf_driver': None, 'pvendor': 'Intel Corporation [8086]',
+            'numchannels': 32, 'maxchannels': 64, 'sriov_vf_numchannels': 2,
+            'sriov_vf_maxchannels': 4}
         enp134s0f0 = {'dev_id': 0, 'numa_node': 1, 'sriov_numvfs': 0, 'sriov_vfs_pci_address': '',
             'pdevice': '82571EB/82571GB Gigabit Ethernet Controller D0/D1 [105e]',
             'link_mode': '0', 'driver': 'e1000e', 'pclass': 'Ethernet controller [0200]',
@@ -8338,7 +8342,9 @@ class ManagerTestCase(base.DbTestCase):
             'mac': '00:15:17:cd:c4:ac', 'prevision': '-r06', 'sriov_vf_pdevice_id': None,
             'sriov_totalvfs': None, 'pciaddr': '0000:86:00.0', 'dpdksupport': False,
             'pname': 'enp134s0f0', 'speed': None, 'psvendor': 'Intel Corporation [8086]',
-            'sriov_vf_driver': None, 'pvendor': 'Intel Corporation [8086]'}
+            'sriov_vf_driver': None, 'pvendor': 'Intel Corporation [8086]',
+            'numchannels': 32, 'maxchannels': 64, 'sriov_vf_numchannels': 2,
+            'sriov_vf_maxchannels': 4}
         enp134s0f1 = {'dev_id': 0, 'numa_node': 1, 'sriov_numvfs': 0, 'sriov_vfs_pci_address': '',
             'pdevice': '82571EB/82571GB Gigabit Ethernet Controller D0/D1 [105e]', 'link_mode': '0',
             'driver': 'e1000e', 'pclass': 'Ethernet controller [0200]',
@@ -8346,7 +8352,9 @@ class ManagerTestCase(base.DbTestCase):
             'mac': '00:15:17:cd:c4:ad', 'prevision': '-r06', 'sriov_vf_pdevice_id': None,
             'sriov_totalvfs': None, 'pciaddr': '0000:86:00.1', 'dpdksupport': False,
             'pname': 'enp134s0f1', 'speed': 1000, 'psvendor': 'Intel Corporation [8086]',
-            'sriov_vf_driver': None, 'pvendor': 'Intel Corporation [8086]'}
+            'sriov_vf_driver': None, 'pvendor': 'Intel Corporation [8086]',
+            'numchannels': 32, 'maxchannels': 64, 'sriov_vf_numchannels': 2,
+            'sriov_vf_maxchannels': 4}
         enp135s0f0 = {'dev_id': 0, 'numa_node': 1, 'sriov_numvfs': 0, 'sriov_vfs_pci_address': '',
             'pdevice': 'Ethernet Controller X710 for 10GbE SFP+ [1572]', 'link_mode': '0',
             'driver': 'i40e', 'pclass': 'Ethernet controller [0200]', 'mtu': 9216,
@@ -8354,7 +8362,9 @@ class ManagerTestCase(base.DbTestCase):
             'mac': '3c:fd:fe:b5:73:28', 'prevision': '-r01', 'sriov_vf_pdevice_id': None,
             'sriov_totalvfs': 64, 'pciaddr': '0000:87:00.0', 'dpdksupport': True,
             'pname': 'enp135s0f0', 'speed': 10000, 'psvendor': 'Intel Corporation [8086]',
-            'sriov_vf_driver': None, 'pvendor': 'Intel Corporation [8086]'}
+            'sriov_vf_driver': None, 'pvendor': 'Intel Corporation [8086]',
+            'numchannels': 32, 'maxchannels': 64, 'sriov_vf_numchannels': 2,
+            'sriov_vf_maxchannels': 4}
         enp135s0f1 = {'dev_id': 0, 'numa_node': 1, 'sriov_numvfs': 0, 'sriov_vfs_pci_address': '',
             'pdevice': 'Ethernet Controller X710 for 10GbE SFP+ [1572]', 'link_mode': '0',
             'driver': 'i40e', 'pclass': 'Ethernet controller [0200]', 'mtu': 1500,
@@ -8362,35 +8372,45 @@ class ManagerTestCase(base.DbTestCase):
             'mac': '3c:fd:fe:b5:73:29', 'prevision': '-r01', 'sriov_vf_pdevice_id': None,
             'sriov_totalvfs': 64, 'pciaddr': '0000:87:00.1', 'dpdksupport': True,
             'pname': 'enp135s0f1', 'speed': None, 'psvendor': 'Intel Corporation [8086]',
-            'sriov_vf_driver': None, 'pvendor': 'Intel Corporation [8086]'}
+            'sriov_vf_driver': None, 'pvendor': 'Intel Corporation [8086]',
+            'numchannels': 32, 'maxchannels': 64, 'sriov_vf_numchannels': 2,
+            'sriov_vf_maxchannels': 4}
         enp177s0f0 = {'dev_id': 0, 'numa_node': 1, 'sriov_numvfs': 0, 'sriov_vfs_pci_address': '',
             'pdevice': 'Device [0d58]', 'link_mode': '0', 'driver': 'i40e',
             'pclass': 'Ethernet controller [0200]', 'mtu': 1500, 'psdevice': 'Device [0000]',
             'mac': '64:4c:36:12:9b:78', 'prevision': '-r02', 'sriov_vf_pdevice_id': None,
             'sriov_totalvfs': 64, 'pciaddr': '0000:b1:00.0', 'dpdksupport': False,
             'pname': 'enp177s0f0', 'speed': None, 'psvendor': 'Intel Corporation [8086]',
-            'sriov_vf_driver': None, 'pvendor': 'Intel Corporation [8086]'}
+            'sriov_vf_driver': None, 'pvendor': 'Intel Corporation [8086]',
+            'numchannels': 32, 'maxchannels': 64, 'sriov_vf_numchannels': 2,
+            'sriov_vf_maxchannels': 4}
         enp177s0f1 = {'dev_id': 0, 'numa_node': 1, 'sriov_numvfs': 0, 'sriov_vfs_pci_address': '',
             'pdevice': 'Device [0d58]', 'link_mode': '0', 'driver': 'i40e',
             'pclass': 'Ethernet controller [0200]', 'mtu': 1500, 'psdevice': 'Device [0000]',
             'mac': '64:4c:36:12:9b:79', 'prevision': '-r02', 'sriov_vf_pdevice_id': None,
             'sriov_totalvfs': 64, 'pciaddr': '0000:b1:00.1', 'dpdksupport': False,
             'pname': 'enp177s0f1', 'speed': None, 'psvendor': 'Intel Corporation [8086]',
-            'sriov_vf_driver': None, 'pvendor': 'Intel Corporation [8086]'}
+            'sriov_vf_driver': None, 'pvendor': 'Intel Corporation [8086]',
+            'numchannels': 32, 'maxchannels': 64, 'sriov_vf_numchannels': 2,
+            'sriov_vf_maxchannels': 4}
         enp181s0f0 = {'dev_id': 0, 'numa_node': 1, 'sriov_numvfs': 0, 'sriov_vfs_pci_address': '',
             'pdevice': 'Device [0d58]', 'link_mode': '0', 'driver': 'i40e',
             'pclass': 'Ethernet controller [0200]', 'mtu': 1500, 'psdevice': 'Device [0000]',
             'mac': '64:4c:36:12:9b:7c', 'prevision': '-r02', 'sriov_vf_pdevice_id': None,
             'sriov_totalvfs': 64, 'pciaddr': '0000:b3:00.0', 'dpdksupport': False,
             'pname': 'enp181s0f0', 'speed': None, 'psvendor': 'Intel Corporation [8086]',
-            'sriov_vf_driver': None, 'pvendor': 'Intel Corporation [8086]'}
+            'sriov_vf_driver': None, 'pvendor': 'Intel Corporation [8086]',
+            'numchannels': 32, 'maxchannels': 64, 'sriov_vf_numchannels': 2,
+            'sriov_vf_maxchannels': 4}
         enp181s0f1 = {'dev_id': 0, 'numa_node': 1, 'sriov_numvfs': 0, 'sriov_vfs_pci_address': '',
             'pdevice': 'Device [0d58]', 'link_mode': '0', 'driver': 'i40e',
             'pclass': 'Ethernet controller [0200]', 'mtu': 1500, 'psdevice': 'Device [0000]',
             'mac': '64:4c:36:12:9b:7d', 'prevision': '-r02', 'sriov_vf_pdevice_id': None,
             'sriov_totalvfs': 64, 'pciaddr': '0000:b3:00.1', 'dpdksupport': False,
             'pname': 'enp181s0f1', 'speed': None, 'psvendor': 'Intel Corporation [8086]',
-            'sriov_vf_driver': None, 'pvendor': 'Intel Corporation [8086]'}
+            'sriov_vf_driver': None, 'pvendor': 'Intel Corporation [8086]',
+            'numchannels': 32, 'maxchannels': 64, 'sriov_vf_numchannels': 2,
+            'sriov_vf_maxchannels': 4}
 
         inic_dict_array = [enp25s0f0, enp25s0f1, enp134s0f0, enp134s0f1,
             enp135s0f0, enp135s0f1, enp177s0f0, enp177s0f1, enp181s0f0, enp181s0f1]
@@ -8840,6 +8860,10 @@ class ManagerTestCase(base.DbTestCase):
         inic_dict_array[-1]['driver'] = 'igb'
         inic_dict_array[-1]['dpdksupport'] = True
         inic_dict_array[-1]['speed'] = 5000
+        inic_dict_array[-1]['numchannels'] = 32
+        inic_dict_array[-1]['maxchannels'] = 64
+        inic_dict_array[-1]['sriov_vf_numchannels'] = 2
+        inic_dict_array[-1]['sriov_vf_maxchannels'] = 4
 
         self.service.iport_update_by_ihost(self.context, ihost['uuid'], inic_dict_array)
 
@@ -8860,6 +8884,10 @@ class ManagerTestCase(base.DbTestCase):
         self.assertEqual(port.driver, inic_dict_array[-1]['driver'])
         self.assertEqual(port.speed, inic_dict_array[-1]['speed'])
         self.assertEqual(port.dpdksupport, inic_dict_array[-1]['dpdksupport'])
+        self.assertEqual(port.numchannels, inic_dict_array[-1]['numchannels'])
+        self.assertEqual(port.maxchannels, inic_dict_array[-1]['maxchannels'])
+        self.assertEqual(port.sriov_vf_numchannels, inic_dict_array[-1]['sriov_vf_numchannels'])
+        self.assertEqual(port.sriov_vf_maxchannels, inic_dict_array[-1]['sriov_vf_maxchannels'])
 
     def _create_test_interfaces(self, ihost, inic_dict_array, test_mgmt_mac, mgmt_vlan_id):
         ifaces = dict()

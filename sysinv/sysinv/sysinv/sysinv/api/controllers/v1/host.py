@@ -3367,7 +3367,53 @@ class HostController(rest.RestController):
                         LOG.info(msg)
                         raise wsme.exc.ClientSideError(msg)
 
+                # Check that configured vf-channels on this interface
+                # (and any upper VF interfaces) do not exceed the port's
+                # sriov_vf_maxchannels.
+                self._check_sriov_vf_channels_max(host, interface, ports)
+
         self._check_sriovdp_interface_datanets(interface)
+
+    def _check_sriov_vf_channels_max(self, host, interface, ports):
+        """Check vf-channels do not exceed port sriov_vf_maxchannels.
+
+        Validates that configured vf-channels on this interface and any
+        upper VF interfaces do not exceed the port's sriov_vf_maxchannels
+        at unlock time.
+        """
+        for p in ports:
+            vf_max = p.sriov_vf_maxchannels
+            if not vf_max:
+                continue
+            # Check this interface's own vf-channels
+            if (interface.sriov_vf_channels and
+                    interface.sriov_vf_channels > vf_max):
+                msg = (_("Interface '%s' has vf-channels=%d which "
+                         "exceeds the maximum supported (%d) for "
+                         "port '%s' at the current VF count. "
+                         "Reduce vf-channels to at most %d before "
+                         "unlocking." %
+                         (interface.ifname,
+                          interface.sriov_vf_channels,
+                          vf_max, p.name, vf_max)))
+                raise wsme.exc.ClientSideError(msg)
+            # Check upper VF interfaces
+            if interface.used_by:
+                for upper_ifname in interface.used_by:
+                    upper_iface = \
+                        pecan.request.dbapi.iinterface_get(
+                            upper_ifname, host['uuid'])
+                    if (upper_iface.get('sriov_vf_channels') and
+                            upper_iface['sriov_vf_channels'] > vf_max):
+                        msg = (_("Interface '%s' has vf-channels=%d "
+                                 "which exceeds the maximum supported "
+                                 "(%d) for port '%s' at the current "
+                                 "VF count. Reduce vf-channels to at "
+                                 "most %d before unlocking." %
+                                 (upper_iface['ifname'],
+                                  upper_iface['sriov_vf_channels'],
+                                  vf_max, p.name, vf_max)))
+                        raise wsme.exc.ClientSideError(msg)
 
     def _semantic_check_pcipt_interface(self, host, interface, force_unlock=False):
         """

@@ -111,6 +111,11 @@ class Port(base.APIBase):
                     six.integer_types)}
     "Represent meta data of the port"
 
+    numchannels = int
+    maxchannels = int
+    sriov_vf_numchannels = int
+    sriov_vf_maxchannels = int
+
     host_id = int
     "Represent the host_id the port belongs to"
 
@@ -158,6 +163,9 @@ class Port(base.APIBase):
                                       'driver', 'capabilities',
                                       'host_uuid', 'interface_uuid',
                                       'node_uuid', 'dpdksupport',
+                                      'numchannels', 'maxchannels',
+                                      'sriov_vf_numchannels',
+                                      'sriov_vf_maxchannels',
                                       'created_at', 'updated_at'])
 
         # never expose the id attribute

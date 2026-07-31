@@ -24,6 +24,8 @@ def _print_port_show(port):
               'capabilities',
               'uuid', 'host_uuid', 'interface_uuid',
               'dpdksupport',
+              'numchannels', 'maxchannels',
+              'sriov_vf_numchannels', 'sriov_vf_maxchannels',
               'created_at', 'updated_at']
     labels = ['name', 'namedisplay',
               'type', 'pciaddr', 'dev_id', 'processor',
@@ -33,7 +35,8 @@ def _print_port_show(port):
               'driver', 'pclass', 'pvendor', 'pdevice',
               'capabilities',
               'uuid', 'host_uuid', 'interface_uuid',
-              'accelerated',
+              'accelerated', 'numchannels', 'maxchannels',
+              'sriov_vf_numchannels', 'sriov_vf_maxchannels',
               'created_at', 'updated_at']
     data = [(f, getattr(port, f, '')) for f in fields]
     utils.print_tuple_list(data, labels)

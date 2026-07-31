@@ -151,6 +151,8 @@ class Interface(base.SysinvObject):
             'max_tx_rate': utils.int_or_none,
             'max_rx_rate': utils.int_or_none,
             'ovs_access': utils.bool_or_none,
+            'channels': utils.int_or_none,
+            'sriov_vf_channels': utils.int_or_none,
              }
 
     _foreign_fields = {'uses': _get_interface_name_list,

@@ -60,6 +60,7 @@ FPGA_CONFIG_RESOURCE = 'platform::network::interfaces::fpga::fpga_config'
 RATE_LIMIT_CONFIG_RESOURCE = 'platform::network::interfaces::rate_limit::rate_limit_config'
 ADDRESS_CONFIG_RESOURCE = 'platform::network::addresses::address_config'
 ROUTE_CONFIG_RESOURCE = 'platform::network::routes::route_config'
+CHANNEL_CONFIG_RESOURCE = 'platform::network::interfaces::channels::channel_config'
 
 DATA_IFACE_LIST_RESOURCE = 'platform::lmon::params::data_iface_devices'
 
@@ -103,6 +104,7 @@ class InterfacePuppet(base.BasePuppet):
             FPGA_CONFIG_RESOURCE: {},
             RATE_LIMIT_CONFIG_RESOURCE: {},
             DATA_IFACE_LIST_RESOURCE: [],
+            CHANNEL_CONFIG_RESOURCE: {},
         }
 
         # Setup the loopback interface first
@@ -119,6 +121,9 @@ class InterfacePuppet(base.BasePuppet):
 
         # Generate data for iface rate limit configuration
         generate_data_iface_rate_limit(context, config, self.dbapi)
+
+        # Generate data for iface channel configuration
+        generate_data_iface_channels(context, config, self.dbapi)
 
         # Update the global context with generated interface context
         self.context.update(context)
@@ -154,8 +159,24 @@ class InterfacePuppet(base.BasePuppet):
                                                         network_address_pools),
             'datanets': self._get_datanetworks(host),
             'vswitchtype': self._vswitch_type(),
+            'platform_cpu_count': self._get_cpu_count(
+                host, constants.PLATFORM_FUNCTION),
+            'application_cpu_count': self._get_cpu_count(
+                host, constants.APPLICATION_FUNCTION),
         }
         return context
+
+    def _get_cpu_count(self, host, function):
+        """
+        Count physical CPUs (excluding HT siblings) for the given function.
+        """
+        count = 0
+        for c in self.dbapi.icpu_get_by_ihost(host.id):
+            if c.thread != 0:
+                continue
+            if c.allocated_function == function:
+                count += 1
+        return count
 
     def _find_host_interface(self, host_interfaces, networktype):
         """
@@ -1249,26 +1270,39 @@ def get_sriov_vf_config(context, iface, port, vf_config):
             vf_driver = constants.SRIOV_DRIVER_VFIO_PCI
         elif constants.SRIOV_DRIVER_TYPE_NETDEVICE in vf_driver:
             vf_driver = port.get('sriov_vf_driver', None)
+    elif iface.get('iftype') == constants.INTERFACE_TYPE_VF:
+        # VF type interfaces inherit the VF driver from the parent's port
+        # when not explicitly set.  Without this, the driver would be None
+        # in the hieradata which causes parse_sriov.py to skip vf_channels
+        # configuration (DRIVER_NONE is excluded from channel setting).
+        vf_driver = port.get('sriov_vf_driver', None)
 
     for addr in vf_addrs:
         rate = iface.get('max_tx_rate', None)
+        vf_channels = iface.get('sriov_vf_channels', None)
+        vf_max = port.get('sriov_vf_maxchannels', None)
+
+        # Default vf_channels when not explicitly set:
+        # Use the lesser of application CPU count and sriov_vf_maxchannels.
+        if vf_channels is None:
+            app_cpus = context.get('application_cpu_count', None)
+            if vf_max and app_cpus and app_cpus < vf_max:
+                vf_channels = app_cpus
+            elif vf_max:
+                vf_channels = vf_max
+
+        vf_entry = {
+            'addr': addr,
+            'driver': vf_driver
+        }
         if rate:
             vfnum = utils.get_sriov_vf_index(addr, all_vf_addr_list)
-            vf_config.update({
-                addr: {
-                    'addr': addr,
-                    'driver': vf_driver,
-                    'vfnumber': vfnum,
-                    'max_tx_rate': rate
-                }
-            })
-        else:
-            vf_config.update({
-                addr: {
-                    'addr': addr,
-                    'driver': vf_driver
-                }
-            })
+            vf_entry['vfnumber'] = vfnum
+            vf_entry['max_tx_rate'] = rate
+        if vf_channels:
+            vf_entry['vf_channels'] = vf_channels
+
+        vf_config.update({addr: vf_entry})
 
     if iface.get('used_by', None):
         upper_ifaces = iface['used_by']
@@ -1306,6 +1340,7 @@ def get_sriov_config(context, iface):
         'device_id': interface.get_sriov_interface_device_id(context, iface),
         'port_name': port['name'],
         'up_requirement': get_sriov_interface_up_requirement(context, iface),
+        'num_channels': port['numchannels'],
         'vf_config': vf_config
     }
     return config
@@ -2069,3 +2104,142 @@ def _get_ip_pool(context, db_api, ip_pool):
                     ip_pool[network_type] = constants.DUAL
     except Exception as ex:
         LOG.error(f"Failed to get the ip pool: {ex}", exc_info=True)
+
+
+def check_interface_channel_conditions(iface, db_api):
+    """
+    Function to check the interface channel conditions:-
+    1. Interface class is platform or pci-sriov.
+    2. Interface type is ethernet, ae, or vf.
+    """
+    if_class = iface.get('ifclass', None)
+    if_type = iface.get('iftype', None)
+    if not (if_class in [constants.INTERFACE_CLASS_PLATFORM,
+                         constants.INTERFACE_CLASS_PCI_SRIOV] and
+            if_type in {constants.INTERFACE_TYPE_ETHERNET,
+                        constants.INTERFACE_TYPE_AE,
+                        constants.INTERFACE_TYPE_VF}):
+        return False
+    return True
+
+
+def generate_data_iface_channels(context, config, db_api):
+    """
+    Generating the data for the interface channel configuration
+    for puppet hieradata.
+    """
+    try:
+        platform_cpu_count = context.get('platform_cpu_count', 0)
+        application_cpu_count = context.get('application_cpu_count', 0)
+
+        interfaces = context['interfaces'].values()
+        for iface in interfaces:
+            if check_interface_channel_conditions(iface, db_api):
+                _build_iface_channel_config(context, iface, config,
+                                            platform_cpu_count,
+                                            application_cpu_count)
+    except Exception as e:
+        LOG.error(f"Failed to generate interface data for interface channels: {e}", exc_info=True)
+
+
+def _get_ae_capped_channels(context, iface, channels):
+    """Determine the channel count for an AE interface, capped at the
+    minimum maxchannels across all member ports.
+
+    Returns the capped channel count, or None if any member port does
+    not support configurable channels (maxchannels unknown).
+    """
+    for lower_ifname in iface.get('uses', []):
+        lower_iface = context['interfaces'].get(lower_ifname)
+        if not lower_iface:
+            continue
+        port = get_interface_port(context, lower_iface)
+        if not port:
+            continue
+        max_ch = port.get('maxchannels', None)
+        if max_ch is None:
+            ifname = iface.get('ifname', None)
+            LOG.warning(f"Skipping channel configuration for AE {ifname}: "
+                f"member {lower_ifname} does not support configurable channels "
+                f"(maxchannels unknown).")
+            return None
+        if channels > max_ch:
+            channels = max_ch
+    return channels
+
+
+def _build_iface_channel_config(context, iface, config,
+                                platform_cpu_count, application_cpu_count):
+    """
+    Function to populate interface data -
+    { channels, sriov_vf_channels }
+    for channel configuration in puppet hieradata.
+
+    Defaults:
+    - Platform interfaces (ifclass=platform): channels = platform CPU count
+    - SR-IOV interfaces (ifclass=pci-sriov): channels = application CPU count
+    - Capped at the port's maxchannels if known.
+    - If channels is explicitly set (not None), use that value.
+
+    For AE interfaces, the channel setting is applied to each
+    underlying member port rather than the bond device itself.
+    """
+    try:
+        channels = iface.get('channels', None)
+
+        # Apply defaults when channels is None
+        # (VF type interfaces don't have PF channels — skip them)
+        if channels is None and iface.get('iftype') != constants.INTERFACE_TYPE_VF:
+            if_class = iface.get('ifclass', None)
+            if if_class == constants.INTERFACE_CLASS_PLATFORM:
+                channels = platform_cpu_count
+            elif if_class == constants.INTERFACE_CLASS_PCI_SRIOV:
+                channels = application_cpu_count
+
+            # Cap at port maxchannels if known
+            if channels:
+                if iface.get('iftype') == constants.INTERFACE_TYPE_AE:
+                    channels = _get_ae_capped_channels(context, iface, channels)
+                else:
+                    port = get_interface_port(context, iface)
+                    if port:
+                        max_channels = port.get('maxchannels', None)
+                        if max_channels is None:
+                            # NIC does not support ethtool channel queries
+                            # (e.g. virtual e1000). Skip channel configuration.
+                            ifname = iface.get('ifname', None)
+                            LOG.warning(
+                                f"Skipping channel configuration for {ifname}: "
+                                f"NIC does not support configurable channels "
+                                f"(maxchannels unknown).")
+                            return
+                        if channels > max_channels:
+                            channels = max_channels
+
+        if not channels:
+            return
+
+        # For AE interfaces, emit channel_config for each member port
+        if iface.get('iftype') == constants.INTERFACE_TYPE_AE:
+            for lower_ifname in iface.get('uses', []):
+                lower_iface = context['interfaces'].get(lower_ifname)
+                if lower_iface:
+                    os_ifname = get_interface_os_ifname(context, lower_iface)
+                    LOG.info(
+                        f"Configuring channels for AE member "
+                        f"{lower_ifname} (port {os_ifname}) from "
+                        f"bond {iface.get('ifname')}: {channels}")
+                    config[CHANNEL_CONFIG_RESOURCE][os_ifname] = {
+                        'channels': channels
+                    }
+        else:
+            ifname = iface.get('ifname', None)
+            os_ifname = get_interface_os_ifname(context, iface)
+            LOG.info(f"Configuring channels for {ifname} under "
+                     f"ifname: {os_ifname}")
+            config[CHANNEL_CONFIG_RESOURCE][os_ifname] = {
+                'channels': channels
+            }
+
+    except Exception as ex:
+        LOG.error(f"Failed to add channel data: {ex}", exc_info=True)
