@@ -4672,7 +4672,11 @@ class FluxCDHelper(object):
                     if filename == "helmrelease.yaml":
                         helmrelease_path = os.path.join(dirpath, filename)
                         with io.open(helmrelease_path, 'r', encoding='utf-8') as f:
-                            helmrelease_yaml = next(yaml.safe_load_all(f))
+                            if cutils.is_debian_bullseye():
+                                helmrelease_yaml = next(yaml.safe_load_all(f))
+                            else:
+                                local_yaml = YAML(typ='safe')
+                                helmrelease_yaml = next(local_yaml.load_all(f))
                         helmrelease_yaml.setdefault('spec', {}).\
                             setdefault('install', {})['serverSideApply'] = False
                         cutils.atomic_update_yaml_file(helmrelease_yaml, helmrelease_path)

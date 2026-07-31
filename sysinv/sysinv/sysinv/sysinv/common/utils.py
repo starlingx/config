@@ -4981,8 +4981,13 @@ def atomic_update_yaml_file(values, file_path):
 
             with open(temp_file_path, 'w', encoding='utf-8') as f:
                 try:
-                    # Write the values to the temporary file using yaml.safe_dump
-                    yaml.safe_dump(values, f, default_flow_style=False)
+                    if is_debian_bullseye():
+                        yaml.safe_dump(values, f, default_flow_style=False)
+                    else:
+                        from ruamel.yaml import YAML
+                        local_yaml = YAML(typ='safe')
+                        local_yaml.default_flow_style = False
+                        local_yaml.dump(values, f)
                     LOG.debug(f"Temporary file {temp_file_path} generated")
                 except Exception as e:
                     raise exception.SysinvException(
