@@ -924,6 +924,13 @@ def is_system_usable_block_device(pydev_device):
     if pydev_device.get("ID_FS_TYPE") == constants.DEVICE_FS_TYPE_MPATH:
         # Skip mpath member devices
         return False
+    if constants.DEVICE_NAME_MPATH in pydev_device.get("DM_UUID", ""):
+        # Skip multipath devices (iSCSI/FC). These dm-* devices have a
+        # DM_UUID of the form "mpath-<wwid>" but lack the ID_PATH udev
+        # attribute, so they cannot be filtered by the id_path checks
+        # below. They are remote storage paths managed by multipathd,
+        # not local disks managed by sysinv.
+        return False
     id_path = pydev_device.get("ID_PATH", "")
     if "iqn." in id_path or "eui." in id_path:
         # Skip all iSCSI devices, they are links for volume storage.
