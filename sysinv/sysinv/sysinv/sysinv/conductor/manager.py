@@ -2506,11 +2506,13 @@ class ConductorManager(service.PeriodicService):
                          constants.WORKER,
                          constants.STORAGE]
 
-        config_uuid = self._config_update_hosts(context, personalities)
+        config_uuid = self._config_update_hosts(context, personalities,
+                                                host_uuids=[host_uuid])
 
         config_dict = {
             "personalities": personalities,
             "classes": [f'platform::lvm::csi::{lvg_lvm_type}::runtime'],
+            "host_uuids": [host_uuid],
             "host_uuid": host_uuid,
             "lvm_vg_name": pv.lvm_vg_name,
             "lvm_vg_uuid": pv.ilvg_uuid,
