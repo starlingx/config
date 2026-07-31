@@ -19642,21 +19642,15 @@ class ConductorManager(service.PeriodicService):
         :raises: SysinvException in case of failure
         """
 
-        CALICO_APISERVER_KEY = 'calico_apiserver_img'
         CALICO_CNI_IMAGE_KEY = 'calico_cni_img'
-        CALICO_CSI_KEY = 'calico_csi_img'
         CALICO_CTL_KEY = 'calico_ctl_img'
         CALICO_DIKASTES_KEY = 'calico_dikastes_img'
         CALICO_ENVOY_GATEWAY_KEY = 'calico_envoy_gateway_img'
         CALICO_ENVOY_PROXY_KEY = 'calico_envoy_proxy_img'
-        CALICO_GOLDMANE_KEY = 'calico_goldmane_img'
         CALICO_KUBE_CONTROLLERS_KEY = 'calico_kube_controllers_img'
-        CALICO_NODE_DRIVER_REGISTRAR_KEY = 'calico_node_driver_registrar_img'
         CALICO_NODE_IMAGE_KEY = 'calico_node_img'
         CALICO_POD2DAEMON_FLEXVOL_KEY = 'calico_pod2daemon_flexvol_img'
         CALICO_TYPHA_KEY = 'calico_typha_img'
-        CALICO_WHISKER_BACKEND_KEY = 'calico_whisker_backend_img'
-        CALICO_WHISKER_KEY = 'calico_whisker_img'
         MULTUS_KEY = 'multus_img'
         SRIOV_CNI_KEY = 'sriov_cni_img'
         SRIOV_NW_DEVICE_KEY = 'sriov_network_device_img'
@@ -19673,18 +19667,12 @@ class ConductorManager(service.PeriodicService):
 
             if LooseVersion(kube_version) >= LooseVersion('v1.35.2'):
                 networking_images.extend([
-                    images[CALICO_APISERVER_KEY],
-                    images[CALICO_CSI_KEY],
                     images[CALICO_CTL_KEY],
                     images[CALICO_DIKASTES_KEY],
                     images[CALICO_ENVOY_GATEWAY_KEY],
                     images[CALICO_ENVOY_PROXY_KEY],
-                    images[CALICO_GOLDMANE_KEY],
-                    images[CALICO_NODE_DRIVER_REGISTRAR_KEY],
                     images[CALICO_POD2DAEMON_FLEXVOL_KEY],
                     images[CALICO_TYPHA_KEY],
-                    images[CALICO_WHISKER_BACKEND_KEY],
-                    images[CALICO_WHISKER_KEY],
                     images[TIGERA_OPERATOR_KEY]])
 
         except Exception as ex:
@@ -19861,18 +19849,12 @@ class ConductorManager(service.PeriodicService):
         # Tigera operator images only needed for v1.35.2+
         if LooseVersion(kube_version) >= LooseVersion('v1.35.2'):
             calico_cni_template_variables.update({
-                'calico_apiserver_img': images[CALICO_APISERVER_KEY],
-                'calico_csi_img': images[CALICO_CSI_KEY],
                 'calico_ctl_img': images[CALICO_CTL_KEY],
                 'calico_dikastes_img': images[CALICO_DIKASTES_KEY],
                 'calico_envoy_gateway_img': images[CALICO_ENVOY_GATEWAY_KEY],
                 'calico_envoy_proxy_img': images[CALICO_ENVOY_PROXY_KEY],
-                'calico_goldmane_img': images[CALICO_GOLDMANE_KEY],
-                'calico_node_driver_registrar_img': images[CALICO_NODE_DRIVER_REGISTRAR_KEY],
                 'calico_pod2daemon_flexvol_img': images[CALICO_POD2DAEMON_FLEXVOL_KEY],
                 'calico_typha_img': images[CALICO_TYPHA_KEY],
-                'calico_whisker_backend_img': images[CALICO_WHISKER_BACKEND_KEY],
-                'calico_whisker_img': images[CALICO_WHISKER_KEY],
                 'tigera_operator_img': images[TIGERA_OPERATOR_KEY],
             })
 
@@ -20191,143 +20173,6 @@ class ConductorManager(service.PeriodicService):
                 raise exception.SysinvException("Failed to upgrade kubernetes networking "
                                                 "component: [%s]"
                                                 % (re.split('update_|\.', data[1])[1]))
-
-        # Phase 3: Calico Ingress Gateway (Gateway API + XListenerSet)
-        if LooseVersion(kube_version) >= LooseVersion('v1.35.2'):
-            # Create tigera-gateway namespace
-            try:
-                self._kube.kube_create_namespace('tigera-gateway')
-            except Exception as e:
-                raise exception.SysinvException(
-                    "Failed to create tigera-gateway "
-                    "namespace. Details: %s" % str(e))
-
-            # Label tigera-gateway namespace as platform component
-            try:
-                self._kube.kube_patch_namespace('tigera-gateway', label_body)
-            except Exception as e:
-                raise exception.SysinvException(
-                    "Failed to label platform in tigera-gateway "
-                    "namespace. Details: %s" % str(e))
-
-            # Copy registry secret to tigera-gateway namespace
-            secret = self._kube.kube_get_secret(
-                'registry-local-secret', 'tigera-gateway')
-            if secret:
-                LOG.info("Secret registry-local-secret already "
-                         "exists in tigera-gateway, skipping.")
-            else:
-                try:
-                    LOG.info("Copying registry-local-secret to tigera-gateway namespace.")
-                    self._kube.kube_copy_secret(
-                        'registry-local-secret',
-                        'kube-system', 'tigera-gateway')
-                except Exception as e:
-                    raise exception.SysinvException(
-                        "Could not copy secret to "
-                        "tigera-gateway: %s" % str(e))
-
-            # Apply EnvoyGateway config and GatewayAPI CR
-            gateway_entries_phase1 = [
-                [f"{version_subpath}/calico-gateway-api-envoy-config.yaml.j2",
-                 'update_calico-gateway-api-envoy-config.yaml', False, None],
-                [f"{version_subpath}/calico-gateway-api.yaml.j2",
-                 'update_calico-gateway-api.yaml', False, None],
-            ]
-
-            for data in gateway_entries_phase1:
-                source_template_path = os.path.join(
-                    full_template_path, data[0])
-                dest_manifest_path = os.path.join(
-                    kubernetes.KUBERNETES_CONF_DIR, data[1])
-                is_template = data[2]
-                values = data[3]
-                if self._generate_k8s_manifests_and_apply(
-                        source_template_path, dest_manifest_path,
-                        is_template=is_template, values=values):
-                    LOG.info("Gateway API component [%s] applied "
-                             "successfully."
-                             % (re.split('update_|\\.', data[1])[1]))
-                else:
-                    raise exception.SysinvException(
-                        "Failed to apply Gateway API "
-                        "component: [%s]"
-                        % (re.split('update_|\\.', data[1])[1]))
-
-            # Wait for Envoy Gateway pod to be created and running
-            LOG.info("Waiting for Envoy Gateway to be ready...")
-            envoy_gw_ready = False
-            for attempt in range(30):  # Wait up to 5 minutes
-                try:
-                    stdout, _ = cutils.execute(
-                        'kubectl',
-                        f'--kubeconfig={kubernetes.KUBERNETES_ADMIN_CONF}',
-                        'get', 'pods', '-n', 'tigera-gateway',
-                        '--no-headers',
-                        run_as_root=False)
-                    if 'envoy-gateway' in stdout and 'Running' in stdout:
-                        envoy_gw_ready = True
-                        LOG.info("Envoy Gateway is ready.")
-                        break
-                except Exception:
-                    pass
-                time.sleep(10)
-
-            if not envoy_gw_ready:
-                LOG.warning("Timed out waiting for Envoy Gateway. "
-                            "Gateway API may not be fully operational.")
-
-            # Wait for GatewayClass to be accepted
-            LOG.info("Waiting for GatewayClass to be accepted...")
-            gwclass_ready = False
-            for attempt in range(12):  # Wait up to 2 minutes
-                try:
-                    stdout, _ = cutils.execute(
-                        'kubectl',
-                        f'--kubeconfig={kubernetes.KUBERNETES_ADMIN_CONF}',
-                        'get', 'gatewayclass', 'tigera-gateway-class',
-                        '-o',
-                        'jsonpath={.status.conditions[?(@.type=="Accepted")].status}',
-                        run_as_root=False)
-                    if 'True' in stdout:
-                        gwclass_ready = True
-                        LOG.info("GatewayClass tigera-gateway-class "
-                                 "is accepted.")
-                        break
-                except Exception:
-                    pass
-                time.sleep(10)
-
-            if not gwclass_ready:
-                LOG.warning("Timed out waiting for GatewayClass "
-                            "to be accepted.")
-
-            # Apply XListenerSet CRD and RBAC
-            gateway_entries_phase2 = [
-                [f"{version_subpath}/calico-gateway-api-xlistenerset-crd.yaml.j2",
-                 'update_calico-gateway-api-xlistenerset-crd.yaml', False, None],
-                [f"{version_subpath}/calico-gateway-api-xlistenerset-rbac.yaml.j2",
-                 'update_calico-gateway-api-xlistenerset-rbac.yaml', False, None],
-            ]
-
-            for data in gateway_entries_phase2:
-                source_template_path = os.path.join(
-                    full_template_path, data[0])
-                dest_manifest_path = os.path.join(
-                    kubernetes.KUBERNETES_CONF_DIR, data[1])
-                is_template = data[2]
-                values = data[3]
-                if self._generate_k8s_manifests_and_apply(
-                        source_template_path, dest_manifest_path,
-                        is_template=is_template, values=values):
-                    LOG.info("XListenerSet component [%s] applied "
-                             "successfully."
-                             % (re.split('update_|\\.', data[1])[1]))
-                else:
-                    raise exception.SysinvException(
-                        "Failed to apply XListenerSet "
-                        "component: [%s]"
-                        % (re.split('update_|\\.', data[1])[1]))
 
         # Post-apply check: if 05-multus.conf was recreated during the
         # DaemonSet rolling update, remove it and restart the multus pod
