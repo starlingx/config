@@ -542,16 +542,25 @@ def systemctl_unmask_service(service_name, runtime=False, now=False):
     """Unmask a systemd service
 
     :param: service_name: string: Name of the service to be unmasked
+    :param: runtime: bool: Apply unmask only for the current boot
+    :param: now: bool: Also start the service after unmasking
     :raises: SysinvException
     """
     try:
         cmd = [constants.SYSTEMCTL_PATH, constants.UNMASK_COMMAND, service_name]
         if runtime:
             cmd.append(constants.SYSTEMCTL_RUNTIME_FLAG)
-        if now:
-            cmd.append(constants.SYSTEMCTL_NOW_FLAG)
+        # The --now flag is not supported with the 'unmask' verb in
+        # systemd 257+ (Debian Trixie). Start the service explicitly
+        # after unmasking instead of passing --now.
         execute(*cmd, check_exit_code=0)
         LOG.info("Service %s unmasked successfully" % (service_name))
+        if now:
+            start_cmd = [constants.SYSTEMCTL_PATH, constants.START_COMMAND,
+                         service_name]
+            execute(*start_cmd, check_exit_code=0)
+            LOG.info("Service %s started successfully after unmask"
+                     % (service_name))
     except Exception as ex:
         raise exception.SysinvException("Failed to unmask the service %s with error: [%s]"
                                         % (service_name, ex))
