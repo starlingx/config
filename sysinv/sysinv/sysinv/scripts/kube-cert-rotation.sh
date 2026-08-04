@@ -323,6 +323,23 @@ get_cluster_host_floating_ip() {
     echo ${floating_ip}
 }
 
+# Return a controller's cluster-host unit address by parsing /etc/hosts.
+# Falls back to the supplied default if the entry is not found.
+# This approach safely works on the standby controller where the DB is unavailable.
+get_cluster_host_unit_ip() {
+    local hostname=$1
+    local fallback=$2
+    local ip=""
+
+    ip=$(awk -v host="${hostname}-cluster-host" '$2 == host {print $1}' /etc/hosts | head -1)
+
+    if [ -z "${ip}" ]; then
+        echo "WARNING: Using fallback IP ${fallback} for ${hostname} (not found in /etc/hosts)" >&2
+        ip=${fallback}
+    fi
+    echo "${ip}"
+}
+
 # Stops execution when sourced from other scripts. Only proceeds when called directly.
 (return 0 2>/dev/null) && sourced=1 || sourced=0
 if [[ "$sourced" -eq "1" ]]; then
@@ -462,6 +479,22 @@ if [ ${ERR} -eq 0 ]; then
     fi
 fi
 
+# Resolve cluster-host unit addresses for etcd certificate SANs
+if [ ${ERR} -eq 0 ]; then
+    fallback_0=$(python3 -c "import ipaddress; \
+        print(ipaddress.ip_address('${floating_ip}') + 1)" 2>/dev/null)
+    fallback_1=$(python3 -c "import ipaddress; \
+        print(ipaddress.ip_address('${floating_ip}') + 2)" 2>/dev/null)
+    controller_0_ip=$(get_cluster_host_unit_ip "controller-0" "${fallback_0}")
+    controller_1_ip=$(get_cluster_host_unit_ip "controller-1" "${fallback_1}")
+    if [ "x${controller_0_ip}" == "x" ] || [ "x${controller_1_ip}" == "x" ]; then
+        ERR_REASON="Failed to derive cluster host unit IP addresses for etcd SANs."
+        ERR=1
+    else
+        echo "INFO: etcd cert SANs: floating=${floating_ip}, ctrl-0=${controller_0_ip}, ctrl-1=${controller_1_ip}, loopback=127.0.0.1/::1"
+    fi
+fi
+
 # Renew apiserver-etcd-client certificate
 if [ ${ERR} -eq 0 ]; then
     config="
@@ -477,7 +510,10 @@ if [ ${ERR} -eq 0 ]; then
     subjectAltName = @alt_names
     [alt_names]
     IP.1 = ${floating_ip}
-    IP.2 = 127.0.0.1
+    IP.2 = ${controller_0_ip}
+    IP.3 = ${controller_1_ip}
+    IP.4 = 127.0.0.1
+    IP.5 = ::1
     "
     renew_cert_by_openssl "/etc/kubernetes/pki" "apiserver-etcd-client" "${config}"
     result=$?
@@ -503,7 +539,10 @@ if [ ${ERR} -eq 0 ]; then
     subjectAltName = @alt_names
     [alt_names]
     IP.1 = ${floating_ip}
-    IP.2 = 127.0.0.1
+    IP.2 = ${controller_0_ip}
+    IP.3 = ${controller_1_ip}
+    IP.4 = 127.0.0.1
+    IP.5 = ::1
     "
     renew_cert_by_openssl "/etc/etcd" "etcd-server" "${config}"
     result=$?
