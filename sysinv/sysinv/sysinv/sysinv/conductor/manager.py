@@ -11874,6 +11874,19 @@ class ConductorManager(service.PeriodicService):
         the entire operation as successful.
         """
         args = {'host': host_uuid, 'vg': lvm_vg_uuid, 'pv': lvm_pv_uuid}
+        # Validate the reporting host owns this VG
+        try:
+            vg = self.dbapi.ilvg_get(lvm_vg_uuid)
+            target_host = self.dbapi.ihost_get(vg.forihostid)
+            if target_host.uuid != host_uuid:
+                LOG.info("Ignoring LVM CSI success report from host %s - "
+                         "VG %s belongs to host %s" %
+                         (host_uuid, lvm_vg_uuid, target_host.uuid))
+                return
+        except exception.NotFound:
+            LOG.error("Could not validate VG/PV ownership for report")
+            return
+
         LOG.info("LVM CSI manifests success on host %(host)s provisioning "
                   "VG %(vg)s and PV %(pv)s." % args)
 
