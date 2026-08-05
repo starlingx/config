@@ -11197,8 +11197,8 @@ class ManagerTestCase(base.DbTestCase):
         self.assertEqual(mocks['create_ns'].call_count, 2)
         mocks['copy_secret'].assert_any_call('registry-local-secret', 'kube-system', 'calico-system')
         mocks['copy_secret'].assert_any_call('registry-local-secret', 'kube-system', 'tigera-operator')
-        self.assertEqual(mocks['render'].call_count, 6)
-        self.assertEqual(mocks['kubectl_apply'].call_count, 7)
+        self.assertEqual(mocks['render'].call_count, 7)
+        self.assertEqual(mocks['kubectl_apply'].call_count, 8)
 
         updated_upgrade = self.dbapi.kube_upgrade_get_one()
         self.assertEqual(updated_upgrade.state, kubernetes.KUBE_UPGRADED_NETWORKING)
@@ -11238,8 +11238,8 @@ class ManagerTestCase(base.DbTestCase):
         mocks['create_ns'].assert_any_call('calico-system')
         mocks['create_ns'].assert_any_call('tigera-operator')
         mocks['copy_secret'].assert_any_call('registry-local-secret', 'kube-system', 'calico-system')
-        self.assertEqual(mocks['render'].call_count, 6)
-        self.assertEqual(mocks['kubectl_apply'].call_count, 7)
+        self.assertEqual(mocks['render'].call_count, 7)
+        self.assertEqual(mocks['kubectl_apply'].call_count, 8)
 
         updated_upgrade = self.dbapi.kube_upgrade_get_one()
         self.assertEqual(updated_upgrade.state, kubernetes.KUBE_UPGRADED_NETWORKING)
@@ -11279,8 +11279,8 @@ class ManagerTestCase(base.DbTestCase):
         mocks['create_ns'].assert_any_call('calico-system')
         mocks['create_ns'].assert_any_call('tigera-operator')
         mocks['copy_secret'].assert_any_call('registry-local-secret', 'kube-system', 'calico-system')
-        self.assertEqual(mocks['render'].call_count, 6)
-        self.assertEqual(mocks['kubectl_apply'].call_count, 7)
+        self.assertEqual(mocks['render'].call_count, 7)
+        self.assertEqual(mocks['kubectl_apply'].call_count, 8)
 
         updated_upgrade = self.dbapi.kube_upgrade_get_one()
         self.assertEqual(updated_upgrade.state, kubernetes.KUBE_UPGRADED_NETWORKING)

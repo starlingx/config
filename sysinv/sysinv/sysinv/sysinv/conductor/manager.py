@@ -20171,6 +20171,38 @@ class ConductorManager(service.PeriodicService):
                         "in kube-system: %s" % str(e.stderr))
 
             if legacy_calico_exists:
+                # Upgrade manifest-based Calico to the same version that the
+                # operator will deploy. This is required because the Tigera
+                # operator migration only supports same-version migration
+                # (matching manifest and operator versions). Without this step,
+                # the operator cannot properly auto-detect settings from an
+                # older Calico manifest.
+                # See: https://docs.tigera.io/calico/latest/operations/operator-migration
+                try:
+                    calico_manifest_template = os.path.join(
+                        full_template_path, f"{version_subpath}/calico-cni.yaml.j2")
+
+                    calico_pre_migration_manifest = os.path.join(
+                        kubernetes.KUBERNETES_CONF_DIR, 'update_calico_pre_migration.yaml')
+
+                    if self._generate_k8s_manifests_and_apply(
+                            calico_manifest_template, calico_pre_migration_manifest,
+                            is_template=True, values=calico_cni_template_variables):
+                        LOG.info("Calico manifest upgraded for operator migration.")
+                    else:
+                        raise Exception("Apply failed")
+
+                    # Wait for calico-node pods to be ready with the new version
+                    cutils.execute(
+                        'kubectl', f'--kubeconfig={kubernetes.KUBERNETES_ADMIN_CONF}',
+                        'rollout', 'status', 'ds/calico-node', '-n', 'kube-system',
+                        '--timeout=120s', run_as_root=False)
+                    LOG.info("Calico manifest rollout completed successfully.")
+                except Exception as e:
+                    raise exception.SysinvException(
+                        "Failed to upgrade Calico manifest before "
+                        "operator migration: %s" % str(e))
+
                 # 2. Patch calico-node DaemonSet cni-bin-dir volume hostPath
                 try:
                     stdout, _ = cutils.execute(
