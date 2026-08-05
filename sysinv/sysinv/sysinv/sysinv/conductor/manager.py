@@ -19369,9 +19369,9 @@ class ConductorManager(service.PeriodicService):
                 # directory written by a higher version.
                 current_etcd_version = etcd.get_etcd_version_from_symlink()
                 if current_etcd_version and \
-                        LooseVersion(target_etcd_version) <= LooseVersion(current_etcd_version):
+                        LooseVersion(target_etcd_version) < LooseVersion(current_etcd_version):
                     LOG.warning("Skipping etcd hieradata update: target "
-                                "version %s is not higher than current "
+                                "version %s is lower than current "
                                 "version %s."
                                 % (target_etcd_version, current_etcd_version))
                     target_etcd_version = current_etcd_version
