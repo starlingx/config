@@ -144,33 +144,44 @@ class LdapPuppet(base.BasePuppet):
                 self._distributed_cloud_role() == \
                 constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD
 
-            ldap_ca_secret_type = utils.get_secret_type(
-                constants.OPENLDAP_CA_CERT_SECRET_NAME,
-                constants.CERT_NAMESPACE_PLATFORM_CA_CERTS)
-
-            if is_subcloud and ldap_ca_secret_type == constants.K8S_SECRET_TYPE_OPAQUE.lower():
-                ldap_ca_cert = utils.get_ca_certificate_from_opaque_secret(
-                    constants.OPENLDAP_CA_CERT_SECRET_NAME,
-                    constants.CERT_NAMESPACE_PLATFORM_CA_CERTS)
-            else:
-                ldap_ca_cert, _, _ = utils.get_certificate_from_secret(
+            try:
+                ldap_ca_secret_type = utils.get_secret_type(
                     constants.OPENLDAP_CA_CERT_SECRET_NAME,
                     constants.CERT_NAMESPACE_PLATFORM_CA_CERTS)
 
-            if is_subcloud:
-                config.update({
-                    'platform::ldap::params::ca_cert': ldap_ca_cert,
-                })
-            else:
-                ldap_cert, ldap_key, _ = utils.get_certificate_from_secret(
-                    constants.OPENLDAP_CERT_SECRET_NAME,
-                    constants.CERT_NAMESPACE_PLATFORM_CERTS)
+                if is_subcloud and ldap_ca_secret_type == constants.K8S_SECRET_TYPE_OPAQUE.lower():
+                    ldap_ca_cert = utils.get_ca_certificate_from_opaque_secret(
+                        constants.OPENLDAP_CA_CERT_SECRET_NAME,
+                        constants.CERT_NAMESPACE_PLATFORM_CA_CERTS)
+                else:
+                    ldap_ca_cert, _, _ = utils.get_certificate_from_secret(
+                        constants.OPENLDAP_CA_CERT_SECRET_NAME,
+                        constants.CERT_NAMESPACE_PLATFORM_CA_CERTS)
 
-                config.update({
-                    'platform::ldap::params::secure_cert': ldap_cert,
-                    'platform::ldap::params::secure_key': ldap_key,
-                    'platform::ldap::params::ca_cert': ldap_ca_cert,
-                })
+                if is_subcloud:
+                    config.update({
+                        'platform::ldap::params::ca_cert': ldap_ca_cert,
+                    })
+                else:
+                    ldap_cert, ldap_key, _ = utils.get_certificate_from_secret(
+                        constants.OPENLDAP_CERT_SECRET_NAME,
+                        constants.CERT_NAMESPACE_PLATFORM_CERTS)
+
+                    config.update({
+                        'platform::ldap::params::secure_cert': ldap_cert,
+                        'platform::ldap::params::secure_key': ldap_key,
+                        'platform::ldap::params::ca_cert': ldap_ca_cert,
+                    })
+            except Exception as e:
+                # The openldap secret may be transiently unavailable if
+                # cert-manager is in the process of recreating it (delete +
+                # create cycle during certificate renewal). Log the error but
+                # do not fail the entire hieradata regeneration, as this would
+                # prevent unrelated certificate installs from completing.
+                LOG.warning("Failed to read openldap certificate secret "
+                            "during hieradata generation. The secret may be "
+                            "transiently unavailable due to cert-manager "
+                            "renewal: %s" % e)
 
         return config
 

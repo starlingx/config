@@ -15094,7 +15094,10 @@ class ConductorManager(service.PeriodicService):
                                        force=force,
                                        skip_update_config=skip_update_config)
         except Exception as e:
-            LOG.exception("_config_update_puppet %s" % e)
+            LOG.exception("_config_update_puppet failed for config_uuid=%s, "
+                          "classes=%s: %s" %
+                          (config_uuid,
+                           config_dict.get('classes', 'N/A'), e))
             if deferred_config:
                 self._host_deferred_runtime_config.append(deferred_config)
                 self._log_runtime_config_censored(
@@ -16558,13 +16561,54 @@ class ConductorManager(service.PeriodicService):
         # pem_contents might be bytes, make sure it is str
         pem_contents = six.ensure_str(pem_contents)
 
-        cert_list, private_key = \
-            self._extract_keys_from_pem(mode, pem_contents,
-                                        serialization.PrivateFormat.PKCS8,
-                                        passphrase)
+        try:
+            cert_list, private_key = \
+                self._extract_keys_from_pem(mode, pem_contents,
+                                            serialization.PrivateFormat.PKCS8,
+                                            passphrase)
+        except Exception as e:
+            LOG.error("config_certificate mode=%s failed to extract keys: %s"
+                      % (mode, e))
+            raise
 
         personalities = [constants.CONTROLLER]
 
+        try:
+            self._config_certificate_install(context, mode, pem_contents,
+                                            passphrase, cert_list, private_key,
+                                            personalities)
+        except Exception as e:
+            LOG.error("config_certificate mode=%s install FAILED: %s"
+                      % (mode, e))
+            raise
+
+        inv_certs = []
+        for cert in cert_list:
+            inv_cert = {'signature': cert.get('signature'),
+                        'is_ca': cert.get('is_ca'),
+                        'not_valid_before': cert.get('cert').not_valid_before,
+                        'not_valid_after': cert.get('cert').not_valid_after,
+                        'hash_subject': cert.get('hash_subject'),
+                        'subject': cert.get('cert').subject.rfc4514_string()
+                        }
+            inv_certs.append(inv_cert)
+
+        LOG.info("config_certificate mode=%s completed successfully" % mode)
+        return inv_certs
+
+    def _config_certificate_install(self, context, mode, pem_contents,
+                                    passphrase, cert_list, private_key,
+                                    personalities):
+        """Perform the mode-specific certificate installation steps.
+
+        :param context: an admin context.
+        :param mode: certificate mode (ssl, docker_registry, openldap, etc.)
+        :param pem_contents: contents of certificate in pem format.
+        :param passphrase: optional passphrase for the private key.
+        :param cert_list: list of extracted certificate dicts.
+        :param private_key: the extracted private key.
+        :param personalities: list of host personalities to target.
+        """
         if mode == constants.CERT_MODE_SSL:
             config_uuid = self._config_update_hosts(context, personalities)
             private_bytes = self._get_private_bytes_one(private_key)
@@ -16828,19 +16872,6 @@ class ConductorManager(service.PeriodicService):
             msg = "config_certificate unexpected mode=%s" % mode
             LOG.warn(msg)
             raise exception.SysinvException(_(msg))
-
-        inv_certs = []
-        for cert in cert_list:
-            inv_cert = {'signature': cert.get('signature'),
-                        'is_ca': cert.get('is_ca'),
-                        'not_valid_before': cert.get('cert').not_valid_before,
-                        'not_valid_after': cert.get('cert').not_valid_after,
-                        'hash_subject': cert.get('hash_subject'),
-                        'subject': cert.get('cert').subject.rfc4514_string()
-                        }
-            inv_certs.append(inv_cert)
-
-        return inv_certs
 
     def _config_selfsigned_certificate(self, context):
         """
@@ -22472,7 +22503,7 @@ class ConductorManager(service.PeriodicService):
         certs = [("ssl", constants.MANUAL, constants.SSL_PEM_FILE),
                   ("docker_registry", constants.MANUAL, constants.DOCKER_REGISTRY_CERT_FILE),
                   (constants.OPENLDAP_CERT_SECRET_NAME, constants.MANUAL,
-                    "/etc/ldap/certs/openldap-cert.crt"),
+                    constants.OPENLDAP_CERT_FILE),
                   ("dc-adminep-root-ca", constants.AUTOMATIC, constants.DC_ROOT_CA_CERT_PATH),
                   ("dc-adminep-server", constants.AUTOMATIC, constants.ADMIN_EP_CERT_FILENAME),
                   ("openstack", constants.MANUAL, constants.OPENSTACK_CERT_FILE),

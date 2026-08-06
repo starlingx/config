@@ -154,7 +154,60 @@ def is_certname_already_processed(certname):
             LOG.info('%s already processed in k8s secret scan. Skipping PEM file check' % certname)
             ret = True
 
+            # Verify on-disk certificate matches the K8s secret.
+            # If cert-mon failed to install the renewed cert to disk,
+            # the on-disk file will have an older expiry than the secret.
+            # Use the on-disk expiry for alarming in that case.
+            _check_ondisk_cert_drift(certname, secret_name)
+
     return ret
+
+
+def _check_ondisk_cert_drift(certname, secret_name):
+    """Compare the on-disk certificate expiry against the K8s secret expiry.
+
+    If the on-disk cert has an earlier expiry than what was recorded from
+    the K8s secret scan, it means cert-mon failed to install the renewed
+    certificate. In that case, update the CERT_SNAPSHOT with the on-disk
+    expiry so that cert-alarm will raise the appropriate expiration alarm.
+    """
+    pem_file = constants.CERT_LOCATION_MAP.get(certname)
+    if not pem_file:
+        return
+
+    try:
+        with open(pem_file, "r") as f:
+            cert_buf = f.read()
+    except IOError:
+        LOG.warning('On-disk certificate file %s not found for %s. '
+                    'Cannot verify cert installation.' % (pem_file, certname))
+        return
+
+    try:
+        cert = crypto.load_certificate(crypto.FILETYPE_PEM, cert_buf)
+        ondisk_expiry = get_cert_expiration_date(cert)
+    except Exception as e:
+        LOG.warning('Failed to parse on-disk certificate %s for %s: %s'
+                    % (pem_file, certname, e))
+        return
+
+    if ondisk_expiry is None:
+        return
+
+    secret_expiry = CERT_SNAPSHOT[secret_name].get(SNAPSHOT_KEY_EXPDATE)
+    if secret_expiry is None:
+        return
+
+    if ondisk_expiry < secret_expiry:
+        LOG.warning('Certificate drift detected for %s: on-disk cert at %s '
+                    'expires %s but K8s secret %s expires %s. '
+                    'The renewed certificate may not have been installed. '
+                    'Using on-disk expiry for alarm evaluation.'
+                    % (certname, pem_file, ondisk_expiry,
+                       secret_name, secret_expiry))
+        # Update the snapshot with the on-disk expiry so that
+        # the alarm logic uses the actual expired/expiring cert date
+        CERT_SNAPSHOT[secret_name][SNAPSHOT_KEY_EXPDATE] = ondisk_expiry
 
 
 def get_severity_user_override(cert_name):

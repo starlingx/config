@@ -393,7 +393,10 @@ class CertMonTestCase(base.DbTestCase):
             mocked_rest_api_upload.assert_called_once_with(
                 token, mock.ANY, mock.ANY, mock.ANY, timeout=mock.ANY)
         else:
-            registry_cert_renew.update_platform_certificate(FakeEventData(), cert_type)
+            with mock.patch.object(cert_mon_watcher.PlatformCertRenew,
+                                   '_is_cert_on_disk', return_value=True):
+                registry_cert_renew.update_platform_certificate(
+                    FakeEventData(), cert_type)
             mocked_rest_api_upload.assert_not_called()
 
     def get_data_file_path(self, file_name):
