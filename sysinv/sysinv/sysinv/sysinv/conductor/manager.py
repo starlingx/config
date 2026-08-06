@@ -13222,6 +13222,9 @@ class ConductorManager(service.PeriodicService):
             # diff list or dict, to only target required personalities.
             if section == constants.SERVICE_PARAM_SECTION_KUBERNETES_CONFIG:
                 personalities = [constants.CONTROLLER, constants.WORKER]
+            if section == constants.SERVICE_PARAM_SECTION_KUBERNETES_KUBELET:
+                personalities = [constants.CONTROLLER, constants.WORKER]
+                reboot = False
             if section in [constants.SERVICE_PARAM_SECTION_KUBERNETES_SCHEDULER,
                            constants.SERVICE_PARAM_SECTION_KUBERNETES_CONTROLLER_MANAGER]:
                 # Do not update target config for hosts
@@ -13621,6 +13624,13 @@ class ConductorManager(service.PeriodicService):
                     "classes": ['platform::kubernetes::master::change_apiserver_parameters']
                 }
                 self._config_apply_runtime_manifest(context, config_uuid, config_dict)
+
+                # Trigger two-phase kubelet config propagation to all nodes.
+                # Section is empty when "service-parameter-apply kubernetes"
+                # is called without --section.
+                if not section or \
+                        section == constants.SERVICE_PARAM_SECTION_KUBERNETES_KUBELET:
+                    self.kube_config_kubelet(context)
 
             elif service == constants.SERVICE_TYPE_HTTP:
                 # the platform::config class will be applied that will
