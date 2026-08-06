@@ -34,6 +34,70 @@ class StorageRookUtils(object):
     def storage_backend(self):
         return StorageBackendConfig.get_backend(self.dbapi, constants.SB_TYPE_CEPH_ROOK)
 
+    def is_app_in_transition(self):
+        """Check if the rook-ceph application is in a transitional state.
+
+        Returns True if the ceph-rook backend exists and its task indicates
+        the application is being uploaded, applied, removed, updated, or
+        recovered.
+
+        This should be used to block operations that require the app to be
+        in a stable state before processing changes (e.g., capability
+        updates on host-fs ceph or controller-fs ceph-float).
+        """
+        backend = self.storage_backend
+        if not backend:
+            return False
+
+        return backend.task in [
+            constants.APP_UPLOAD_IN_PROGRESS,
+            constants.APP_APPLY_IN_PROGRESS,
+            constants.APP_REMOVE_IN_PROGRESS,
+            constants.APP_UPDATE_IN_PROGRESS,
+            constants.APP_RECOVER_IN_PROGRESS,
+        ]
+
+    def is_controller_fs_in_transient_state(self, controller_fs):
+        """Check if a controller filesystem is in a transient state.
+
+        Returns True if the controller filesystem's current status indicates
+        an ongoing operation (creating, resizing, or deleting). This should
+        be used to block capability modifications while the filesystem is
+        not in a stable state.
+
+        :param controller_fs: a controller_fs object with a 'state' attribute.
+        """
+        transient_statuses = [
+            constants.CONTROLLER_FS_CREATING_IN_PROGRESS,
+            constants.CONTROLLER_FS_CREATING_ON_UNLOCK,
+            constants.CONTROLLER_FS_RESIZING_IN_PROGRESS,
+            constants.CONTROLLER_FS_DELETING_IN_PROGRESS,
+        ]
+
+        current_status = eval(controller_fs.state).get('status', '')
+        return current_status in transient_statuses
+
+    def is_host_fs_in_transient_state(self, host_fs):
+        """Check if a host filesystem is in a transient state.
+
+        Returns True if the host filesystem's current state indicates an
+        ongoing operation (creating, deleting, or modifying). This should
+        be used to block capability modifications while the filesystem is
+        not in a stable state.
+
+        :param host_fs: a host_fs dict-like object with a 'state' key.
+        """
+        transient_states = [
+            constants.HOST_FS_STATUS_CREATE_ON_UNLOCK,
+            constants.HOST_FS_STATUS_CREATE_IN_SVC,
+            constants.HOST_FS_STATUS_DELETING,
+            constants.HOST_FS_STATUS_DELETING_ON_UNLOCK,
+            constants.HOST_FS_STATUS_MODIFYING,
+        ]
+
+        current_state = host_fs.get('state', None)
+        return current_state in transient_states
+
     def get_deployment_model(self):
         deployment_model = None
         if self.storage_backend:

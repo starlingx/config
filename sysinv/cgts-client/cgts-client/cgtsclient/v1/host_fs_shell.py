@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2019,2024 Wind River Systems, Inc.
+# Copyright (c) 2019,2024,2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -124,6 +124,10 @@ def do_host_fs_modify(cc, args):
         cc.host_fs.update_many(ihost.uuid, patch_list)
     except exc.HTTPNotFound:
         raise exc.CommandError('Failed to modify filesystems')
+
+    if functions is not None and not [f for f in functions.split(',') if f]:
+        print("Note: all functions have been removed. Please delete this "
+              "filesystem after the application has been reapplied.")
 
     _print_fs_list(cc, ihost.uuid)
 

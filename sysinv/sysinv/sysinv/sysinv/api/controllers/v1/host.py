@@ -101,6 +101,7 @@ from sysinv.common import policy
 from sysinv.common import usm_service as usm_service
 from sysinv.common import utils as cutils
 from sysinv.common.storage_backend_conf import StorageBackendConfig
+from sysinv.common.storage_utils import StorageRookUtils
 from sysinv.common import health
 from sysinv.ipsec_auth.common import constants as ipsec_constants
 
@@ -5667,23 +5668,13 @@ class HostController(rest.RestController):
         if not force:
             self._check_lock_controller_during_upgrade(hostupdate.ihost_orig['hostname'])
 
-        ceph_rook_backend = StorageBackendConfig.get_backend_conf(
-            pecan.request.dbapi,
-            target=constants.SB_TYPE_CEPH_ROOK
-        )
-
         # Reject lock while the rook-ceph app is any progress state
-        if (ceph_rook_backend and ceph_rook_backend['task'] in
-                         [constants.APP_UPLOAD_IN_PROGRESS,
-                          constants.APP_APPLY_IN_PROGRESS,
-                          constants.APP_REMOVE_IN_PROGRESS,
-                          constants.APP_UPDATE_IN_PROGRESS,
-                          constants.APP_RECOVER_IN_PROGRESS]):
-                    msg = _("Rejected: The application %s is in transition, please "
-                            "wait for the current operation to complete "
-                            "before host-lock action.") % constants.SB_APP_MAP[
-                                ceph_rook_backend['backend']]
-                    raise wsme.exc.ClientSideError(msg)
+        storage_rook = StorageRookUtils(pecan.request.dbapi)
+        if storage_rook.is_app_in_transition():
+            msg = _("Rejected: The application %s is in transition, please "
+                    "wait for the current operation to complete "
+                    "before host-lock action.") % constants.HELM_APP_ROOK_CEPH
+            raise wsme.exc.ClientSideError(msg)
 
         # Reject lock while Ceph OSD storage devices are configuring
         if not force:

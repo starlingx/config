@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2025 Wind River Systems, Inc.
+# Copyright (c) 2013-2026 Wind River Systems, Inc.
 #
 
 from eventlet.green import subprocess
@@ -590,12 +590,8 @@ class StorageController(rest.RestController):
             ceph_rook_backend = StorageBackendConfig.get_backend(pecan.request.dbapi,
                                                                  constants.SB_TYPE_CEPH_ROOK)
 
-            rook_app_in_progress = ceph_rook_backend and ceph_rook_backend.task in \
-                         [constants.APP_UPLOAD_IN_PROGRESS,
-                          constants.APP_APPLY_IN_PROGRESS,
-                          constants.APP_REMOVE_IN_PROGRESS,
-                          constants.APP_UPDATE_IN_PROGRESS,
-                          constants.APP_RECOVER_IN_PROGRESS]
+            storage_rook = StorageRookUtils(pecan.request.dbapi)
+            rook_app_in_progress = storage_rook.is_app_in_transition()
 
             # This condition is used for the rook-ceph app to transition the
             # storage to the `deleting-with-app/force-deleting-with-app` states or
