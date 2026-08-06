@@ -200,7 +200,7 @@ class DataNetworkController(rest.RestController):
         name = datanetwork['name']
         if name.lower() == constants.DATANETWORK_TYPE_NONE:
             raise ValueError(_("DataNetwork name '%s' is not allowed") % name)
-        elif not re.match(r'^[\w\.\-]+$', name):
+        elif not re.match(r'^[A-Za-z0-9_.-]+$', name):
             raise ValueError(_("DataNetwork name '%s' is not allowed: "
                                "name may only contain letters, numbers, "
                                "underscores, periods and hyphens.") % name)
