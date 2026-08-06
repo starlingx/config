@@ -174,6 +174,8 @@ class TestHostFileSystems(base.TestCase):
         self.mock_get_disk_capacity.return_value = \
             constants.MINIMUM_TINY_DISK_SIZE * 1024
         self.fake_conductor_api.is_virtual_system_config_result = True
+        # Simulate tiny virtual LV size as puppet would have configured
+        self.docker_fs_size = constants.TINY_KUBERNETES_DOCKER_STOR_SIZE
 
         self.agent_manager._create_host_filesystems(self.fake_conductor_api,
                                                     self.context)
@@ -184,6 +186,34 @@ class TestHostFileSystems(base.TestCase):
             {'logical_volume': 'backup-lv', 'name': 'backup', 'size': 1},
             {'logical_volume': 'docker-lv', 'name': 'docker', 'size': 20},
             {'logical_volume': 'kubelet-lv', 'name': 'kubelet', 'size': 2},
+            {'logical_volume': 'log-lv', 'name': 'log', 'size': 8},
+            {'logical_volume': 'var-lv', 'name': 'var', 'size': 20},
+            {'logical_volume': 'root-lv', 'name': 'root', 'size': 20}]
+
+        self.fake_conductor_api.create_host_filesystems.assert_called_with(
+            self.context,
+            self.agent_manager._ihost_uuid,
+            expected_filesystems)
+        self.assertEqual(self.agent_manager._prev_fs, expected_filesystems)
+
+    def test_create_host_filesystems_controller_custom_docker_size(self):
+
+        self.agent_manager._ihost_personality = constants.CONTROLLER
+        self.mock_get_disk_capacity.return_value = \
+            (constants.DEFAULT_SMALL_DISK_SIZE + 1) * 1024
+        # Simulate a custom docker LV size configured via bootstrap overrides
+        self.docker_fs_size = 60
+
+        self.agent_manager._create_host_filesystems(self.fake_conductor_api,
+                                                    self.context)
+
+        # Verify expected filesystems and sizes - docker should use
+        # the custom size (60) rather than default (30 or 40)
+        expected_filesystems = [
+            {'logical_volume': 'scratch-lv', 'name': 'scratch', 'size': 16},
+            {'logical_volume': 'backup-lv', 'name': 'backup', 'size': 25},
+            {'logical_volume': 'docker-lv', 'name': 'docker', 'size': 60},
+            {'logical_volume': 'kubelet-lv', 'name': 'kubelet', 'size': 10},
             {'logical_volume': 'log-lv', 'name': 'log', 'size': 8},
             {'logical_volume': 'var-lv', 'name': 'var', 'size': 20},
             {'logical_volume': 'root-lv', 'name': 'root', 'size': 20}]

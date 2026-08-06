@@ -2338,7 +2338,11 @@ def get_current_fs_size(fs_name):
     """ Get the filesystem size from the lvdisplay command.
     """
 
-    volume_name = fs_name + "-lv"
+    # Use FILESYSTEM_LV_DICT to handle names where LV doesn't
+    # follow the simple "<fs_name>-lv" convention
+    # (e.g. docker-distribution -> dockerdistribution-lv)
+    volume_name = constants.FILESYSTEM_LV_DICT.get(
+        fs_name, fs_name + "-lv")
 
     args = ["lvdisplay",
             "--columns",

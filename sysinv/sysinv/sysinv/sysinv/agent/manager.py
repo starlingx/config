@@ -1564,6 +1564,13 @@ class AgentManager(service.PeriodicService):
             # check if the docker fs is supported for current host
             if utils.is_filesystem_supported(constants.FILESYSTEM_NAME_DOCKER,
                                              self._ihost_personality):
+                try:
+                    docker_lv_size = utils.get_current_fs_size(
+                        constants.FILESYSTEM_NAME_DOCKER)
+                except Exception as e:
+                    LOG.warning("Failed to get current docker fs size, "
+                               "using default: %s. Error: %s"
+                               % (docker_lv_size, e))
                 data = {
                     'name': constants.FILESYSTEM_NAME_DOCKER,
                     'size': docker_lv_size,
