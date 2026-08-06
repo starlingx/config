@@ -1107,3 +1107,105 @@ class TestDpllMgrHieradata(testtools.TestCase):
         ptp_config = {'ptp-fr': instance}
         result = self.networking._prune_ptp_config_fields(ptp_config)
         self.assertNotIn('config_json', result['ptp-fr'])
+
+
+class TestDpllPinConfig(testtools.TestCase):
+    """Unit tests for _set_ptp_dpll_pin_config in NetworkingPuppet."""
+
+    def setUp(self):
+        super(TestDpllPinConfig, self).setUp()
+        mock_operator = mock.MagicMock()
+        self.networking = NetworkingPuppet(mock_operator)
+
+    def _make_param(self, name, value, section='dpll', owners=None):
+        return {
+            'name': name,
+            'value': value,
+            'section': section,
+            'owners': owners or ['clock-uuid-1'],
+        }
+
+    def test_basic_priority_params(self):
+        """pin_priority_gnss/synce/ptp/ext generate correct config entries."""
+        nic_clocks = {'clock0': {'uuid': 'clock-uuid-1'}}
+        params = [
+            self._make_param('pin_priority_gnss', '1'),
+            self._make_param('pin_priority_synce', '5'),
+            self._make_param('pin_priority_ptp', '6'),
+            self._make_param('pin_priority_ext', '10'),
+        ]
+        result = self.networking._set_ptp_dpll_pin_config(nic_clocks, params)
+        self.assertEqual(len(result), 4)
+        self.assertEqual(result[0], {'group': 'gnss', 'priority': 1})
+        self.assertEqual(result[1], {'group': 'synce', 'priority': 5})
+        self.assertEqual(result[2], {'group': 'ptp', 'priority': 6})
+        self.assertEqual(result[3], {'group': 'ext', 'priority': 10})
+
+    def test_state_params(self):
+        """pin_state_synce/ptp generates correct config entries."""
+        nic_clocks = {'clock0': {'uuid': 'clock-uuid-1'}}
+        params = [
+            self._make_param('pin_state_synce', 'disconnected'),
+            self._make_param('pin_state_ptp', 'selectable'),
+        ]
+        result = self.networking._set_ptp_dpll_pin_config(nic_clocks, params)
+        self.assertEqual(len(result), 2)
+        self.assertEqual(result[0], {'group': 'synce', 'state': 'disconnected'})
+        self.assertEqual(result[1], {'group': 'ptp', 'state': 'selectable'})
+
+    def test_empty_params(self):
+        """No section=dpll params returns empty list."""
+        nic_clocks = {'clock0': {'uuid': 'clock-uuid-1'}}
+        params = [
+            self._make_param('some_param', '123', section='global'),
+        ]
+        result = self.networking._set_ptp_dpll_pin_config(nic_clocks, params)
+        self.assertEqual(result, [])
+
+    def test_wrong_owner_ignored(self):
+        """Params owned by non-clock instance are ignored."""
+        nic_clocks = {'clock0': {'uuid': 'clock-uuid-1'}}
+        params = [
+            self._make_param('pin_priority_gnss', '1', owners=['other-uuid']),
+        ]
+        result = self.networking._set_ptp_dpll_pin_config(nic_clocks, params)
+        self.assertEqual(result, [])
+
+    def test_unknown_pin_name_skipped(self):
+        """Unknown pin suffix is skipped with warning."""
+        nic_clocks = {'clock0': {'uuid': 'clock-uuid-1'}}
+        params = [
+            self._make_param('pin_priority_bogus', '5'),
+        ]
+        result = self.networking._set_ptp_dpll_pin_config(nic_clocks, params)
+        self.assertEqual(result, [])
+
+    def test_invalid_priority_value_skipped(self):
+        """Non-integer priority value is skipped."""
+        nic_clocks = {'clock0': {'uuid': 'clock-uuid-1'}}
+        params = [
+            self._make_param('pin_priority_gnss', 'abc'),
+        ]
+        result = self.networking._set_ptp_dpll_pin_config(nic_clocks, params)
+        self.assertEqual(result, [])
+
+    def test_no_clock_instances(self):
+        """Empty nic_clocks returns empty list."""
+        nic_clocks = {}
+        params = [
+            self._make_param('pin_priority_gnss', '1'),
+        ]
+        result = self.networking._set_ptp_dpll_pin_config(nic_clocks, params)
+        self.assertEqual(result, [])
+
+    def test_mixed_priority_and_state(self):
+        """Both priority and state params in same call."""
+        nic_clocks = {'clock0': {'uuid': 'clock-uuid-1'}}
+        params = [
+            self._make_param('pin_priority_gnss', '0'),
+            self._make_param('pin_state_synce', 'selectable'),
+        ]
+        result = self.networking._set_ptp_dpll_pin_config(nic_clocks, params)
+        self.assertEqual(len(result), 2)
+        self.assertEqual(result[0], {'group': 'gnss', 'priority': 0})
+        self.assertEqual(result[1], {'group': 'synce', 'state': 'selectable'})

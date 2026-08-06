@@ -115,6 +115,7 @@ SB_SUPPORTED_NETWORKS = {
 
 # PTP definitions
 PTP_INSTANCE_TYPE_PTP4L = 'ptp4l'
+PTP_INSTANCE_TYPE_CLOCK = 'clock'
 PTP_INSTANCE_TYPE_GNSS_MONITOR = "gnss-monitor"
 PTP_INSTANCE_TYPE_DPLL_MGR = "dpll-mgr"
 PTP_INSTANCE_TYPE_DPLL_MGR_SUPPORTED_SECTIONS = [
@@ -134,6 +135,22 @@ PTP_INSTANCE_TYPE_DPLL_MGR_SUPPORTED_SECTIONS = [
 PTP_INSTANCE_TYPE_GNSS_MONITOR_SUPPORTED_PARAMETERS = [
     "devices", "satellite_count", "signal_quality_db",
     "cmdline_opts"
+]
+
+# Clock instance section=dpll supported parameters
+PTP_INSTANCE_TYPE_CLOCK_DPLL_SUPPORTED_PARAMS = [
+    # Pin priorities (0=highest, 14=lowest)
+    "pin_priority_gnss",
+    "pin_priority_synce",
+    "pin_priority_ptp",
+    "pin_priority_ext",
+    # Pin states (GNSS state controlled via gnss_enabled interface param)
+    "pin_state_synce",
+    "pin_state_ptp",
+    "pin_state_ext",
+]
+PTP_INSTANCE_TYPE_CLOCK_DPLL_VALID_STATES = [
+    "selectable", "disconnected", "connected"
 ]
 
 # PTP4L unicast_master_table supported parameters
