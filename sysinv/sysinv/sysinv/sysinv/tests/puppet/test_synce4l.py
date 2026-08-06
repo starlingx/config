@@ -3,8 +3,8 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Unit tests for synce4l parameter handling in networking puppet module.
-# Validates: CGTS-100128 (monitoring params), CGTS-100134 (no sysfs),
-#            CGTS-100129 (external source)
+# Validates: monitoring params, no sysfs eec_get_state_cmd,
+#            external source section rendering
 
 import mock
 import uuid as uuidutils
@@ -51,7 +51,7 @@ class TestSynce4lParameters(test_base.TestCase):
         return self._make_instance(name=name, service='ptp4l')
 
     # ===================================================================
-    # CGTS-100128: Monitoring parameters
+    # Monitoring parameters
     # ===================================================================
 
     def test_synce4l_monitoring_params_have_defaults(self):
@@ -147,7 +147,7 @@ class TestSynce4lParameters(test_base.TestCase):
         self.assertEqual(inst['monitoring_parameters'], {})
 
     # ===================================================================
-    # CGTS-102081: Interface auto-populated in monitoring_parameters
+    # Interface auto-populated in monitoring_parameters
     # ===================================================================
 
     def test_synce4l_interface_auto_populated_in_monitoring(self):
@@ -206,7 +206,7 @@ class TestSynce4lParameters(test_base.TestCase):
         self.assertNotIn('interface', inst['monitoring_parameters'])
 
     # ===================================================================
-    # CGTS-100134: No sysfs eec_get_state_cmd
+    # No sysfs eec_get_state_cmd default
     # ===================================================================
 
     def test_synce4l_no_eec_get_state_cmd_in_device_params(self):
@@ -235,8 +235,7 @@ class TestSynce4lParameters(test_base.TestCase):
         self.operator._set_ptp_instance_global_parameters(
             instances, [])
         inst = instances[0]
-        expected_keys = ['input_mode', 'input_QL', 'input_ext_QL',
-                         'extended_tlv', 'network_option', 'recover_time']
+        expected_keys = ['extended_tlv', 'network_option', 'recover_time']
         for key in expected_keys:
             self.assertIn(key, inst['device_parameters'],
                           '%s missing from device_parameters' % key)
@@ -258,49 +257,246 @@ class TestSynce4lParameters(test_base.TestCase):
                          'cat /custom/path')
 
     # ===================================================================
-    # CGTS-100129: External clock source section
+    # External clock source section
     # ===================================================================
 
-    @mock.patch('glob.glob')
-    @mock.patch('builtins.open', mock.mock_open(read_data='pin_func 1 pin_channel 0'))
-    def test_external_source_populated_when_param_set(self, mock_glob):
-        """external_source populated when interface has external_source param."""
-        mock_glob.return_value = [
-            '/sys/class/net/enp81s0f0/device/ptp/ptp0/pins/SMA1'
-        ]
-        iface_uuid = str(uuidutils.uuid4())
+    def test_external_source_populated_when_param_set(self):
+        """external_source populated when interface has external_source param (E810)."""
         iface_params = [
             {'name': 'external_source', 'value': 'SMA1',
-             'owners': [iface_uuid]},
+             'owners': ['iface-uuid-1']},
         ]
         result = self.operator._set_external_source_parameters(
-            iface_uuid, iface_params, 'enp81s0f0')
+            'iface-uuid-1', iface_params, 'enp81s0f0', is_gnrd=False)
         self.assertIn('name', result)
         self.assertEqual(result['name'], 'SMA1')
         self.assertIn('params', result)
         self.assertIn('external_enable_cmd', result['params'])
         self.assertIn('external_disable_cmd', result['params'])
+        # Verify glob path is used (not a resolved ptp device number)
+        self.assertIn('ptp*', result['params']['external_enable_cmd'])
 
     def test_external_source_empty_when_no_param(self):
         """external_source empty when no external_source param on interface."""
-        iface_uuid = str(uuidutils.uuid4())
         iface_params = [
             {'name': 'recover_time', 'value': '20',
-             'owners': [iface_uuid]},
+             'owners': ['iface-uuid-1']},
         ]
         result = self.operator._set_external_source_parameters(
-            iface_uuid, iface_params, 'enp81s0f0')
+            'iface-uuid-1', iface_params, 'enp81s0f0')
         self.assertEqual(result, {})
 
-    @mock.patch('glob.glob')
-    def test_external_source_empty_when_pin_not_found(self, mock_glob):
-        """external_source gracefully empty when NIC pin sysfs not found."""
-        mock_glob.return_value = []
-        iface_uuid = str(uuidutils.uuid4())
+    def test_external_source_empty_when_pin_not_found(self):
+        """external_source gracefully empty when E810 pin not in channel map."""
         iface_params = [
-            {'name': 'external_source', 'value': 'SMA1',
-             'owners': [iface_uuid]},
+            {'name': 'external_source', 'value': 'UNKNOWN_PIN',
+             'owners': ['iface-uuid-1']},
         ]
         result = self.operator._set_external_source_parameters(
-            iface_uuid, iface_params, 'enp81s0f0')
+            'iface-uuid-1', iface_params, 'enp81s0f0', is_gnrd=False)
         self.assertEqual(result, {})
+
+    # ===================================================================
+    # GNR-D (E825/zl3073x) external source — DPLL mode
+    # ===================================================================
+
+    def test_external_source_gnrd_generates_board_label(self):
+        """GNR-D external source produces board_label, no sysfs commands."""
+        iface_params = [
+            {'name': 'external_source', 'value': 'GNSS_1PPS_IN',
+             'owners': ['iface-uuid-1']},
+        ]
+        result = self.operator._set_external_source_parameters(
+            'iface-uuid-1', iface_params, 'enp81s0f0', is_gnrd=True)
+        self.assertIn('name', result)
+        self.assertEqual(result['name'], 'GNSS_1PPS_IN')
+        self.assertIn('params', result)
+        # Must have board_label matching the kernel DPLL pin
+        self.assertEqual(result['params']['board_label'], 'GNSS_1PPS_IN')
+        # Must NOT have sysfs commands (DPLL netlink handles pin control)
+        self.assertNotIn('external_enable_cmd', result['params'])
+        self.assertNotIn('external_disable_cmd', result['params'])
+        # Must have default QL values
+        self.assertEqual(result['params']['input_QL'],
+                         constants.PTP_SYNCE_EXTERNAL_INPUT_QL)
+        self.assertEqual(result['params']['input_ext_QL'],
+                         constants.PTP_SYNCE_EXTERNAL_INPUT_EXT_QL)
+
+    def test_external_source_gnrd_gnss_10m(self):
+        """GNR-D GNSS_10M_IN pin produces correct section."""
+        iface_params = [
+            {'name': 'external_source', 'value': 'GNSS_10M_IN',
+             'owners': ['iface-uuid-1']},
+        ]
+        result = self.operator._set_external_source_parameters(
+            'iface-uuid-1', iface_params, 'enp81s0f0', is_gnrd=True)
+        self.assertEqual(result['name'], 'GNSS_10M_IN')
+        self.assertEqual(result['params']['board_label'], 'GNSS_10M_IN')
+        self.assertNotIn('external_enable_cmd', result['params'])
+
+    def test_external_source_gnrd_1epps_in(self):
+        """GNR-D 1EPPS_IN pin produces correct section."""
+        iface_params = [
+            {'name': 'external_source', 'value': '1EPPS_IN',
+             'owners': ['iface-uuid-1']},
+        ]
+        result = self.operator._set_external_source_parameters(
+            'iface-uuid-1', iface_params, 'enp81s0f0', is_gnrd=True)
+        self.assertEqual(result['name'], '1EPPS_IN')
+        self.assertEqual(result['params']['board_label'], '1EPPS_IN')
+
+    def test_external_source_gnrd_user_ql_override(self):
+        """GNR-D user-supplied input_QL overrides default."""
+        iface_params = [
+            {'name': 'external_source', 'value': 'GNSS_1PPS_IN',
+             'owners': ['iface-uuid-1']},
+            {'name': 'input_QL', 'value': '0x01',
+             'owners': ['iface-uuid-1']},
+            {'name': 'input_ext_QL', 'value': '0x21',
+             'owners': ['iface-uuid-1']},
+        ]
+        result = self.operator._set_external_source_parameters(
+            'iface-uuid-1', iface_params, 'enp81s0f0', is_gnrd=True)
+        self.assertEqual(result['params']['input_QL'], '0x01')
+        self.assertEqual(result['params']['input_ext_QL'], '0x21')
+        self.assertEqual(result['params']['board_label'], 'GNSS_1PPS_IN')
+
+    def test_external_source_gnrd_user_board_label_override(self):
+        """User can override board_label if kernel pin label differs."""
+        iface_params = [
+            {'name': 'external_source', 'value': 'GNSS_1PPS_IN',
+             'owners': ['iface-uuid-1']},
+            {'name': 'board_label', 'value': 'CUSTOM_LABEL',
+             'owners': ['iface-uuid-1']},
+        ]
+        result = self.operator._set_external_source_parameters(
+            'iface-uuid-1', iface_params, 'enp81s0f0', is_gnrd=True)
+        self.assertEqual(result['params']['board_label'], 'CUSTOM_LABEL')
+
+    def test_external_source_gnrd_unknown_pin_still_generates(self):
+        """GNR-D with unknown pin generates section (synce4l validates at runtime)."""
+        iface_params = [
+            {'name': 'external_source', 'value': 'FUTURE_PIN',
+             'owners': ['iface-uuid-1']},
+        ]
+        result = self.operator._set_external_source_parameters(
+            'iface-uuid-1', iface_params, 'enp81s0f0', is_gnrd=True)
+        self.assertIn('name', result)
+        self.assertEqual(result['params']['board_label'], 'FUTURE_PIN')
+
+    # ===================================================================
+    # E810 must NOT get clock_id/module_name auto-detection
+    #              E825/GNR-D MUST get module_name=zl3073x + clock_id
+    # ===================================================================
+
+    def _make_host(self, hostname='controller-0'):
+        host = mock.MagicMock()
+        host.id = 1
+        host.hostname = hostname
+        return host
+
+    def _make_port(self, name, pdevice, mac='aa:bb:cc:dd:ee:ff',
+                   driver='ice', pciaddr='0000:13:00.0'):
+        port = mock.MagicMock()
+        port.name = name
+        port.pdevice = pdevice
+        port.mac = mac
+        port_data = {
+            'name': name, 'driver': driver, 'pciaddr': pciaddr,
+            'pdevice': pdevice, 'mac': mac,
+        }
+        port.get = mock.MagicMock(
+            side_effect=lambda k, d='': port_data.get(k, d))
+        port.__getitem__ = mock.MagicMock(
+            side_effect=lambda k: port_data[k])
+        return port
+
+    def _make_synce4l_for_interface_params(self, name='synce_t1'):
+        """Create instance ready for _set_ptp_instance_interface_parameters."""
+        inst = self._make_instance(name=name)
+        inst['device_parameters'] = {
+            'extended_tlv': constants.PTP_SYNCE_EXTERNAL_TLV,
+            'network_option': constants.PTP_SYNCE_NETWORK_OPTION,
+            'recover_time': constants.PTP_SYNCE_RECOVER_TIME,
+        }
+        inst['interfaces'] = [{
+            'ifname': 'enp81s0f0',
+            'port_names': ['enp81s0f0'],
+            'parameters': {},
+            'uuid': str(uuidutils.uuid4()),
+        }]
+        return inst
+
+    def test_e810_auto_generates_module_name_ice_and_clock_id(self):
+        """E810 port gets module_name=ice and clock_id from MAC (EUI-64).
+
+        All ice-driver NICs use DPLL netlink mode. E810 gets module_name=ice
+        and clock_id derived from the base port MAC as EUI-64.
+        """
+        host = self._make_host()
+        e810_port = self._make_port(
+            'enp81s0f0', 'Ethernet Controller E810-XXV for backplane',
+            mac='a0:b0:c0:d0:e0:f0')
+        self.operator.dbapi.ethernet_port_get_by_host.return_value = \
+            [e810_port]
+
+        inst = self._make_synce4l_for_interface_params()
+        instances = {inst['name']: inst}
+
+        self.operator._set_synce4l_dpll_parameters(
+            host, instances)
+
+        self.assertEqual(
+            inst['device_parameters']['module_name'], 'ice')
+        # EUI-64: a0b0c0 + ffff + d0e0f0 = a0b0c0ffffd0e0f0
+        expected_clock_id = str(int('a0b0c0ffffd0e0f0', 16))
+        self.assertEqual(
+            inst['device_parameters']['clock_id'], expected_clock_id)
+
+    @mock.patch('builtins.open',
+                mock.mock_open(read_data='12345678\n'))
+    def test_e825_auto_generates_module_name_and_clock_id(self):
+        """E825 (GNR-D) gets module_name=zl3073x and clock_id from sysfs.
+
+        E825 uses DPLL netlink mode. synce4l needs clock_id and module_name
+        to find the correct DPLL device via netlink.
+        """
+        host = self._make_host()
+        e825_port = self._make_port(
+            'enp81s0f0', 'Ethernet Controller E825-C for backplane')
+        self.operator.dbapi.ethernet_port_get_by_host.return_value = \
+            [e825_port]
+
+        inst = self._make_synce4l_for_interface_params()
+        instances = {inst['name']: inst}
+
+        self.operator._set_synce4l_dpll_parameters(
+            host, instances)
+
+        self.assertEqual(
+            inst['device_parameters']['module_name'], 'zl3073x')
+        self.assertEqual(
+            inst['device_parameters']['clock_id'], '12345678')
+
+    @mock.patch('builtins.open',
+                mock.mock_open(read_data='12345678\n'))
+    def test_e825_user_clock_id_not_overridden(self):
+        """User-supplied clock_id is preserved (not overridden by auto-detect)."""
+        host = self._make_host()
+        e825_port = self._make_port(
+            'enp81s0f0', 'Ethernet Controller E825-C for backplane')
+        self.operator.dbapi.ethernet_port_get_by_host.return_value = \
+            [e825_port]
+
+        inst = self._make_synce4l_for_interface_params()
+        inst['device_parameters']['clock_id'] = '99999'
+        inst['device_parameters']['module_name'] = 'zl3073x'
+        instances = {inst['name']: inst}
+
+        self.operator._set_synce4l_dpll_parameters(
+            host, instances)
+
+        # User values preserved — auto-detect skipped
+        self.assertEqual(inst['device_parameters']['clock_id'], '99999')
+        self.assertEqual(
+            inst['device_parameters']['module_name'], 'zl3073x')
