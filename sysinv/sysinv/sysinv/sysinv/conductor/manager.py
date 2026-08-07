@@ -13079,6 +13079,17 @@ class ConductorManager(service.PeriodicService):
             LOG.info("Disk size : %s ... disk too small" % disk_size)
             raise exception.SysinvException("Disk size requirements not met.")
 
+        # Override with actual LV sizes if they exist (e.g. custom sizes
+        # specified via bootstrap overrides)
+        try:
+            docker_distribution_lv_size = \
+                cutils.get_current_fs_size(
+                    constants.FILESYSTEM_NAME_DOCKER_DISTRIBUTION)
+        except Exception as e:
+            LOG.warning("Could not read dockerdistribution LV size, "
+                        "using default: %s. Error: %s"
+                        % (docker_distribution_lv_size, e))
+
         capabilities = {'functions': []}
 
         # platform fs added to platform-lv
