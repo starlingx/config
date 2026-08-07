@@ -902,9 +902,10 @@ class KubernetesPuppet(base.BasePuppet):
                 dn_name = datanet['name'].strip()
                 resource = resources.get(dn_name, None)
                 if not resource:
+                    resource_name = "{}_net_{}".format(ifclass, dn_name)
+                    resource_name = resource_name.replace("-", "_").replace(".", "_")
                     resource = {
-                        "resourceName": "{}_net_{}".format(
-                            ifclass, dn_name).replace("-", "_"),
+                        "resourceName": resource_name,
                         "selectors": {
                             "vendors": [],
                             "devices": [],
