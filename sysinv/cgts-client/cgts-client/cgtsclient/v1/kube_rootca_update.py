@@ -54,7 +54,7 @@ class KubeRootCAUpdateManager(base.Manager):
                    "from file system")
             return dict(cert_id="", error=msg)
 
-    def rootCA_generate(self, expiry_date=None, subject=None, algorithm=None, key_size=None):
+    def rootCA_generate(self, expiry_date=None, subject=None):
         """Generate a root CA to be applied during
            kubernetes rootca update procedure.
 
@@ -64,17 +64,12 @@ class KubeRootCAUpdateManager(base.Manager):
            generated.
            :param subject: A string specifying the subject to be set
            for the certificate.
-           :param algorithm: Cryptographic algorithm for the private
-           key (ECDSA or RSA).
-           :param key_size: Key size in bits for the private key.
         """
 
         path = self._path('generate_cert')
         generate_body = {}
         generate_body['expiry_date'] = expiry_date
         generate_body['subject'] = subject
-        generate_body['algorithm'] = algorithm
-        generate_body['key_size'] = key_size
         return self._create(path, generate_body)
 
     def rootCA_pods_update(self, phase):
