@@ -743,7 +743,7 @@ class PCIOperator(object):
             with os.scandir(dnetdev) as netdevs:
                 netdev = next(entry for entry in netdevs if entry.is_dir())
             return netdev.name
-        except StopIteration:
+        except (StopIteration, OSError):
             return None
 
     def pci_get_net_attrs(self, pciaddr):

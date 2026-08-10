@@ -160,6 +160,63 @@ class TestPciOperator(base.TestCase):
         result = self.pci_operator.get_pci_sriov_vf_module_name(pfaddr, vfaddrs)
         assert result is None
 
+    @mock.patch('os.scandir')
+    def test_get_pci_sriov_vf_netdev(self, mock_scandir):
+        """Test _get_pci_sriov_vf_netdev returns netdev name when present."""
+        mock_entry = mock.Mock()
+        mock_entry.name = 'enp130s0f0'
+        mock_entry.is_dir.return_value = True
+        mock_scandir.return_value.__enter__ = mock.Mock(
+            return_value=iter([mock_entry]))
+        mock_scandir.return_value.__exit__ = mock.Mock(return_value=False)
+
+        result = self.pci_operator._get_pci_sriov_vf_netdev('82:10.0')
+        assert result == 'enp130s0f0'
+        mock_scandir.assert_called_once_with(
+            '/sys/bus/pci/devices/82:10.0/net/')
+
+    @mock.patch('os.scandir')
+    def test_get_pci_sriov_vf_netdev_empty_net_dir(self, mock_scandir):
+        """Test _get_pci_sriov_vf_netdev returns None when net dir is empty."""
+        mock_scandir.return_value.__enter__ = mock.Mock(
+            return_value=iter([]))
+        mock_scandir.return_value.__exit__ = mock.Mock(return_value=False)
+
+        result = self.pci_operator._get_pci_sriov_vf_netdev('82:10.0')
+        assert result is None
+
+    @mock.patch('os.scandir')
+    def test_get_pci_sriov_vf_netdev_vfio_pci_bound(self, mock_scandir):
+        """Test _get_pci_sriov_vf_netdev returns None when VF is bound to
+        vfio-pci (no kernel netdev, net dir does not exist)."""
+        mock_scandir.side_effect = FileNotFoundError(
+            "[Errno 2] No such file or directory: "
+            "'/sys/bus/pci/devices/82:10.0/net/'")
+
+        result = self.pci_operator._get_pci_sriov_vf_netdev('82:10.0')
+        assert result is None
+
+    @mock.patch('os.scandir')
+    def test_get_pci_sriov_vf_netdev_permission_error(self, mock_scandir):
+        """Test _get_pci_sriov_vf_netdev returns None on PermissionError."""
+        mock_scandir.side_effect = PermissionError(
+            "[Errno 13] Permission denied: "
+            "'/sys/bus/pci/devices/82:10.0/net/'")
+
+        result = self.pci_operator._get_pci_sriov_vf_netdev('82:10.0')
+        assert result is None
+
+    @mock.patch('os.scandir')
+    def test_get_pci_sriov_vf_netdev_oserror(self, mock_scandir):
+        """Test _get_pci_sriov_vf_netdev returns None on transient OSError
+        (e.g. device hot-remove or reset during scan)."""
+        mock_scandir.side_effect = OSError(
+            "[Errno 6] No such device or address: "
+            "'/sys/bus/pci/devices/82:10.0/net/'")
+
+        result = self.pci_operator._get_pci_sriov_vf_netdev('82:10.0')
+        assert result is None
+
 
 class TestAgentOperator(base.TestCase):
 
