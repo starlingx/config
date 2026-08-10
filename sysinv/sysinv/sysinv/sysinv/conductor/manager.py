@@ -8266,6 +8266,7 @@ class ConductorManager(service.PeriodicService):
                     A new upload attempt will be made on the next audit iteration.")
             return False
 
+    @kubernetes.test_k8s_health
     def _auto_apply_managed_app(self, context, app_name, async_apply=True):
         try:
             app = kubeapp_obj.get_by_name(context, app_name)

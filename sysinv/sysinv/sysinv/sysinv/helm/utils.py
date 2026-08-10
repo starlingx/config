@@ -207,7 +207,7 @@ def create_tmp_chart_dir():
     return dir_path
 
 
-def install_helm_chart_with_dry_run(args=None):
+def install_helm_chart_with_dry_run(args=None, mode="server"):
     """Simulate a chart install
 
     This method calls helm install with --dry-run option to simulate
@@ -216,10 +216,20 @@ def install_helm_chart_with_dry_run(args=None):
     by passing helm chart overrides to the helm command.
 
     :param args: additional arguments to helm command
+    :param mode: dry-run mode to use ('server' or 'client').
+                 When set to 'server', a Kubernetes health check is
+                 performed before running the command. Defaults to 'server'.
     """
+    if mode == "server":
+        if not kubernetes.k8s_wait_for_endpoints_health(tries=3, try_sleep=1, timeout=5):
+            raise exception.KubeHealthFailure(
+                reason="Kubernetes endpoints are not healthy. "
+                       "Cannot proceed with server-side dry-run.")
+
     env = os.environ.copy()
     env['KUBECONFIG'] = kubernetes.KUBERNETES_ADMIN_CONF
-    cmd = ['helm', 'install', '--dry-run', '--debug', '--generate-name']
+    cmd = ['helm', 'install', '--dry-run={}'.format(mode), '--debug',
+           '--generate-name']
     if args:
         cmd.extend(args)
 
