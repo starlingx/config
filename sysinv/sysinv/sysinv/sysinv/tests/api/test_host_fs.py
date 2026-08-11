@@ -729,6 +729,78 @@ class ApiHostFSPutTestSuiteMixin(ApiHostFSTestCaseMixin):
         self.assertIn("it is not possible to remove the last monitor in use",
                       response.json['error_message'])
 
+    def test_put_fail_remove_monitor_function_with_osd_retained(self):
+        """ Removing the last monitor function in use while keeping OSD.
+            Initial functions: monitor and osd.
+            Bug scenario: if not functions: guard was bypassed when OSD retained.
+        """
+        # Rook Ceph must be as storage backend for ceph fs
+        backend = dbutils.get_test_storage_backend(backend=constants.SB_TYPE_CEPH_ROOK)
+        self.dbapi.storage_ceph_rook_create(backend)
+
+        # Add host fs ceph with monitor and osd, state In-Use
+        self.host_fs_first = self._create_db_object('ceph',
+                                                    10,
+                                                    'ceph-lv',
+                                                    constants.HOST_FS_STATUS_IN_USE,
+                                                    {"functions": ["monitor", "osd"]})
+
+        # Try to remove monitor while keeping osd
+        capabilities = {"functions": ["osd"]}
+        response = self.put_json(self.get_update_many_url(self.host.uuid),
+                                 [[{"path": "/name",
+                                    "value": "ceph",
+                                    "op": "replace"},
+                                   {"path": "/capabilities",
+                                    "value": jsonutils.dumps(capabilities),
+                                    "op": "replace"}]],
+                                 headers=self.API_HEADERS,
+                                 expect_errors=True)
+
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+        self.assertIn("it is not possible to remove the last monitor in use",
+                      response.json['error_message'])
+
+    def test_put_success_remove_monitor_with_multiple_monitors(self):
+        """ Removing a monitor when 2+ monitors exist (not last).
+            Should be allowed since it's not the last monitor.
+        """
+        # Rook Ceph must be as storage backend for ceph fs
+        backend = dbutils.get_test_storage_backend(backend=constants.SB_TYPE_CEPH_ROOK)
+        self.dbapi.storage_ceph_rook_create(backend)
+
+        # Add host fs ceph with monitor and osd, state In-Use (this host)
+        self.host_fs_first = self._create_db_object('ceph',
+                                                    10,
+                                                    'ceph-lv',
+                                                    constants.HOST_FS_STATUS_IN_USE,
+                                                    {"functions": ["monitor", "osd"]})
+
+        # Create a second host with monitor (so count > 1)
+        host2 = self._create_test_host(personality=constants.CONTROLLER,
+                                       unit=1,
+                                       invprovision=constants.PROVISIONED)
+        dbutils.create_test_host_fs(id=99,
+                                    name='ceph',
+                                    forihostid=host2.id,
+                                    size=10,
+                                    logical_volume='ceph-lv',
+                                    state=constants.HOST_FS_STATUS_IN_USE,
+                                    capabilities={"functions": ["monitor"]})
+
+        # Remove monitor from first host - should succeed (not last mon)
+        capabilities = {"functions": ["osd"]}
+        self.put_json(self.get_update_many_url(self.host.uuid),
+                      [[{"path": "/name",
+                         "value": "ceph",
+                         "op": "replace"},
+                        {"path": "/capabilities",
+                         "value": jsonutils.dumps(capabilities),
+                         "op": "replace"}]],
+                      headers=self.API_HEADERS,
+                      expect_errors=False)
+
     def test_put_success_resizing_and_functions_for_ceph(self):
         # Create a provisioned host
         self.host = self._create_test_host(personality=constants.CONTROLLER,
@@ -861,6 +933,31 @@ class ApiHostFSDeleteTestSuiteMixin(ApiHostFSTestCaseMixin):
 
         # Verify the expected API response for the delete
         self.assertEqual(response.status_code, http_client.NO_CONTENT)
+
+    def test_delete_ceph_in_use_blocked(self):
+        """ Delete of ceph host-fs in In-Use state should be blocked.
+            Only Ready, Create on Unlock, and Error states allow deletion.
+        """
+        # Rook Ceph must be as storage backend for ceph fs
+        backend = dbutils.get_test_storage_backend(backend=constants.SB_TYPE_CEPH_ROOK)
+        self.dbapi.storage_ceph_rook_create(backend)
+
+        # Create ceph fs in In-Use state
+        ceph_fs = self._create_db_object('ceph',
+                                         20,
+                                         'ceph-lv',
+                                         constants.HOST_FS_STATUS_IN_USE,
+                                         {"functions": ["monitor", "osd"]})
+
+        uuid = ceph_fs.uuid
+        response = self.delete(self.get_single_fs_url(uuid),
+                               headers=self.API_HEADERS,
+                               expect_errors=True)
+
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+        self.assertIn("only possible for states",
+                      response.json['error_message'])
 
 
 class ApiHostFSPostTestSuiteMixin(ApiHostFSTestCaseMixin):
