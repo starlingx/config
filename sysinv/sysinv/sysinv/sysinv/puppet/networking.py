@@ -760,11 +760,13 @@ class NetworkingPuppet(base.BasePuppet):
                             host.id)
                         is_gnrd = self._is_gnrd(host_port_list, base_port)
                     # Handle synce4l external source parameters
-                    current_instance['external_source'] = self._set_external_source_parameters(
+                    _ext_src = self._set_external_source_parameters(
                         iface['uuid'],
                         ptp_parameters_interface,
                         base_port,
                         is_gnrd=is_gnrd)
+                    if _ext_src:
+                        current_instance['external_source'] = _ext_src
                 # Add supplied params to the interface
                 for param in ptp_parameters_interface:
                     if iface['uuid'] in param['owners']:
@@ -1170,7 +1172,7 @@ class NetworkingPuppet(base.BasePuppet):
         meta_params = ('external_source', 'external_source_direction')
         synce4l_params = ('input_QL', 'input_ext_QL', 'internal_prio',
                           'external_enable_cmd', 'external_disable_cmd',
-                          'board_label')
+                          'board_label', 'source_ports')
 
         # Handle meta parameters first (not forwarded to the sync4l config)
         meta_params_dict = {}
