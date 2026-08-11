@@ -20,5 +20,4 @@ override_dh_auto_install:
 
 override_dh_installsystemd:
 	dh_installsystemd -pstorageconfig --name=storageconfig --no-start storageconfig.service
-	dh_installsystemd -pstorageconfig --name=storage_config --no-start storage_config.service
 

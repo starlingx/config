@@ -17,4 +17,3 @@ override_dh_auto_install:
 
 override_dh_installsystemd:
 	dh_installsystemd -pworkerconfig-standalone --name=workerconfig --no-start workerconfig.service
-	dh_installsystemd -pworkerconfig-standalone --name=worker_config --no-start worker_config.service
