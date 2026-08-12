@@ -2678,7 +2678,7 @@ class InterfaceHostTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
             hiera_data = yaml.safe_load(config_file)
 
         self.assertTrue('platform::network::interfaces::network_config' in hiera_data.keys())
-        print(f"self.exp_yaml_config={self.exp_yaml_config}")
+        # print(f"self.exp_yaml_config={self.exp_yaml_config}")
 
         if len(self.exp_yaml_config):
             intf_cfg = hiera_data['platform::network::interfaces::network_config']
@@ -2961,7 +2961,8 @@ class InterfaceControllerEthernetCfg4(InterfaceHostTestCase):
 
         self._create_ethernet_test('sriov', constants.INTERFACE_CLASS_PCI_SRIOV,
                                     constants.NETWORK_TYPE_PCI_SRIOV,
-                                    hostname=self.host.hostname)
+                                    hostname=self.host.hostname,
+                                    **{"channels": 10})
 
         _, veth_intf = self._create_ethernet_test('veth0', constants.INTERFACE_CLASS_PLATFORM,
                                     [constants.NETWORK_TYPE_MGMT,
