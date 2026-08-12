@@ -755,18 +755,11 @@ class NetworkingPuppet(base.BasePuppet):
                         iface['parameters'].update({'recover_clock_enable_cmd':
                             recover_clk_cmd_fmt % (1, port_name)})
                         base_port = self._get_base_port(host, port_name)
-                    # Detect GNR-D (E825/zl3073x) for external source handling
-                    is_gnrd = False
-                    if base_port:
-                        host_port_list = self.dbapi.ethernet_port_get_by_host(
-                            host.id)
-                        is_gnrd = self._is_gnrd(host_port_list, base_port)
                     # Handle synce4l external source parameters
                     _ext_src = self._set_external_source_parameters(
                         iface['uuid'],
                         ptp_parameters_interface,
-                        base_port,
-                        is_gnrd=is_gnrd)
+                        base_port)
                     if _ext_src:
                         current_instance['external_source'] = _ext_src
                 # Add supplied params to the interface
@@ -1089,70 +1082,39 @@ class NetworkingPuppet(base.BasePuppet):
                         break
         return base_port
 
-    def _get_ptp_dev_info(self, base_port, meta_params_dict, is_gnrd=False):
+    def _get_ptp_dev_info(self, meta_params_dict):
+        """Return external source pin info for synce4l config generation.
+
+        All ice-driver NICs (E810, E825, E830) use DPLL netlink mode with
+        board_label matching. The board_label value must match the kernel
+        DPLL pin's board_label attribute exactly as reported by netlink.
+
+        Pin label examples:
+          E825 (GNR-D): GNSS_1PPS_IN, GNSS_10M_IN, 1EPPS_IN
+          E810/E830:    GNSS-1PPS, SMA1, SMA2, U.FL1, U.FL2
+        """
         pin = meta_params_dict['external_source']
-        direction_map = {'input': 1, 'output': 2}
+        valid_directions = ['input', 'output']
         default_pin_map = {'SMA1': 'input',
                            'SMA2': 'output',
                            'U.FL1': 'input',
                            'U.FL2': 'output',
+                           'GNSS-1PPS': 'input',
                            'GNSS_1PPS_IN': 'input',
                            'GNSS_10M_IN': 'input',
                            '1EPPS_IN': 'input',
                            }
 
-        if is_gnrd:
-            # GNR-D (E825/zl3073x): synce4l matches external source pins
-            # via board_label in DPLL netlink mode. No sysfs commands needed.
-            # The board_label must match the kernel DPLL pin's board_label
-            # attribute exactly (e.g. "GNSS_1PPS_IN").
-            direction = meta_params_dict.get(
-                'external_source_direction',
-                default_pin_map.get(pin, 'input'))
-            if direction not in direction_map:
-                LOG.error("Bad PTP pin direction: '%s'" % direction)
-                return None
-            return {'board_label': pin, 'dpll_mode': True,
-                    'func': direction_map[direction]}
-
-        # E810 (ice): Use sysfs pin path with shell glob for runtime
-        # expansion. The ptp device number varies by PCI probe order.
-        # Pin-to-channel mapping for E810 WPC/Logan Beach NICs.
-        # SMA connectors use DPLL channel 1; U.FL use channel 0.
-        pin_channel_map = {'SMA1': '1',
-                           'SMA2': '1',
-                           'U.FL1': '0',
-                           'U.FL2': '0',
-                           }
-
-        if pin not in pin_channel_map:
-            LOG.error("Unknown PTP pin '%s' for external source, "
-                      "cannot determine channel" % pin)
-            return None
-
-        # Use a glob path so the command resolves correctly on any host
-        # at runtime. The ptp device number varies by PCI probe order and
-        # cannot be determined from a remote host during hiera generation.
-        # synce4l executes these via system() which expands shell globs.
-        pin_path = '/sys/class/net/%s/device/ptp/ptp*/pins/%s' % (
-            base_port, pin)
-        channel = pin_channel_map[pin]
-
-        if 'external_source_direction' in meta_params_dict:
-            direction = meta_params_dict['external_source_direction']
-        else:
-            if pin not in default_pin_map:
-                LOG.error("Cannot determine default direction for pin '%s'" %
-                          pin)
-                return None
-            direction = default_pin_map[pin]
-            LOG.info('PTP pin %s direction not specified, using the '
-                     'default: %s' % (pin, direction))
-        if direction not in direction_map.keys():
+        if pin not in default_pin_map:
+            LOG.warning("Pin '%s' not in default_pin_map, "
+                        "defaulting direction to 'input'" % pin)
+        direction = meta_params_dict.get(
+            'external_source_direction',
+            default_pin_map.get(pin, 'input'))
+        if direction not in valid_directions:
             LOG.error("Bad PTP pin direction: '%s'" % direction)
             return None
-        return {'func': direction_map[direction], 'channel': channel,
-                'path': pin_path}
+        return {'board_label': pin}
 
     def _ptp_parameters_interface_del(self, ptp_parameters_interface, param, iface_uuid):
         if len(param['owners']) > 1:
@@ -1160,7 +1122,7 @@ class NetworkingPuppet(base.BasePuppet):
         else:
             ptp_parameters_interface.remove(param)
 
-    def _set_external_source_parameters(self, iface_uuid, ptp_parameters_interface, base_port, is_gnrd=False):
+    def _set_external_source_parameters(self, iface_uuid, ptp_parameters_interface, base_port):
         if not base_port:
             LOG.warning('Cannot set synce4l external source, no base port')
             return
@@ -1188,22 +1150,14 @@ class NetworkingPuppet(base.BasePuppet):
         # Create the external source section
         external_source = {}
         if 'external_source' in meta_params_dict:
-            info = self._get_ptp_dev_info(base_port, meta_params_dict,
-                                          is_gnrd=is_gnrd)
+            info = self._get_ptp_dev_info(meta_params_dict)
             if info:
                 external_source['name'] = meta_params_dict['external_source']
                 external_source['params'] = default_params.copy()
-                if info.get('dpll_mode'):
-                    # GNR-D DPLL mode: synce4l matches pins by board_label
-                    # via DPLL netlink. No sysfs enable/disable commands needed.
-                    external_source['params']['board_label'] = \
-                        info['board_label']
-                else:
-                    # E810 legacy/sysfs mode: generate enable/disable commands
-                    external_source['params'].update({'external_disable_cmd':
-                        'echo %s %s > %s' % (0, info['channel'], info['path'])})
-                    external_source['params'].update({'external_enable_cmd':
-                        'echo %s %s > %s' % (info['func'], info['channel'], info['path'])})
+                # All ice NICs use DPLL netlink mode: synce4l matches
+                # pins by board_label. No sysfs enable/disable commands.
+                external_source['params']['board_label'] = \
+                    info['board_label']
 
         # Finish handling the real parameters (user overrides)
         if 'name' in external_source:
