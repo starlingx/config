@@ -59,6 +59,9 @@ DEVICE_IMAGE_CACHE_ROOT_DIR = "/var" if six.PY3 else "/usr"
 DEVICE_IMAGE_CACHE_DIR = DEVICE_IMAGE_CACHE_ROOT_DIR + \
                          "/local/share/applications/sysinv"
 
+# OPAE 'fpgasupdate' tool, provided by the opae package installed on the host.
+FPGASUPDATE_CMD = "/usr/bin/fpgasupdate"
+
 SYSFS_DEVICE_PATH = "/sys/bus/pci/devices/"
 FME_PATH = "/fpga/intel-fpga-dev.*/intel-fpga-fme.*/"
 SPI_PATH = "spi-altera.*.auto/spi_master/spi*/spi*.*/"
@@ -128,63 +131,28 @@ class FpgaOperator(object):
             raise exception.SysinvException(msg)
         return local_path
 
-    def cleanup_container(self):
-        # Delete container if exists
-        cmd = 'ctr -n=k8s.io container list image=="%s"' % fpga_constants.OPAE_IMG
-        items = subprocess.check_output(shlex.split(cmd),  # pylint: disable=not-callable
-                                        stderr=subprocess.STDOUT,
-                                        universal_newlines=True)
-        for line in items.splitlines():
-            if fpga_constants.OPAE_IMG in line:
-                cmd = 'ctr -n=k8s.io container rm n3000-opae'
-                subprocess.check_output(shlex.split(cmd),  # pylint: disable=not-callable
-                                        stderr=subprocess.STDOUT,
-                                        universal_newlines=True)
-                LOG.info('Deleted stale container n3000-opae')
-                break
-
-    def set_cgroup_cpuset(self):
-        # Set CPU affinity by updating the cpuset.cpus
-        platform_cpulist = '0'
-        cpuset_path = '/sys/fs/cgroup/cpuset/platform/'
-        cpuset_file = os.path.join(cpuset_path, 'cpuset.cpus')
-        if not os.path.exists(cpuset_path):
-            os.makedirs(cpuset_path)
-            with open('/etc/platform/worker_reserved.conf', 'r') as infile:
-                for line in infile:
-                    if "PLATFORM_CPU_LIST" in line:
-                        val = line.split("=")
-                        platform_cpulist = val[1].strip('\n')[1:-1].strip('"')
-            with open(cpuset_file, 'w') as fd:
-                LOG.info("Writing %s to file %s" % (platform_cpulist, cpuset_file))
-                fd.write(platform_cpulist)
-
     def write_device_image_n3000(self, filename, pci_addr):
         # Write the firmware image to the FPGA at the specified PCI address.
         # We're assuming that the image update tools will catch the scenario
         # where the image is not compatible with the device.
-
-        # If the container exists, the host probably rebooted during
-        # a device update. Delete the container.
-        self.cleanup_container()
-
-        # Set cpu affinity for the container
-        self.set_cgroup_cpuset()
+        if not os.access(FPGASUPDATE_CMD, os.X_OK):
+            msg = ("%s not found, the opae package is not installed. "
+                   "Cannot update the image of device %s."
+                   % (FPGASUPDATE_CMD, pci_addr))
+            LOG.error(msg)
+            raise exception.SysinvException(msg)
 
         try:
             # Build up the command to perform the firmware update.
-            # Note the hack to work around OPAE tool locale issues
-            cmd = ("ctr -n=k8s.io run --rm --privileged " +
-                "--env LC_ALL=en_US.UTF-8 --env LANG=en_US.UTF-8 " +
-                "--cgroup platform " +
-                "--mount type=bind,src=" + DEVICE_IMAGE_CACHE_DIR +
-                ",dst=/mnt/images,options=rbind:ro " + fpga_constants.OPAE_IMG +
-                " n3000-opae fpgasupdate -y --log-level debug /mnt/images/" +
-                filename + " " + pci_addr)
+            cmd = [FPGASUPDATE_CMD, "-y", "--log-level", "debug",
+                   os.path.join(DEVICE_IMAGE_CACHE_DIR, filename), pci_addr]
 
             # Issue the command to perform the firmware update.
-            subprocess.check_output(shlex.split(cmd),  # pylint: disable=not-callable
-                                    stderr=subprocess.STDOUT)
+            # Note the hack to work around OPAE tool locale issues
+            env = dict(os.environ, LC_ALL="C.UTF-8", LANG="C.UTF-8")
+            subprocess.check_output(cmd,  # pylint: disable=not-callable
+                                    stderr=subprocess.STDOUT,
+                                    env=env)
             # TODO: switch to subprocess.Popen, parse the output and send
             #       progress updates.
         except subprocess.CalledProcessError as exc:
