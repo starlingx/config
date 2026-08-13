@@ -13,6 +13,8 @@ import os
 import tempfile
 import yaml
 
+from concurrent.futures import as_completed
+from concurrent.futures import ThreadPoolExecutor
 from six import iteritems
 
 from oslo_log import log as logging
@@ -298,13 +300,32 @@ class HelmOperator(object):
         plugin_name = utils.find_app_plugin_name(app_name)
 
         helm_system_applications = self.get_helm_system_application_relation(plugin_name)
-        for chart_name in helm_system_applications:
+
+        # Capture the helm context from the current greenthread so we can
+        # propagate it to the worker threads spawned by ThreadPoolExecutor.
+        parent_context = self.context
+
+        def _get_chart_overrides(chart_name):
+            """Get overrides for a single chart."""
+            # Propagate the helm context to this thread's greenthread
+            thread_context = eventlet.greenthread.getcurrent()
+            setattr(thread_context, '_helm_context', parent_context)
             try:
-                overrides.update(
-                    {chart_name: self._get_helm_chart_overrides(chart_name, cnamespace)}
-                )
+                return chart_name, self._get_helm_chart_overrides(chart_name, cnamespace)
             except exception.InvalidHelmNamespace as e:
                 LOG.info(e)
+                return chart_name, None
+
+        core_count = utils.get_platform_core_count(self.dbapi)
+        with ThreadPoolExecutor(max_workers=min(len(helm_system_applications), core_count)
+                                if helm_system_applications else 1) as executor:
+            futures = {executor.submit(_get_chart_overrides, chart_name): chart_name
+                       for chart_name in helm_system_applications}
+            for future in as_completed(futures):
+                chart_name, chart_overrides = future.result()
+                if chart_overrides is not None:
+                    overrides[chart_name] = chart_overrides
+
         return overrides
 
     def merge_overrides(self, file_overrides=None, set_overrides=None):
