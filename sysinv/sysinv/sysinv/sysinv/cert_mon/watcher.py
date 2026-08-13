@@ -457,10 +457,16 @@ class CertificateRenew(CertWatcherListener):
         else:
             return False
 
+    @lockutils.synchronized(utils.CERT_INSTALL_LOCK_NAME)
     def recreate_secret(self, event_data):
-        """
-        It is a workaround, delete the secret for cert-manager to recreate it with
-        new private key
+        """Delete the secret for cert-manager to recreate it with new private key.
+
+        Synchronized with the cert install lock to prevent race conditions
+        with concurrent certificate install operations. The sysinv conductor
+        regenerates hieradata for ALL platform secrets during any certificate
+        install (via update_secure_system_config). If a secret is deleted while
+        another cert install is in-flight, the conductor will fail with
+        'Invalid secret' and the in-flight install will be lost.
         """
         kube_op = sys_kube.KubeOperator()
         kube_op.kube_delete_secret(event_data.secret_name, self.context.kubernetes_namespace)
@@ -626,9 +632,21 @@ class PlatformCertRenew(CertificateRenew):
 
             for certificate in installed_certificates['certificates']:
                 if str(cert_to_be_installed.serial_number) in certificate['signature']:
-                    LOG.info('Certificate %s is already installed. Skipping installation.' %
-                             certificate['signature'])
-                    return
+                    # DB says this cert is already installed — but verify the
+                    # on-disk file actually matches. If cert-mon previously
+                    # failed to write it (e.g. due to the race condition), the
+                    # on-disk file will be stale and we must re-install.
+                    if self._is_cert_on_disk(cert_type, cert_to_be_installed):
+                        LOG.info('Certificate %s is already installed. '
+                                 'Skipping installation.'
+                                 % certificate['signature'])
+                        return
+                    else:
+                        LOG.warning('Certificate %s is recorded in DB but '
+                                    'NOT found on disk for cert_type=%s. '
+                                    'Re-installing.'
+                                    % (certificate['signature'], cert_type))
+                        break
 
             pem_file_path = utils.update_pemfile(event_data.tls_crt, event_data.tls_key)
             utils.update_platform_cert(token, cert_type, pem_file_path, force)
@@ -636,6 +654,25 @@ class PlatformCertRenew(CertificateRenew):
         except Exception as e:
             LOG.error("Error when updating certificates: %s" % e)
             raise
+
+    @staticmethod
+    def _is_cert_on_disk(cert_type, cert_to_check):
+        """Verify the certificate is actually present on disk with matching serial.
+
+        Returns True if the on-disk cert matches the expected serial number,
+        False if the file is missing, unreadable, or has a different serial.
+        """
+        pem_file = constants.CERT_LOCATION_MAP.get(cert_type)
+        if not pem_file:
+            # No known on-disk path for this cert type — assume installed
+            return True
+        try:
+            with open(pem_file, 'rb') as f:
+                ondisk_cert = x509.load_pem_x509_certificate(f.read(),
+                                                             default_backend())
+            return ondisk_cert.serial_number == cert_to_check.serial_number
+        except Exception:
+            return False
 
 
 class SystemLocalCACertRenew(TrustedCARenew):
