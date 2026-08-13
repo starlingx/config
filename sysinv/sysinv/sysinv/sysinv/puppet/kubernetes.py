@@ -138,23 +138,6 @@ class KubernetesPuppet(base.BasePuppet):
 
         return config
 
-    def get_host_config_upgrade(self, host):
-        """Updates the config for upgrade with updated kubernetes params
-
-        :param host: host object
-        """
-        config = {}
-
-        # Generate the join command for this host
-        config.update(self._get_host_join_command(host))
-
-        # Get the kubernetes version
-        config.update(self._get_active_kubernetes_version())
-
-        LOG.info("get_host_config_upgrade kubernetes config=%s" % config)
-
-        return config
-
     def get_secure_static_config(self):
         """Update the hiera configuration to add certificate-key"""
 

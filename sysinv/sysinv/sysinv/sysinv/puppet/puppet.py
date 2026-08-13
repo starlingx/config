@@ -270,21 +270,6 @@ class PuppetOperator(object):
         path = self.get_hieradata_path(version)
         return self._read_host_config(host, path)
 
-    @puppet_context
-    def update_host_config_upgrade(self, host, target_load, config_uuid):
-        """Update the host hiera configuration files for the supplied host
-           and upgrade target load
-        """
-        self.config_uuid = config_uuid
-        self.context['config_upgrade'] = config = {}
-        for puppet_plugin in self.puppet_plugins:
-            config.update(puppet_plugin.operator.get_host_config_upgrade(host))
-
-        self._merge_host_config(host, target_load, config)
-        LOG.info("Updating hiera for host: %s with config_uuid: %s "
-                 "target_load: %s config: %s" %
-                 (host.hostname, config_uuid, target_load, config))
-
     def _get_address_by_name(self, name, networktype):
         """
         Retrieve an address entry by name and scoped by network type

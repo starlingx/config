@@ -2609,24 +2609,8 @@ class ConductorManager(service.PeriodicService):
                 # Update host configuration
                 self._puppet.update_host_config(host)
         else:
-            # from active controller, update hieradata for upgrade
-            host_uuids = [host.uuid]
-            config_uuid = self._config_update_hosts(
-                context,
-                [constants.CONTROLLER],
-                host_uuids,
-                reboot=True)
-            host_upgrade = usm_service.UsmHostUpgrade.get_by_hostname(self.dbapi,
-                                                                      host.hostname)
-            if host_upgrade:
-                target_sw_version = host_upgrade.to_sw_version
-            else:
-                target_sw_version = tsc.SW_VERSION
-            self._puppet.update_host_config_upgrade(
-                host,
-                target_sw_version,
-                config_uuid,
-            )
+            LOG.info("Host %s is not running active load. "
+                     "Skipping manifest generation" % host.hostname)
 
         self._allocate_addresses_for_host(context, host)
         # Set up the PXE config file for this host so it can run the installer
@@ -14565,9 +14549,7 @@ class ConductorManager(service.PeriodicService):
                     if host.sw_version == tsc.SW_VERSION:
                         # We will not generate the hieradata in runtime here if the
                         # software load of the host is different from the active
-                        # controller. The Hieradata of a host during an upgrade/rollback
-                        # will be saved by update_host_config_upgrade() to the
-                        # directory of the host's software load.
+                        # controller.
                         if not skip_update_config:
                             self._puppet.update_host_config(
                                 host, config_uuid, generate_optimized_hieradata
@@ -15756,7 +15738,14 @@ class ConductorManager(service.PeriodicService):
         :param host: a host object
         :return: True if host target load matches active sw_version
         """
-        return host.sw_version == tsc.SW_VERSION
+        host_upgrade = usm_service.UsmHostUpgrade.get_by_hostname(self.dbapi, host.hostname)
+
+        if host_upgrade:
+            target_sw_version = host_upgrade.to_sw_version
+        else:
+            target_sw_version = host.sw_version
+
+        return tsc.SW_VERSION == target_sw_version
 
     def create_barbican_secret(self, context, name, payload):
         """Calls Barbican API to create a secret

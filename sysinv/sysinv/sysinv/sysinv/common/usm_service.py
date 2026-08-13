@@ -180,7 +180,7 @@ def get_host_deploy(dbapi, hostname):
 
     for host in hostlist:
         if type(host) is not dict:
-            break
+            continue
         if host.get('hostname') == hostname:
             return host
     return None
