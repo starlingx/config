@@ -627,7 +627,9 @@ class AddressPoolController(rest.RestController):
             if existing_addr:
                 addrpool_dict[id_field] = existing_addr.id
                 continue
-            values = {'address': str(ip_address),
+
+            addr_str = str(ip_address).lower()
+            values = {'address': addr_str,
                       'name': '{}-{}'.format(addrpool_dict['name'], addr_field),
                       'prefix': addrpool_dict['prefix'],
                       'family': addrpool_dict['family'],
