@@ -1108,6 +1108,60 @@ class TestDpllMgrHieradata(testtools.TestCase):
         result = self.networking._prune_ptp_config_fields(ptp_config)
         self.assertNotIn('config_json', result['ptp-fr'])
 
+    def test_ts2phc_uds_address_auto_generated(self):
+        """ts2phc instances get uds_address auto-generated like ptp4l."""
+        ts0 = {
+            'name': 'ts0',
+            'service': 'ts2phc',
+            'id': 1,
+            'uuid': 'ts0-uuid',
+            'global_parameters': {},
+            'cmdline_opts': '',
+            'interfaces': [],
+            'pmc_gm_settings': {},
+            'device_parameters': {},
+            'gnss_uart_disable': True,
+            'external_source': {},
+            'monitoring_parameters': {},
+            'section_parameters': {},
+        }
+        ptp_instances = [ts0]
+        self.networking._set_ptp_instance_global_parameters(
+            ptp_instances, [])
+        self.assertEqual(
+            ts0['global_parameters']['uds_address'],
+            '/var/run/ts2phc-ts0')
+        self.assertEqual(
+            ts0['global_parameters']['message_tag'],
+            'ts0')
+
+    def test_ptp4l_uds_address_unchanged(self):
+        """ptp4l instances still get uds_address and uds_ro_address."""
+        ptp01 = {
+            'name': 'ptp01',
+            'service': 'ptp4l',
+            'id': 2,
+            'uuid': 'ptp01-uuid',
+            'global_parameters': {},
+            'cmdline_opts': '',
+            'interfaces': [],
+            'pmc_gm_settings': {},
+            'device_parameters': {},
+            'gnss_uart_disable': True,
+            'external_source': {},
+            'monitoring_parameters': {},
+            'section_parameters': {},
+        }
+        ptp_instances = [ptp01]
+        self.networking._set_ptp_instance_global_parameters(
+            ptp_instances, [])
+        self.assertEqual(
+            ptp01['global_parameters']['uds_address'],
+            '/var/run/ptp4l-ptp01')
+        self.assertEqual(
+            ptp01['global_parameters']['uds_ro_address'],
+            '/var/run/ptp4l-ptp01ro')
+
 
 class TestDpllPinConfig(testtools.TestCase):
     """Unit tests for _set_ptp_dpll_pin_config in NetworkingPuppet."""
