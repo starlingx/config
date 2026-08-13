@@ -102,7 +102,7 @@ def verify_adminep_cert_chain():
         with tempfile.NamedTemporaryFile() as adminep_tmpfile:
             adminep_tmpfile.write(txt_tls_crt.encode('utf8'))
             adminep_tmpfile.flush()
-            cmd = ['openssl', 'verify', '-CAfile', constants.DC_ROOT_CA_CERT_PATH,
+            cmd = ['openssl', 'verify', '-CAfile', constants.DC_ROOT_CA_CONFIG_PATH,
                    '-untrusted', ca_tmpfile.name, adminep_tmpfile.name]
             proc = subprocess.Popen(cmd, stdin=subprocess.PIPE,
                                     stdout=subprocess.PIPE,
