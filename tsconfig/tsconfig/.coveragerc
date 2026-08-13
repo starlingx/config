@@ -1,7 +1,21 @@
 [run]
 branch = True
 source = tsconfig
-omit = tsconfig/tests/*
+omit =
+    */tests/*
+    */test/*
+    */.tox/*
+    */.eggs/*
+    */setup.py
+    */conftest.py
 
 [report]
 ignore_errors = True
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    if __name__ == .__main__
+    raise NotImplementedError
+    pass
+show_missing = True
+fail_under = 85

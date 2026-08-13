@@ -31,7 +31,8 @@ load-plugins=
 # W0613: unused-argument
 # W0622: redefined-builtin
 # W0703: broad-except
-disable=C, R, fixme, W0613, W0622, W0703
+# W0212: protected-access — unit tests legitimately access private methods
+disable=C, R, fixme, W0212, W0613, W0622, W0703
 
 
 [REPORTS]

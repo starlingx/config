@@ -10,3 +10,4 @@ stestr>=1.0.0 # Apache-2.0
 testtools>=2.2.0 # MIT
 pylint<2.1.0;python_version<"3.0" # GPLv2
 pylint<2.4.0;python_version>="3.0" # GPLv2
+tomli;python_version<"3.11"  # MIT (needed by pbr>=7.0)

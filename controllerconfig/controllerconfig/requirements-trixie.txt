@@ -1,0 +1,13 @@
+# Requirements for Trixie (Python 3.13)
+netaddr>=1.3  # BSD
+keyring>=25.6  # MIT
+pyudev>=0.24  # LGPLv2.1+
+six>=1.17  # MIT
+iso8601>=2.1  # MIT
+netifaces>=0.10.4  # MIT
+pycryptodomex>=3.20  # BSD (replaces pycrypto)
+oslo.utils>=8.2  # Apache-2.0
+oslo.log>=7.1  # Apache-2.0
+oslo.config>=9.7  # Apache-2.0
+PyYAML>=6.0  # MIT
+psycopg2-binary>=2.9  # LGPL

@@ -33,3 +33,6 @@ releasenotes/build
 
 # Api Ref documentation
 api-ref/build/
+
+# UT Coverage reports
+UTCoverage/

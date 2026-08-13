@@ -1,8 +1,7 @@
 [run]
 source =
     controllerconfig
-    scripts/00-sample-migration.py
-    scripts/upgrade_swact_migration.py
+    tsconfig
 omit =
     */tests/*
     */test/*
@@ -10,6 +9,7 @@ omit =
     */.eggs/*
     */setup.py
     */conftest.py
+    */tidy_storage.py
 
 [report]
 exclude_lines =
