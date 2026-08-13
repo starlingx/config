@@ -7306,6 +7306,35 @@ class ConductorManager(service.PeriodicService):
             self._generate_dnsmasq_hosts_file()
             self._generate_dnsmasq_hosts_file_called = True
 
+        # Apply deferred Keystone federation configuration.
+        # This check is independent of the config finalization state
+        # because the flag is created during upgrade activate (after
+        # config is already finalized). It only requires the upgrade
+        # to be complete and initial config to be done.
+        if (os.path.isfile(constants.FEDERATION_CONFIG_REQUIRED) and
+                cutils.is_initial_config_complete()):
+            upgrade = self._upgrade_in_progress()
+            if not upgrade or upgrade.state in [
+                    constants.DEPLOY_STATE_ACTIVATE_DONE,
+                    constants.DEPLOY_STATE_ACTIVATE_FAILED,
+                    constants.DEPLOY_STATE_ACTIVATE_ROLLBACK_DONE,
+                    constants.DEPLOY_STATE_ACTIVATE_ROLLBACK_FAILED]:
+                try:
+                    personalities = [constants.CONTROLLER]
+                    config_uuid = self._config_update_hosts(
+                        context, personalities)
+                    config_dict = {
+                        "personalities": personalities,
+                        "classes": ['openstack::keystone::server::runtime']
+                    }
+                    self._config_apply_runtime_manifest(
+                        context, config_uuid, config_dict)
+                    LOG.info("Applied deferred Keystone federation "
+                             "configuration")
+                except Exception as e:
+                    LOG.error("Failed to apply deferred federation "
+                              "config: %s" % e)
+
         # check whether target config may be finished based upon whether
         # the active controller has the active config target
         if not self._controller_config_active_check():
