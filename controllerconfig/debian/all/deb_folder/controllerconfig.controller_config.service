@@ -1,0 +1,4 @@
+[Unit]
+Description=Controller node config agent
+# This unit exists to suppress systemd-sysv-generator warnings.
+# The actual service is managed by controllerconfig.service.
