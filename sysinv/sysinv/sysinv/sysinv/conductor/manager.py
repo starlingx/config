@@ -20299,6 +20299,23 @@ class ConductorManager(service.PeriodicService):
                         raise exception.SysinvException("Could not remove env vars from %s: %s"
                                     % (container, str(e)))
 
+                # On IPv6-only systems, set CALICO_IPV4POOL_CIDR=none to prevent
+                # calico-node from creating a default IPv4 pool after restart.
+                # NO_DEFAULT_POOLS was removed above (required for operator migration),
+                # so without this, calico-node would create default-ipv4-ippool which
+                # triggers the operator to add nodeAddressAutodetectionV4: firstFound.
+                if not cluster_network_ipv4:
+                    try:
+                        cutils.execute(
+                            'bash', '-c',
+                            f"kubectl --kubeconfig={kubernetes.KUBERNETES_ADMIN_CONF} "
+                            f"-n kube-system set env ds/calico-node "
+                            f"--containers=calico-node CALICO_IPV4POOL_CIDR=none",
+                            run_as_root=False)
+                        LOG.info("Set CALICO_IPV4POOL_CIDR=none on IPv6-only system.")
+                    except Exception as e:
+                        LOG.warning("Failed to set CALICO_IPV4POOL_CIDR=none: %s" % str(e))
+
                 LOG.info("Calico-node DaemonSet prepared for operator migration.")
 
                 # 5. Restart calico-node to pick up the env changes
