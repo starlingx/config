@@ -1,0 +1,15 @@
+---
+- hosts: all
+  tasks:
+    - name: Upload security report
+      synchronize:
+        src: "{{ zuul.project.src_dir }}/UTCoverage/security_report.txt"
+        dest: "{{ zuul.executor.log_root }}/security_report.txt"
+        mode: pull
+      failed_when: false
+    - name: Upload bandit JSON report
+      synchronize:
+        src: "{{ zuul.project.src_dir }}/UTCoverage/bandit-report.json"
+        dest: "{{ zuul.executor.log_root }}/bandit-report.json"
+        mode: pull
+      failed_when: false
