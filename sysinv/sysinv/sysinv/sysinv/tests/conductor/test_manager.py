@@ -744,9 +744,15 @@ class ManagerTestCase(base.DbTestCase):
             }
         }
         self.service._app = mock.Mock()
+        self.service._app.update_and_process_app_metadata.return_value = None
+        self.service._kube = mock.Mock()
+        self.service._kube.kube_get_kubernetes_version.return_value = 'v1.29.2'
 
         with mock.patch.object(self.service._app, 'perform_app_update',
-                               return_value=True) as mock_perform_update:
+                               return_value=True) as mock_perform_update, \
+             mock.patch.object(self.service,
+                               'perform_upload_apply_dependent_apps',
+                               return_value=True):
             result = self.service.perform_app_update(
                 self.context,
                 from_rpc_app,
@@ -2013,6 +2019,10 @@ class ManagerTestCase(base.DbTestCase):
         )
         get_img_tag_with_registry_output = ('fake_target_image', fake_local_registry_auth)
 
+        p = mock.patch("docker.APIClient.__init__", mock.MagicMock(return_value=None))
+        p.start()
+        self.addCleanup(p.stop)
+
         mock_get_local_docker_registry_auth = mock.MagicMock()
         p = mock.patch('sysinv.common.utils.get_local_docker_registry_auth',
                        mock_get_local_docker_registry_auth)
@@ -2157,6 +2167,10 @@ class ManagerTestCase(base.DbTestCase):
         """
 
         images_to_be_downloaded = ['fake_image1', 'fake_image2', 'fake_image3']
+        p = mock.patch("docker.APIClient.__init__", mock.MagicMock(return_value=None))
+        p.start()
+        self.addCleanup(p.stop)
+
         fake_local_registry_auth = {'username': 'fake_username', 'password': 'fake_password'}
         fake_registries = {'fake_registries': 'fake_registries'}
         get_img_tag_with_registry_output = ('fake_target_image', fake_local_registry_auth)
@@ -2267,6 +2281,10 @@ class ManagerTestCase(base.DbTestCase):
         """
 
         images_to_be_downloaded = ["fake_image1", "fake_image2", "fake_image3"]
+        p = mock.patch("docker.APIClient.__init__", mock.MagicMock(return_value=None))
+        p.start()
+        self.addCleanup(p.stop)
+
         fake_local_registry_auth = {
             "username": "fake_username",
             "password": "fake_password",
@@ -2401,6 +2419,10 @@ class ManagerTestCase(base.DbTestCase):
         even after docker system prune retry
         """
         images_to_be_downloaded = ['fake_image1', 'fake_image2', 'fake_image3']
+        p = mock.patch("docker.APIClient.__init__", mock.MagicMock(return_value=None))
+        p.start()
+        self.addCleanup(p.stop)
+
         fake_local_registry_auth = {'username': 'fake_username', 'password': 'fake_password'}
         fake_registries = {'fake_registries': 'fake_registries'}
         get_img_tag_with_registry_output = ('fake_target_image', fake_local_registry_auth)
@@ -2513,6 +2535,10 @@ class ManagerTestCase(base.DbTestCase):
         docker push fails initially but succeeds after docker system prune
         """
         images_to_be_downloaded = ['fake_image1']
+        p = mock.patch("docker.APIClient.__init__", mock.MagicMock(return_value=None))
+        p.start()
+        self.addCleanup(p.stop)
+
         fake_local_registry_auth = {'username': 'fake_username', 'password': 'fake_password'}
         fake_registries = {'fake_registries': 'fake_registries'}
 
@@ -2622,6 +2648,10 @@ class ManagerTestCase(base.DbTestCase):
 
         """
         images_to_be_downloaded = ['fake_image1', 'fake_image2', 'fake_image3']
+        p = mock.patch("docker.APIClient.__init__", mock.MagicMock(return_value=None))
+        p.start()
+        self.addCleanup(p.stop)
+
         fake_local_registry_auth = {'username': 'fake_username', 'password': 'fake_password'}
         fake_registries = {'fake_registries': 'fake_registries'}
         fake_crictl_auth = (
@@ -2753,6 +2783,10 @@ class ManagerTestCase(base.DbTestCase):
 
         """
         images_to_be_downloaded = ['fake_image1', 'fake_image2', 'fake_image3']
+        p = mock.patch("docker.APIClient.__init__", mock.MagicMock(return_value=None))
+        p.start()
+        self.addCleanup(p.stop)
+
         fake_local_registry_auth = {'username': 'fake_username', 'password': 'fake_password'}
         fake_registries = {'fake_registries': 'fake_registries'}
         get_img_tag_with_registry_output = ('fake_target_image', fake_local_registry_auth)

@@ -8,6 +8,8 @@
 Tests for the API /kube_host_upgrades/ methods.
 """
 
+import sys
+
 import mock
 
 from oslo_utils import uuidutils
@@ -16,6 +18,9 @@ from sysinv.common import constants
 from sysinv.tests.api import base
 from sysinv.tests.db import base as dbbase
 from sysinv.tests.db import utils as dbutils
+
+# On Python 3.13+, the API serializes None as '' (empty string)
+_NONE_VALUE = '' if sys.version_info >= (3, 13) else None
 
 
 class TestKubeHostUpgrade(base.FunctionalTest, dbbase.BaseHostTestCase):
@@ -97,8 +102,8 @@ class TestListKubeHostUpgrade(TestKubeHostUpgrade):
 
         self.assertIn('id', result)
         assert(uuidutils.is_uuid_like(result['uuid']))
-        self.assertEqual(result['target_version'], None)
-        self.assertEqual(result['status'], None)
+        self.assertEqual(result['target_version'], _NONE_VALUE)
+        self.assertEqual(result['status'], _NONE_VALUE)
         self.assertEqual(result['control_plane_version'], 'v1.42.1')
         self.assertEqual(result['kubelet_version'], 'v1.42.2')
         self.assertEqual(result['host_id'], 1)
@@ -118,8 +123,8 @@ class TestListKubeHostUpgrade(TestKubeHostUpgrade):
 
         self.assertIn('id', result)
         assert(uuidutils.is_uuid_like(result['uuid']))
-        self.assertEqual(result['target_version'], None)
-        self.assertEqual(result['status'], None)
+        self.assertEqual(result['target_version'], _NONE_VALUE)
+        self.assertEqual(result['status'], _NONE_VALUE)
         self.assertEqual(result['control_plane_version'], 'N/A')
         self.assertEqual(result['kubelet_version'], 'unknown')
         self.assertEqual(result['host_id'], 1)
@@ -133,8 +138,8 @@ class TestListKubeHostUpgrade(TestKubeHostUpgrade):
 
         self.assertIn('id', result)
         assert(uuidutils.is_uuid_like(result['uuid']))
-        self.assertEqual(result['target_version'], None)
-        self.assertEqual(result['status'], None)
+        self.assertEqual(result['target_version'], _NONE_VALUE)
+        self.assertEqual(result['status'], _NONE_VALUE)
         self.assertEqual(result['control_plane_version'], 'N/A')
         self.assertEqual(result['kubelet_version'], 'N/A')
         self.assertEqual(result['host_id'], 1)
@@ -150,8 +155,8 @@ class TestListKubeHostUpgrade(TestKubeHostUpgrade):
         for upgrade in data['kube_host_upgrades']:
             self.assertIn('id', upgrade)
             assert (uuidutils.is_uuid_like(upgrade['uuid']))
-            self.assertEqual(upgrade['target_version'], None)
-            self.assertEqual(upgrade['status'], None)
+            self.assertEqual(upgrade['target_version'], _NONE_VALUE)
+            self.assertEqual(upgrade['status'], _NONE_VALUE)
             if upgrade['host_id'] == worker.id:
                 self.assertEqual(upgrade['control_plane_version'], 'N/A')
             else:
@@ -172,8 +177,8 @@ class TestListKubeHostUpgrade(TestKubeHostUpgrade):
         for upgrade in data['kube_host_upgrades']:
             self.assertIn('id', upgrade)
             assert (uuidutils.is_uuid_like(upgrade['uuid']))
-            self.assertEqual(upgrade['target_version'], None)
-            self.assertEqual(upgrade['status'], None)
+            self.assertEqual(upgrade['target_version'], _NONE_VALUE)
+            self.assertEqual(upgrade['status'], _NONE_VALUE)
             if upgrade['host_id'] == worker_42.id:
                 self.assertEqual(upgrade['control_plane_version'], 'N/A')
                 self.assertEqual(upgrade['kubelet_version'], 'unknown')
@@ -198,8 +203,8 @@ class TestListKubeHostUpgrade(TestKubeHostUpgrade):
         for upgrade in data['kube_host_upgrades']:
             self.assertIn('id', upgrade)
             assert (uuidutils.is_uuid_like(upgrade['uuid']))
-            self.assertEqual(upgrade['target_version'], None)
-            self.assertEqual(upgrade['status'], None)
+            self.assertEqual(upgrade['target_version'], _NONE_VALUE)
+            self.assertEqual(upgrade['status'], _NONE_VALUE)
             if upgrade['host_id'] == storage.id:
                 self.assertEqual(upgrade['control_plane_version'], 'N/A')
                 self.assertEqual(upgrade['kubelet_version'], 'N/A')

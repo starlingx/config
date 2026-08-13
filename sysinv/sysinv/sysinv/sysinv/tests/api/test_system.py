@@ -59,7 +59,7 @@ class TestSystemUpdate(TestSystem):
     def test_update_valid_system_values_0(self):
         update = {
             "name": "StarlingX #0",
-            "timezone": "UCT",
+            "timezone": "UTC",
             "description": "System Description",
             "contact": "John Doe",
             "location": "Earth",
@@ -74,7 +74,7 @@ class TestSystemUpdate(TestSystem):
     def test_update_valid_system_values_1(self):
         update = {
             "name": "StarlingX #1",
-            "timezone": "CET",
+            "timezone": "Europe/Berlin",
             "description": "[System Description!]",
             "contact": "Mr. John Doe",
             "location": "Mars",

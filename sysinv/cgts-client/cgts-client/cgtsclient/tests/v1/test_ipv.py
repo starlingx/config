@@ -49,7 +49,7 @@ class IPvTest(testtools.TestCase):
         fake_id = str(uuid.uuid4())
         mock_cc.ipv.list.return_value = []
 
-        self.assertRaisesRegexp(
+        self.assertRaisesRegex(
             exc.CommandError,
             "physical volume not found: %s" % fake_id,
             ipv._find_ipv,

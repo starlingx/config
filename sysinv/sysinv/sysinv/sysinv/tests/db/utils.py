@@ -1624,7 +1624,7 @@ def get_test_cluster(**kw):
     cluster = {
         'id': kw.get('id', 321),
         'uuid': kw.get('uuid'),
-        'name': kw.get('name'),
+        'name': kw.get('name', 'test-cluster'),
         'type': kw.get('type', constants.SB_TYPE_CEPH),
         'capabilities': kw.get('capabilities', {}),
         'system_id': kw.get('system_id'),
