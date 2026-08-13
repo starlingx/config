@@ -13943,26 +13943,293 @@ class ConductorManager(service.PeriodicService):
             # discard temporary file
             os.remove(hosts_file_temp)
 
-    def update_grub_config(self, context, host_uuid, force_grub_update=False):
-        """Update the grub configuration on a host"""
+    # Key for the cpu updated_at watermark carried in a grub
+    # runtime_config's config_dict. The watermark is the host's
+    # max(icpu.updated_at); storing it lets the next enqueue compare the
+    # current value against the stored one, that is, the same column
+    # sampled at two points in time.
+    #
+    # This is deliberately NOT a comparison against the runtime_config
+    # row's created_at: icpu_update() runs before update_grub_config() in
+    # the same request, so cpu updated_at is always slightly older than the
+    # row it belongs to, which makes that shape false even for a genuine
+    # change. The two must not be conflated.
+    GRUB_CPU_WATERMARK_KEY = 'cpu_updated_at'
+
+    # The class every grub runtime_config entry carries. Some other enqueue
+    # sites (e.g. the kernel-config path) also apply this class alongside
+    # others, so membership, not equality, is what identifies "a grub row"
+    # once the lookup below is no longer scoped to a single state.
+    GRUB_RUNTIME_CLASS = 'platform::compute::grub::runtime'
+
+    @staticmethod
+    def _grub_watermark_is_canonical(watermark):
+        """Return whether a watermark has the canonical stored shape.
+
+        A canonical watermark is a JSON string containing the exact output of
+        datetime.isoformat(). Validation requires a successful fromisoformat()
+        round trip that reproduces the original value, ensuring comparisons are
+        safe and reject legacy, coarser, or corrupted formats.
+
+        :param watermark: the stored or computed watermark value
+        :returns: True when the value is a canonical ISO-8601 watermark
+        """
+        if not isinstance(watermark, six.string_types):
+            return False
+
+        try:
+            parsed = datetime.fromisoformat(watermark)
+        except (TypeError, ValueError):
+            return False
+
+        return parsed.isoformat() == watermark
+
+    def _get_most_recent_grub_runtime_config(self, host):
+        """Return the most recent GRUB runtime_config row for a host, if any.
+
+        Scoped to the host and ``GRUB_RUNTIME_CLASS`` membership, but intentionally
+        not by state, so both re-stamps and inserts are detected without relying on
+        ``created_at``. The class-membership check prevents unrelated enqueue paths
+        from being mistaken for GRUB runtime configs.
+
+        :param host: the host to inspect
+        :returns: the most recent matching runtime_config row, or None
+        """
+        candidates = self.dbapi.runtime_config_get_all(forihostid=host.id)
+
+        grub_candidates = [
+            rc for rc in candidates
+            if self._runtime_config_classes_contain_grub(rc)]
+
+        if not grub_candidates:
+            return None
+
+        return max(grub_candidates, key=lambda rc: rc.created_at)
+
+    def _runtime_config_classes_contain_grub(self, runtime_config):
+        """Return whether a runtime_config row's classes include grub
+
+        Parses config_dict defensively: an unparseable or non-mapping
+        config_dict, or one without a 'classes' list, is treated as not
+        a grub row rather than raised, so a row from any other path never
+        breaks this lookup.
+
+        :param runtime_config: the runtime_config row to inspect
+        :returns: True when the row's classes contain GRUB_RUNTIME_CLASS
+        """
+        try:
+            config_dict = json.loads(runtime_config.config_dict)
+        except (TypeError, ValueError):
+            return False
+
+        if not isinstance(config_dict, dict):
+            return False
+
+        classes = config_dict.get('classes')
+        if not isinstance(classes, list):
+            return False
+
+        return self.GRUB_RUNTIME_CLASS in classes
+
+    def _grub_cpu_watermark(self, host):
+        """Return the host's CPU ``updated_at`` watermark.
+
+        The watermark is the maximum ``icpu.updated_at`` across the host's CPUs,
+        read from the DB via ``self.dbapi`` and serialized as a lossless ISO-8601
+        string. It is CPU-scoped intentionally; memory changes bypass this check
+        via ``force_grub_update=True``.
+
+        Redundant CPU updates do not change the watermark because ``updated_at``
+        only changes when a CPU's ``allocated_function`` changes.
+
+        :param host: the host to inspect
+        :returns: the CPU ``updated_at`` watermark, or None if unavailable
+        """
+        # Only datetime stamps are considered. The object layer coerces
+        # updated_at through datetime_or_str_or_none(), so a row either
+        # carries a timezone aware datetime or None; anything else is a
+        # shape this comparison cannot order, and skipping it fails open.
+        stamps = [cpu.updated_at
+                  for cpu in self.dbapi.icpu_get_by_ihost(host.uuid)
+                  if isinstance(cpu.updated_at, datetime)]
+
+        if not stamps:
+            return None
+
+        try:
+            return max(stamps).isoformat()
+        except TypeError:
+            # Naive and timezone aware stamps cannot be ordered against
+            # each other. Fail open rather than pick an arbitrary one.
+            LOG.warn("Unable to compute the cpu updated_at watermark for "
+                     "host %s: cpu timestamps are not mutually "
+                     "comparable" % host.uuid)
+            return None
+
+    def _grub_runtime_config_is_redundant(self, host):
+        """Return whether a grub runtime config enqueue would be redundant
+
+        Compares the host's current cpu updated_at watermark against the
+        one stored in the most recent grub runtime_config row. Fails open
+        (returns False) whenever there is any doubt: no row to compare
+        against, an unparseable config_dict, a config_dict that is not a
+        mapping, a row predating the watermark, a stored watermark whose
+        shape is not the canonical one this code writes, or a host with no
+        cpu timestamp at all. Failing open means the caller enqueues
+        exactly as before, so an ambiguous comparison never swallows a
+        genuine change; and because an unrecognised shape is rejected
+        outright, watermark or signature drift across releases cannot make
+        two different cpu layouts compare equal.
+
+        :param host: the host to inspect
+        :returns: True if the enqueue would be redundant, False otherwise
+        """
+        previous = self._get_most_recent_grub_runtime_config(host)
+        if not previous:
+            return False
+
+        try:
+            previous_dict = json.loads(previous.config_dict)
+        except (TypeError, ValueError):
+            LOG.warn("Unable to parse the config_dict of runtime "
+                     "config %s" % previous.config_uuid)
+            return False
+
+        if not isinstance(previous_dict, dict):
+            # Valid JSON, but not the mapping a config_dict must be
+            LOG.warn("Unexpected config_dict shape on runtime config %s"
+                     % previous.config_uuid)
+            return False
+
+        if self.GRUB_CPU_WATERMARK_KEY not in previous_dict:
+            # Row predates the watermark being added to config_dict
+            return False
+
+        previous_watermark = previous_dict[self.GRUB_CPU_WATERMARK_KEY]
+        if not self._grub_watermark_is_canonical(previous_watermark):
+            # A watermark this code did not write: a different layout from
+            # another release, or a corrupted value. Never compared, so
+            # drift cannot make two different cpu layouts look identical.
+            LOG.warn("Ignoring the unrecognised cpu updated_at watermark "
+                     "%r stored on runtime config %s"
+                     % (previous_watermark, previous.config_uuid))
+            return False
+
+        current_watermark = self._grub_cpu_watermark(host)
+        if current_watermark is None:
+            # No cpu timestamp to compare against
+            return False
+
+        # Exact string equality on a canonical, lossless rendering: equal
+        # here means the same instant, so a moved cpu updated_at is always
+        # seen as a divergence.
+        return current_watermark == previous_watermark
+
+    def update_grub_config(self, context, host_uuid, force_grub_update=False,
+                           cpu_driven=True):
+        """Update the grub configuration on a host
+
+        :param cpu_driven: whether this call originates from a cpu-driven
+            path (host_cpus_modify, the cpu API, or the conductor's own
+            cpu-topology handling). Defaults to True because that is the
+            majority of call sites; label.py, the only current caller
+            that is NOT cpu-driven, passes False explicitly.
+
+            The redundancy check below compares the host's cpu updated_at
+            watermark, which only moves on a cpu change. A non-cpu-driven
+            caller reaching update_grub_config() is, by construction,
+            requesting a grub apply for some OTHER reason -- disabling
+            nohz_full or the power-management label are the current
+            examples -- so an unmoved cpu watermark says nothing about
+            whether THAT reason still needs applying. Suppressing such a
+            call would silently drop a real kernel-args change. Widening
+            _get_most_recent_grub_runtime_config() to look at any state,
+            not just PENDING, made this reachable: an already-APPLIED
+            label-driven row is exactly the row the check would otherwise
+            compare against.
+        """
 
         # only apply the manifest on the host that has worker sub function
         host = self.dbapi.ihost_get(host_uuid)
         if constants.WORKER in host.subfunctions:
+            personalities = [constants.CONTROLLER, constants.WORKER]
+            classes = ['platform::compute::grub::runtime',
+                       'platform::compute::config::runtime']
+
+            # A grub runtime config enqueue is redundant when the host's cpu
+            # updated_at watermark has not moved since the most recent grub
+            # runtime_config row was written. Enqueuing it anyway goes
+            # through _config_update_hosts() below, which unconditionally
+            # generates a new config_uuid and advances config_target,
+            # superseding any pending or applied config before it has a
+            # chance to converge. Requests repeated in a short interval,
+            # such as the Deployment Manager reapplying a platform CPU
+            # configuration while reconciling, therefore keep config_applied
+            # permanently behind config_target, which in turn blocks the
+            # host unlock.
+            #
+            # This is keyed on the force_grub_update parameter rather than
+            # on the 'force' value computed below. That local depends on
+            # /etc/platform/simplex being present on the node running the
+            # conductor, which is still the case during a day-1 AIO-DX
+            # deployment, so keying on it would make the check behave
+            # differently on the very path this guards.
+            #
+            # Also keyed on cpu_driven: a caller whose request is not about
+            # cpu allocation at all (label.py's nohz_full / power-management
+            # labels) must always enqueue, because the cpu watermark being
+            # unchanged says nothing about whether the actual change it is
+            # requesting has already been applied.
+            if (cpu_driven and not force_grub_update and
+                    self._grub_runtime_config_is_redundant(host)):
+                LOG.info("update_grub_config, host uuid: (%s), skipped, "
+                         "cpu updated_at watermark unchanged since the "
+                         "most recent grub runtime config", host_uuid)
+                return
+
             force = (not utils.is_host_simplex_controller(host) or
                      force_grub_update)
             LOG.info("update_grub_config, host uuid: (%s), force: (%s)",
                      host_uuid, str(force))
-            personalities = [constants.CONTROLLER, constants.WORKER]
             config_uuid = self._config_update_hosts(context,
                                                     personalities,
                                                     host_uuids=[host_uuid])
             config_dict = {
                 "personalities": personalities,
                 "host_uuids": [host_uuid],
-                "classes": ['platform::compute::grub::runtime',
-                            'platform::compute::config::runtime']
+                "classes": classes
             }
+
+            # Carry the cpu updated_at watermark on the entry about to be
+            # created, so the NEXT enqueue has a stored value to compare the
+            # live one against. _create_runtime_config_entries() pops only
+            # host_uuids and puppet_path before saving, so this key does land
+            # on the persisted row. The class list is deliberately left
+            # alone: the agent touches UNLOCK_READY_FLAG only when the
+            # applied classes are exactly the 2-class grub pair.
+            #
+            # It also gives the existing 'existing_dict == tmp_config_dict'
+            # dedup in that function something that can actually differ. The
+            # {personalities, classes} pair is invariant across every grub
+            # enqueue, so without the watermark a genuine change and an
+            # identical re-send persist the same dict.
+            #
+            # The value is stored exactly as _grub_cpu_watermark() returns
+            # it, because _grub_watermark_is_canonical() rejects any other
+            # rendering. When the host has no usable cpu timestamp the
+            # watermark is None and the key is left out entirely rather than
+            # stored as null: that keeps the persisted dict identical to what
+            # it was before this change, and makes the next enqueue fail open
+            # through the "row predates the watermark" branch instead of the
+            # unrecognised-shape one.
+            cpu_watermark = self._grub_cpu_watermark(host)
+            if cpu_watermark is not None:
+                config_dict[self.GRUB_CPU_WATERMARK_KEY] = cpu_watermark
+            else:
+                LOG.info("update_grub_config, host uuid: (%s), no cpu "
+                         "updated_at watermark to store; the next enqueue "
+                         "will not be suppressed", host_uuid)
+
             self._config_apply_runtime_manifest(context, config_uuid,
                                                 config_dict,
                                                 force=force)
@@ -14844,6 +15111,31 @@ class ConductorManager(service.PeriodicService):
             if host.personality and host.personality in personalities:
                 self._update_host_config_reinstall(context, host)
 
+    def _host_state_allows_hieradata(self, host):
+        """Return whether the host state allows hieradata generation.
+
+        This predicate is shared by hieradata generation and runtime config
+        enqueueing, ensuring work is only queued when it can actually be applied.
+        Controllers are also allowed while provisioning when running the active
+        controller load. The ``force`` bypass is intentionally handled separately
+        by ``_config_update_puppet()``.
+
+        :param host: the host to inspect
+        :returns: True if hieradata may be generated for the host
+        """
+        provisioning_controller = (
+            host.invprovision == constants.PROVISIONING and
+            host.personality == constants.CONTROLLER)
+
+        if not (host.invprovision in [constants.PROVISIONED,
+                                      constants.UPGRADING] or
+                provisioning_controller):
+            return False
+
+        # Routed through host_load_matches_sw_version() so that "runs the
+        # same load as the active controller" has a single definition.
+        return self.host_load_matches_sw_version(host)
+
     def _config_update_hosts(self, context, personalities, host_uuids=None,
                              reboot=False):
         """"Update the hosts configuration status for all hosts affected
@@ -14893,6 +15185,28 @@ class ConductorManager(service.PeriodicService):
                         # This ensures that the host_reboot_config_uuid tracking
                         # on this controller is aware that a reboot is required
                         cutils.touch(ACTIVE_CONFIG_REBOOT_REQUIRED)
+
+                # Do not move the config target of a host whose state does
+                # not allow its hieradata to be regenerated. A runtime
+                # update is applied from the hieradata generated now by
+                # _config_update_puppet(); when that is refused, nothing
+                # will ever apply this config_uuid, so advancing the target
+                # only leaves config_applied permanently behind and the
+                # host reported out of date for work that never runs.
+                #
+                # Restricted to runtime updates on purpose. A
+                # reboot-required update is applied by the host lock and
+                # unlock cycle, whose hieradata is generated by
+                # configure_ihost() rather than on this path, so its target
+                # must still advance while the host is being provisioned.
+                if not reboot and not self._host_state_allows_hieradata(host):
+                    LOG.info(
+                        "Not advancing the config target of %s, "
+                        "the node is not ready. invprovision=%s, "
+                        "sw_version=%s" %
+                        (host.hostname, host.invprovision, host.sw_version))
+                    continue
+
                 self._update_host_config_target(context, host, config_uuid)
 
         LOG.info("_config_update_hosts config_uuid=%s" % config_uuid)
@@ -14952,23 +15266,27 @@ class ConductorManager(service.PeriodicService):
                             LOG.exception(
                                 f"An error occurred updating host config for {host.hostname}: {e}"
                             )
-                elif (host.invprovision in [constants.PROVISIONED, constants.UPGRADING] or
-                      (host.invprovision == constants.PROVISIONING and
-                       host.personality == constants.CONTROLLER)):
-                    if host.sw_version == tsc.SW_VERSION:
-                        # We will not generate the hieradata in runtime here if the
-                        # software load of the host is different from the active
-                        # controller.
-                        if not skip_update_config:
-                            self._puppet.update_host_config(
-                                host, config_uuid, generate_optimized_hieradata
-                            )
-                            host_updated = True
+                # The state condition lives in _host_state_allows_hieradata()
+                # because the runtime config enqueue has to be gated on the
+                # very same condition. It also covers the software load
+                # check: we will not generate the hieradata in runtime here
+                # if the software load of the host is different from the
+                # active controller. The Hieradata of a host during an
+                # upgrade/rollback will be saved by
+                # update_host_config_upgrade() to the directory of the
+                # host's software load.
+                elif self._host_state_allows_hieradata(host):
+                    if not skip_update_config:
+                        self._puppet.update_host_config(
+                            host, config_uuid, generate_optimized_hieradata
+                        )
+                        host_updated = True
                 else:
                     LOG.info(
                         "Cannot regenerate the configuration for %s, "
-                        "the node is not ready. invprovision=%s" %
-                        (host.hostname, host.invprovision))
+                        "the node is not ready. invprovision=%s, "
+                        "sw_version=%s" %
+                        (host.hostname, host.invprovision, host.sw_version))
 
         # ensure the system configuration is also updated if hosts require
         # a reconfiguration
@@ -15409,7 +15727,22 @@ class ConductorManager(service.PeriodicService):
                             raise
                     break
             else:
-                # No matching pending entry found, create a new entry
+                # No matching pending entry found, create a new entry.
+                # A host whose state does not allow its hieradata to be
+                # regenerated gets no entry at all: the manifest never runs
+                # for it, and every new row carries a fresh created_at,
+                # which renews the window the host unlock is rejected on.
+                # An already pending entry is still superseded in place
+                # above, so its created_at, and therefore its position
+                # relative to that window, does not move.
+                if not self._host_state_allows_hieradata(host):
+                    LOG.info(
+                        f"Skipping create of runtime_config for host "
+                        f"{host.hostname}; the node is not ready. "
+                        f"invprovision={host.invprovision}, "
+                        f"sw_version={host.sw_version}"
+                    )
+                    continue
                 try:
                     if host.inv_state in valid_inventory_states:
                         self.dbapi.runtime_config_create(runtime_config)

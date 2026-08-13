@@ -1181,17 +1181,24 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                        status=status,
                                        error=error))
 
-    def update_grub_config(self, context, host_uuid, force=False):
+    def update_grub_config(self, context, host_uuid, force=False,
+                           cpu_driven=True):
         """Synchronously, have the conductor update the grub
         configuration.
 
         :param context: request context.
         :param host_uuid: host unique uuid
         :param force: whether force an update
+        :param cpu_driven: whether this request originates from a
+            cpu-driven path. Callers that are not about cpu allocation at
+            all (e.g. label.py's nohz_full / power-management labels) must
+            pass False, so the redundant-enqueue guard, which is keyed on
+            the host's cpu updated_at, never suppresses their request.
         """
         return self.call(context, self.make_msg('update_grub_config',
                                                 host_uuid=host_uuid,
-                                                force_grub_update=force))
+                                                force_grub_update=force,
+                                                cpu_driven=cpu_driven))
 
     def iconfig_update_by_ihost(self, context,
                                 ihost_uuid, imsg_dict):

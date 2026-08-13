@@ -513,8 +513,13 @@ class MemoryController(rest.RestController):
 
         rpc_port.save()
 
+        # Not cpu-driven: a memory change is not a cpu allocation change.
+        # force=True already bypasses the redundant-enqueue guard
+        # regardless, but cpu_driven=False documents why this call must
+        # never be subject to it, independent of the force flag.
         pecan.request.rpcapi.update_grub_config(
-            pecan.request.context, host['uuid'], force=True)
+            pecan.request.context, host['uuid'], force=True,
+            cpu_driven=False)
         return Memory.convert_with_links(rpc_port)
 
     @cutils.synchronized(LOCK_NAME)

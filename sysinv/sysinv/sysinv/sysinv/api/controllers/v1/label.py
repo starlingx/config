@@ -157,8 +157,11 @@ class LabelController(rest.RestController):
     def _apply_manifest_after_label_operation(self, host_uuid, keys):
         if (common.LABEL_DISABLE_NOHZ_FULL in keys or
                 constants.KUBE_POWER_MANAGER_LABEL in keys):
+            # Not cpu-driven: a label change is not a cpu allocation
+            # change, so the redundant-enqueue guard (keyed on the host's
+            # cpu updated_at) must never suppress it.
             pecan.request.rpcapi.update_grub_config(
-                pecan.request.context, host_uuid)
+                pecan.request.context, host_uuid, cpu_driven=False)
 
         if constants.KUBE_POWER_MANAGER_LABEL in keys:
             pecan.request.rpcapi.configure_power_manager(
