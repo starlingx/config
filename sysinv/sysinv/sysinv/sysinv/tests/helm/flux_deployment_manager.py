@@ -248,9 +248,12 @@ class TestUpgradeControllers(TestFluxDeploymentManagerBase):
                        return_value=True)
     @mock.patch.object(flux.FluxDeploymentManager, 'delete_oci_repository_crd',
                        return_value=True)
+    @mock.patch.object(flux.FluxDeploymentManager, '_recover_pending_helm_release',
+                       return_value=True)
     @mock.patch.object(flux.FluxDeploymentManager, 'get_chart_path',
                        return_value='/charts/flux2-2.18.0.tgz')
-    def test_upgrade_success(self, mock_chart_path, mock_delete_crd,
+    def test_upgrade_success(self, mock_chart_path, mock_recover,
+                             mock_delete_crd,
                              mock_download, mock_overrides, mock_run):
         """Returns True on successful upgrade."""
         result = self.manager.upgrade_controllers()
@@ -268,9 +271,11 @@ class TestUpgradeControllers(TestFluxDeploymentManagerBase):
                        return_value=True)
     @mock.patch.object(flux.FluxDeploymentManager, 'download_images',
                        return_value=False)
+    @mock.patch.object(flux.FluxDeploymentManager, '_recover_pending_helm_release',
+                       return_value=True)
     @mock.patch.object(flux.FluxDeploymentManager, 'get_chart_path',
                        return_value='/charts/flux2-2.18.0.tgz')
-    def test_upgrade_download_failure(self, mock_chart_path,
+    def test_upgrade_download_failure(self, mock_chart_path, mock_recover,
                                       mock_download, mock_delete_crd):
         """Returns False when image download fails."""
         result = self.manager.upgrade_controllers()
@@ -284,9 +289,12 @@ class TestUpgradeControllers(TestFluxDeploymentManagerBase):
                        return_value=True)
     @mock.patch.object(flux.FluxDeploymentManager, 'delete_oci_repository_crd',
                        return_value=True)
+    @mock.patch.object(flux.FluxDeploymentManager, '_recover_pending_helm_release',
+                       return_value=True)
     @mock.patch.object(flux.FluxDeploymentManager, 'get_chart_path',
                        return_value='/charts/flux2-2.18.0.tgz')
-    def test_upgrade_helm_failure(self, mock_chart_path, mock_delete_crd,
+    def test_upgrade_helm_failure(self, mock_chart_path, mock_recover,
+                                  mock_delete_crd,
                                   mock_download, mock_overrides, mock_run):
         """Returns False when helm upgrade command fails."""
         result = self.manager.upgrade_controllers()
