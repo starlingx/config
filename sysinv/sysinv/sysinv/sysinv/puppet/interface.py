@@ -2111,14 +2111,20 @@ def check_interface_channel_conditions(iface, db_api):
     Function to check the interface channel conditions:-
     1. Interface class is platform or pci-sriov.
     2. Interface type is ethernet, ae, or vf.
+    3. Interface has ovs_access=True.
     """
     if_class = iface.get('ifclass', None)
     if_type = iface.get('iftype', None)
+    if_ovs_access = iface.get('ovs_access', None)
     if not (if_class in [constants.INTERFACE_CLASS_PLATFORM,
                          constants.INTERFACE_CLASS_PCI_SRIOV] and
             if_type in {constants.INTERFACE_TYPE_ETHERNET,
                         constants.INTERFACE_TYPE_AE,
                         constants.INTERFACE_TYPE_VF}):
+        return False
+    # ovs_access creates a veth interface pair on the kernel,
+    # skip channel processing
+    if if_ovs_access:
         return False
     return True
 
