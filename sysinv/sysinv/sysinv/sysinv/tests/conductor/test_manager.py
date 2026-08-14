@@ -12020,13 +12020,20 @@ class TestGetActiveControllerUuid(base.DbTestCase):
         platform.conf value."""
         new_uuid = str(uuid.uuid4())
         with mock.patch('tsconfig.tsconfig.host_uuid', new_uuid):
-            result = self.service._get_active_controller_uuid()
-            self.assertEqual(new_uuid, result)
+            with mock.patch.object(
+                self.service, '_migrate_barbican_secret'
+            ) as mock_migrate:
+                result = self.service._get_active_controller_uuid()
+                self.assertEqual(new_uuid, result)
 
-            # Verify DB was updated
-            updated_host = self.service.dbapi.ihost_get(new_uuid)
-            self.assertEqual(new_uuid, updated_host.uuid)
-            self.assertEqual('controller-0', updated_host.hostname)
+                # Verify DB was updated
+                updated_host = self.service.dbapi.ihost_get(new_uuid)
+                self.assertEqual(new_uuid, updated_host.uuid)
+                self.assertEqual('controller-0', updated_host.hostname)
+
+                # Verify barbican migration was called with old and new uuid
+                mock_migrate.assert_called_once_with(
+                    self.host_uuid, new_uuid)
 
     def test_platform_conf_uuid_update_fails_raises(self):
         """When DB update fails, exception propagates (conductor fails)."""
@@ -12045,6 +12052,95 @@ class TestGetActiveControllerUuid(base.DbTestCase):
         self.mock_gethostname.return_value = 'controller-99'
         result = self.service._get_active_controller_uuid()
         self.assertIsNone(result)
+
+
+class TestMigrateBarbicanSecret(base.DbTestCase):
+    """Tests for ConductorManager._migrate_barbican_secret().
+
+    Validates that when the host UUID changes, any Barbican secret
+    stored under the old UUID is migrated to the new UUID.
+    """
+
+    def setUp(self):
+        super(TestMigrateBarbicanSecret, self).setUp()
+
+        self.service = manager.ConductorManager('test-host', 'test-topic')
+        self.service.dbapi = dbapi.get_instance()
+
+        self.old_uuid = str(uuid.uuid4())
+        self.new_uuid = str(uuid.uuid4())
+        self.bmc_password = 'test-bmc-password'
+
+    @mock.patch('sysinv.conductor.openstack.OpenStackOperator')
+    def test_secret_exists_migrates_successfully(self, mock_openstack_cls):
+        """When a secret exists under old UUID, it should be recreated
+        under the new UUID and the old one deleted."""
+        mock_openstack = mock_openstack_cls.return_value
+        mock_secret = mock.MagicMock()
+        mock_secret.payload = self.bmc_password
+        mock_openstack.get_barbican_secret_by_name.return_value = mock_secret
+
+        self.service._migrate_barbican_secret(self.old_uuid, self.new_uuid)
+
+        mock_openstack.get_barbican_secret_by_name.assert_called_once_with(
+            mock.ANY, self.old_uuid)
+        mock_openstack.create_barbican_secret.assert_called_once_with(
+            mock.ANY, self.new_uuid, self.bmc_password)
+        mock_openstack.delete_barbican_secret.assert_called_once_with(
+            mock.ANY, self.old_uuid)
+
+    @mock.patch('sysinv.conductor.openstack.OpenStackOperator')
+    def test_no_secret_exists_does_nothing(self, mock_openstack_cls):
+        """When no secret exists under old UUID, nothing happens."""
+        mock_openstack = mock_openstack_cls.return_value
+        mock_openstack.get_barbican_secret_by_name.return_value = None
+
+        self.service._migrate_barbican_secret(self.old_uuid, self.new_uuid)
+
+        mock_openstack.get_barbican_secret_by_name.assert_called_once_with(
+            mock.ANY, self.old_uuid)
+        mock_openstack.create_barbican_secret.assert_not_called()
+        mock_openstack.delete_barbican_secret.assert_not_called()
+
+    @mock.patch('sysinv.conductor.openstack.OpenStackOperator')
+    def test_secret_exists_but_empty_payload(self, mock_openstack_cls):
+        """When a secret exists but has no payload, delete the orphaned
+        secret."""
+        mock_openstack = mock_openstack_cls.return_value
+        mock_secret = mock.MagicMock()
+        mock_secret.payload = None
+        mock_openstack.get_barbican_secret_by_name.return_value = mock_secret
+
+        self.service._migrate_barbican_secret(self.old_uuid, self.new_uuid)
+
+        mock_openstack.create_barbican_secret.assert_not_called()
+        mock_openstack.delete_barbican_secret.assert_called_once_with(
+            mock.ANY, self.old_uuid)
+
+    @mock.patch('sysinv.conductor.openstack.OpenStackOperator')
+    def test_barbican_lookup_fails_gracefully(self, mock_openstack_cls):
+        """When barbican raises an exception, migration logs warning
+        but does not crash."""
+        mock_openstack = mock_openstack_cls.return_value
+        mock_openstack.get_barbican_secret_by_name.side_effect = \
+            Exception("Barbican unavailable")
+
+        # Should not raise
+        self.service._migrate_barbican_secret(self.old_uuid, self.new_uuid)
+
+    @mock.patch('sysinv.conductor.openstack.OpenStackOperator')
+    def test_barbican_create_fails_gracefully(self, mock_openstack_cls):
+        """When creating the new secret fails, migration logs warning
+        but does not crash."""
+        mock_openstack = mock_openstack_cls.return_value
+        mock_secret = mock.MagicMock()
+        mock_secret.payload = self.bmc_password
+        mock_openstack.get_barbican_secret_by_name.return_value = mock_secret
+        mock_openstack.create_barbican_secret.side_effect = \
+            Exception("Barbican create failed")
+
+        # Should not raise
+        self.service._migrate_barbican_secret(self.old_uuid, self.new_uuid)
 
 
 class TestIhostUpdateUuid(base.DbTestCase):
