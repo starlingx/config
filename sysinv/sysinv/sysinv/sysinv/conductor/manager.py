@@ -350,6 +350,10 @@ class ConductorManager(service.PeriodicService):
     RPC_API_VERSION = '1.1'
     my_host_id = None
 
+    ETCD_FIXED_RUNTIME_CLASS = 'platform::etcd::fixed::runtime'
+    ETCD_FIXED_DISABLE_CLASS = 'platform::etcd::fixed::disable'
+    ETCD_CERTS_RUNTIME_CLASS = 'platform::etcd::certs::runtime'
+
     def __init__(self, host, topic):
         self.host = host
         self.topic = topic
@@ -9388,6 +9392,295 @@ class ConductorManager(service.PeriodicService):
         # No need to detect again until conductor restart
         self._do_detect_swact = False
 
+    # ------------------------------------------------------------------
+    # etcd cluster lifecycle
+    #
+    # Architecture: the fixed etcd instance on controller-0 (fixed-0)
+    # founds the cluster as a single-node seed at bootstrap. Additional
+    # members join the running cluster through 'etcdctl member add':
+    #   - the DRBD-backed floating instance, named 'controller'
+    #   - the fixed instance on controller-1, named 'fixed-1'
+    # ------------------------------------------------------------------
+
+    def _get_cluster_host_addresses(self):
+        """Return the cluster-host floating and unit addresses.
+
+        :returns: dict with 'floating', 'controller0', 'controller1' keys
+        :raises: SysinvException if the addresses cannot be resolved
+        """
+        try:
+            network = self.dbapi.network_get_by_type(
+                constants.NETWORK_TYPE_CLUSTER_HOST)
+            pool = self.dbapi.address_pool_get(network.pool_uuid)
+            return {
+                'floating': pool.floating_address,
+                'controller0': pool.controller0_address,
+                'controller1': pool.controller1_address,
+            }
+        except Exception as e:
+            raise exception.SysinvException(
+                "Failed to resolve cluster-host addresses: %s" % e)
+
+    def add_floating_etcd_member(self, context):
+        """Add the DRBD-backed floating etcd instance to the cluster.
+
+        Used during simplex-to-duplex migration. The fixed instance on
+        controller-0 is already running as the cluster seed; this adds
+        the floating instance as a second member so that SM can bring
+        it up with --initial-cluster-state=existing.
+
+        The member is registered as a learner so the single-member cluster
+        keeps its quorum of one while the instance is still being brought
+        up. Service Manager starts the floating instance, so the promotion
+        to a voting member is deferred until the endpoint answers.
+
+        Idempotent: does nothing if the floating member already votes.
+
+        :param context: request context
+        :returns: True once the member is registered and voting
+        :raises: SysinvException if the member cannot be added
+        """
+        addresses = self._get_cluster_host_addresses()
+        # RFC 2732 bracketing. An unbracketed IPv6 address is not a valid
+        # "host:port", and etcd rejects the URL outright rather than
+        # interpreting it, so the address has to be formatted before the
+        # port is appended.
+        floating = cutils.format_url_address(addresses['floating'])
+        peer_url = "https://%s:%s" % (floating, etcd.ETCD_PEER_PORT)
+        client_url = "https://%s:%s" % (floating, etcd.ETCD_PORT)
+
+        if not etcd.member_exists(etcd.ETCD_FLOATING_NAME):
+            etcd.add_member(etcd.ETCD_FLOATING_NAME, peer_url,
+                                  learner=True)
+            LOG.info("Registered floating etcd member as a learner with peer "
+                     "URL %s", peer_url)
+
+        if not etcd.wait_for_endpoint(client_url):
+            LOG.info("Floating etcd member is registered but not yet serving "
+                     "on %s; it stays a learner until it is", client_url)
+            return False
+
+        etcd.promote_member(etcd.ETCD_FLOATING_NAME)
+        return True
+
+    def migrate_etcd_simplex_to_duplex(self, context):
+        """Grow the single-member etcd cluster for duplex operation.
+
+        On simplex only the fixed instance on controller-0 runs. When the
+        system is converted to duplex, the DRBD-backed floating instance
+        must be added to the cluster so SM can manage it. The fixed
+        instance on controller-1 is added later, at controller-1 unlock,
+        by puppet.
+
+        Idempotent, and gated on observed cluster state rather than on a
+        marker file. The floating member being absent is what identifies a
+        system that still needs the migration; a system installed as duplex
+        has had it since bootstrap and is skipped silently. Deriving this
+        from the cluster avoids recording a migration against a system that
+        never had one, and avoids a marker that would outlive the condition
+        it describes and be carried into platform backups.
+
+        :param context: request context
+        """
+        if etcd.member_exists(etcd.ETCD_FLOATING_NAME):
+            # Either the migration has already run or the system was
+            # installed as duplex. Nothing to do, and nothing to record.
+            return
+
+        if not etcd.is_endpoint_healthy(
+                etcd.ETCD_LOCAL_ENDPOINT):
+            LOG.warning("Local etcd endpoint %s is not healthy; deferring "
+                        "simplex-to-duplex migration to the next attempt",
+                        etcd.ETCD_LOCAL_ENDPOINT)
+            return
+
+        try:
+            completed = self.add_floating_etcd_member(context)
+        except exception.SysinvException as e:
+            LOG.warning("etcd simplex-to-duplex migration deferred: %s", e)
+            return
+
+        if completed:
+            LOG.info("etcd member '%s' added for duplex operation",
+                     etcd.ETCD_FLOATING_NAME)
+        else:
+            LOG.info("etcd member '%s' registered but not yet voting; the "
+                     "audit will promote it on a later pass",
+                     etcd.ETCD_FLOATING_NAME)
+
+    def _apply_controller_runtime_manifest(self, context, hostname,
+                                            puppet_class):
+        """Apply a single-class runtime manifest, forced, on one controller.
+
+        :param context: request context
+        :param hostname: controller the manifest is applied on
+        :param puppet_class: runtime class to apply
+        :raises: SysinvException if the host cannot be resolved
+        """
+        try:
+            host = self.dbapi.ihost_get_by_hostname(hostname)
+        except Exception as e:
+            raise exception.SysinvException(
+                "Failed to resolve host %s: %s" % (hostname, e))
+
+        config_uuid = self._config_update_hosts(
+            context, [constants.CONTROLLER], host_uuids=[host.uuid])
+        config_dict = {
+            'personalities': [constants.CONTROLLER],
+            'host_uuids': [host.uuid],
+            'classes': [puppet_class],
+        }
+        self._config_apply_runtime_manifest(
+            context, config_uuid, config_dict, force=True)
+
+    def add_fixed_etcd_members_for_upgrade(self, context):
+        """Add both fixed etcd instances during a platform upgrade.
+
+        On an upgrade from a release that ran a single DRBD-backed etcd
+        instance, the fixed instances are configured but not started
+        while the controllers are being upgraded. They are added to the
+        cluster during the deploy-activate phase, once both controllers
+        run the new release.
+
+        Each member is registered, started and promoted before the next one
+        is touched, and never registered as a voter. Registration changes
+        the quorum requirement at the moment it happens rather than when
+        the member starts, so registering both members up front and
+        starting neither would take a one-member cluster to a three-voter
+        requirement with a single member running, losing quorum for the
+        whole of the activate. Registering as a learner keeps the
+        requirement unchanged until the member is serving and promoted.
+
+        The sequence is also why the members are handled one at a time:
+        etcd permits ETCD_MAX_LEARNERS learners at once.
+
+        A member that never becomes healthy is left as a learner and the
+        activate is allowed to continue: learners are not counted towards
+        quorum, so the outcome is a degraded cluster carrying an alarm rather
+        than an unavailable one, and the deploy reaches activate-done for the
+        operator to retry.
+
+        :param context: request context
+        :raises: SysinvException if a member cannot be registered or promoted
+        """
+        addresses = self._get_cluster_host_addresses()
+
+        for index, hostname in ((0, constants.CONTROLLER_0_HOSTNAME),
+                                (1, constants.CONTROLLER_1_HOSTNAME)):
+            address = addresses['controller%d' % index]
+            if not address:
+                continue
+
+            name = "%s-%d" % (etcd.ETCD_FIXED_NAME_PREFIX, index)
+            # RFC 2732 bracketing, as in add_floating_etcd_member().
+            url_address = cutils.format_url_address(address)
+            peer_url = "https://%s:%s" % (url_address,
+                                          etcd.ETCD_PEER_PORT)
+            client_url = "https://%s:%s" % (url_address,
+                                            etcd.ETCD_PORT)
+
+            # The peer URL is passed as well as the name because a member
+            # registered on an earlier pass that has not started yet carries
+            # no name.
+            if not etcd.member_exists(name, peer_url=peer_url):
+                etcd.add_member(name, peer_url, learner=True)
+                LOG.info("Registered etcd member '%s' as a learner for "
+                         "upgrade activation", name)
+
+            # Before the service starts, not after: a system upgraded from a
+            # release that ran a single instance carries a certificate naming
+            # only the floating address, so this member would be unreachable
+            # over TLS and would never become healthy enough to promote. The
+            # class is a no-op once the address is already named, so this is
+            # safe on repeat activates and on simplex.
+            self._apply_controller_runtime_manifest(
+                context, hostname, self.ETCD_CERTS_RUNTIME_CLASS)
+
+            self._apply_controller_runtime_manifest(
+                context, hostname, self.ETCD_FIXED_RUNTIME_CLASS)
+
+            if not etcd.wait_for_endpoint(client_url):
+                # Not fatal to the activate. A member that never became
+                # healthy is left a learner, and a learner is not counted
+                # towards quorum, so the cluster is degraded rather than
+                # unavailable. The deploy reaches activate-done with alarm
+                # 850.003 raised, and an operator finishes the job with a
+                # retry.
+                LOG.error("etcd member '%s' did not become healthy after being "
+                          "started; leaving it a learner so the cluster keeps "
+                          "quorum. Alarm %s describes the condition.",
+                          name, fm_constants.FM_ALARM_ID_ETCD_CLUSTER_DEGRADED)
+                continue
+
+            etcd.promote_member(name)
+
+        # Confirm the outcome rather than assuming the loop achieved it.
+        # The audit that drives this reports a deferral either way, so
+        # without this a genuine failure is indistinguishable from a
+        # routine retry.
+        healthy, configured, degraded = etcd.get_cluster_health()
+        if healthy != configured:
+            LOG.error("etcd cluster did not reach its configured membership "
+                      "during upgrade activation: %d of %d voting members "
+                      "healthy (%s). Alarm %s describes the condition. The "
+                      "activation is not blocked: the cluster is left "
+                      "degraded, and the members still missing are added by "
+                      "a later pass of the audit or by a retry.",
+                      healthy, configured,
+                      ', '.join(degraded) or 'no detail',
+                      fm_constants.FM_ALARM_ID_ETCD_CLUSTER_DEGRADED)
+        else:
+            LOG.info("etcd cluster reached its configured membership during "
+                     "upgrade activation: %d of %d voting members healthy",
+                     healthy, configured)
+
+    def remove_fixed_etcd_members_for_rollback(self, context):
+        """Remove both fixed etcd instances during an upgrade rollback.
+
+        On deploy activate-rollback the cluster must be reduced back to
+        the single DRBD-backed floating instance, so that completing the
+        rollback leaves a one-member cluster matching the older release.
+
+        Removal alone is not enough. A removed member whose service is
+        still running cannot rejoin the cluster it was removed from, and
+        keeps logging failed peer requests indefinitely; on the next boot
+        it would start again against a data directory describing a cluster
+        it no longer belongs to. The service is therefore disabled on the
+        controller as part of the removal.
+
+        Members are removed highest-index first so the cluster shrinks
+        through sizes that still hold quorum.
+
+        :param context: request context
+        """
+        addresses = self._get_cluster_host_addresses()
+
+        for index, hostname in ((1, constants.CONTROLLER_1_HOSTNAME),
+                                (0, constants.CONTROLLER_0_HOSTNAME)):
+            name = "%s-%d" % (etcd.ETCD_FIXED_NAME_PREFIX, index)
+
+            # Remove etcd member based on the peer URL associated with
+            # this hostname.
+            address = addresses['controller%d' % index]
+            peer_url = None
+            if address:
+                peer_url = "https://%s:%s" % (
+                    cutils.format_url_address(address),
+                    etcd.ETCD_PEER_PORT)
+
+            try:
+                etcd.remove_member(name, peer_url=peer_url)
+            except exception.SysinvException as e:
+                LOG.warning("Failed to remove etcd member '%s': %s", name, e)
+                continue
+
+            try:
+                self._apply_controller_runtime_manifest(
+                    context, hostname, self.ETCD_FIXED_DISABLE_CLASS)
+            except Exception as e:
+                LOG.warning("Removed etcd member '%s' but failed to disable "
+                            "its service on %s: %s", name, hostname, e)
+
     @periodic_task.periodic_task(
         spacing=CONF.conductor_periodic_task_intervals.etcd_cluster_health)
     def _audit_etcd_cluster_health(self, context):
@@ -9428,14 +9721,12 @@ class ConductorManager(service.PeriodicService):
         if cutils.is_aio_simplex_system(self.dbapi):
             return
 
-        from sysinv.common import etcd as etcd_utils
-
         entity_instance_id = "%s=%s" % (
             fm_constants.FM_ENTITY_TYPE_K8S, 'etcd-cluster-health')
 
         try:
             system = self.dbapi.isystem_get_one()
-            healthy, total, unhealthy = etcd_utils.get_cluster_health(
+            healthy, total, unhealthy = etcd.get_cluster_health(
                 system_mode=system.system_mode)
         except Exception as e:
             LOG.warning("etcd cluster health audit failed: %s", e)

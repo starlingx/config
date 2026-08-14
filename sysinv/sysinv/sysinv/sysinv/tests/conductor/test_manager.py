@@ -51,6 +51,7 @@ from sysinv.api.controllers.v1 import label as label_api
 from sysinv.api.controllers.v1 import memory as memory_api
 from sysinv.common import constants
 from sysinv.common import device as dconstants
+from sysinv.common import etcd
 from sysinv.common import exception
 from sysinv.common import helper
 from sysinv.common import kubernetes
@@ -14933,3 +14934,408 @@ class TestIhostUpdateUuid(base.DbTestCase):
             self.old_uuid, {'task': 'some-task'})
         self.assertEqual(self.old_uuid, result.uuid)
         self.assertEqual('some-task', result.task)
+
+
+class EtcdClusterHostAddressesTestCase(base.DbTestCase):
+    """Tests for resolution of the cluster-host addresses.
+
+    Every etcd membership operation builds its peer and client URLs from
+    these, so a failure to resolve them has to surface rather than yield
+    a partial address set. Covers:
+      - the floating and both unit addresses are returned
+      - a lookup failure is raised as a SysinvException
+    """
+
+    def setUp(self):
+        super(EtcdClusterHostAddressesTestCase, self).setUp()
+        self.service = manager.ConductorManager('test-host', 'test-topic')
+        self.service.dbapi = mock.MagicMock()
+        self.context = context.get_admin_context()
+
+    def test_the_floating_and_unit_addresses_are_returned(self):
+        self.service.dbapi.address_pool_get.return_value = mock.MagicMock(
+            floating_address='192.168.206.1',
+            controller0_address='192.168.206.2',
+            controller1_address='192.168.206.3')
+
+        addresses = self.service._get_cluster_host_addresses()
+
+        self.assertEqual({'floating': '192.168.206.1',
+                          'controller0': '192.168.206.2',
+                          'controller1': '192.168.206.3'}, addresses)
+
+    def test_a_lookup_failure_is_raised(self):
+        # Silently returning a partial address set would register a member
+        # against the wrong URL, so the failure has to propagate.
+        self.service.dbapi.network_get_by_type.side_effect = Exception(
+            "no cluster-host network")
+
+        self.assertRaises(exception.SysinvException,
+                          self.service._get_cluster_host_addresses)
+
+
+class EtcdFloatingMemberTestCase(base.DbTestCase):
+    """Tests for adding the DRBD-backed floating etcd member.
+
+    Covers:
+      - the member is registered as a learner, never as a voter
+      - it is promoted once its endpoint answers
+      - an endpoint that never answers leaves it a learner
+      - an already-registered member is not registered twice
+      - IPv6 addresses are bracketed per RFC 2732
+    """
+
+    def setUp(self):
+        super(EtcdFloatingMemberTestCase, self).setUp()
+        self.service = manager.ConductorManager('test-host', 'test-topic')
+        self.service.dbapi = self.dbapi
+        self.context = context.get_admin_context()
+
+        p = mock.patch.object(
+            self.service, '_get_cluster_host_addresses',
+            return_value={'floating': '192.168.206.1',
+                          'controller0': '192.168.206.2',
+                          'controller1': '192.168.206.3'})
+        p.start()
+        self.addCleanup(p.stop)
+
+    @mock.patch('sysinv.common.etcd.promote_member')
+    @mock.patch('sysinv.common.etcd.wait_for_endpoint', return_value=True)
+    @mock.patch('sysinv.common.etcd.add_member')
+    @mock.patch('sysinv.common.etcd.member_exists', return_value=False)
+    def test_the_member_is_registered_as_a_learner(
+            self, mock_exists, mock_add, mock_wait, mock_promote):
+        # Registering a voter would take the quorum requirement of the
+        # single-member cluster from one to two while only fixed-0 serves.
+        result = self.service.add_floating_etcd_member(self.context)
+
+        mock_add.assert_called_once_with(
+            etcd.ETCD_FLOATING_NAME, 'https://192.168.206.1:2380',
+            learner=True)
+        mock_promote.assert_called_once_with(etcd.ETCD_FLOATING_NAME)
+        self.assertTrue(result)
+
+    @mock.patch('sysinv.common.etcd.promote_member')
+    @mock.patch('sysinv.common.etcd.wait_for_endpoint', return_value=False)
+    @mock.patch('sysinv.common.etcd.add_member')
+    @mock.patch('sysinv.common.etcd.member_exists', return_value=False)
+    def test_an_endpoint_that_never_answers_leaves_a_learner(
+            self, mock_exists, mock_add, mock_wait, mock_promote):
+        # Service Manager starts the floating instance, so promotion has to
+        # wait for it. A learner does not vote, so leaving one costs nothing.
+        result = self.service.add_floating_etcd_member(self.context)
+
+        mock_promote.assert_not_called()
+        self.assertFalse(result)
+
+    @mock.patch('sysinv.common.etcd.promote_member')
+    @mock.patch('sysinv.common.etcd.wait_for_endpoint', return_value=True)
+    @mock.patch('sysinv.common.etcd.add_member')
+    @mock.patch('sysinv.common.etcd.member_exists', return_value=True)
+    def test_an_existing_member_is_not_registered_twice(
+            self, mock_exists, mock_add, mock_wait, mock_promote):
+        # The audit repeats this call, and a duplicate add is an error.
+        self.service.add_floating_etcd_member(self.context)
+
+        mock_add.assert_not_called()
+        # Promotion still runs: an existing member may still be a learner.
+        mock_promote.assert_called_once_with(etcd.ETCD_FLOATING_NAME)
+
+    @mock.patch('sysinv.common.etcd.promote_member')
+    @mock.patch('sysinv.common.etcd.wait_for_endpoint', return_value=True)
+    @mock.patch('sysinv.common.etcd.add_member')
+    @mock.patch('sysinv.common.etcd.member_exists', return_value=False)
+    def test_an_ipv6_address_is_bracketed(
+            self, mock_exists, mock_add, mock_wait, mock_promote):
+        # An unbracketed IPv6 address is not a valid "host:port" and etcd
+        # rejects the URL outright.
+        p = mock.patch.object(
+            self.service, '_get_cluster_host_addresses',
+            return_value={'floating': 'aefd:205::1',
+                          'controller0': 'aefd:205::2',
+                          'controller1': 'aefd:205::3'})
+        p.start()
+        self.addCleanup(p.stop)
+
+        self.service.add_floating_etcd_member(self.context)
+
+        mock_add.assert_called_once_with(
+            etcd.ETCD_FLOATING_NAME, 'https://[aefd:205::1]:2380',
+            learner=True)
+        mock_wait.assert_called_once_with('https://[aefd:205::1]:2379')
+
+
+class EtcdSimplexToDuplexMigrationTestCase(base.DbTestCase):
+    """Tests for growing the cluster when a simplex becomes a duplex.
+
+    The migration is gated on observed cluster state rather than a marker
+    file, and runs from a repeating audit, so every guard has to hold on a
+    second pass. Covers:
+      - a floating member already present is a silent no-op
+      - an unhealthy local endpoint defers rather than fails
+      - a failure to add defers rather than propagating
+      - the member is added when the cluster says it is missing
+    """
+
+    def setUp(self):
+        super(EtcdSimplexToDuplexMigrationTestCase, self).setUp()
+        self.service = manager.ConductorManager('test-host', 'test-topic')
+        self.service.dbapi = self.dbapi
+        self.context = context.get_admin_context()
+
+    @mock.patch.object(manager.ConductorManager, 'add_floating_etcd_member')
+    @mock.patch('sysinv.common.etcd.member_exists', return_value=True)
+    def test_an_existing_floating_member_is_a_no_op(
+            self, mock_exists, mock_add):
+        # Either the migration has run already or the system was installed
+        # as duplex. Neither case has anything to do.
+        self.service.migrate_etcd_simplex_to_duplex(self.context)
+
+        mock_add.assert_not_called()
+
+    @mock.patch.object(manager.ConductorManager, 'add_floating_etcd_member')
+    @mock.patch('sysinv.common.etcd.is_endpoint_healthy', return_value=False)
+    @mock.patch('sysinv.common.etcd.member_exists', return_value=False)
+    def test_an_unhealthy_local_endpoint_defers(
+            self, mock_exists, mock_healthy, mock_add):
+        # Adding a member to a cluster that is not serving would fail; the
+        # audit runs again, so deferring costs only one pass.
+        self.service.migrate_etcd_simplex_to_duplex(self.context)
+
+        mock_add.assert_not_called()
+
+    @mock.patch.object(manager.ConductorManager, 'add_floating_etcd_member')
+    @mock.patch('sysinv.common.etcd.is_endpoint_healthy', return_value=True)
+    @mock.patch('sysinv.common.etcd.member_exists', return_value=False)
+    def test_a_failure_to_add_defers_rather_than_propagating(
+            self, mock_exists, mock_healthy, mock_add):
+        # This runs from the audit loop, which a raised exception would kill.
+        mock_add.side_effect = exception.SysinvException("member add failed")
+
+        self.service.migrate_etcd_simplex_to_duplex(self.context)
+
+        mock_add.assert_called_once_with(self.context)
+
+    @mock.patch.object(manager.ConductorManager, 'add_floating_etcd_member',
+                       return_value=True)
+    @mock.patch('sysinv.common.etcd.is_endpoint_healthy', return_value=True)
+    @mock.patch('sysinv.common.etcd.member_exists', return_value=False)
+    def test_a_missing_floating_member_is_added(
+            self, mock_exists, mock_healthy, mock_add):
+        self.service.migrate_etcd_simplex_to_duplex(self.context)
+
+        mock_add.assert_called_once_with(self.context)
+
+
+class EtcdUpgradeMembershipTestCase(base.DbTestCase):
+    """Tests for adding the fixed etcd members during upgrade activation.
+
+    Covers:
+      - both members are registered as learners, never as voters
+      - the certificate manifest is applied before the member is started
+      - a member that never becomes healthy is left a learner and the
+        remaining member is still processed
+      - an already-registered member is not registered twice
+      - a controller with no address is skipped
+    """
+
+    def setUp(self):
+        super(EtcdUpgradeMembershipTestCase, self).setUp()
+        self.service = manager.ConductorManager('test-host', 'test-topic')
+        self.service.dbapi = self.dbapi
+        self.context = context.get_admin_context()
+
+        p = mock.patch.object(
+            self.service, '_get_cluster_host_addresses',
+            return_value={'floating': '192.168.206.1',
+                          'controller0': '192.168.206.2',
+                          'controller1': '192.168.206.3'})
+        p.start()
+        self.addCleanup(p.stop)
+
+        p = mock.patch.object(
+            self.service, '_apply_controller_runtime_manifest')
+        self.mock_manifest = p.start()
+        self.addCleanup(p.stop)
+
+        p = mock.patch('sysinv.common.etcd.get_cluster_health',
+                       return_value=(3, 3, []))
+        p.start()
+        self.addCleanup(p.stop)
+
+    @mock.patch('sysinv.common.etcd.promote_member')
+    @mock.patch('sysinv.common.etcd.wait_for_endpoint', return_value=True)
+    @mock.patch('sysinv.common.etcd.add_member')
+    @mock.patch('sysinv.common.etcd.member_exists', return_value=False)
+    def test_both_members_are_registered_as_learners(
+            self, mock_exists, mock_add, mock_wait, mock_promote):
+        # Registering both as voters up front would take a one-member
+        # cluster to a three-voter requirement with one member running,
+        # losing quorum for the whole of the activate.
+        self.service.add_fixed_etcd_members_for_upgrade(self.context)
+
+        self.assertEqual(
+            [mock.call('fixed-0', 'https://192.168.206.2:2380',
+                       learner=True),
+             mock.call('fixed-1', 'https://192.168.206.3:2380',
+                       learner=True)],
+            mock_add.call_args_list)
+        self.assertEqual([mock.call('fixed-0'), mock.call('fixed-1')],
+                         mock_promote.call_args_list)
+
+    @mock.patch('sysinv.common.etcd.promote_member')
+    @mock.patch('sysinv.common.etcd.wait_for_endpoint', return_value=True)
+    @mock.patch('sysinv.common.etcd.add_member')
+    @mock.patch('sysinv.common.etcd.member_exists', return_value=False)
+    def test_the_certificate_manifest_runs_before_the_service_starts(
+            self, mock_exists, mock_add, mock_wait, mock_promote):
+        # A system upgraded from a release that ran a single instance
+        # carries a certificate naming only the floating address, so a
+        # member started before the reissue is unreachable over TLS.
+        self.service.add_fixed_etcd_members_for_upgrade(self.context)
+
+        classes = [call[0][2] for call in self.mock_manifest.call_args_list]
+        self.assertEqual(
+            [self.service.ETCD_CERTS_RUNTIME_CLASS,
+             self.service.ETCD_FIXED_RUNTIME_CLASS],
+            classes[:2])
+
+    @mock.patch('sysinv.common.etcd.promote_member')
+    @mock.patch('sysinv.common.etcd.wait_for_endpoint')
+    @mock.patch('sysinv.common.etcd.add_member')
+    @mock.patch('sysinv.common.etcd.member_exists', return_value=False)
+    def test_an_unhealthy_member_is_left_a_learner(
+            self, mock_exists, mock_add, mock_wait, mock_promote):
+        # A learner is not counted towards quorum, so the cluster is
+        # degraded rather than unavailable and the deploy still reaches
+        # activate-done for the operator to retry.
+        mock_wait.side_effect = [False, True]
+
+        self.service.add_fixed_etcd_members_for_upgrade(self.context)
+
+        # fixed-0 was never promoted, and fixed-1 was still processed.
+        mock_promote.assert_called_once_with('fixed-1')
+
+    @mock.patch('sysinv.common.etcd.promote_member')
+    @mock.patch('sysinv.common.etcd.wait_for_endpoint', return_value=True)
+    @mock.patch('sysinv.common.etcd.add_member')
+    @mock.patch('sysinv.common.etcd.member_exists', return_value=True)
+    def test_an_existing_member_is_not_registered_twice(
+            self, mock_exists, mock_add, mock_wait, mock_promote):
+        # Activation can be retried, and a duplicate add is an error. The
+        # peer URL is passed as well as the name because a member that has
+        # not started yet carries no name.
+        self.service.add_fixed_etcd_members_for_upgrade(self.context)
+
+        mock_add.assert_not_called()
+        peer_urls = [call[1].get('peer_url')
+                     for call in mock_exists.call_args_list]
+        self.assertIn('https://192.168.206.2:2380', peer_urls)
+
+    @mock.patch('sysinv.common.etcd.promote_member')
+    @mock.patch('sysinv.common.etcd.wait_for_endpoint', return_value=True)
+    @mock.patch('sysinv.common.etcd.add_member')
+    @mock.patch('sysinv.common.etcd.member_exists', return_value=False)
+    def test_a_controller_without_an_address_is_skipped(
+            self, mock_exists, mock_add, mock_wait, mock_promote):
+        # A simplex pool carries no controller-1 address.
+        p = mock.patch.object(
+            self.service, '_get_cluster_host_addresses',
+            return_value={'floating': '192.168.206.1',
+                          'controller0': '192.168.206.2',
+                          'controller1': None})
+        p.start()
+        self.addCleanup(p.stop)
+
+        self.service.add_fixed_etcd_members_for_upgrade(self.context)
+
+        mock_add.assert_called_once_with(
+            'fixed-0', 'https://192.168.206.2:2380', learner=True)
+
+
+class EtcdRollbackMembershipTestCase(base.DbTestCase):
+    """Tests for removing the fixed etcd members on activate-rollback.
+
+    Covers:
+      - members are removed highest index first
+      - the peer URL is passed so an unstarted member is matched
+      - the service is disabled after each removal
+      - a failed removal does not stop the other member
+      - a failed disable does not propagate
+    """
+
+    def setUp(self):
+        super(EtcdRollbackMembershipTestCase, self).setUp()
+        self.service = manager.ConductorManager('test-host', 'test-topic')
+        self.service.dbapi = self.dbapi
+        self.context = context.get_admin_context()
+
+        p = mock.patch.object(
+            self.service, '_get_cluster_host_addresses',
+            return_value={'floating': '192.168.206.1',
+                          'controller0': '192.168.206.2',
+                          'controller1': '192.168.206.3'})
+        p.start()
+        self.addCleanup(p.stop)
+
+        p = mock.patch.object(
+            self.service, '_apply_controller_runtime_manifest')
+        self.mock_manifest = p.start()
+        self.addCleanup(p.stop)
+
+    @mock.patch('sysinv.common.etcd.remove_member')
+    def test_members_are_removed_highest_index_first(self, mock_remove):
+        # The cluster has to shrink through sizes that still hold quorum.
+        self.service.remove_fixed_etcd_members_for_rollback(self.context)
+
+        names = [call[0][0] for call in mock_remove.call_args_list]
+        self.assertEqual(['fixed-1', 'fixed-0'], names)
+
+    @mock.patch('sysinv.common.etcd.remove_member')
+    def test_the_peer_url_is_passed_for_unstarted_members(self, mock_remove):
+        # A member registered but never started carries no name; matched on
+        # name alone the removal is a no-op and leaves it registered.
+        self.service.remove_fixed_etcd_members_for_rollback(self.context)
+
+        peer_urls = [call[1].get('peer_url')
+                     for call in mock_remove.call_args_list]
+        self.assertEqual(['https://192.168.206.3:2380',
+                          'https://192.168.206.2:2380'], peer_urls)
+
+    @mock.patch('sysinv.common.etcd.remove_member')
+    def test_the_service_is_disabled_after_each_removal(self, mock_remove):
+        # A removed member whose service still runs cannot rejoin, and logs
+        # failed peer requests indefinitely.
+        self.service.remove_fixed_etcd_members_for_rollback(self.context)
+
+        hostnames = [call[0][1]
+                     for call in self.mock_manifest.call_args_list]
+        self.assertEqual([constants.CONTROLLER_1_HOSTNAME,
+                          constants.CONTROLLER_0_HOSTNAME], hostnames)
+        for call in self.mock_manifest.call_args_list:
+            self.assertEqual(self.service.ETCD_FIXED_DISABLE_CLASS,
+                             call[0][2])
+
+    @mock.patch('sysinv.common.etcd.remove_member')
+    def test_a_failed_removal_does_not_stop_the_other_member(
+            self, mock_remove):
+        mock_remove.side_effect = [
+            exception.SysinvException("remove failed"), None]
+
+        self.service.remove_fixed_etcd_members_for_rollback(self.context)
+
+        # fixed-1 failed, so only fixed-0 is disabled, and the loop went on.
+        self.assertEqual(2, mock_remove.call_count)
+        self.mock_manifest.assert_called_once()
+        self.assertEqual(constants.CONTROLLER_0_HOSTNAME,
+                         self.mock_manifest.call_args[0][1])
+
+    @mock.patch('sysinv.common.etcd.remove_member')
+    def test_a_failed_disable_does_not_propagate(self, mock_remove):
+        # The member is already out of the cluster by this point, which is
+        # what the rollback needed; a stale unit is recoverable by hand.
+        self.mock_manifest.side_effect = Exception("manifest failed")
+
+        self.service.remove_fixed_etcd_members_for_rollback(self.context)
+
+        self.assertEqual(2, mock_remove.call_count)
