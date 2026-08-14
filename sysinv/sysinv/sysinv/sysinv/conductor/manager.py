@@ -2507,6 +2507,7 @@ class ConductorManager(service.PeriodicService):
         if host.personality == constants.CONTROLLER:
             self._unallocate_address(hostname, constants.NETWORK_TYPE_OAM)
             self._unallocate_address(hostname, constants.NETWORK_TYPE_PXEBOOT)
+            self._unallocate_address(hostname, constants.NETWORK_TYPE_ADMIN)
         self._remove_leases_by_mac_address(host.mgmt_mac)
         self._generate_dnsmasq_hosts_file(deleted_host=host)
 
