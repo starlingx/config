@@ -134,7 +134,7 @@ class KubernetesPuppet(base.BasePuppet):
         try:
             system = self._get_system()
             if system.system_mode != constants.SYSTEM_MODE_SIMPLEX:
-                desired_endpoints = etcd.get_cluster_endpoints(
+                desired_endpoints = etcd.get_cluster_endpoints_from_db(
                     self.dbapi, self.ETCD_SERVICE_PORT)
         except Exception:
             LOG.warning("Unable to generate etcd cluster endpoints")

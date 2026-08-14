@@ -125,6 +125,20 @@ class TestHealth(dbbase.BaseHostTestCase):
     def setUp(self):
         super(TestHealth, self).setUp()
 
+        # get_system_health() now checks the etcd cluster, and this test class
+        # runs as duplex, so without this the check would shell out to etcdctl
+        # and close the gate on every case here. The dedicated coverage for the
+        # gate itself is in TestEtcdClusterHealthCheck.
+        p = mock.patch('sysinv.common.etcd.get_cluster_health',
+                       return_value=(3, 3, []))
+        # The kube-path opt-out is covered by the API tests in
+        # tests.api.test_kube_upgrade and tests.api.test_kube_rootca_update:
+        # those run as duplex and do not stub etcd, so if check_etcd stopped
+        # being False on that path they would fail on an unreachable cluster,
+        # which is how the scope error was caught in the first place.
+        self.mock_etcd_cluster_health = p.start()
+        self.addCleanup(p.stop)
+
         # Mock the KubeOperator
         self.kube_get_nodes_result = None
 
@@ -455,3 +469,119 @@ class TestHealth(dbbase.BaseHostTestCase):
 
         result = self.health._check_trident_compatibility()
         assert result is False
+
+
+class TestEtcdClusterHealthCheck(dbbase.BaseHostTestCase):
+    """Tests for the etcd cluster health gate on platform upgrade.
+
+    The gate closes on anything short of every configured member voting
+    and answering, because the rolling phase reboots controllers one at a
+    time and a cluster that is already short of a member has no headroom
+    for that.
+    """
+
+    def setUp(self):
+        super(TestEtcdClusterHealthCheck, self).setUp()
+        self.health = health.Health(self.dbapi)
+
+    def _mock_system_mode(self, system_mode):
+        system = mock.MagicMock()
+        system.system_mode = system_mode
+        p = mock.patch.object(self.health._dbapi, 'isystem_get_one',
+                              return_value=system)
+        p.start()
+        self.addCleanup(p.stop)
+
+    @mock.patch('sysinv.common.etcd.get_cluster_health')
+    def test_all_members_healthy(self, mock_health):
+        self._mock_system_mode(constants.SYSTEM_MODE_DUPLEX)
+        mock_health.return_value = (3, 3, [])
+
+        success, unhealthy = self.health._check_etcd_cluster_health()
+
+        self.assertTrue(success)
+        self.assertEqual([], unhealthy)
+
+    @mock.patch('sysinv.common.etcd.get_cluster_health')
+    def test_unreachable_member_fails_the_gate(self, mock_health):
+        self._mock_system_mode(constants.SYSTEM_MODE_DUPLEX)
+        mock_health.return_value = (2, 3, ['fixed-1'])
+
+        success, unhealthy = self.health._check_etcd_cluster_health()
+
+        self.assertFalse(success)
+        self.assertEqual(['fixed-1'], unhealthy)
+
+    @mock.patch('sysinv.common.etcd.get_cluster_health')
+    def test_learner_fails_the_gate(self, mock_health):
+        # A learner replicates but does not vote, so it adds no quorum
+        # headroom and must not let the upgrade start.
+        self._mock_system_mode(constants.SYSTEM_MODE_DUPLEX)
+        mock_health.return_value = (2, 3, ['controller (learner)'])
+
+        success, unhealthy = self.health._check_etcd_cluster_health()
+
+        self.assertFalse(success)
+        self.assertIn('controller (learner)', unhealthy)
+
+    @mock.patch('sysinv.common.etcd.get_cluster_health')
+    def test_unregistered_member_fails_the_gate(self, mock_health):
+        self._mock_system_mode(constants.SYSTEM_MODE_DUPLEX)
+        mock_health.return_value = (2, 3, ['1 member(s) not registered'])
+
+        success, unhealthy = self.health._check_etcd_cluster_health()
+
+        self.assertFalse(success)
+
+    @mock.patch('sysinv.common.etcd.get_cluster_health')
+    def test_query_failure_closes_the_gate(self, mock_health):
+        # An unreachable cluster cannot be shown to be healthy, so the
+        # absence of an answer must not read as a pass.
+        self._mock_system_mode(constants.SYSTEM_MODE_DUPLEX)
+        mock_health.side_effect = Exception('connection refused')
+
+        success, unhealthy = self.health._check_etcd_cluster_health()
+
+        self.assertFalse(success)
+        self.assertEqual(1, len(unhealthy))
+
+    @mock.patch('sysinv.common.etcd.get_cluster_health')
+    def test_simplex_counts_a_single_member(self, mock_health):
+        # The caller skips this check on simplex; the accounting still has
+        # to be right for the single-member case.
+        self._mock_system_mode(constants.SYSTEM_MODE_SIMPLEX)
+        mock_health.return_value = (1, 1, [])
+
+        success, unhealthy = self.health._check_etcd_cluster_health()
+
+        self.assertTrue(success)
+
+    @mock.patch('sysinv.common.etcd.get_cluster_health')
+    def test_degraded_etcd_cluster_closes_the_generic_health_gate(
+            self, mock_health):
+        """A degraded cluster must fail the base health query, not only the
+        upgrade one.
+
+        This is what stops a duplex upgrade completing on a single-member
+        cluster: the audit defers, 850.003 is raised, and before this the
+        deploy carried on regardless because nothing consulted either.
+        """
+        self._mock_system_mode(constants.SYSTEM_MODE_DUPLEX)
+        mock_health.return_value = (1, 3, ['<unnamed> (learner)',
+                                           '1 member(s) not registered'])
+
+        success, unhealthy = self.health._check_etcd_cluster_health()
+
+        self.assertFalse(success)
+        self.assertIn('<unnamed> (learner)', unhealthy)
+
+    @mock.patch('sysinv.common.etcd.get_cluster_health')
+    def test_simplex_skips_the_generic_gate(self, mock_health):
+        # A single member has no quorum to protect.
+        self._mock_system_mode(constants.SYSTEM_MODE_SIMPLEX)
+        mock_health.return_value = (1, 1, [])
+
+        success, unhealthy = self.health._check_etcd_cluster_health()
+
+        self.assertTrue(success)
+        self.assertEqual([], unhealthy)

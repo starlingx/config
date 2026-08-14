@@ -224,6 +224,7 @@ audit_intervals_opts = [
        cfg.IntOpt('kube_upgrade_states', default=1800),
        cfg.IntOpt('prune_runtime_config', default=43200),
        cfg.IntOpt('k8s_cluster_health', default=180),
+       cfg.IntOpt('etcd_cluster_health', default=60),
        cfg.IntOpt('alarm_audit_interval', default=1800),
                   ]
 
@@ -9386,6 +9387,91 @@ class ConductorManager(service.PeriodicService):
 
         # No need to detect again until conductor restart
         self._do_detect_swact = False
+
+    @periodic_task.periodic_task(
+        spacing=CONF.conductor_periodic_task_intervals.etcd_cluster_health)
+    def _audit_etcd_cluster_health(self, context):
+        """Audit the etcd cluster and alarm when it is degraded.
+
+        Raises a management-affecting alarm when the cluster is short of the
+        member count the system is configured for, so that the VIM upgrade
+        strategy pauses rolling operations until quorum is restored. The
+        alarm clears once every configured member is a healthy voter again.
+
+        Health is measured against the configured topology rather than the
+        registered membership. The distinction matters only while a
+        procedure is deliberately growing or shrinking the cluster: keyed to
+        the registered count the alarm would assert continuously through
+        those steps and gate the very operations it exists to protect.
+
+        On simplex there is a single member, so a degraded cluster means
+        etcd is down entirely, which other health checks already cover.
+        The audit is skipped there.
+        """
+        if not cutils.is_initial_config_complete():
+            LOG.debug("_audit_etcd_cluster_health skip")
+            return
+
+        # Skip the audit when a K8S upgrade is in progress.
+        try:
+            self.verify_k8s_upgrade_not_in_progress()
+        except Exception:
+            LOG.info("k8s Upgrade in progress - _audit_etcd_cluster_health skip "
+                     "activity")
+            return
+
+        if self._verify_restore_in_progress():
+            LOG.info("Restore in progress - _audit_etcd_cluster_health skip "
+                     "activity")
+            return
+
+        if cutils.is_aio_simplex_system(self.dbapi):
+            return
+
+        from sysinv.common import etcd as etcd_utils
+
+        entity_instance_id = "%s=%s" % (
+            fm_constants.FM_ENTITY_TYPE_K8S, 'etcd-cluster-health')
+
+        try:
+            system = self.dbapi.isystem_get_one()
+            healthy, total, unhealthy = etcd_utils.get_cluster_health(
+                system_mode=system.system_mode)
+        except Exception as e:
+            LOG.warning("etcd cluster health audit failed: %s", e)
+            return
+
+        if total == 0:
+            # Cluster is not formed yet, or etcdctl is unavailable.
+            return
+
+        if healthy == total:
+            self.fm_api.clear_fault(
+                fm_constants.FM_ALARM_ID_ETCD_CLUSTER_DEGRADED,
+                entity_instance_id)
+            return
+
+        reason = ("etcd cluster degraded: %d/%d healthy voting members "
+                  "(degraded: %s)" % (healthy, total, ', '.join(unhealthy)))
+        LOG.warning(reason)
+
+        fault = fm_api.Fault(
+            alarm_id=fm_constants.FM_ALARM_ID_ETCD_CLUSTER_DEGRADED,
+            alarm_state=fm_constants.FM_ALARM_STATE_SET,
+            entity_type_id=fm_constants.FM_ENTITY_TYPE_K8S,
+            entity_instance_id=entity_instance_id,
+            severity=fm_constants.FM_ALARM_SEVERITY_MAJOR,
+            reason_text=reason,
+            alarm_type=fm_constants.FM_ALARM_TYPE_1,
+            probable_cause=fm_constants.ALARM_PROBABLE_CAUSE_63,
+            proposed_repair_action=(
+                "Check the etcd service on each controller. If a controller "
+                "is locked or rebooting, wait for it to return to service. "
+                "A member reported as a learner replicates but does not vote "
+                "and must be promoted before it counts towards quorum."),
+            service_affecting=True)
+
+        self.fm_api.set_fault(fault)
 
     def _populate_app_bundle_metadata(self, tarballs_path=constants.HELM_APP_ISO_INSTALL_PATH):
         """Read metadata of all application bundles and store in the database"""

@@ -205,6 +205,32 @@ class Health(object):
         success = not fail_node_list
         return success, fail_node_list
 
+    def _check_etcd_cluster_health(self):
+        """Checks that every etcd cluster member is reachable and healthy.
+
+        A member counts as healthy only when it votes and answers a health
+        check on its own advertised client endpoint. Members that are
+        registered but not answering, learners that do not yet vote, and
+        members the system is configured for but that were never
+        registered are all reported as not healthy, because each of them
+        means the cluster has less quorum headroom than its size suggests.
+
+        :returns: (success, list of member names that are not healthy)
+        """
+        from sysinv.common import etcd as etcd_utils
+
+        system_mode = self._dbapi.isystem_get_one().system_mode
+        try:
+            healthy, total, unhealthy = etcd_utils.get_cluster_health(
+                system_mode=system_mode)
+        except Exception as e:
+            # An unreachable cluster cannot be shown to be healthy, so the
+            # gate closes rather than passing on the absence of an answer.
+            LOG.warning("etcd cluster health check failed: %s" % e)
+            return False, [_('unable to query the etcd cluster: %s') % e]
+
+        return healthy == total, unhealthy
+
     def _check_kube_control_plane_pods(self):
         """Checks that each kubernetes control plane pod is ready"""
         fail_pod_list = []
@@ -522,7 +548,8 @@ class Health(object):
 
         return not bool(err_msg), err_msg
 
-    def get_system_health(self, context, force=False, alarm_ignore_list=None):
+    def get_system_health(self, context, force=False, alarm_ignore_list=None,
+                          check_etcd=True):
         """Returns the general health of the system
 
         Checks the following:
@@ -541,6 +568,14 @@ class Health(object):
         :param force: set to true to ignore minor and warning alarms
         :param alarm_ignore_list: list of alarm ids to ignore when performing
                                   a health check
+        :param check_etcd: include the etcd cluster in the result. The
+                           Kubernetes version upgrade path passes False:
+                           it does not change etcd membership, and the
+                           root CA update reached through it must not be
+                           gated on etcd health at all, because an etcd
+                           certificate that no longer matches the cluster
+                           is one of the reasons the cluster would be
+                           unhealthy and rotating it is the way out.
         """
         hosts = utils.get_upgradable_hosts(self._dbapi)
         output = _('System Health:\n')
@@ -636,6 +671,31 @@ class Health(object):
                 % ', '.join(error_nodes)
 
         health_ok = health_ok and success
+
+        # The etcd cluster is checked here, in the base health query, rather
+        # than only on the upgrade path. get_system_health_upgrade() and
+        # get_system_health_kube_upgrade() both call this method, so the
+        # upgrade gate is unchanged while the generic query now surfaces a
+        # degraded cluster too.
+        #
+        # A duplex upgrade could otherwise reach deploy-activate-done with a
+        # single-member cluster: the membership audit defers on every pass and
+        # alarm 850.003 is raised and correctly describes the state, but
+        # nothing consults it, so the deploy continues to complete and ships a
+        # one-member etcd in place of the three-member cluster.
+        #
+        # A simplex system runs a single member and has no quorum to protect,
+        # so the check does not apply there.
+        system_mode = self._dbapi.isystem_get_one().system_mode
+        if check_etcd and system_mode != constants.SYSTEM_MODE_SIMPLEX:
+            success, unhealthy_members = self._check_etcd_cluster_health()
+            output += _('All etcd cluster members are healthy: [%s]\n') \
+                % (Health.SUCCESS_MSG if success else Health.FAIL_MSG)
+            if not success:
+                output += _('etcd members not healthy: %s\n') \
+                    % ', '.join(unhealthy_members)
+
+            health_ok = health_ok and success
 
         return health_ok, output
 
@@ -805,7 +865,11 @@ class Health(object):
         health_ok, output = self.get_system_health(
             context,
             force=force,
-            alarm_ignore_list=alarm_ignore_list)
+            alarm_ignore_list=alarm_ignore_list,
+            # This procedure does not change etcd membership, and the
+            # root CA update reached through this path must not be gated
+            # on etcd health. See get_system_health().
+            check_etcd=False)
 
         success, apps_not_valid = self._check_kube_applications()
 
