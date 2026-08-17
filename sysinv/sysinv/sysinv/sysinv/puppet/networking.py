@@ -531,8 +531,10 @@ class NetworkingPuppet(base.BasePuppet):
                 })
                 instance['device_parameters'].update(default_device_parameters)
             elif instance['service'] == constants.PTP_INSTANCE_TYPE_TS2PHC:
+                uds_address_path = '/var/run/' + instance['service'] + '-' + instance['name']
                 instance['global_parameters'].update({
-                    'message_tag': instance['name']
+                    'message_tag': instance['name'],
+                    'uds_address': uds_address_path,
                 })
 
             for global_param in ptp_parameters_instance:
