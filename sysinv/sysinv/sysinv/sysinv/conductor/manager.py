@@ -19045,7 +19045,7 @@ class ConductorManager(service.PeriodicService):
             self.dbapi,
             self.perform_automatic_operation_in_parallel
         )
-        self._apps_update_operation.rollback_apps(context)
+        self._apps_update_operation.update_apps(context, is_rollback=True)
 
     def run_local_registry_secrets_audit(self, context):
         LOG.info("Running registry secrets audit manually.")
