@@ -353,3 +353,18 @@ class AgentAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                          self.make_msg('pin_kubernetes_control_plane_images',
                                        host_uuid=host_uuid,
                                        version=version))
+
+    def remove_legacy_multus_config(self, context, host_uuid):
+        """Synchronously, remove legacy thin-mode multus CNI config.
+
+        Removes /etc/cni/net.d/05-multus.conf if it exists on the host.
+        Used during kube-upgrade-networking to clean up stale thin-mode
+        config from all cluster nodes before thick-mode DaemonSet rollout.
+
+        :param context: request context
+        :param host_uuid: the host uuid
+        :returns: True if file was removed or didn't exist, False on error
+        """
+        return self.call(context,
+                         self.make_msg('remove_legacy_multus_config',
+                                       host_uuid=host_uuid))

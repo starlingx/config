@@ -2957,3 +2957,31 @@ class AgentManager(service.PeriodicService):
         except Exception as ex:
             LOG.error("Failed to report kubelet version update status to sysinv-conductor. "
                       "Error: %s" % (ex))
+
+    def remove_legacy_multus_config(self, context, host_uuid):
+        """Remove legacy thin-mode multus CNI config file.
+
+        Removes /etc/cni/net.d/05-multus.conf if it exists. This is
+        needed during the multus thin-to-thick mode transition in
+        kube-upgrade-networking to prevent the thick daemon from
+        picking up the stale config.
+
+        :param context: request context
+        :param host_uuid: the host uuid
+        :returns: True if file was removed or didn't exist, False on error
+        """
+        if self._ihost_uuid and self._ihost_uuid == host_uuid:
+            legacy_multus_conf = "/etc/cni/net.d/05-multus.conf"
+            try:
+                if os.path.exists(legacy_multus_conf):
+                    os.remove(legacy_multus_conf)
+                    LOG.info("Removed legacy thin-mode multus CNI config: %s"
+                             % legacy_multus_conf)
+                else:
+                    LOG.info("Legacy thin-mode multus CNI config not present: %s"
+                             % legacy_multus_conf)
+                return True
+            except Exception as e:
+                LOG.error("Failed to remove legacy multus CNI config %s: %s"
+                          % (legacy_multus_conf, str(e)))
+                return False

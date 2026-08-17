@@ -20546,36 +20546,54 @@ class ConductorManager(service.PeriodicService):
                     "Timed out waiting for tigera-operator: %s" % str(e))
 
         # Apply calico custom resources + felix + multus + sriov
-        # During the transition from thin to thick multus plugin mode, remove
-        # the old thin-mode CNI config file BEFORE applying the new DaemonSet.
-        # The thick daemon's auto-config reads /etc/cni/net.d/ to find the
-        # cluster network; if 05-multus.conf is still present, the daemon
-        # references it in its generated shim config (00-multus.conf), causing
-        # kubelet to spawn thousands of stuck multus-shim processes.
+        # During the transition from thin to thick multus plugin
+        # mode, remove the old thin-mode CNI config file from ALL cluster nodes
+        # BEFORE applying the new DaemonSet.
         legacy_multus_conf = "/etc/cni/net.d/05-multus.conf"
+
+        # Remove from local host (active controller)
         if os.path.exists(legacy_multus_conf):
-            LOG.info("Removing legacy thin-mode multus CNI config: %s"
-                     % legacy_multus_conf)
+            LOG.info("Removing legacy thin-mode multus CNI config from "
+                     "active controller: %s" % legacy_multus_conf)
             os.remove(legacy_multus_conf)
-            # Also remove the legacy ConfigMaps
-            try:
-                cmd = ["kubectl",
-                       f"--kubeconfig={kubernetes.KUBERNETES_ADMIN_CONF}",
-                       "delete", "configmap", "multus-cni-config.v1",
-                       "--namespace=kube-system", "--ignore-not-found=true"]
-                cutils.execute(*cmd, check_exit_code=0)
-            except Exception as e:
-                LOG.warning("Failed to delete legacy multus-cni-config.v1 "
-                            "ConfigMap: %s" % str(e))
-            try:
-                cmd = ["kubectl",
-                       f"--kubeconfig={kubernetes.KUBERNETES_ADMIN_CONF}",
-                       "delete", "configmap", "multus-watcher-script",
-                       "--namespace=kube-system", "--ignore-not-found=true"]
-                cutils.execute(*cmd, check_exit_code=0)
-            except Exception as e:
-                LOG.warning("Failed to delete legacy multus-watcher-script "
-                            "ConfigMap: %s" % str(e))
+
+        # Remove from all other cluster hosts via agent RPC
+        if system.system_mode != constants.SYSTEM_MODE_SIMPLEX:
+            all_hosts = (
+                self.dbapi.ihost_get_by_personality(constants.CONTROLLER) +
+                self.dbapi.ihost_get_by_personality(constants.WORKER))
+            agent_api = agent_rpcapi.AgentAPI()
+            for host in all_hosts:
+                if host.uuid == self.host_uuid:
+                    continue
+                try:
+                    agent_api.remove_legacy_multus_config(
+                        context, host.uuid)
+                    LOG.info("Removed legacy thin-mode multus CNI config "
+                             "from %s" % host.hostname)
+                except Exception as e:
+                    LOG.warning("Failed to remove legacy multus CNI config "
+                                "from %s: %s" % (host.hostname, str(e)))
+
+        # Remove the legacy ConfigMaps (cluster-wide objects)
+        try:
+            cmd = ["kubectl",
+                   f"--kubeconfig={kubernetes.KUBERNETES_ADMIN_CONF}",
+                   "delete", "configmap", "multus-cni-config.v1",
+                   "--namespace=kube-system", "--ignore-not-found=true"]
+            cutils.execute(*cmd, check_exit_code=0)
+        except Exception as e:
+            LOG.warning("Failed to delete legacy multus-cni-config.v1 "
+                        "ConfigMap: %s" % str(e))
+        try:
+            cmd = ["kubectl",
+                   f"--kubeconfig={kubernetes.KUBERNETES_ADMIN_CONF}",
+                   "delete", "configmap", "multus-watcher-script",
+                   "--namespace=kube-system", "--ignore-not-found=true"]
+            cutils.execute(*cmd, check_exit_code=0)
+        except Exception as e:
+            LOG.warning("Failed to delete legacy multus-watcher-script "
+                        "ConfigMap: %s" % str(e))
 
         dispatch_list_phase2 = [*calico_cr_entries,
                                 [f"{version_subpath}/multus-cni.yaml.j2", 'update_multus.yaml', True,
@@ -20601,12 +20619,27 @@ class ConductorManager(service.PeriodicService):
                                                 % (re.split('update_|\.', data[1])[1]))
 
         # Post-apply check: if 05-multus.conf was recreated during the
-        # DaemonSet rolling update, remove it and restart the multus pod
-        # so the daemon regenerates a clean 00-multus.conf.
+        # DaemonSet rolling update, remove it from all nodes and restart
+        # the multus pods so the daemon regenerates a clean 00-multus.conf.
         if os.path.exists(legacy_multus_conf):
-            LOG.warning("Legacy multus CNI config was recreated during rollout. "
-                        "Removing and restarting multus daemon.")
+            LOG.warning("Legacy multus CNI config was recreated during "
+                        "rollout. Removing from all nodes and restarting "
+                        "multus daemon.")
             os.remove(legacy_multus_conf)
+
+            # Also clean remote nodes
+            if system.system_mode != constants.SYSTEM_MODE_SIMPLEX:
+                for host in all_hosts:
+                    if host.uuid == self.host_uuid:
+                        continue
+                    try:
+                        agent_api.remove_legacy_multus_config(
+                            context, host.uuid)
+                    except Exception as e:
+                        LOG.warning("Post-rollout: failed to clean legacy "
+                                    "multus config from %s: %s"
+                                    % (host.hostname, str(e)))
+
             try:
                 cmd = ["kubectl",
                        f"--kubeconfig={kubernetes.KUBERNETES_ADMIN_CONF}",
