@@ -6959,7 +6959,7 @@ class ConductorManager(service.PeriodicService):
         Currently requesting updates for:
         - ipv:  if state is not 'provisioned'
         - ilvg: if state is not 'provisioned'
-        - imemory: if node memory is not 'provisioned'
+        - imemory: if node memory is missing
         """
         LOG.debug("Calling _agent_update_request")
         update_hosts = {}
@@ -6970,16 +6970,9 @@ class ConductorManager(service.PeriodicService):
             update_hosts[host_id].add(val)
 
         # Check Memory.
-        hosts = self.dbapi.ihost_get_list()
-        for host in hosts:
-            if host.availability == constants.AVAILABILITY_OFFLINE:
-                continue
-            nodes = self.dbapi.inode_active_get_by_ihost(host.uuid)
-            for node in nodes:
-                imems = self.dbapi.imemory_get_by_inode(node.id)
-                if not imems:
-                    update_hosts_dict(host.id, constants.MEMORY_AUDIT_REQUEST)
-                    break
+        nodes = self.dbapi.inode_active_get_by_missing_imemory()
+        for node in nodes:
+            update_hosts_dict(node.forihostid, constants.MEMORY_AUDIT_REQUEST)
 
         # Check if the LVM backend is in flux. If so, skip the audit as we know
         # VG/PV states are going to be transitory. Otherwise, maintain the
@@ -7006,6 +6999,7 @@ class ConductorManager(service.PeriodicService):
                     update_hosts_dict(host_id, constants.PV_AUDIT_REQUEST)
 
             # Make sure we get at least one good report for PVs & LVGs
+            hosts = self.dbapi.ihost_get_list()
             for host in hosts:
                 if host.availability != constants.AVAILABILITY_OFFLINE:
                     idisks = self.dbapi.idisk_get_by_ihost(host.uuid)
