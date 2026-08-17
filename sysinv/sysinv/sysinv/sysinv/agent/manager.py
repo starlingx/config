@@ -363,7 +363,7 @@ class AgentManager(service.PeriodicService):
 
         for info in interface_list:
             # vbox case, just use 0
-            if info['numa_node'] == -1:
+            if info['numa_node'] == constants.NUMA_NODE_NONE:
                 info['numa_node'] = 0
 
             key = str(info['numa_node'])

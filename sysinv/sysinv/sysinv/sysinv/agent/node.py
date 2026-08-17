@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2016 Wind River Systems, Inc.
+# Copyright (c) 2013-2016,2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -11,14 +11,20 @@
 
 """ inventory numa node Utilities and helper functions."""
 
+from functools import lru_cache
 import os
 from os import listdir
 from os.path import isfile
 from os.path import join
 import re
+from typing import Dict
+from typing import List
+from typing import Optional
+from typing import TypedDict
 
 from oslo_log import log as logging
 import tsconfig.tsconfig as tsc
+from sysinv.common import utils as cutils
 
 LOG = logging.getLogger(__name__)
 
@@ -47,229 +53,163 @@ COMPUTE_MIN_MB = 1600
 # units
 COMPUTE_MIN_NON_0_MB = 500
 
+SYSFS_NODE_PATH = '/sys/devices/system/node'
+SYSFS_CPU_PATH = '/sys/devices/system/cpu'
 
-class CPU(object):
-    '''Class to encapsulate CPU data for System Inventory'''
 
-    def __init__(self, cpu, numa_node, core, thread,
-                 cpu_family=None, cpu_model=None, revision=None):
-        '''Construct a Icpu object with the given values.'''
+@lru_cache(maxsize=None)
+def _read_numa_nodes() -> List[int]:
+    """Discover all NUMA nodes from sysfs.
 
-        self.cpu = cpu
-        self.numa_node = numa_node
-        self.core = core
-        self.thread = thread
-        self.cpu_family = cpu_family
-        self.cpu_model = cpu_model
-        self.revision = revision
-        # self.allocated_functions = mgmt (usu. 0), vswitch
+    Result is cached at module level so it persists across NodeOperator
+    instances. Call _read_numa_nodes.cache_clear() to force a re-read.
+    Raises OSError/ValueError on failure so the caller can clear the cache
+    and return a fallback without caching the error state.
+    """
+    node_list: List[int] = []
+    try:
+        for entry in listdir(SYSFS_NODE_PATH):
+            match = re.match(r'^node(\d+)$', entry)
+            if match and os.path.isdir(join(SYSFS_NODE_PATH, entry)):
+                node_list.append(int(match.group(1)))
+        node_list.sort()
+    except (IOError, OSError) as err:
+        LOG.warning("Unable to read NUMA node info from sysfs: %s" % err)
+        raise
 
-    def __eq__(self, rhs):
-        return (self.cpu == rhs.cpu and
-                self.numa_node == rhs.numa_node and
-                self.core == rhs.core and
-                self.thread == rhs.thread)
+    if not node_list:
+        LOG.warning("No NUMA nodes found in %s, falling back to node 0"
+                    % SYSFS_NODE_PATH)
+        raise ValueError("no NUMA node dirs found")
+    return node_list
 
-    def __hash__(self):
-        return hash((self.cpu, self.numa_node, self.core, self.thread,
-                     self.cpu_family, self.cpu_model, self.revision))
 
-    def __ne__(self, rhs):
-        return (self.cpu != rhs.cpu or
-                self.numa_node != rhs.numa_node or
-                self.core != rhs.core or
-                self.thread != rhs.thread)
+@lru_cache(maxsize=None)
+def _read_cpu_model_attrs() -> Dict[str, str]:
+    """Read cpu_family and cpu_model from /proc/cpuinfo.
 
-    def __str__(self):
-        return "%s [%s] [%s] [%s]" % (self.cpu, self.numa_node,
-                                      self.core, self.thread)
+    Result is cached at module level so it persists across NodeOperator
+    instances. Call _read_cpu_model_attrs.cache_clear() to force a re-read.
+    Raises on failure so the caller can clear the cache and return {}.
+    """
+    attrs: Dict[str, str] = {}
+    cpu_family, cpu_model = None, None
+    try:
+        with open('/proc/cpuinfo', 'r') as f:
+            for line in f:
+                if line.startswith('cpu family'):
+                    cpu_family = line.split(':', 1)[1].strip()
+                elif line.startswith('model name'):
+                    cpu_model = line.split(':', 1)[1].strip()
+                if cpu_family and cpu_model:
+                    break
+    except Exception as err:
+        LOG.warning("Unable to get CPU model info via /proc/cpuinfo: %s" % err)
+        raise
 
-    def __repr__(self):
-        return "<CPU '%s'>" % str(self)
+    if cpu_family:
+        attrs['cpu_family'] = cpu_family
+    if cpu_model:
+        attrs['cpu_model'] = cpu_model
+    return attrs
+
+
+class CpuTopology(TypedDict):
+    core_id: int
+    thread_siblings: List[int]
 
 
 class NodeOperator(object):
     '''Class to encapsulate CPU operations for System Inventory'''
 
     def __init__(self):
+        pass
 
-        self.num_cpus = 0
-        self.num_nodes = 0
-        self.float_cpuset = 0
-        self.total_memory_mb = 0
-        self.free_memory_mb = 0
-        self.total_memory_nodes_mb = []
-        self.free_memory_nodes_mb = []
-        self.topology = {}
+    @property
+    def _numa_nodes(self) -> List[int]:
+        """Return NUMA nodes, falling back to [0] and clearing cache on error."""
+        list_of_numa_nodes = [0]
+        try:
+            list_of_numa_nodes = _read_numa_nodes()
+        except Exception:
+            _read_numa_nodes.cache_clear()
+        return list_of_numa_nodes
 
-        # self._get_cpu_topology()
-        # self._get_total_memory_mb()
-        # self._get_total_memory_nodes_mb()
-        # self._get_free_memory_mb()
-        # self._get_free_memory_nodes_mb()
+    @property
+    def _cpu_model_attrs(self) -> Dict[str, str]:
+        """Return CPU model attrs, falling back to {} and clearing cache on error."""
+        attrs = {}
+        try:
+            attrs = _read_cpu_model_attrs()
+        except Exception:
+            _read_cpu_model_attrs.cache_clear()
+        return attrs
 
-    def convert_range_string_to_list(self, s):
-        olist = []
-        s = s.strip()
-        if s:
-            for part in s.split(','):
-                if '-' in part:
-                    a, b = part.split('-')
-                    a, b = int(a), int(b)
-                    olist.extend(range(a, b + 1))
-                else:
-                    a = int(part)
-                    olist.append(a)
-        olist.sort()
-        return olist
+    def _get_cpu_topology(self, cpu_id: int) -> Optional[CpuTopology]:
+        """Read topology attributes for a logical CPU from sysfs."""
+        cpu_dir = join(SYSFS_CPU_PATH, f"cpu{cpu_id}", "topology")
+        if not os.path.isdir(cpu_dir):
+            return None
+        core_id = cutils.read_first_line_from_file(join(cpu_dir, 'core_id'))
+        thread_siblings = cutils.read_first_line_from_file(join(cpu_dir, 'thread_siblings_list'))
+        if core_id:
+            return {
+                'core_id': int(core_id),
+                'thread_siblings': sorted(cutils.parse_range_set(thread_siblings or '')),
+            }
+        return None
+
+    def _get_list_of_cpu_ids(self, node_id: int) -> List[int]:
+        """Get the list of logical CPU IDs belonging to a NUMA node."""
+        cpulist_path = join(SYSFS_NODE_PATH, 'node%d' % node_id, 'cpulist')
+        range_string = cutils.read_first_line_from_file(cpulist_path)
+        if range_string:
+            return sorted(cutils.parse_range_set(range_string))
+        LOG.warning(f"No cpus found for numa node {node_id}")
+        return []
+
+    def _compute_thread_id(self, cpu_id: int, thread_siblings: List[int]) -> int:
+        """Determine the thread index for a CPU within its core."""
+        if not thread_siblings:
+            return 0
+        try:
+            thread_id = thread_siblings.index(cpu_id)
+        except ValueError:
+            LOG.warning(f"cpu{cpu_id} not in thread_siblings {thread_siblings}")
+            return 0
+        if thread_id > 1:
+            LOG.warning(f"cpu{cpu_id} thread_id={thread_id}, siblings={thread_siblings}; expected 0 or 1")
+        return thread_id
 
     def inodes_get_inumas_icpus(self):
-        '''Enumerate logical cpu topology based on parsing /proc/cpuinfo
-           as function of socket_id, core_id, and thread_id. This updates
+        '''Enumerate logical cpu topology based on parsing sysfs.
+           as function of numa_node_id, core_id, and thread_id. This updates
            topology.
 
         :param self
-        :updates self.num_cpus- number of logical cpus
-        :updates self.num_nodes- number of sockets;maps to number of numa nodes
-        :updates self.topology[socket_id][core_id][thread_id] = cpu
-        :returns None
+        :returns (inumas, icpus)
         '''
-        self.num_cpus = 0
-        self.num_nodes = 0
-        self.topology = {}
-
-        thread_cnt = {}
-        cpu = socket_id = core_id = thread_id = -1
-        re_processor = re.compile(r'^[Pp]rocessor\s+:\s+(\d+)')
-        re_socket = re.compile(r'^physical id\s+:\s+(\d+)')
-        re_core = re.compile(r'^core id\s+:\s+(\d+)')
-        re_cpu_family = re.compile(r'^cpu family\s+:\s+(\d+)')
-        re_cpu_model = re.compile(r'^model name\s+:\s+(\w+)')
-
         inumas = []
         icpus = []
-        sockets = []
 
-        with open('/proc/cpuinfo', 'r') as infile:
-            icpu_attrs = {}
-
-            for line in infile:
-                match = re_processor.search(line)
-                if match:
-                    cpu = int(match.group(1))
-                    socket_id = -1
-                    core_id = -1
-                    thread_id = -1
-                    self.num_cpus += 1
+        cpu_model_attrs = self._cpu_model_attrs
+        for node_id in self._numa_nodes:
+            inumas.append({'numa_node': node_id, 'capabilities': {}})
+            for cpu_id in self._get_list_of_cpu_ids(node_id):
+                cpu_topology = self._get_cpu_topology(cpu_id)
+                if cpu_topology is None:
                     continue
 
-                match = re_cpu_family.search(line)
-                if match:
-                    name_value = [s.strip() for s in line.split(':', 1)]
-                    name, value = name_value
-                    icpu_attrs.update({'cpu_family': value})
-                    continue
-
-                match = re_cpu_model.search(line)
-                if match:
-                    name_value = [s.strip() for s in line.split(':', 1)]
-                    name, value = name_value
-                    icpu_attrs.update({'cpu_model': value})
-                    continue
-
-                match = re_socket.search(line)
-                if match:
-                    socket_id = int(match.group(1))
-                    if socket_id not in sockets:
-                        sockets.append(socket_id)
-                        attrs = {
-                            'numa_node': socket_id,
-                            'capabilities': {},
-                        }
-                        inumas.append(attrs)
-                    continue
-
-                match = re_core.search(line)
-                if match:
-                    core_id = int(match.group(1))
-
-                    if socket_id not in thread_cnt:
-                        thread_cnt[socket_id] = {}
-                    if core_id not in thread_cnt[socket_id]:
-                        thread_cnt[socket_id][core_id] = 0
-                    else:
-                        thread_cnt[socket_id][core_id] += 1
-                    thread_id = thread_cnt[socket_id][core_id]
-
-                    if socket_id not in self.topology:
-                        self.topology[socket_id] = {}
-                    if core_id not in self.topology[socket_id]:
-                        self.topology[socket_id][core_id] = {}
-
-                    self.topology[socket_id][core_id][thread_id] = cpu
-                    attrs = {
-                        'cpu': cpu,
-                        'numa_node': socket_id,
-                        'core': core_id,
-                        'thread': thread_id,
-                        'capabilities': {},
-                    }
-                    icpu_attrs.update(attrs)
-                    icpus.append(icpu_attrs)
-                    icpu_attrs = {}
-                    continue
-
-        self.num_nodes = len(list(self.topology.keys()))
-
-        # In the case topology not detected, hard-code structures
-        if self.num_nodes == 0:
-            n_sockets, n_cores, n_threads = (1, int(self.num_cpus), 1)
-            self.topology = {}
-            for socket_id in range(n_sockets):
-                self.topology[socket_id] = {}
-                if socket_id not in sockets:
-                    sockets.append(socket_id)
-                    attrs = {
-                        'numa_node': socket_id,
-                        'capabilities': {},
-                    }
-                    inumas.append(attrs)
-                for core_id in range(n_cores):
-                    self.topology[socket_id][core_id] = {}
-                    for thread_id in range(n_threads):
-                        self.topology[socket_id][core_id][thread_id] = 0
-                        attrs = {
-                            'cpu': cpu,
-                            'numa_node': socket_id,
-                            'core': core_id,
-                            'thread': thread_id,
-                            'capabilities': {},
-                        }
-                        icpus.append(attrs)
-
-            # Define Thread-Socket-Core order for logical cpu enumeration
-            cpu = 0
-            for thread_id in range(n_threads):
-                for core_id in range(n_cores):
-                    for socket_id in range(n_sockets):
-                        if socket_id not in sockets:
-                            sockets.append(socket_id)
-                            attrs = {
-                                'numa_node': socket_id,
-                                'capabilities': {},
-                            }
-                            inumas.append(attrs)
-                        self.topology[socket_id][core_id][thread_id] = cpu
-                        attrs = {
-                            'cpu': cpu,
-                            'numa_node': socket_id,
-                            'core': core_id,
-                            'thread': thread_id,
-                            'capabilities': {},
-                        }
-                        icpus.append(attrs)
-                        cpu += 1
-            self.num_nodes = len(list(self.topology.keys()))
+                thread_id = self._compute_thread_id(cpu_id, cpu_topology['thread_siblings'])
+                core_id = cpu_topology['core_id']
+                icpu_attrs = cpu_model_attrs | {
+                    'cpu': cpu_id,
+                    'numa_node': node_id,
+                    'core': core_id,
+                    'thread': thread_id,
+                    'capabilities': {},
+                }
+                icpus.append(icpu_attrs)
 
         LOG.debug("inumas= %s, icpus = %s" % (inumas, icpus))
 
@@ -333,7 +273,7 @@ class NodeOperator(object):
                 not worker_config_completed):
             return imemory
 
-        for node in range(self.num_nodes):
+        for node in self._numa_nodes:
             attr = {}
             total_hp_mb = 0  # Total memory (MB) currently configured in HPs
             free_hp_mb = 0
@@ -504,14 +444,13 @@ class NodeOperator(object):
         '''
 
         imemory = []
-        self.total_memory_mb = 0
 
         re_node_memtotal = re.compile(r'^Node\s+\d+\s+MemTotal:\s+(\d+)')
         re_node_memfree = re.compile(r'^Node\s+\d+\s+MemFree:\s+(\d+)')
         re_node_filepages = re.compile(r'^Node\s+\d+\s+FilePages:\s+(\d+)')
         re_node_sreclaim = re.compile(r'^Node\s+\d+\s+SReclaimable:\s+(\d+)')
 
-        for node in range(self.num_nodes):
+        for node in self._numa_nodes:
             attr = {}
             total_mb = 0
             free_mb = 0
@@ -544,7 +483,6 @@ class NodeOperator(object):
 
             total_mb /= 1024
             free_mb /= 1024
-            self.total_memory_nodes_mb.append(total_mb)
             attr = {
                 'numa_node': node,
                 'memtotal_mib': total_mb,

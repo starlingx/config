@@ -616,7 +616,7 @@ def _check_cpu(cpu, ihost):
         func = cpu_utils.lookup_function(cpu.allocated_function)
 
     # Check numa nodes
-    ihost.nodes = pecan.request.dbapi.inode_get_by_ihost(ihost.uuid)
+    ihost.nodes = pecan.request.dbapi.inode_active_get_by_ihost(ihost.uuid)
     num_nodes = len(ihost.nodes)
     if num_nodes < 2 and cpu.num_cores_on_processor1 is not None:
         raise wsme.exc.ClientSideError(_('There is no processor 1 on this host.'))

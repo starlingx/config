@@ -263,7 +263,7 @@ class HostStatesController(rest.RestController):
         ihost = pecan.request.dbapi.ihost_get(host_uuid)
         cpu_api._check_host(ihost)
 
-        ihost.nodes = pecan.request.dbapi.inode_get_by_ihost(ihost.uuid)
+        ihost.nodes = pecan.request.dbapi.inode_active_get_by_ihost(ihost.uuid)
         num_nodes = len(ihost.nodes)
 
         # Query the database to get the current set of CPUs
@@ -3913,7 +3913,7 @@ class HostController(rest.RestController):
         vs_mem = False
         if utils.get_vswitch_type() != constants.VSWITCH_TYPE_NONE:
             vs_mem = True
-        ihost_inodes = pecan.request.dbapi.inode_get_by_ihost(ihost['uuid'])
+        ihost_inodes = pecan.request.dbapi.inode_active_get_by_ihost(ihost['uuid'])
         for node in ihost_inodes:
             mems = pecan.request.dbapi.imemory_get_by_inode(node['id'])
             for m in mems:
@@ -3953,7 +3953,7 @@ class HostController(rest.RestController):
         Update pending fields as required without clearing other settings.
         """
 
-        ihost_inodes = pecan.request.dbapi.inode_get_by_ihost(ihost['uuid'])
+        ihost_inodes = pecan.request.dbapi.inode_active_get_by_ihost(ihost['uuid'])
 
         for node in ihost_inodes:
             mems = pecan.request.dbapi.imemory_get_by_inode(node['id'])
@@ -3977,7 +3977,7 @@ class HostController(rest.RestController):
         """
         Update the host huge pages.
         """
-        ihost_inodes = pecan.request.dbapi.inode_get_by_ihost(ihost['uuid'])
+        ihost_inodes = pecan.request.dbapi.inode_active_get_by_ihost(ihost['uuid'])
 
         for node in ihost_inodes:
             mems = pecan.request.dbapi.imemory_get_by_inode(node['id'])
@@ -5866,7 +5866,7 @@ class HostController(rest.RestController):
         self._check_memory_for_single_size(ihost)
 
         # check if the platform reserved memory is valid
-        ihost_inodes = pecan.request.dbapi.inode_get_by_ihost(ihost['uuid'])
+        ihost_inodes = pecan.request.dbapi.inode_active_get_by_ihost(ihost['uuid'])
         mib_reserved = 0
         mib_reserved_disk_io = 0
         align_2M_memory = False

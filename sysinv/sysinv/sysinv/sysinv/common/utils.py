@@ -1432,7 +1432,7 @@ def get_minimum_platform_reserved_memory(dbapi, ihost, numa_node):
     reserved = 0
 
     system = dbapi.isystem_get_one()
-    ihost_inodes = dbapi.inode_get_by_ihost(ihost['uuid'])
+    ihost_inodes = dbapi.inode_active_get_by_ihost(ihost['uuid'])
     numa_node_count = len(ihost_inodes)
 
     if is_virtual() or is_virtual_worker(ihost):
@@ -1469,7 +1469,7 @@ def get_required_platform_reserved_memory(dbapi, ihost, numa_node, low_core=Fals
     required_reserved = 0
 
     system = dbapi.isystem_get_one()
-    ihost_inodes = dbapi.inode_get_by_ihost(ihost['uuid'])
+    ihost_inodes = dbapi.inode_active_get_by_ihost(ihost['uuid'])
     numa_node_count = len(ihost_inodes)
 
     if is_virtual() or is_virtual_worker(ihost):
@@ -2484,6 +2484,25 @@ def format_range_set(items):
             s = "%s-%s" % (rng[0][1], rng[-1][1])
         ranges.append(s)
     return ','.join(ranges)
+
+
+def read_first_line_from_file(path):
+    """Read and return the first line of a file, stripped of whitespace.
+
+    Returns None if the file cannot be opened or read.
+    """
+    try:
+        with open(path, 'r') as f:
+            return f.readline().strip()
+    except (IOError, OSError):
+        return None
+
+
+def normalise_numa_node(numa_node):
+    """Normalise NUMA_NODE_NONE (-1) or None to node 0."""
+    if numa_node is None or numa_node == constants.NUMA_NODE_NONE:
+        return 0
+    return numa_node
 
 
 def get_numa_index_list(obj):
