@@ -29,6 +29,9 @@ OCI_REPO_CRD = "ocirepositories.source.toolkit.fluxcd.io"
 BASE_CHART_DIR = "/usr/local/share/flux2-charts/"
 PREVIOUS_VERSION_CHART_DIR = os.path.join("/ostree/2", BASE_CHART_DIR.lstrip('/'))
 
+# Cap helm upgrade timeout under the RPC timeout of 5 minutes
+HELM_UPGRADE_TIMEOUT = "4m30s"
+
 # Log and config
 LOG = logging.getLogger(__name__)
 
@@ -350,6 +353,77 @@ class FluxDeploymentManager(object):
 
         return True
 
+    def _recover_pending_helm_release(self):
+        """Check if the Flux Helm release is stuck in a pending-* state
+        and recover by rolling back to the last deployed revision.
+
+        This handles the scenario where a previous helm upgrade was
+        interrupted (e.g., by a swact), leaving the release in a
+        pending-upgrade/pending-install/pending-rollback state that
+        blocks all subsequent helm upgrade attempts.
+
+        Returns:
+            bool: True if no recovery was needed or recovery succeeded.
+                  False if recovery was attempted but failed.
+        """
+        try:
+            history = helm_utils.get_history(
+                self.conf_dict['flux_helm_release_name'],
+                self.conf_dict['fluxcd_namespace'],
+                KUBECONFIG)
+        except Exception as e:
+            LOG.error(f"Failed to retrieve Helm release history: {e}")
+            return False
+
+        if not history:
+            # No release exists yet — nothing to recover
+            return True
+
+        latest = history[-1]
+        status = latest.get("status", "")
+
+        if status not in ("pending-install", "pending-upgrade", "pending-rollback"):
+            return True
+
+        LOG.warning(f"Flux Helm release is stuck in '{status}' state "
+                    f"(revision {latest.get('revision')}). Attempting recovery.")
+
+        # Find the last deployed revision to roll back to
+        target_revision = None
+        for record in reversed(history[:-1]):
+            if record.get("status") == "deployed":
+                target_revision = record["revision"]
+                break
+
+        if target_revision is None:
+            LOG.error("No previous 'deployed' revision found for rollback recovery.")
+            return False
+
+        LOG.info(f"Rolling back Flux release to revision {target_revision} "
+                 f"to clear '{status}' state")
+        try:
+            subprocess.run(
+                ["helm", "rollback",
+                 self.conf_dict['flux_helm_release_name'],
+                 str(target_revision),
+                 "-n", self.conf_dict['fluxcd_namespace'],
+                 "--kubeconfig", KUBECONFIG,
+                 "--wait", "--wait-for-jobs",
+                 "--timeout", HELM_UPGRADE_TIMEOUT],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            LOG.info("Successfully recovered Flux release from "
+                     f"'{status}' state via rollback to revision {target_revision}")
+            return True
+        except subprocess.CalledProcessError as e:
+            LOG.error(f"Failed to rollback stuck Flux release: {e.stderr}")
+            return False
+        except Exception as e:
+            LOG.error(f"Error during Flux release recovery rollback: {e}")
+            return False
+
     def upgrade_controllers(self):
         """ Upgrade Flux controllers via Helm
 
@@ -362,6 +436,13 @@ class FluxDeploymentManager(object):
         chart_path = self.get_chart_path(BASE_CHART_DIR)
         if not chart_path:
             LOG.error("Unable to locate Flux chart for upgrade")
+            return False
+
+        # Recover from stuck pending-* state if a prior helm operation
+        # was interrupted (e.g., by a swact during upgrade).
+        if not self._recover_pending_helm_release():
+            LOG.error("Cannot proceed with upgrade: failed to recover "
+                      "from stuck Helm release state")
             return False
 
         self.delete_oci_repository_crd()
@@ -386,6 +467,7 @@ class FluxDeploymentManager(object):
                      "--create-namespace",
                      "--wait",
                      "--wait-for-jobs",
+                     "--timeout", HELM_UPGRADE_TIMEOUT,
                      "--values", "-",
                      self.conf_dict['flux_helm_release_name'],
                      chart_path
