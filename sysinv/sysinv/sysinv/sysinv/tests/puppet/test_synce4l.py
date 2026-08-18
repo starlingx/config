@@ -267,14 +267,15 @@ class TestSynce4lParameters(test_base.TestCase):
              'owners': ['iface-uuid-1']},
         ]
         result = self.operator._set_external_source_parameters(
-            'iface-uuid-1', iface_params, 'enp81s0f0', is_gnrd=False)
+            'iface-uuid-1', iface_params, 'enp81s0f0')
         self.assertIn('name', result)
         self.assertEqual(result['name'], 'SMA1')
         self.assertIn('params', result)
-        self.assertIn('external_enable_cmd', result['params'])
-        self.assertIn('external_disable_cmd', result['params'])
-        # Verify glob path is used (not a resolved ptp device number)
-        self.assertIn('ptp*', result['params']['external_enable_cmd'])
+        # All ice NICs use board_label via DPLL netlink
+        self.assertEqual(result['params']['board_label'], 'SMA1')
+        # Must NOT have sysfs commands
+        self.assertNotIn('external_enable_cmd', result['params'])
+        self.assertNotIn('external_disable_cmd', result['params'])
 
     def test_external_source_empty_when_no_param(self):
         """external_source empty when no external_source param on interface."""
@@ -286,15 +287,17 @@ class TestSynce4lParameters(test_base.TestCase):
             'iface-uuid-1', iface_params, 'enp81s0f0')
         self.assertEqual(result, {})
 
-    def test_external_source_empty_when_pin_not_found(self):
-        """external_source gracefully empty when E810 pin not in channel map."""
+    def test_external_source_unknown_pin_gets_board_label(self):
+        """Unknown pin name is passed through as board_label (user-specified)."""
         iface_params = [
-            {'name': 'external_source', 'value': 'UNKNOWN_PIN',
+            {'name': 'external_source', 'value': 'CUSTOM_PIN_LABEL',
              'owners': ['iface-uuid-1']},
         ]
         result = self.operator._set_external_source_parameters(
-            'iface-uuid-1', iface_params, 'enp81s0f0', is_gnrd=False)
-        self.assertEqual(result, {})
+            'iface-uuid-1', iface_params, 'enp81s0f0')
+        self.assertIn('name', result)
+        self.assertEqual(result['name'], 'CUSTOM_PIN_LABEL')
+        self.assertEqual(result['params']['board_label'], 'CUSTOM_PIN_LABEL')
 
     # ===================================================================
     # GNR-D (E825/zl3073x) external source — DPLL mode
@@ -307,7 +310,7 @@ class TestSynce4lParameters(test_base.TestCase):
              'owners': ['iface-uuid-1']},
         ]
         result = self.operator._set_external_source_parameters(
-            'iface-uuid-1', iface_params, 'enp81s0f0', is_gnrd=True)
+            'iface-uuid-1', iface_params, 'enp81s0f0')
         self.assertIn('name', result)
         self.assertEqual(result['name'], 'GNSS_1PPS_IN')
         self.assertIn('params', result)
@@ -329,7 +332,7 @@ class TestSynce4lParameters(test_base.TestCase):
              'owners': ['iface-uuid-1']},
         ]
         result = self.operator._set_external_source_parameters(
-            'iface-uuid-1', iface_params, 'enp81s0f0', is_gnrd=True)
+            'iface-uuid-1', iface_params, 'enp81s0f0')
         self.assertEqual(result['name'], 'GNSS_10M_IN')
         self.assertEqual(result['params']['board_label'], 'GNSS_10M_IN')
         self.assertNotIn('external_enable_cmd', result['params'])
@@ -341,7 +344,7 @@ class TestSynce4lParameters(test_base.TestCase):
              'owners': ['iface-uuid-1']},
         ]
         result = self.operator._set_external_source_parameters(
-            'iface-uuid-1', iface_params, 'enp81s0f0', is_gnrd=True)
+            'iface-uuid-1', iface_params, 'enp81s0f0')
         self.assertEqual(result['name'], '1EPPS_IN')
         self.assertEqual(result['params']['board_label'], '1EPPS_IN')
 
@@ -356,7 +359,7 @@ class TestSynce4lParameters(test_base.TestCase):
              'owners': ['iface-uuid-1']},
         ]
         result = self.operator._set_external_source_parameters(
-            'iface-uuid-1', iface_params, 'enp81s0f0', is_gnrd=True)
+            'iface-uuid-1', iface_params, 'enp81s0f0')
         self.assertEqual(result['params']['input_QL'], '0x01')
         self.assertEqual(result['params']['input_ext_QL'], '0x21')
         self.assertEqual(result['params']['board_label'], 'GNSS_1PPS_IN')
@@ -370,7 +373,7 @@ class TestSynce4lParameters(test_base.TestCase):
              'owners': ['iface-uuid-1']},
         ]
         result = self.operator._set_external_source_parameters(
-            'iface-uuid-1', iface_params, 'enp81s0f0', is_gnrd=True)
+            'iface-uuid-1', iface_params, 'enp81s0f0')
         self.assertEqual(result['params']['board_label'], 'CUSTOM_LABEL')
 
     def test_external_source_gnrd_unknown_pin_still_generates(self):
@@ -380,7 +383,7 @@ class TestSynce4lParameters(test_base.TestCase):
              'owners': ['iface-uuid-1']},
         ]
         result = self.operator._set_external_source_parameters(
-            'iface-uuid-1', iface_params, 'enp81s0f0', is_gnrd=True)
+            'iface-uuid-1', iface_params, 'enp81s0f0')
         self.assertIn('name', result)
         self.assertEqual(result['params']['board_label'], 'FUTURE_PIN')
 
@@ -500,3 +503,34 @@ class TestSynce4lParameters(test_base.TestCase):
         self.assertEqual(inst['device_parameters']['clock_id'], '99999')
         self.assertEqual(
             inst['device_parameters']['module_name'], 'zl3073x')
+
+    # ===================================================================
+    # E810/E830 external source — DPLL netlink mode (board_label)
+    # ===================================================================
+
+    def test_external_source_e830_gnss_1pps(self):
+        """E830 GNSS-1PPS pin produces board_label section."""
+        iface_params = [
+            {'name': 'external_source', 'value': 'GNSS-1PPS',
+             'owners': ['iface-uuid-1']},
+        ]
+        result = self.operator._set_external_source_parameters(
+            'iface-uuid-1', iface_params, 'enp108s0f0')
+        self.assertIn('name', result)
+        self.assertEqual(result['name'], 'GNSS-1PPS')
+        self.assertEqual(result['params']['board_label'], 'GNSS-1PPS')
+        self.assertNotIn('external_enable_cmd', result['params'])
+        self.assertNotIn('external_disable_cmd', result['params'])
+
+    def test_external_source_e810_sma1(self):
+        """E810 SMA1 pin produces board_label section (not sysfs commands)."""
+        iface_params = [
+            {'name': 'external_source', 'value': 'SMA1',
+             'owners': ['iface-uuid-1']},
+        ]
+        result = self.operator._set_external_source_parameters(
+            'iface-uuid-1', iface_params, 'enp81s0f0')
+        self.assertEqual(result['name'], 'SMA1')
+        self.assertEqual(result['params']['board_label'], 'SMA1')
+        self.assertNotIn('external_enable_cmd', result['params'])
+        self.assertNotIn('external_disable_cmd', result['params'])
