@@ -2050,6 +2050,35 @@ class InterfaceTestCase2(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
             ifname=self.port['name'], method='manual', options=options)
         self.assertEqual(expected, configs[0])
 
+    def test_get_worker_ethernet_config_pci_sriov_bnxt_comma_driver_ifupdown(self):
+        """
+        Multiple drivers may be present at:
+          /sys/bus/pci/devices/<PCI address>/driver/module/drivers/
+
+        The code reads all drivers and creates a comma-separated driver string
+        (e.g., "bnxt_en.bnxt_fwctl,bnxt_en"). Verify that the
+        sriov_numvfs command is still placed in post-up when bnxt_en
+        appears in the comma-separated driver string.
+        """
+        self._create_host_and_interface(
+                constants.INTERFACE_CLASS_PCI_SRIOV,
+                constants.NETWORK_TYPE_PCI_SRIOV,
+                personality=constants.WORKER,
+                driver='bnxt_en.bnxt_fwctl,bnxt_en')
+        self._do_update_context()
+        configs = interface.get_interface_network_configs(
+            self.context, self.iface)
+        ipv6_conf_iface_opt = self._get_ipv6_conf_iface_options(self.port['name'])
+        numvfs_cmd = 'echo 0 > /sys/class/net/{}/device/sriov_numvfs;' \
+                     ' echo 0 > /sys/class/net/{}/device/sriov_numvfs'.format(
+                         self.port['name'], self.port['name'])
+        options = {'stx-description': 'ifname:mgmt0,net:None',
+                   'mtu': '1500',
+                   'post-up': '{}; {}'.format(numvfs_cmd, ipv6_conf_iface_opt)}
+        expected = self._get_network_config_ifupdown(
+            ifname=self.port['name'], method='manual', options=options)
+        self.assertEqual(expected, configs[0])
+
     def test_get_worker_ethernet_config_pci_pthru_ifupdown(self):
         self._create_host_and_interface(
                 constants.INTERFACE_CLASS_PCI_PASSTHROUGH,

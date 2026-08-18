@@ -1193,6 +1193,22 @@ def get_route_config(route, ifname, context=None):
     return config
 
 
+def _driver_in_list(port_driver, driver_list):
+    """
+    Check if any of the port's drivers matches a driver in the given list.
+
+    The port['driver'] field may contain multiple comma-separated driver
+    names (e.g., "bnxt_en.bnxt_fwctl,bnxt_en") as reported by the kernel
+    via /sys/bus/pci/devices/<addr>/driver/module/drivers/.
+    """
+    if port_driver:
+        drivers = (d.strip() for d in port_driver.split(','))
+        for d in drivers:
+            if d in driver_list:
+                return True
+    return False
+
+
 def get_device_sriov_setup_op(context, iface):
     """
     Determines if the interface has a driver that requires it to be up before
@@ -1201,7 +1217,7 @@ def get_device_sriov_setup_op(context, iface):
     """
     port = get_interface_port(context, iface)
 
-    if port['driver'] in constants.DRIVERS_UP_BEFORE_SRIOV:
+    if _driver_in_list(port['driver'], constants.DRIVERS_UP_BEFORE_SRIOV):
         return IFACE_POST_UP_OP
     else:
         return IFACE_PRE_UP_OP
@@ -1214,7 +1230,7 @@ def get_sriov_interface_up_requirement(context, iface):
     """
     port = get_interface_port(context, iface)
 
-    if port['driver'] in constants.DRIVERS_UP_BEFORE_SRIOV:
+    if _driver_in_list(port['driver'], constants.DRIVERS_UP_BEFORE_SRIOV):
         return True
     else:
         return False
@@ -1634,7 +1650,7 @@ def find_sriov_interfaces_by_driver(context, driver):
         if iface['iftype'] != constants.INTERFACE_TYPE_ETHERNET:
             continue
         port = get_interface_port(context, iface)
-        if (port['driver'] == driver and
+        if (_driver_in_list(port['driver'], [driver]) and
                 iface['ifclass'] == constants.INTERFACE_CLASS_PCI_SRIOV):
             ifaces.append(iface)
     return ifaces
