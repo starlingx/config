@@ -25,6 +25,7 @@ KUBE_UPGRADE_STATE_POST_UPDATING_APPS = 'post-updating-apps'
 
 SOFTWARE_STORAGE_DIR = "/opt/software"
 SYSTEM_DEPLOY_JSON_FILE = "%s/system_deploy.json" % SOFTWARE_STORAGE_DIR
+SOFTWARE_JSON_FILE = "%s/software.json" % SOFTWARE_STORAGE_DIR
 
 
 def _print_kube_upgrade_show(obj):
@@ -187,7 +188,9 @@ def do_kube_upgrade_abort(cc, args):
     """Kubernetes upgrade aborting."""
 
     # Check if it is combined P&K upgrade or legacy k8s upgrade.
-    if os.path.exists(SYSTEM_DEPLOY_JSON_FILE):
+    # software.json file is created by command 'software deploy start'
+    # and removed by command 'software deploy delete'.
+    if os.path.exists(SOFTWARE_JSON_FILE):
         print("This operation is not supported at this time. Kubernetes upgrade can only be "
               "aborted by running command 'software deploy abort' which aborts both platform "
               "upgrade and kubernetes upgrade together.")
