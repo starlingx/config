@@ -107,44 +107,13 @@ class KubeRootCAGenerateController(rest.RestController):
                 "validation before expiry."))
         return duration
 
-    def get_private_key_params(self, algorithm, key_size):
-        valid_key_params = {
-            'ECDSA': (384, 521),
-            'RSA': (4096,),
-        }
-
-        if algorithm is None:
-            if key_size is not None:
-                raise wsme.exc.ClientSideError(_(
-                    "Parameter 'key_size' was provided without 'algorithm'."))
-
-            return 'ECDSA', 384
-
-        if algorithm not in valid_key_params:
-            supported_algs = ', '.join(valid_key_params.keys())
-            raise wsme.exc.ClientSideError(_(
-                "Algorithm '%s' is not supported. "
-                "Supported values are: %s") % (algorithm, supported_algs))
-
-        if key_size is None:
-            return algorithm, valid_key_params[algorithm][0]
-
-        if key_size not in valid_key_params[algorithm]:
-            supported_sizes = ', '.join(str(s) for s in valid_key_params[algorithm])
-            raise wsme.exc.ClientSideError(_(
-                "Key size %s is not supported for algorithm '%s'. "
-                "Supported values are: %s") % (key_size, algorithm, supported_sizes))
-
-        return algorithm, key_size
-
     @cutils.synchronized(LOCK_KUBE_ROOTCA_CONTROLLER)
-    @wsme_pecan.wsexpose(wtypes.text, wtypes.text, wtypes.text, wtypes.text, int)
-    def post(self, expiry_date, subject, algorithm=None, key_size=None):
+    @wsme_pecan.wsexpose(wtypes.text, wtypes.text, wtypes.text)
+    def post(self, expiry_date, subject):
         duration = self._calculate_duration(expiry_date)
         subject_params = self.get_subject(subject)
-        algorithm, key_size = self.get_private_key_params(algorithm, key_size)
         output = pecan.request.rpcapi.generate_kubernetes_rootca_cert(
-            pecan.request.context, subject_params, algorithm, key_size, duration)
+            pecan.request.context, subject_params, duration)
         return output
 
 
