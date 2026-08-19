@@ -1320,11 +1320,11 @@ IDENTITY_LDAP_LOCKOUT_PARAMETER_OPTIONAL = [
 
 IDENTITY_LDAP_LOCKOUT_PARAMETER_VALIDATOR = {
     constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_LOCKOUT_DURATION:
-        _validate_integer,
+        _validate_positive_integer,
     constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_LOCKOUT_FAILURE_ATTEMPTS:
-        _validate_integer,
+        _validate_positive_integer,
     constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_INACTIVE_SESSION_TERM_TIMEOUT:
-        _validate_integer,
+        _validate_positive_integer,
 }
 
 IDENTITY_LDAP_LOCKOUT_PARAMETER_RESOURCE = {
@@ -1516,9 +1516,9 @@ PLATFORM_KEYSTONE_PARAMETER_VALIDATOR = {
     constants.SERVICE_PARAM_NAME_SECURITY_COMPLIANCE_PASSWORD_REGEX_DESCRIPTION:
         _validate_not_empty,
     constants.SERVICE_PARAM_NAME_SECURITY_COMPLIANCE_LOCKOUT_DURATION:
-        _validate_integer,
+        _validate_positive_integer,
     constants.SERVICE_PARAM_NAME_SECURITY_COMPLIANCE_LOCKOUT_FAILURE_ATTEMPTS:
-        _validate_integer,
+        _validate_positive_integer,
     constants.SERVICE_PARAM_NAME_SECURITY_COMPLIANCE_PASSWORD_EXPIRES_DAYS:
         _validate_positive_integer,
     constants.SERVICE_PARAM_NAME_SECURITY_COMPLIANCE_INACTIVE_SESSION_TERM_TIMEOUT:
