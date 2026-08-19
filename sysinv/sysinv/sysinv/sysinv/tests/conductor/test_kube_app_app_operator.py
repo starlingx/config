@@ -141,3 +141,110 @@ class AppOperatorTestCase(base.DbTestCase):
         ) as mock_load:
             self.app_operator.load_application_metadata_from_database(test_app)
             self.assertEqual(mock_load.mock.call_count, 1)
+
+    def test_clear_stuck_applications_recovers_update_starting(self):
+        """An app interrupted (e.g. by a controller swact) while in the
+        'update-starting' status must be recovered by
+        _clear_stuck_applications() on the next conductor start, the same
+        way 'updating' (APP_UPDATE_IN_PROGRESS) already is.
+
+        Before the fix, APP_UPDATE_STARTING was missing from the status
+        list checked by _clear_stuck_applications(), so the app was left
+        stuck forever and the "Application Update In Progress" alarm was
+        never cleared.
+
+        See https://bugs.launchpad.net/starlingx/+bug/2164738
+        """
+        dbutils.create_test_app(name='test-app-1',
+                                status=constants.APP_UPDATE_STARTING)
+
+        self.app_operator._clear_stuck_applications()
+
+        updated_app = obj_app.get_by_name(self.context, 'test-app-1')
+        self.assertNotEqual(updated_app.status,
+                            constants.APP_UPDATE_STARTING)
+        self.assertEqual(updated_app.status, constants.APP_APPLY_FAILURE)
+
+    def test_clear_stuck_applications_recovers_update_starting_platform_managed(self):
+        """For platform-managed apps stuck in 'update-starting', recovery
+        should set the status back to 'uploaded' (not 'apply-failed') so
+        that the periodic app audit can safely reapply it, matching the
+        existing behavior for APP_UPDATE_IN_PROGRESS.
+        """
+        dbutils.create_test_app(name='platform-integ-apps',
+                                status=constants.APP_UPDATE_STARTING)
+        self.service.apps_metadata[
+            constants.APP_METADATA_PLATFORM_MANAGED_APPS][
+                'platform-integ-apps'] = {}
+
+        self.app_operator._clear_stuck_applications()
+
+        updated_app = obj_app.get_by_name(self.context, 'platform-integ-apps')
+        self.assertEqual(updated_app.status, constants.APP_UPLOAD_SUCCESS)
+
+    def test_abort_operation_handles_update_starting(self):
+        """_abort_operation() must have explicit handling for
+        APP_UPDATE_STARTING instead of falling through to the
+        'No abort handling code for app status' error path.
+        """
+        dbutils.create_test_app(name='test-app-1',
+                                status=constants.APP_UPDATE_STARTING)
+        test_app = obj_app.get_by_name(self.context, 'test-app-1')
+        app = kube_app.AppOperator.Application(test_app)
+
+        with fixtures.MockPatchObject(
+            self.app_operator, "app_lifecycle_actions"
+        ):
+            self.app_operator._abort_operation(
+                app, app.status, reset_status=True)
+
+        updated_app = obj_app.get_by_name(self.context, 'test-app-1')
+        self.assertEqual(updated_app.status, constants.APP_APPLY_FAILURE)
+
+    def test_clear_stuck_applications_reports_missing_dependent_apps(self):
+        """When a platform-managed app is reset back to 'uploaded', the
+        progress message must keep reporting its missing dependent apps,
+        matching what perform_app_upload does. Otherwise the reason the
+        app cannot be applied is lost from the progress column.
+        """
+        dbutils.create_test_app(name='platform-integ-apps',
+                                status=constants.APP_UPDATE_STARTING)
+        self.service.apps_metadata[
+            constants.APP_METADATA_PLATFORM_MANAGED_APPS][
+                'platform-integ-apps'] = {}
+
+        metadata = {
+            constants.APP_METADATA_DEPENDENT_APPS: [
+                {'name': 'dependency-app', 'version': '1.0-1'}
+            ]
+        }
+        with fixtures.MockPatchObject(
+            self.app_operator, "retrieve_application_metadata_from_file",
+            return_value=metadata
+        ):
+            self.app_operator._clear_stuck_applications()
+
+        updated_app = obj_app.get_by_name(self.context, 'platform-integ-apps')
+        self.assertEqual(updated_app.status, constants.APP_UPLOAD_SUCCESS)
+        self.assertIn('dependency-app', updated_app.progress)
+        self.assertIn('missing apps', updated_app.progress)
+
+    def test_clear_stuck_applications_no_missing_dependent_apps(self):
+        """With no missing dependent apps, the progress message must be
+        left untouched by the dependency evaluation.
+        """
+        dbutils.create_test_app(name='platform-integ-apps',
+                                status=constants.APP_UPDATE_STARTING)
+        self.service.apps_metadata[
+            constants.APP_METADATA_PLATFORM_MANAGED_APPS][
+                'platform-integ-apps'] = {}
+
+        with fixtures.MockPatchObject(
+            self.app_operator, "retrieve_application_metadata_from_file",
+            return_value={}
+        ):
+            self.app_operator._clear_stuck_applications()
+
+        updated_app = obj_app.get_by_name(self.context, 'platform-integ-apps')
+        self.assertEqual(updated_app.status, constants.APP_UPLOAD_SUCCESS)
+        self.assertNotIn('missing apps', updated_app.progress)
