@@ -1619,9 +1619,14 @@ class AppOperator(object):
     def _remove_chart_overrides(self, overrides_dir, app):
         charts = self._get_list_of_charts(app)
         for chart in charts:
-            chart_op = self._helm.plugins.get_chart_operator(chart.name)
+            chart_op = self._helm.get_chart_operator(chart.name, app.name)
             if chart_op:
-                self._helm.remove_helm_chart_overrides(overrides_dir, chart.name, chart.namespace)
+                self._helm.remove_helm_chart_overrides(
+                    overrides_dir,
+                    chart.name,
+                    chart.namespace,
+                    app.name
+                )
 
     def _update_app_releases_version(self, app_name):
         """Update application helm releases records

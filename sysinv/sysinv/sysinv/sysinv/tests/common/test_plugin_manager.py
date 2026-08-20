@@ -325,10 +325,10 @@ class TestPluginManager(unittest.TestCase):
         expected_pth = f"{APP_PLUGIN_PATH}/{APP_PTH_PREFIX}{app_name}-{version}.pth"
         mock_open.assert_called_with(expected_pth, 'w')
         mock_addsite.assert_called_with(sync_dir)
-        mock_load.assert_called_with(plugin_path=sync_dir, args=())
+        mock_load.assert_called_with(plugin_path=sync_dir, args=(), app_name=app_name)
         expected_order = [
             mock.call.addsitedir(sync_dir),
-            mock.call.load_plugins_from_path(plugin_path=sync_dir, args=()),
+            mock.call.load_plugins_from_path(plugin_path=sync_dir, args=(), app_name=app_name),
         ]
         combined_calls = mock_addsite.mock_calls + mock_load.mock_calls
         self.assertEqual(combined_calls, expected_order)
@@ -346,8 +346,10 @@ class TestPluginManager(unittest.TestCase):
             project_path=sync_dir,
             operator=None,
         )
-        self.manager._plugins = {namespace: {"fake_plugin": fake_plugin}}
-        self.manager._subnamespace_plugins = {namespace: {"fake_plugin": ["fake_subplugin"]}}
+        # Composite key namespace stores plugins under "app_name:plugin_name"
+        composite_key = f"{app_name}:fake_plugin"
+        self.manager._plugins = {namespace: {composite_key: fake_plugin}}
+        self.manager._subnamespace_plugins = {namespace: {app_name: ["fake_plugin"]}}
 
         with mock.patch.object(
             self.manager,
@@ -364,8 +366,8 @@ class TestPluginManager(unittest.TestCase):
         self.assertNotIn("mod1", sys.modules)
         expected_pth = f"{APP_PLUGIN_PATH}/{APP_PTH_PREFIX}{app_name}-{version}.pth"
         mock_rm.assert_called_with(expected_pth)
-        self.assertNotIn("fake_plugin", self.manager._plugins[namespace])
-        self.assertNotIn("fake_plugin", self.manager._subnamespace_plugins[namespace])
+        self.assertNotIn(composite_key, self.manager._plugins[namespace])
+        self.assertNotIn("fake_plugin", self.manager._subnamespace_plugins[namespace][app_name])
 
     @mock.patch("sysinv.common.plugin_manager.zipfile.ZipFile")
     @mock.patch("sysinv.common.plugin_manager.os.makedirs")

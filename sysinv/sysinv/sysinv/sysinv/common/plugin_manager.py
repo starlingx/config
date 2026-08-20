@@ -61,6 +61,13 @@ NAMESPACE_AND_SUBNAMESPACE_RELATION = {
     PLUGIN_NS_HELM_APPLICATIONS: (PLUGIN_SUBNS_HELM_APPLICATIONS,),
 }
 
+# Namespaces that use composite keys (app_name:plugin_name) to avoid
+# collisions when different apps provide plugins with the same name.
+COMPOSITE_KEY_NAMESPACES = (
+    PLUGIN_NS_HELM_APPLICATIONS,
+    PLUGIN_SUBNS_HELM_APPLICATIONS,
+)
+
 
 @dataclass
 class Plugin:  # noqa: H238
@@ -94,6 +101,16 @@ class PluginManager:  # noqa: H238
     @staticmethod
     def _namespace_accept_args(namespace):
         return namespace.startswith(ACCEPT_ARGUMENTS_NAMESPACES)
+
+    @staticmethod
+    def _uses_composite_key(namespace):
+        """Check if a namespace uses composite keys (app_name:plugin_name)."""
+        return namespace.startswith(COMPOSITE_KEY_NAMESPACES)
+
+    @staticmethod
+    def _make_composite_key(app_name, plugin_name):
+        """Build a composite key for namespaces that require disambiguation."""
+        return f"{app_name}:{plugin_name}"
 
     @staticmethod
     def _has_subnamespace(namespace):
@@ -171,7 +188,8 @@ class PluginManager:  # noqa: H238
                 path_plugins[namespace] = matching
         return path_plugins
 
-    def _load_entrypoints(self, entrypoints, namespace, invoke_on_load, args):
+    def _load_entrypoints(self, entrypoints, namespace, invoke_on_load, args,
+                          app_name=None):
         """
             Loads plugins from the given entrypoints for a specific namespace.
             Handles subnamespaces by recursively loading their plugins. If `invoke_on_load` is
@@ -182,6 +200,8 @@ class PluginManager:  # noqa: H238
             :param namespace (str): the namespace under which to register the loaded plugins.
             :param invoke_on_load (bool): whether to call the entrypoint immediately upon loading.
             :param args (tuple): arguments to pass to the entrypoint if invoked.
+            :param app_name (str): optional app plugin name used as part of the composite key
+                                   for namespaces that require disambiguation.
             :return (dict): a dictionary mapping plugin names to plugin objects that were loaded.
         """
         args = () if not self._namespace_accept_args(namespace) else args
@@ -197,10 +217,21 @@ class PluginManager:  # noqa: H238
             # the entrypoints.
             for entrypoint in entrypoints:
                 sub_namespace = entrypoint.value
-                plugins = self.load_plugins(sub_namespace, invoke_on_load, args)
-                self._subnamespace_plugins.setdefault(namespace, {})[entrypoint.name] = [
-                    sub_entrypoint_name for sub_entrypoint_name in plugins
-                ]
+                # Normalize the app_name so that variants of the same application
+                # use the same composite key, allowing plugins to override
+                # each other via priority.
+                effective_app_name = utils.find_app_plugin_name(entrypoint.name)
+                plugins = self.load_plugins(sub_namespace, invoke_on_load, args,
+                                            app_name=effective_app_name)
+                # Store plugin names (not composite keys) in the subnamespace relation
+                # so callers get clean chart names. Use the normalized app name as key
+                # to merge chart lists from related app variants together.
+                existing_charts = self._subnamespace_plugins.setdefault(
+                    namespace, {}).get(effective_app_name, [])
+                new_charts = [plugins[key].name for key in plugins]
+                # Merge without duplicates, preserving order
+                merged = existing_charts + [c for c in new_charts if c not in existing_charts]
+                self._subnamespace_plugins[namespace][effective_app_name] = merged
                 loaded_plugins.update(plugins)
             return loaded_plugins
 
@@ -236,7 +267,17 @@ class PluginManager:  # noqa: H238
                 suffix=int(suffix) if suffix else None
             )
 
-            old_plugin = existing_plugins.get(plugin_name)
+            # For namespaces that use composite keys, the storage key includes
+            # the app_name to avoid collisions when different apps share
+            # the same chart/plugin name. Normalize app_name so that
+            # variants of the same application resolve to the same key.
+            if self._uses_composite_key(ns) and app_name:
+                normalized = utils.find_app_plugin_name(app_name)
+                storage_key = self._make_composite_key(normalized, plugin_name)
+            else:
+                storage_key = plugin_name
+
+            old_plugin = existing_plugins.get(storage_key)
             if old_plugin and not self._should_override(old_plugin, new_plugin):
                 LOG.info(
                     f"PluginManager: Skipping plugin {entrypoint.name}. "
@@ -245,7 +286,7 @@ class PluginManager:  # noqa: H238
                 )
                 continue
 
-            loaded_plugins[plugin_name] = new_plugin
+            loaded_plugins[storage_key] = new_plugin
             LOG.info(f"PluginManager: Loaded {plugin_name} plugin from path - {project_path}")
         self._plugins.setdefault(ns, {}).update(loaded_plugins)
 
@@ -256,18 +297,19 @@ class PluginManager:  # noqa: H238
         for arg in args:
             if isinstance(arg, helm.HelmOperator):
                 for k, v in loaded_plugins.items():
-                    arg.update_chart_operators(k, v.operator)
+                    arg.update_chart_operators(v.name, v.operator)
                 break
 
         return loaded_plugins
 
-    def load_plugins(self, namespace, invoke_on_load=True, args=()):
+    def load_plugins(self, namespace, invoke_on_load=True, args=(), app_name=None):
         """
             Loads all plugins for a given namespace by discovering their entrypoints.
 
             :param namespace (str): The namespace from which to load plugins.
             :param invoke_on_load (bool): Whether to call the entrypoint immediately upon loading.
             :param args (tuple): Arguments to pass to the entrypoint if invoked.
+            :param app_name (str): Optional app plugin name for composite key disambiguation.
             :return (dict): A dictionary mapping plugin names to plugin objects that were loaded.
         """
 
@@ -277,7 +319,8 @@ class PluginManager:  # noqa: H238
                 entrypoints=entrypoints.get(namespace, []),
                 namespace=namespace,
                 invoke_on_load=invoke_on_load,
-                args=args
+                args=args,
+                app_name=app_name
             )
         else:
             # Filter entrypoints by group (namespace)
@@ -286,11 +329,13 @@ class PluginManager:  # noqa: H238
                 entrypoints=filtered_eps,
                 namespace=namespace,
                 invoke_on_load=invoke_on_load,
-                args=args
+                args=args,
+                app_name=app_name
             )
         return loaded_plugins
 
-    def load_plugins_from_path(self, plugin_path, invoke_on_load=True, args=()):
+    def load_plugins_from_path(self, plugin_path, invoke_on_load=True, args=(),
+                              app_name=None):
         """
             Loads all plugins from a specified filesystem path.
             Scans all distributions in the given path, collects their entrypoints grouped by
@@ -299,6 +344,7 @@ class PluginManager:  # noqa: H238
             :param plugin_path (str): Filesystem path containing plugin distributions.
             :param invoke_on_load (bool): Whether to call each entrypoint upon loading.
             :param args (tuple): Arguments to pass to entrypoints if invoked.
+            :param app_name (str): Optional app plugin name for composite key disambiguation.
         """
         distributions = metadata_importlib.distributions(path=[plugin_path])
         for distribution in distributions:
@@ -312,7 +358,8 @@ class PluginManager:  # noqa: H238
                         entrypoints=eps,
                         namespace=namespace,
                         invoke_on_load=invoke_on_load,
-                        args=args
+                        args=args,
+                        app_name=app_name
                     )
             except Exception as e:
                 LOG.error(
@@ -382,7 +429,8 @@ class PluginManager:  # noqa: H238
                         Error: {e}"
                     )
             site.addsitedir(sync_plugins_dir)
-            self.load_plugins_from_path(plugin_path=sync_plugins_dir, args=args)
+            self.load_plugins_from_path(plugin_path=sync_plugins_dir, args=args,
+                                        app_name=app_name)
 
     def deactivate_plugins(self, app_name, app_version, has_plugin_path, sync_plugins_dir):
         """
@@ -446,8 +494,24 @@ class PluginManager:  # noqa: H238
         plugins = self._get_plugins_by_project_path(sync_plugins_dir)
         for namespace, plugins_list in plugins.items():
             for plugin in plugins_list:
-                self._plugins[namespace].pop(plugin.name)
-                self._subnamespace_plugins.get(namespace, {}).pop(plugin.name, None)
+                if self._uses_composite_key(namespace):
+                    # Normalize app_name for composite key lookup, consistent
+                    # with how plugins are stored.
+                    normalized_app_name = utils.find_app_plugin_name(app_name)
+                    key = self._make_composite_key(normalized_app_name, plugin.name)
+                else:
+                    key = plugin.name
+                self._plugins[namespace].pop(key, None)
+
+                # Remove chart name from the subnamespace relation list.
+                # The structure is {namespace: {app_plugin_name: [chart_names]}}.
+                subns_apps = self._subnamespace_plugins.get(namespace, {})
+                if self._uses_composite_key(namespace):
+                    chart_list = subns_apps.get(normalized_app_name, [])
+                    if plugin.name in chart_list:
+                        chart_list.remove(plugin.name)
+                else:
+                    subns_apps.pop(plugin.name, None)
         LOG.info(f"PluginManager: Successfully deactivate plugins from path {sync_plugins_dir}")
 
     @staticmethod
@@ -515,27 +579,50 @@ class PluginManager:  # noqa: H238
     def get_plugins_by_namespace(self, namespace):
         return self._plugins.get(namespace, {})
 
-    def get_plugin(self, namespace, plugin_name, fallback_to_generic=True):
+    def get_plugin(self, namespace, plugin_name, fallback_to_generic=True,
+                   app_name=None):
         """
             Retrieves a specific plugin by name within a given namespace.
             If the requested plugin is not found and `fallback_to_generic` is True, the method
             returns the generic plugin for that namespace instead.
 
+            For namespaces that use composite keys (e.g., PLUGIN_NS_HELM_APPLICATIONS),
+            providing the app_name enables a direct lookup using the composite key
+            (app_name:plugin_name). If app_name is not provided for these namespaces,
+            a linear scan is performed to find the first plugin matching the given name.
+
             :param namespace (str): The namespace from which to retrieve the plugin.
             :param plugin_name (str): The name of the plugin to retrieve.
             :param fallback_to_generic (bool): Whether to return the generic plugin if the
                                                specified one is not found.
+            :param app_name (str): Optional app name for disambiguating plugins in
+                                   composite key namespaces.
             :return (Plugin): The requested Plugin object, or the generic plugin if fallback is
                               enabled.
         """
-        plugin = self._plugins[namespace].get(plugin_name)
+        ns_plugins = self._plugins.get(namespace, {})
+
+        if self._uses_composite_key(namespace):
+            if app_name:
+                # Normalize app_name for consistent composite key lookup.
+                normalized = utils.find_app_plugin_name(app_name)
+                composite_key = self._make_composite_key(normalized, plugin_name)
+                plugin = ns_plugins.get(composite_key)
+            else:
+                # Fallback: scan all plugins in the namespace to find by name
+                plugin = next(
+                    (p for p in ns_plugins.values() if p.name == plugin_name),
+                    None
+                )
+        else:
+            plugin = ns_plugins.get(plugin_name)
 
         if not plugin and fallback_to_generic:
             LOG.info(
                 f"PluginManager: {plugin_name} not found in namespace {namespace}. "
                 "Returning generic plugin."
             )
-            plugin = self._plugins[namespace]['generic']
+            plugin = ns_plugins.get('generic')
         return plugin
 
     def get_subnamespace_plugins(self, namespace):
