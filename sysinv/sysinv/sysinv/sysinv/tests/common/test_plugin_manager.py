@@ -102,8 +102,10 @@ class TestPluginManager(unittest.TestCase):
     def test_load_plugins_correctly_loads_a_plugin(self, mock_get_proj, mock_entry_point):
         fake_ep = mock.Mock()
         fake_ep.name = "fake_plugin"
+        fake_ep.group = "systemconfig.app_lifecycle"
         fake_ep.load.return_value = lambda: "RESULT"
         mock_entry_point.return_value.get.return_value = [fake_ep]
+        mock_entry_point.return_value.__iter__ = mock.Mock(return_value=iter([fake_ep]))
 
         plugins = self.manager.load_plugins("systemconfig.app_lifecycle")
         self.assertIn("fake_plugin", plugins)
@@ -120,8 +122,10 @@ class TestPluginManager(unittest.TestCase):
     ):
         fake_ep = mock.Mock()
         fake_ep.name = "fake_plugin"
+        fake_ep.group = "systemconfig.app_lifecycle"
         fake_ep.load.return_value = FakePlugin
         mock_entry_point.return_value.get.return_value = [fake_ep]
+        mock_entry_point.return_value.__iter__ = mock.Mock(return_value=iter([fake_ep]))
         plugins = self.manager.load_plugins("systemconfig.app_lifecycle", invoke_on_load=True)
         self.assertIsInstance(plugins["fake_plugin"].operator, FakePlugin)
 
@@ -135,8 +139,10 @@ class TestPluginManager(unittest.TestCase):
     ):
         fake_ep = mock.Mock()
         fake_ep.name = "fake_plugin"
+        fake_ep.group = "systemconfig.app_lifecycle"
         fake_ep.load.return_value = FakePlugin
         mock_entry_point.return_value.get.return_value = [fake_ep]
+        mock_entry_point.return_value.__iter__ = mock.Mock(return_value=iter([fake_ep]))
         plugins = self.manager.load_plugins("systemconfig.app_lifecycle", invoke_on_load=False)
         self.assertIs(plugins["fake_plugin"].operator, FakePlugin)
         self.assertNotIsInstance(plugins["fake_plugin"].operator, FakePlugin)
@@ -147,16 +153,22 @@ class TestPluginManager(unittest.TestCase):
     def test_plugins_are_loaded_in_order(self, mock_get_proj, mock_entry_point):
         fake_ep_a = mock.Mock()
         fake_ep_a.name = "001_plugin_a"
+        fake_ep_a.group = "systemconfig.app_lifecycle"
         fake_ep_a.load.return_value = lambda: "A"
 
         fake_ep_b = mock.Mock()
         fake_ep_b.name = "002_plugin_b"
+        fake_ep_b.group = "systemconfig.app_lifecycle"
         fake_ep_b.load.return_value = lambda: "B"
 
         fake_ep_c = mock.Mock()
         fake_ep_c.name = "003_plugin_c"
+        fake_ep_c.group = "systemconfig.app_lifecycle"
         fake_ep_c.load.return_value = lambda: "C"
-        mock_entry_point.return_value.get.return_value = [fake_ep_b, fake_ep_a, fake_ep_c]
+
+        eps_list = [fake_ep_b, fake_ep_a, fake_ep_c]
+        mock_entry_point.return_value.get.return_value = eps_list
+        mock_entry_point.return_value.__iter__ = mock.Mock(return_value=iter(eps_list))
 
         plugins = self.manager.load_plugins("systemconfig.app_lifecycle")
         expected_order = ["plugin_a", "plugin_b", "plugin_c"]

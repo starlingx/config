@@ -41,7 +41,15 @@ postgres=# create database openstack_citest with owner openstack_citest;
 import six
 from six.moves import configparser
 import os
+import unittest
 from six.moves.urllib.parse import urlparse
+
+from sysinv.common.utils import get_debian_codename
+from sysinv.common import constants
+
+if get_debian_codename() != constants.OS_DEBIAN_BULLSEYE:
+    raise unittest.SkipTest(
+        "test_migrations only applies to Bullseye (sqlalchemy-migrate)")
 
 import mock
 import sqlalchemy

@@ -21,6 +21,9 @@
 # Copyright (c) 2013-2014 Wind River Systems, Inc.
 #
 
+import sys
+from unittest import skipIf
+
 from sysinv.db import migration
 from sysinv.tests.db import base
 
@@ -29,6 +32,8 @@ class DbSyncTestCase(base.DbTestCase):
     def setUp(self):
         super(DbSyncTestCase, self).setUp()
 
+    @skipIf(sys.version_info >= (3, 13),
+            "sqlalchemy-migrate not compatible with py3.13")
     def test_sync_and_version(self):
         migration.db_sync()
         v = migration.db_version()

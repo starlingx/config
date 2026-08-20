@@ -58,7 +58,7 @@ class MyObj(base.SysinvObject):
 
     @base.remotable
     def update_test(self, context):
-        if context.tenant == 'alternate':
+        if context.project_id == 'alternate':
             self.bar = 'alternate-context'
         else:
             self.bar = 'updated'
@@ -125,7 +125,10 @@ class TestMetaclass(test_base.TestCase):
 class TestUtils(test_base.TestCase):
     def test_datetime_or_none(self):
         naive_dt = datetime.datetime.now()
-        dt = timeutils.parse_isotime(timeutils.isotime(naive_dt))
+        if common_utils.is_debian_bullseye():
+            dt = timeutils.parse_isotime(timeutils.isotime(naive_dt))
+        else:
+            dt = timeutils.parse_isotime(utils.isotime(at=naive_dt))
         self.assertEqual(utils.datetime_or_none(dt), dt)
         self.assertEqual(utils.datetime_or_none(dt),
                          naive_dt.replace(tzinfo=iso8601.UTC,

@@ -50,7 +50,7 @@ class ILvgTest(testtools.TestCase):
         fake_id = str(uuid.uuid4())
         mock_cc.ilvg.list.return_value = []
 
-        self.assertRaisesRegexp(
+        self.assertRaisesRegex(
             exc.CommandError,
             "Local volume group not found by name or uuid: %s" % fake_id,
             ilvg._find_ilvg,
@@ -82,7 +82,7 @@ class ILvgTest(testtools.TestCase):
         fake_name = "fake_lvg_name"
         mock_cc.ilvg.list.return_value = []
 
-        self.assertRaisesRegexp(
+        self.assertRaisesRegex(
             exc.CommandError,
             "Local volume group not found by name or uuid: %s" % fake_name,
             ilvg._find_ilvg,

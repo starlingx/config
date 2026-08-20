@@ -1498,7 +1498,7 @@ class InterfaceTestCase2(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         ipv6_conf_iface_opt = self._get_ipv6_conf_iface_options(port['name'])
         options = {'allow-bond0': port['name'],
                    'bond-master': 'bond0',
-                   'stx-description': 'ifname:eth0,net:None',
+                   'stx-description': f"ifname:{iface['ifname']},net:None",
                    'pre-up': '/usr/sbin/ip link set dev {} promisc on; {}'.format(port['name'],
                                                                              ipv6_conf_iface_opt),
                    'mtu': '1500'}
