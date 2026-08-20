@@ -7338,6 +7338,9 @@ class ConductorManager(service.PeriodicService):
                         cutils.is_initial_config_complete()):
                     self._apply_etcd_runtime_manifest(context, ihost)
 
+                    # Move control plane onto HAProxy (Active+Active).
+                    self._apply_controlplane_endpoint_manifest(context, ihost)
+
     def _apply_etcd_runtime_manifest(self, context, host):
         """Configure the local etcd member after a controller unlock."""
         personalities = [constants.CONTROLLER]
@@ -7353,6 +7356,24 @@ class ConductorManager(service.PeriodicService):
             'personalities': personalities,
             'host_uuids': host_uuids,
             'classes': [runtime_class],
+        }
+        self._config_apply_runtime_manifest(
+            context, config_uuid, config_dict, force=True)
+
+    def _apply_controlplane_endpoint_manifest(self, context, host):
+        """Apply runtime manifest to move controlPlaneEndpoint onto HAProxy.
+
+        Idempotent and safe to re-apply on unlock, upgrade, rollback,
+        restore or simplex-to-duplex migration.
+        """
+        personalities = [constants.CONTROLLER]
+        host_uuids = [host.uuid]
+        config_uuid = self._config_update_hosts(
+            context, personalities, host_uuids=host_uuids)
+        config_dict = {
+            'personalities': personalities,
+            'host_uuids': host_uuids,
+            'classes': ['platform::kubernetes::controlplane_endpoint::runtime'],
         }
         self._config_apply_runtime_manifest(
             context, config_uuid, config_dict, force=True)
