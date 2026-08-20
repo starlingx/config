@@ -231,7 +231,6 @@ class StorageLVMController(rest.RestController):
             storage_lvm = storage_lvm.as_dict()
             new_storage_lvm = _create(storage_lvm)
 
-            pecan.request.rpcapi.update_lvm_storage_flag(pecan.request.context)
         except exception.SysinvException as e:
             LOG.exception(e)
             raise wsme.exc.ClientSideError(_("Invalid data: failed to create "
@@ -342,6 +341,9 @@ def _create(storage_lvm):
 
     # Retreive the main StorageBackend object.
     storage_backend_obj = pecan.request.dbapi.storage_backend_get(storage_lvm_obj.id)
+
+    # Apply runtime manifest to set the LVM storage flag
+    pecan.request.rpcapi.update_lvm_storage_flag(pecan.request.context)
 
     return storage_backend_obj
 #
