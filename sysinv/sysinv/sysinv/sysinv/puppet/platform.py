@@ -93,11 +93,6 @@ class PlatformPuppet(base.BasePuppet):
         config.update(self._get_stalld_config(host))
         return config
 
-    def get_host_config_upgrade(self, host):
-        config = {}
-        config.update(self._get_host_platform_config_upgrade(host, self.config_uuid))
-        return config
-
     def _get_static_etcd_version_config(self):
         """Get the etcd_version configuration"""
         config = {}
@@ -610,17 +605,6 @@ class PlatformPuppet(base.BasePuppet):
                 hyperthreading_enabled,
         })
 
-        return config
-
-    def _get_host_platform_config_upgrade(self, host, config_uuid):
-        config = {}
-        if not config_uuid:
-            config_uuid = host.config_target
-
-        if config_uuid:
-            config.update({
-                'platform::config::params::config_uuid': config_uuid
-            })
         return config
 
     def _get_host_ntp_config(self, host):
