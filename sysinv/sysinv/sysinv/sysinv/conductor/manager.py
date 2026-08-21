@@ -5085,7 +5085,7 @@ class ConductorManager(service.PeriodicService):
                                         reference='current (unchanged)',
                                         numa_nodes=cpu_numa, cores=cpu_core, threads=cpu_thread)
                 if ihost.administrative == constants.ADMIN_LOCKED:
-                    self.update_grub_config(context, ihost_uuid, force_grub_update)
+                    self.update_grub_config_in_thread(context, ihost_uuid, force_grub_update)
                 return
 
             self.print_cpu_topology(hostname=ihost.get('hostname'),
@@ -5123,7 +5123,7 @@ class ConductorManager(service.PeriodicService):
 
                 # As a future precaution, trigger a grub config update.
                 # However, there is no known issues related to the grub config, in this context.
-                self.update_grub_config(context, ihost_uuid, True)
+                self.update_grub_config_in_thread(context, ihost_uuid, True)
                 return
 
             # there has been an update.  Delete db entries and replace.
@@ -5182,7 +5182,7 @@ class ConductorManager(service.PeriodicService):
                  ihost.administrative == constants.ADMIN_LOCKED)):
             LOG.info("Update CPU grub config, host_uuid (%s), name (%s)"
                      % (ihost_uuid, ihost.get('hostname')))
-            self.update_grub_config(context, ihost_uuid, force_grub_update)
+            self.update_grub_config_in_thread(context, ihost_uuid, force_grub_update)
 
         return
 
@@ -15084,6 +15084,10 @@ class ConductorManager(service.PeriodicService):
             self._config_apply_runtime_manifest(context, config_uuid,
                                                 config_dict,
                                                 force=force)
+
+    def update_grub_config_in_thread(self, context, host_uuid, force_grub_update=False):
+        """Update the grub configuration on a host in a green thread"""
+        greenthread.spawn(self.update_grub_config, context, host_uuid, force_grub_update)
 
     @staticmethod
     def _write_config(filename, path, file_content):
