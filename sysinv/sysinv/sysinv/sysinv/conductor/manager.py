@@ -21061,10 +21061,19 @@ class ConductorManager(service.PeriodicService):
             except Exception as e:
                 LOG.error("Error in killing process %s" % e)
 
-            # check for the control plane backup path exists
-            if not os.path.exists(kubernetes.KUBE_CONTROL_PLANE_ETCD_BACKUP_PATH) or \
-                    not os.path.exists(kubernetes.KUBE_CONTROL_PLANE_STATIC_PODS_BACKUP_PATH):
-                LOG.info("Kubernetes control plane backup path doesn't exists.")
+            # check for the actual control plane backup files, not just directories
+            backup_files_present = (
+                os.path.isfile(etcd.ETCD_SNAPSHOT_FULL_FILE_PATH) and
+                os.path.isfile(etcd.ETCD_VERSION_FULL_FILE_PATH) and
+                os.path.isdir(kubernetes.KUBE_CONTROL_PLANE_STATIC_PODS_BACKUP_PATH) and
+                all(os.path.isfile(os.path.join(
+                    kubernetes.KUBE_CONTROL_PLANE_STATIC_PODS_BACKUP_PATH, f))
+                    for f in ['kube-apiserver.yaml',
+                              'kube-controller-manager.yaml',
+                              'kube-scheduler.yaml'])
+            )
+            if not backup_files_present:
+                LOG.info("Kubernetes control plane backup files don't exist, or incomplete")
                 if kube_state in [kubernetes.KUBE_UPGRADING_NETWORKING,
                                           kubernetes.KUBE_UPGRADING_NETWORKING_FAILED,
                                           kubernetes.KUBE_UPGRADING_STORAGE,
