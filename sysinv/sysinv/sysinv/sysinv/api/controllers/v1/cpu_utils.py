@@ -24,7 +24,8 @@ CORE_FUNCTIONS = [
 
 VSWITCH_MIN_CORES = 0
 VSWITCH_MAX_CORES = 8
-DRBD_CPU_MASK_LIMIT = 112
+# Dependent on DRBD_CPU_MASK_SIZE from drbd-headers/linux/drbd.h
+DRBD_CPU_MASK_LIMIT = 908
 
 
 def lookup_function(s):
