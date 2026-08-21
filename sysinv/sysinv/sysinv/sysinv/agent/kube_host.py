@@ -15,6 +15,7 @@ import datetime
 import os
 import re
 import shutil
+import time
 import tsconfig.tsconfig as tsc
 
 from oslo_log import log as logging
@@ -40,6 +41,10 @@ else:
 CONTAINERD_CLEANUP_SCRIPT_PATH = '/usr/sbin/k8s-container-cleanup.sh'
 CONTAINERD_CLEANUP_FORCE_CLEAN_CMD = 'force-clean'
 KUBEADM_UPGRADE_COMMAND_TIMEOUT = 210
+
+# Preflight readiness wait before a control-plane upgrade hop
+PREFLIGHT_TIMEOUT = 120
+PREFLIGHT_INTERVAL = 5
 
 
 class ContainerdOperator(object):
@@ -841,6 +846,86 @@ class KubeControllerOperator(KubeHostOperator):
         except Exception as ex:
             raise exception.SysinvException("Error performing kubernetes upgrade abort recovery: "
                                             "[%s]" % (ex))
+
+    def wait_for_kube_upgrade_preflight_readiness(self):
+        """Wait for kubeadm preflight preconditions before control-plane upgrade.
+
+        Waits for the same conditions that kubeadm's own preflight checks
+        validate (see upstream health.go CheckClusterHealth):
+        1. Static pods healthy - kube-apiserver, kube-controller-manager,
+           kube-scheduler, kubelet endpoints respond healthy
+        2. ControlPlaneNodesReady - control-plane node is Ready
+
+        Endpoints health is checked first because after a failed upgrade
+        attempt the kube-apiserver may still be restarting (connection
+        refused), making it impossible to query node status via the API.
+
+        Note: kubeadm's CreateJob check is not replicated here. On simplex
+        the node is cordoned so kubeadm skips it. On multi-node the other
+        controller is always schedulable during this operation.
+
+        This prevents failures during multi-hop upgrades (e.g., v1.32 ->
+        v1.33 -> v1.34) where the kubelet may not have re-registered
+        the node as Ready between upgrade hops, and also prevents retry
+        failures when a previous attempt left the API server temporarily
+        unavailable due to partial static pod restarts.
+
+        :raises: SysinvException if preconditions not met within timeout
+        """
+        LOG.info("Preflight readiness: waiting for node '%s' "
+                 "(timeout: %ds)..." % (self._host_name, PREFLIGHT_TIMEOUT))
+
+        start_time = time.time()
+        deadline = start_time + PREFLIGHT_TIMEOUT
+        while time.time() < deadline:
+            node_ready = False
+            endpoints_healthy = False
+
+            # Check 1: Static pods + kubelet healthy (uses existing utility)
+            # This must be checked first because after a failed upgrade
+            # attempt the kube-apiserver may be down, making the node
+            # status query impossible (ECONNREFUSED).
+            try:
+                endpoints_healthy = kubernetes.k8s_wait_for_endpoints_health(
+                    tries=1, try_sleep=1, timeout=5, quiet=True)
+            except Exception as ex:
+                LOG.warning("Preflight readiness: error checking endpoints "
+                            "health: %s" % ex)
+
+            # Check 2: ControlPlaneNodesReady (only if API is reachable)
+            if endpoints_healthy:
+                try:
+                    node_status = \
+                        self._kubernetes_operator.kube_get_node_status(
+                            self._host_name)
+                    if (node_status and node_status.status and
+                            node_status.status.conditions):
+                        for condition in node_status.status.conditions:
+                            if (condition.type == 'Ready' and
+                                    condition.status == 'True'):
+                                node_ready = True
+                                break
+                except Exception as ex:
+                    LOG.warning("Preflight readiness: error querying node "
+                                "status for '%s': %s"
+                                % (self._host_name, ex))
+
+            if endpoints_healthy and node_ready:
+                LOG.info("Preflight readiness: node '%s' passed all "
+                         "checks." % self._host_name)
+                return
+
+            time.sleep(PREFLIGHT_INTERVAL)
+            elapsed = int(time.time() - start_time)
+            LOG.info("Preflight readiness: node '%s' not ready "
+                     "(endpoints_healthy=%s, node_ready=%s). "
+                     "Waited %d/%d seconds." %
+                     (self._host_name, endpoints_healthy, node_ready,
+                      elapsed, PREFLIGHT_TIMEOUT))
+
+        raise exception.SysinvException(
+            "Preflight readiness failed: node '%s' did not pass all "
+            "checks within %d seconds." % (self._host_name, PREFLIGHT_TIMEOUT))
 
     def kubeadm_upgrade_apply(self, to_kube_version):
         """Runs kubeadm upgrade apply command on a controller host.

@@ -2016,3 +2016,222 @@ class TestKubernetesOperator(base.TestCase):
         mock_pin_ctr_image.assert_called()
         mock_unpin_ctr_image.assert_not_called()
         mock_get_k8s_images.assert_called_once()
+
+    def _mock_node_status(self, ready):
+        """Build a fake node status object with a Ready condition."""
+        condition = mock.MagicMock()
+        condition.type = 'Ready'
+        condition.status = 'True' if ready else 'False'
+        node_status = mock.MagicMock()
+        node_status.status.conditions = [condition]
+        return node_status
+
+    def test_wait_for_kube_upgrade_preflight_readiness_success_first_try(self):
+        """Test preflight readiness passes on the first iteration
+        """
+        mock_endpoints = mock.MagicMock(return_value=True)
+        p = mock.patch('sysinv.common.kubernetes.k8s_wait_for_endpoints_health',
+                       mock_endpoints)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_node_status = mock.MagicMock(
+            return_value=self._mock_node_status(ready=True))
+        p = mock.patch.object(
+            self.kube_controller_operator._kubernetes_operator,
+            'kube_get_node_status', mock_node_status)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_sleep = mock.MagicMock()
+        p = mock.patch('sysinv.agent.kube_host.time.sleep', mock_sleep)
+        p.start()
+        self.addCleanup(p.stop)
+
+        # Should return without raising and without sleeping.
+        self.kube_controller_operator.wait_for_kube_upgrade_preflight_readiness()
+
+        mock_endpoints.assert_called_once()
+        mock_node_status.assert_called_once()
+        mock_sleep.assert_not_called()
+
+    def test_wait_for_kube_upgrade_preflight_readiness_success_after_retry(self):
+        """Test preflight readiness passes after an initial failed iteration
+        """
+        # First iteration: endpoints unhealthy; second iteration: healthy+ready.
+        mock_endpoints = mock.MagicMock(side_effect=[False, True])
+        p = mock.patch('sysinv.common.kubernetes.k8s_wait_for_endpoints_health',
+                       mock_endpoints)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_node_status = mock.MagicMock(
+            return_value=self._mock_node_status(ready=True))
+        p = mock.patch.object(
+            self.kube_controller_operator._kubernetes_operator,
+            'kube_get_node_status', mock_node_status)
+        p.start()
+        self.addCleanup(p.stop)
+
+        # Patch the whole time module reference used by kube_host so the
+        # deadline loop is fully controlled and never sleeps for real.
+        # time.time() call sequence for two passes ending in success:
+        #   1) start_time            -> 0
+        #   2) while check (pass 1)  -> 0   (< deadline 120, body runs)
+        #   3) elapsed log (pass 1)  -> 5
+        #   4) while check (pass 2)  -> 10  (< deadline 120, body runs)
+        #   pass 2 succeeds and returns before the elapsed log line
+        mock_time = mock.MagicMock()
+        mock_time.time.side_effect = [0, 0, 5, 10]
+        p = mock.patch('sysinv.agent.kube_host.time', mock_time)
+        p.start()
+        self.addCleanup(p.stop)
+
+        self.kube_controller_operator.wait_for_kube_upgrade_preflight_readiness()
+
+        self.assertEqual(mock_endpoints.call_count, 2)
+        # node status only queried on the second (healthy) iteration
+        mock_node_status.assert_called_once()
+        mock_time.sleep.assert_called_once()
+
+    def test_wait_for_kube_upgrade_preflight_readiness_timeout(self):
+        """Test preflight readiness raises SysinvException on timeout
+        """
+        # Endpoints never become healthy.
+        mock_endpoints = mock.MagicMock(return_value=False)
+        p = mock.patch('sysinv.common.kubernetes.k8s_wait_for_endpoints_health',
+                       mock_endpoints)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_node_status = mock.MagicMock()
+        p = mock.patch.object(
+            self.kube_controller_operator._kubernetes_operator,
+            'kube_get_node_status', mock_node_status)
+        p.start()
+        self.addCleanup(p.stop)
+
+        # time.time() call sequence for one pass then timeout:
+        #   1) start_time            -> 0
+        #   2) while check (pass 1)  -> 0    (< deadline 120, body runs once)
+        #   3) elapsed log (pass 1)  -> 50
+        #   4) while check (pass 2)  -> 121  (>= deadline 120, loop exits)
+        mock_time = mock.MagicMock()
+        mock_time.time.side_effect = [0, 0, 50, 121]
+        p = mock.patch('sysinv.agent.kube_host.time', mock_time)
+        p.start()
+        self.addCleanup(p.stop)
+
+        self.assertRaises(
+            exception.SysinvException,
+            self.kube_controller_operator.wait_for_kube_upgrade_preflight_readiness)
+
+        # Endpoints checked once; node status never reached (endpoints unhealthy).
+        mock_endpoints.assert_called_once()
+        mock_node_status.assert_not_called()
+
+    def test_wait_for_kube_upgrade_preflight_readiness_endpoints_ok_node_not_ready(self):
+        """Test preflight keeps retrying when endpoints are healthy but the
+        node is not yet Ready, then succeeds once the node becomes Ready.
+        """
+        # Endpoints healthy on both passes.
+        mock_endpoints = mock.MagicMock(return_value=True)
+        p = mock.patch('sysinv.common.kubernetes.k8s_wait_for_endpoints_health',
+                       mock_endpoints)
+        p.start()
+        self.addCleanup(p.stop)
+
+        # Pass 1: node not Ready; Pass 2: node Ready.
+        mock_node_status = mock.MagicMock(side_effect=[
+            self._mock_node_status(ready=False),
+            self._mock_node_status(ready=True)])
+        p = mock.patch.object(
+            self.kube_controller_operator._kubernetes_operator,
+            'kube_get_node_status', mock_node_status)
+        p.start()
+        self.addCleanup(p.stop)
+
+        # Two passes ending in success (same clock sequence as the retry test).
+        mock_time = mock.MagicMock()
+        mock_time.time.side_effect = [0, 0, 5, 10]
+        p = mock.patch('sysinv.agent.kube_host.time', mock_time)
+        p.start()
+        self.addCleanup(p.stop)
+
+        self.kube_controller_operator.wait_for_kube_upgrade_preflight_readiness()
+
+        # Endpoints healthy both passes, so node status queried both passes.
+        self.assertEqual(mock_endpoints.call_count, 2)
+        self.assertEqual(mock_node_status.call_count, 2)
+        # Looped once (node not ready on pass 1) before succeeding.
+        mock_time.sleep.assert_called_once()
+
+    def test_wait_for_kube_upgrade_preflight_readiness_endpoints_exception_swallowed(self):
+        """Test an exception from the endpoints health check is swallowed
+        (treated as unhealthy) rather than propagated.
+        """
+        # Endpoints check raises every time -> never healthy -> timeout.
+        mock_endpoints = mock.MagicMock(side_effect=Exception("boom"))
+        p = mock.patch('sysinv.common.kubernetes.k8s_wait_for_endpoints_health',
+                       mock_endpoints)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_node_status = mock.MagicMock()
+        p = mock.patch.object(
+            self.kube_controller_operator._kubernetes_operator,
+            'kube_get_node_status', mock_node_status)
+        p.start()
+        self.addCleanup(p.stop)
+
+        # One pass then timeout.
+        mock_time = mock.MagicMock()
+        mock_time.time.side_effect = [0, 0, 50, 121]
+        p = mock.patch('sysinv.agent.kube_host.time', mock_time)
+        p.start()
+        self.addCleanup(p.stop)
+
+        # The endpoints exception must not escape; the method raises the
+        # timeout SysinvException instead.
+        self.assertRaises(
+            exception.SysinvException,
+            self.kube_controller_operator.wait_for_kube_upgrade_preflight_readiness)
+
+        mock_endpoints.assert_called_once()
+        # Node status never queried because endpoints were treated as unhealthy.
+        mock_node_status.assert_not_called()
+
+    def test_wait_for_kube_upgrade_preflight_readiness_node_status_exception_swallowed(self):
+        """Test an exception from the node status query is swallowed
+        (treated as not Ready) rather than propagated.
+        """
+        # Endpoints healthy so the node status query is reached.
+        mock_endpoints = mock.MagicMock(return_value=True)
+        p = mock.patch('sysinv.common.kubernetes.k8s_wait_for_endpoints_health',
+                       mock_endpoints)
+        p.start()
+        self.addCleanup(p.stop)
+
+        # Node status query raises every time -> never Ready -> timeout.
+        mock_node_status = mock.MagicMock(side_effect=Exception("boom"))
+        p = mock.patch.object(
+            self.kube_controller_operator._kubernetes_operator,
+            'kube_get_node_status', mock_node_status)
+        p.start()
+        self.addCleanup(p.stop)
+
+        # One pass then timeout.
+        mock_time = mock.MagicMock()
+        mock_time.time.side_effect = [0, 0, 50, 121]
+        p = mock.patch('sysinv.agent.kube_host.time', mock_time)
+        p.start()
+        self.addCleanup(p.stop)
+
+        # The node status exception must not escape; the method raises the
+        # timeout SysinvException instead.
+        self.assertRaises(
+            exception.SysinvException,
+            self.kube_controller_operator.wait_for_kube_upgrade_preflight_readiness)
+
+        mock_endpoints.assert_called_once()
+        mock_node_status.assert_called_once()

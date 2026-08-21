@@ -1447,6 +1447,13 @@ class TestHostKubernetesOperations(base.TestCase):
         p.start().return_value = current_link_kube
         self.addCleanup(p.stop)
 
+        mock_preflight = mock.MagicMock()
+        p = mock.patch('sysinv.agent.kube_host.KubeControllerOperator.'
+                       'wait_for_kube_upgrade_preflight_readiness',
+                       mock_preflight)
+        p.start()
+        self.addCleanup(p.stop)
+
         mock_upgrade_control_plane = mock.MagicMock()
         p = mock.patch('sysinv.agent.kube_host.KubeControllerOperator.upgrade_control_plane',
                        mock_upgrade_control_plane)
@@ -1494,6 +1501,13 @@ class TestHostKubernetesOperations(base.TestCase):
         upgrade_result = True
         is_first_master = True
 
+        mock_preflight = mock.MagicMock()
+        p = mock.patch('sysinv.agent.kube_host.KubeControllerOperator.'
+                       'wait_for_kube_upgrade_preflight_readiness',
+                       mock_preflight)
+        p.start()
+        self.addCleanup(p.stop)
+
         mock_upgrade_control_plane = mock.MagicMock()
         p = mock.patch('sysinv.agent.kube_host.KubeControllerOperator.upgrade_control_plane',
                        mock_upgrade_control_plane)
@@ -1524,10 +1538,78 @@ class TestHostKubernetesOperations(base.TestCase):
         mock_upgrade_control_plane.assert_called()
         self.assertEqual(mock_upgrade_control_plane.call_count, 2)
 
+        # Proactive preflight readiness wait runs once before the retry loop.
+        mock_preflight.assert_called_once_with()
+
         # TODO(jgauld) - WIP
         # mock_report_kube_upgrade_etcd_result.assert_called_once_with(
         #     self.context, self.agent_manager._ihost_uuid, target_etcd_version,
         #     is_first_master, upgrade_result)
+
+        mock_report_kube_upgrade_control_plane_result.assert_called_once_with(
+            self.context, self.agent_manager._ihost_uuid, to_kube_version,
+            is_first_master, upgrade_result)
+
+    def test_kube_upgrade_control_plane_preflight_exception_proceeds(self):
+        """Test control plane upgrade proceeds when preflight readiness fails.
+
+        The proactive preflight readiness wait is best effort: if it raises
+        (e.g. it times out waiting for the node to become Ready), the upgrade
+        must still proceed and let the retry loop handle it. This verifies the
+        exception is caught and the control-plane upgrade is still attempted
+        and succeeds.
+        """
+        self.agent_manager._ihost_personality = constants.CONTROLLER
+        self.agent_manager._ihostname = 'fake_host_name'
+        target_etcd_version = 'vfake_target_etcd_version'
+        to_kube_version = 'vfake_to_kube_version'
+        current_link_etcd = '/usr/local/etcd/3.4.37/stage0'
+        current_link_kube = '/usr/local/kubernetes/1.32.2/stage1'
+        upgrade_result = True
+        is_first_master = True
+
+        # Preflight readiness raises - upgrade must proceed anyway.
+        mock_preflight = mock.MagicMock()
+        p = mock.patch('sysinv.agent.kube_host.KubeControllerOperator.'
+                       'wait_for_kube_upgrade_preflight_readiness',
+                       mock_preflight)
+        p.start().side_effect = exception.SysinvException(
+            "Preflight readiness failed")
+        self.addCleanup(p.stop)
+
+        mock_upgrade_control_plane = mock.MagicMock()
+        p = mock.patch('sysinv.agent.kube_host.KubeControllerOperator.upgrade_control_plane',
+                       mock_upgrade_control_plane)
+        p.start().return_value = True
+        self.addCleanup(p.stop)
+
+        mock_os_readlink_etcd = mock.MagicMock()
+        p = mock.patch('os.readlink', mock_os_readlink_etcd)
+        p.start().return_value = current_link_etcd
+        self.addCleanup(p.stop)
+
+        mock_os_readlink_kube = mock.MagicMock()
+        p = mock.patch('os.readlink', mock_os_readlink_kube)
+        p.start().return_value = current_link_kube
+        self.addCleanup(p.stop)
+
+        mock_report_kube_upgrade_control_plane_result = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.rpcapi.ConductorAPI.'
+                       'report_kube_upgrade_control_plane_result',
+                       mock_report_kube_upgrade_control_plane_result)
+        p.start()
+        self.addCleanup(p.stop)
+
+        self.agent_manager.kube_upgrade_control_plane(
+            self.context, self.agent_manager._ihost_uuid, target_etcd_version,
+            to_kube_version, is_first_master)
+
+        # Preflight was attempted once and raised.
+        mock_preflight.assert_called_once_with()
+
+        # The upgrade proceeded despite the preflight exception and succeeded
+        # on the first attempt.
+        mock_upgrade_control_plane.assert_called_once()
 
         mock_report_kube_upgrade_control_plane_result.assert_called_once_with(
             self.context, self.agent_manager._ihost_uuid, to_kube_version,
@@ -1591,6 +1673,13 @@ class TestHostKubernetesOperations(base.TestCase):
         upgrade_result = False
         is_first_master = True
 
+        mock_preflight = mock.MagicMock()
+        p = mock.patch('sysinv.agent.kube_host.KubeControllerOperator.'
+                       'wait_for_kube_upgrade_preflight_readiness',
+                       mock_preflight)
+        p.start()
+        self.addCleanup(p.stop)
+
         mock_upgrade_control_plane = mock.MagicMock()
         p = mock.patch('sysinv.agent.kube_host.KubeControllerOperator.upgrade_control_plane',
                        mock_upgrade_control_plane)
@@ -1620,6 +1709,10 @@ class TestHostKubernetesOperations(base.TestCase):
 
         mock_upgrade_control_plane.assert_called()
         self.assertEqual(mock_upgrade_control_plane.call_count, 2)
+
+        # Proactive preflight readiness wait runs once before the retry loop,
+        # not once per failed attempt.
+        mock_preflight.assert_called_once_with()
 
         # TODO(jgauld) - WIP
 

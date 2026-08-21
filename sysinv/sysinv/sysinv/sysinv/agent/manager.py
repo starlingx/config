@@ -2793,6 +2793,21 @@ class AgentManager(service.PeriodicService):
             success = etcd_success
             attempt = 1
             if etcd_success:
+                # Proactively wait for preflight readiness before the first
+                # attempt. During multi-hop upgrades the kubelet may not have
+                # re-registered the node as Ready after the previous hop, and
+                # the API server or node may still be recovering from partial
+                # static pod restarts. Waiting here closes that between-hops
+                # window directly and avoids a guaranteed first-attempt
+                # failure. This is best effort: on a healthy system it returns
+                # immediately, and if it times out we still proceed and let the
+                # retry loop handle it.
+                try:
+                    operator.wait_for_kube_upgrade_preflight_readiness()
+                except Exception as preflight_ex:
+                    LOG.warning("Preflight readiness check failed before "
+                                "control-plane upgrade to %s: %s"
+                                % (to_kube_version, preflight_ex))
                 while attempt <= constants.CONTROL_PLANE_RETRY_COUNT:
                     try:
                         current_link = os.readlink(kubernetes.KUBERNETES_SYMLINKS_STAGE_1)
