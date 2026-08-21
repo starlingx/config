@@ -2558,7 +2558,10 @@ class AgentManager(service.PeriodicService):
                 raise exception.SysinvException("Kubernetes upgrade call method argument details "
                                                 "not found.")
 
-            data_to_save = arg_info.locals
+            # In Python 3.13+, arg_info.locals returns a FrameLocalsProxy object
+            # which does not support mutation operations like .pop() or .update().
+            # Convert to a regular dict to allow modification.
+            data_to_save = dict(arg_info.locals)
             if not data_to_save:
                 raise exception.SysinvException("Kubernetes upgrade call method argument details "
                                                 "not found.")
