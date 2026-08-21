@@ -509,7 +509,7 @@ class NetworkingPuppet(base.BasePuppet):
             instance['pmc_gm_settings'] = {}
             instance['device_parameters'] = {}
             instance['gnss_uart_disable'] = True
-            instance['external_source'] = {}
+            instance['external_sources'] = []
             instance['monitoring_parameters'] = {}
 
             # Additional defaults for ptp4l instances
@@ -604,7 +604,7 @@ class NetworkingPuppet(base.BasePuppet):
     def _prune_ptp_config_fields(self, ptp_instances):
         allowed_instance_fields = ['global_parameters', 'interfaces', 'name', 'service',
                                    'cmdline_opts', 'id', 'pmc_gm_settings', 'device_parameters',
-                                   'gnss_uart_disable', 'external_source', 'monitoring_parameters',
+                                   'gnss_uart_disable', 'external_sources', 'monitoring_parameters',
                                    'section_parameters', 'config_json']
         for instance_name in ptp_instances:
             instance = ptp_instances[instance_name]
@@ -761,11 +761,32 @@ class NetworkingPuppet(base.BasePuppet):
                         ptp_parameters_interface,
                         base_port)
                     if _ext_src:
-                        current_instance['external_source'] = _ext_src
+                        current_instance['external_sources'].append(_ext_src)
                 # Add supplied params to the interface
                 for param in ptp_parameters_interface:
                     if iface['uuid'] in param['owners']:
                         iface['parameters'][param['name']] = param['value']
+
+        # Deduplicate port sections for synce4l instances.
+        # Multiple ptp-interfaces may share the same port (e.g., one for GNSS
+        # ext_src and one for SyncE ext_src). Merge their parameters into a
+        # single interface entry to avoid duplicate [port] sections in config.
+        for instance in ptp_instances:
+            current_instance = ptp_instances[instance]
+            if current_instance['service'] != constants.PTP_INSTANCE_TYPE_SYNCE4L:
+                continue
+            seen_ports = {}
+            deduplicated = []
+            for iface in current_instance['interfaces']:
+                port_key = tuple(iface['port_names'])
+                if port_key in seen_ports:
+                    # Merge parameters into the first occurrence
+                    seen_ports[port_key]['parameters'].update(
+                        iface['parameters'])
+                else:
+                    seen_ports[port_key] = iface
+                    deduplicated.append(iface)
+            current_instance['interfaces'] = deduplicated
 
         return ptp_instances
 
