@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2018 Wind River Systems, Inc.
+# Copyright (c) 2018,2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -36,13 +36,44 @@ class SysinvLldpdAgentDriver(base.SysinvLldpDriverBase):
         self.__init__()
 
     @staticmethod
+    def _lldpd_run_and_parse(cmd):
+        """Run an lldpcli command and safely parse its JSON output.
+
+        Returns the parsed JSON data on success, or None if the command
+        fails or produces empty/invalid output.
+        """
+        try:
+            p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                                 stderr=subprocess.PIPE,
+                                 universal_newlines=True)
+            stdout, stderr = p.communicate()
+            if p.returncode != 0 or not stdout or not stdout.strip():
+                LOG.debug("lldpcli returned no usable output for "
+                          "'%s' (rc=%s): %s", ' '.join(cmd),
+                          p.returncode,
+                          stderr.strip() if stderr else "")
+                return None
+            return json.loads(stdout)
+        except json.JSONDecodeError as e:
+            # lldpcli normally returns valid JSON, even when no data is
+            # available. Invalid JSON may indicate an unexpected lldpcli
+            # response or a problem communicating with lldpd.
+            LOG.warning("Failed to parse lldpcli JSON output for "
+                        "'%s': %s", ' '.join(cmd), str(e))
+            return None
+        except Exception as e:
+            LOG.warning("Failed to execute or parse lldpcli command "
+                        "'%s': %s", ' '.join(cmd), str(e))
+            return None
+
+    @staticmethod
     def _lldpd_get_agent_status():
-        json_obj = json
-        p = subprocess.Popen(["lldpcli", "-f", "json0", "show",
-                              "configuration"],
-                             universal_newlines=True,
-                             stdout=subprocess.PIPE)
-        data = json_obj.loads(p.communicate()[0])
+        data = SysinvLldpdAgentDriver._lldpd_run_and_parse(
+            ["lldpcli", "-f", "json0", "show", "configuration"])
+        if data is None:
+            # Daemon is running but something happen,
+            # the Default is enabled state.
+            return "rx=enabled,tx=enabled"
 
         # No special handling required in this method.
         # lldp 0.9.0 json  and lldp 1.0.11 json0 both
@@ -272,13 +303,12 @@ class SysinvLldpdAgentDriver(base.SysinvLldpDriverBase):
         subprocess.call(['lldpcli', 'update'])  # pylint: disable=not-callable
 
     def lldp_agents_list(self):
-        json_obj = json
         lldp_agents = []
 
-        p = subprocess.Popen(["lldpcli", "-f", "json0", "show", "interface",
-                              "detail"], stdout=subprocess.PIPE,
-                              universal_newlines=True)
-        data = json_obj.loads(p.communicate()[0])
+        data = self._lldpd_run_and_parse(
+            ["lldpcli", "-f", "json0", "show", "interface", "detail"])
+        if data is None:
+            return lldp_agents
 
         lldp = data['lldp'][0]
 
@@ -303,12 +333,12 @@ class SysinvLldpdAgentDriver(base.SysinvLldpDriverBase):
         self.previous_agents = []
 
     def lldp_neighbours_list(self):
-        json_obj = json
         lldp_neighbours = []
-        p = subprocess.Popen(["lldpcli", "-f", "json0", "show", "neighbor",
-                              "detail"], stdout=subprocess.PIPE,
-                              universal_newlines=True)
-        data = json_obj.loads(p.communicate()[0])
+
+        data = self._lldpd_run_and_parse(
+            ["lldpcli", "-f", "json0", "show", "neighbor", "detail"])
+        if data is None:
+            return lldp_neighbours
 
         lldp = data['lldp'][0]
 
@@ -330,9 +360,12 @@ class SysinvLldpdAgentDriver(base.SysinvLldpDriverBase):
         self.previous_neighbours = []
 
     def lldp_update_systemname(self, systemname):
-        p = subprocess.Popen(["lldpcli", "-f", "json0", "show", "chassis"],
-                             stdout=subprocess.PIPE, universal_newlines=True)
-        data = json.loads(p.communicate()[0])
+        data = self._lldpd_run_and_parse(
+            ["lldpcli", "-f", "json0", "show", "chassis"])
+        if data is None:
+            LOG.warning("Cannot update LLDP system name: "
+                      "lldpcli show chassis returned no data")
+            return
 
         local_chassis = data['local-chassis'][0]
         chassis = local_chassis['chassis'][0]
@@ -345,5 +378,5 @@ class SysinvLldpdAgentDriver(base.SysinvLldpDriverBase):
 
         newname = hostname + ":" + systemname
 
-        p = subprocess.Popen(["lldpcli", "configure", "system", "hostname",
-                              newname], stdout=subprocess.PIPE)
+        subprocess.Popen(["lldpcli", "configure", "system", "hostname",
+                         newname], stdout=subprocess.PIPE)

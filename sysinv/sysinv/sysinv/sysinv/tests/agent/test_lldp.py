@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2022 Wind River Systems, Inc.
+# Copyright (c) 2022,2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -110,7 +110,8 @@ class LldpInterfaceDetailTestsMixin(object):
         # mock the results from the subprocess call to the CLI to return the json data
         error_data = None
         mock_comm = mock.Mock()
-        attrs = {'communicate.return_value': (self.agent_status_data, error_data)}
+        attrs = {'communicate.return_value': (self.agent_status_data, error_data),
+                 'returncode': 0}
         mock_comm.configure_mock(**attrs)
         mock_popen.return_value = mock_comm
 
@@ -132,7 +133,8 @@ class LldpInterfaceDetailTestsMixin(object):
         # mock the results from the subprocess call to the CLI to return the json data
         error_data = None
         mock_comm = mock.Mock()
-        attrs = {'communicate.return_value': (self.agent_list_data, error_data)}
+        attrs = {'communicate.return_value': (self.agent_list_data, error_data),
+                 'returncode': 0}
         mock_comm.configure_mock(**attrs)
         mock_popen.return_value = mock_comm
 
@@ -155,7 +157,8 @@ class LldpInterfaceDetailTestsMixin(object):
         # mock the results from the subprocess call to the CLI to return the json data
         error_data = None
         mock_comm = mock.Mock()
-        attrs = {'communicate.return_value': (self.neighbours_list_data, error_data)}
+        attrs = {'communicate.return_value': (self.neighbours_list_data, error_data),
+                 'returncode': 0}
         mock_comm.configure_mock(**attrs)
         mock_popen.return_value = mock_comm
 
@@ -177,7 +180,8 @@ class LldpInterfaceDetailTestsMixin(object):
         # mock the results from the subprocess call to the CLI to return the json data
         error_data = None
         mock_comm = mock.Mock()
-        attrs = {'communicate.return_value': (self.show_chassis_data, error_data)}
+        attrs = {'communicate.return_value': (self.show_chassis_data, error_data),
+                 'returncode': 0}
         mock_comm.configure_mock(**attrs)
         mock_popen.return_value = mock_comm
 
