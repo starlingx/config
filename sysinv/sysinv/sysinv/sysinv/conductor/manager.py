@@ -5390,6 +5390,12 @@ class ConductorManager(service.PeriodicService):
                                 LOG.info("Install from clone. Update disk serial"
                                          " id for disk %s. Skip gpt formatting."
                                          % idisk.uuid)
+                            elif os.path.isfile(constants.CLONE_FLAG_PATH):
+                                LOG.info("Cloned install detected (%s). "
+                                         "Skip gpt formatting for "
+                                         "disk %s."
+                                         % (constants.CLONE_FLAG_PATH,
+                                            idisk.uuid))
                             elif (ihost.rootfs_device == idisk.device_path or
                                     ihost.rootfs_device in idisk.device_node):
                                 LOG.info("Disk uuid: %s is a root disk, "

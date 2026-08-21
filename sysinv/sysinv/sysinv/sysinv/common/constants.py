@@ -2071,6 +2071,7 @@ DISK_WIPE_COMPLETE_TIMEOUT = 5  # wait for a disk to finish wiping.
 # Clone label set in DB
 CLONE_ISO_MAC = 'CLONEISOMAC_'
 CLONE_ISO_DISK_SID = 'CLONEISODISKSID_'
+CLONE_FLAG_PATH = '/etc/platform/.cloned_install'
 
 DISTRIBUTED_CLOUD_ROLE_SUBCLOUD = 'subcloud'
 
