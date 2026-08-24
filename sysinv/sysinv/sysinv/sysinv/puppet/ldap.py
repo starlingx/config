@@ -10,6 +10,7 @@ from oslo_log import log
 from passlib.hash import ldap_salted_sha1 as hash
 
 from sysinv.common import constants
+from sysinv.common import exception
 from sysinv.common import utils
 from sysinv.common.retrying import retry
 
@@ -191,17 +192,23 @@ class LdapPuppet(base.BasePuppet):
         bind_anonymous = False
         if self._distributed_cloud_role() == \
                 constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
-            # Note: During bootstrap, sysinv db is not yet populated
-            # and hence local ldapserver will be configured.
-            # It will be then disabled when controller manifests are applied.
-            sys_controller_network = self.dbapi.network_get_by_type(
-                constants.NETWORK_TYPE_SYSTEM_CONTROLLER)
-            sys_controller_network_addr_pool = self.dbapi.address_pool_get(
-                sys_controller_network.pool_uuid)
-            ldapserver_remote = True
-            ldapserver_addr = sys_controller_network_addr_pool.floating_address
-            ldapserver_host = self._format_url_address(ldapserver_addr)
-            bind_anonymous = True
+            # Note: During bootstrap or rehoming, the system-controller
+            # network may not yet be populated in the DB. In that case,
+            # fall back to local ldapserver configuration. It will be
+            # reconfigured when controller manifests are applied.
+            try:
+                sys_controller_network = self.dbapi.network_get_by_type(
+                    constants.NETWORK_TYPE_SYSTEM_CONTROLLER)
+                sys_controller_network_addr_pool = self.dbapi.address_pool_get(
+                    sys_controller_network.pool_uuid)
+                ldapserver_remote = True
+                ldapserver_addr = \
+                    sys_controller_network_addr_pool.floating_address
+                ldapserver_host = self._format_url_address(ldapserver_addr)
+                bind_anonymous = True
+            except exception.NetworkTypeNotFound:
+                LOG.info("System-controller network not found, "
+                         "using local ldap configuration.")
 
         elif self._region_config():
             service_config = self.get_service_config(self.SERVICE_NAME)
