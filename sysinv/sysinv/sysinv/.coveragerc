@@ -1,8 +1,14 @@
 [run]
 branch = True
+parallel = True
 source = sysinv
-omit = sysinv/tests/*
+omit = */tests/*
+concurrency = multiprocessing
 
 [report]
 ignore_errors = True
-
+omit = */tests/*
+exclude_lines =
+    pragma: no cover
+    if __name__ == .__main__
+    raise NotImplementedError
