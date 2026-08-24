@@ -619,8 +619,7 @@ class NetworkingPuppet(base.BasePuppet):
 
         For each dpll-mgr instance in ptp_config:
         1. Decode the single config_json row into the full nested config
-        2. Auto-fill missing channels from sibling PTP instances on same host
-        3. Store assembled config as 'config_json' in the instance dict
+        2. Store assembled config as 'config_json' in the instance dict
         """
         for instance_name in ptp_config:
             instance = ptp_config[instance_name]
@@ -642,35 +641,7 @@ class NetworkingPuppet(base.BasePuppet):
                                   "for instance '%s'" % instance_name)
                 section_params.pop('config_json')
 
-            generated_channels = self._generate_dpll_mgr_channels(
-                instance_name, ptp_config)
-            if 'channels' not in dpll_config:
-                dpll_config['channels'] = generated_channels
-            else:
-                for ch_name, ch_val in generated_channels.items():
-                    if ch_name not in dpll_config['channels']:
-                        dpll_config['channels'][ch_name] = ch_val
-
             instance['config_json'] = dpll_config
-
-    def _generate_dpll_mgr_channels(self, dpll_instance_name, ptp_config):
-        """Auto-generate channels section from sibling PTP instances.
-
-        Maps each sibling instance to its UDS socket path.
-        Channel key = instance name, value = {"call_channel": "uds:<path>"}
-        """
-        channels = {}
-        for name, instance in ptp_config.items():
-            if name == dpll_instance_name:
-                continue
-            service = instance.get('service', '')
-            if service in (constants.PTP_INSTANCE_TYPE_PTP4L,
-                           constants.PTP_INSTANCE_TYPE_PHC2SYS,
-                           constants.PTP_INSTANCE_TYPE_TS2PHC,
-                           constants.PTP_INSTANCE_TYPE_SYNCE4L):
-                uds_path = '/var/run/%s-%s' % (service, name)
-                channels[name] = {'call_channel': 'uds:%s' % uds_path}
-        return channels
 
     def _set_ptp_instance_interfaces(self, host, ptp_instances, ptp_interfaces):
         allowed_interface_fields = ['ifname',

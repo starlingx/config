@@ -978,8 +978,8 @@ class TestDpllMgrHieradata(testtools.TestCase):
         self.assertEqual(result['dpll']['dpll0']['name'], 'DPLL0_FREQ')
         self.assertEqual(result['synce']['ql_type'], 1)
 
-    def test_dpll_mgr_channels_auto_generated(self):
-        """No user channels → auto-generated from siblings."""
+    def test_dpll_mgr_channels_not_auto_generated(self):
+        """No user channels → no auto-generation (empty config)."""
         config = {'global': {'operation_mode': 'SW_BASED'}}
         section_params = self._make_config_json_section(config)
         ptp_config = {
@@ -988,12 +988,11 @@ class TestDpllMgrHieradata(testtools.TestCase):
             'phc-0': self._make_instance('phc-0', 'phc2sys')
         }
         self.networking._set_ptp_instance_dpll_mgr_config(ptp_config)
-        channels = ptp_config['dpll-0']['config_json']['channels']
-        self.assertEqual(channels['ptp-fr'], {'call_channel': 'uds:/var/run/ptp4l-ptp-fr'})
-        self.assertEqual(channels['phc-0'], {'call_channel': 'uds:/var/run/phc2sys-phc-0'})
+        result = ptp_config['dpll-0']['config_json']
+        self.assertNotIn('channels', result)
 
-    def test_dpll_mgr_channels_user_partial(self):
-        """User provides some channels; missing siblings filled in."""
+    def test_dpll_mgr_channels_user_preserved(self):
+        """User provides channels → preserved as-is, no siblings added."""
         config = {
             'global': {},
             'channels': {'my-custom': {'call_channel': 'uds:/custom/path'}}
@@ -1006,7 +1005,7 @@ class TestDpllMgrHieradata(testtools.TestCase):
         self.networking._set_ptp_instance_dpll_mgr_config(ptp_config)
         channels = ptp_config['dpll-0']['config_json']['channels']
         self.assertEqual(channels['my-custom'], {'call_channel': 'uds:/custom/path'})
-        self.assertEqual(channels['ptp-fr'], {'call_channel': 'uds:/var/run/ptp4l-ptp-fr'})
+        self.assertNotIn('ptp-fr', channels)
 
     def test_dpll_mgr_channels_user_complete(self):
         """User provides all channels including sibling name → no override."""
@@ -1023,33 +1022,19 @@ class TestDpllMgrHieradata(testtools.TestCase):
         channels = ptp_config['dpll-0']['config_json']['channels']
         self.assertEqual(channels['ptp-fr'], {'call_channel': 'uds:/user/override'})
 
-    def test_dpll_mgr_channels_excludes_self(self):
-        """dpll-mgr not in its own channels."""
+    def test_dpll_mgr_channels_no_auto_generation(self):
+        """dpll-mgr no longer auto-generates channels from siblings."""
         ptp_config = {
             'dpll-0': self._make_instance('dpll-0', 'dpll-mgr'),
             'ptp-fr': self._make_instance('ptp-fr', 'ptp4l')
         }
-        channels = self.networking._generate_dpll_mgr_channels('dpll-0', ptp_config)
-        self.assertNotIn('dpll-0', channels)
-        self.assertIn('ptp-fr', channels)
-
-    def test_dpll_mgr_channels_all_service_types(self):
-        """All supported service types generate correct UDS paths."""
-        ptp_config = {
-            'dpll-0': self._make_instance('dpll-0', 'dpll-mgr'),
-            'p4l': self._make_instance('p4l', 'ptp4l'),
-            'phc': self._make_instance('phc', 'phc2sys'),
-            'ts2': self._make_instance('ts2', 'ts2phc'),
-            'syn': self._make_instance('syn', 'synce4l')
-        }
-        channels = self.networking._generate_dpll_mgr_channels('dpll-0', ptp_config)
-        self.assertEqual(channels['p4l'], {'call_channel': 'uds:/var/run/ptp4l-p4l'})
-        self.assertEqual(channels['phc'], {'call_channel': 'uds:/var/run/phc2sys-phc'})
-        self.assertEqual(channels['ts2'], {'call_channel': 'uds:/var/run/ts2phc-ts2'})
-        self.assertEqual(channels['syn'], {'call_channel': 'uds:/var/run/synce4l-syn'})
+        self.networking._set_ptp_instance_dpll_mgr_config(ptp_config)
+        result = ptp_config['dpll-0']['config_json']
+        # No auto-generated channels — config_json is empty dict
+        self.assertEqual(result, {})
 
     def test_dpll_mgr_bad_json_logged(self):
-        """Malformed JSON → error logged, config_json has auto channels only."""
+        """Malformed JSON → error logged, config_json is empty dict."""
         section_params = {'config_json': [{'config_json': 'not valid json{{{'}]}
         ptp_config = {
             'dpll-0': self._make_instance('dpll-0', 'dpll-mgr', section_params),
@@ -1059,17 +1044,17 @@ class TestDpllMgrHieradata(testtools.TestCase):
             self.networking._set_ptp_instance_dpll_mgr_config(ptp_config)
             mock_log.error.assert_called_once()
         result = ptp_config['dpll-0']['config_json']
-        self.assertIn('ptp-fr', result['channels'])
+        self.assertEqual(result, {})
 
     def test_dpll_mgr_empty_config(self):
-        """No config_json parameter → empty dict with auto channels."""
+        """No config_json parameter → empty dict (no auto channels)."""
         ptp_config = {
             'dpll-0': self._make_instance('dpll-0', 'dpll-mgr'),
             'ptp-fr': self._make_instance('ptp-fr', 'ptp4l')
         }
         self.networking._set_ptp_instance_dpll_mgr_config(ptp_config)
         result = ptp_config['dpll-0']['config_json']
-        self.assertEqual(result, {'channels': {'ptp-fr': {'call_channel': 'uds:/var/run/ptp4l-ptp-fr'}}})
+        self.assertEqual(result, {})
 
     def test_dpll_mgr_quoted_str_stripped(self):
         """quoted_str wrapping is stripped before JSON decode."""
