@@ -1604,6 +1604,20 @@ class Connection(api.Connection):
                 if (n.capabilities or {}).get('is_active') is not False]
 
     @db_objects.objectify(objects.node)
+    def inode_active_get_by_missing_imemory(self, exclude_offline=True):
+        query = model_query(models.inode)
+        query = query.outerjoin(models.imemory,
+                                models.imemory.forinodeid == models.inode.id)
+        query = query.filter(models.imemory.id.is_(None))
+        if exclude_offline:
+            query = query.join(models.ihost,
+                               models.ihost.id == models.inode.forihostid)
+            query = query.filter(models.ihost.availability !=
+                                 constants.AVAILABILITY_OFFLINE)
+        return [n for n in query.all()
+                if (n.capabilities or {}).get('is_active') is not False]
+
+    @db_objects.objectify(objects.node)
     def inode_update(self, inode_id, values):
         with _session_for_write() as session:
             # May need to reserve in multi controller system; ref sysinv

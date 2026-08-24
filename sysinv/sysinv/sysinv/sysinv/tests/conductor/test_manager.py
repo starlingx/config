@@ -10210,6 +10210,215 @@ class ManagerTestCase(base.DbTestCase):
 
         self.assertEqual(updated_port['node_id'], 3)
 
+    def test_inumas_update_by_ihost_activates_new_numa_node(self):
+        # Simulate a BIOS change that adds a second NUMA node (e.g. SNC-1 -> SNC-2).
+        # The new node should be created with is_active=True and the existing
+        # node should be re-confirmed active.
+        config_uuid = str(uuid.uuid4())
+        ihost = self._create_test_ihost(
+            personality=constants.WORKER,
+            hostname='compute-0',
+            uuid=str(uuid.uuid4()),
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+        )
+        host_uuid = ihost['uuid']
+        host_id = ihost['id']
+
+        # Only node 0 exists in DB initially
+        utils.create_test_node(id=1, numa_node=0, forihostid=host_id,
+                               capabilities={'is_active': True})
+
+        # Agent now reports both node 0 and node 1
+        inuma_dict_array = [{'numa_node': 0}, {'numa_node': 1}]
+        self.service.inumas_update_by_ihost(self.context, host_uuid, inuma_dict_array)
+
+        inodes = self.dbapi.inode_get_by_ihost(host_uuid)
+        numa_map = {n['numa_node']: n for n in inodes}
+
+        # Both nodes must exist and be active
+        self.assertIn(0, numa_map)
+        self.assertIn(1, numa_map)
+        self.assertTrue(numa_map[0]['capabilities'].get('is_active'))
+        self.assertTrue(numa_map[1]['capabilities'].get('is_active'))
+
+    def test_inumas_update_by_ihost_deactivates_removed_numa_node(self):
+        # Simulate a BIOS change that removes a NUMA node (e.g. SNC-2 -> SNC-1).
+        # The stale node must be marked inactive but NOT deleted, to preserve
+        # user-configured hugepage/platform_reserved_mib settings.
+        config_uuid = str(uuid.uuid4())
+        ihost = self._create_test_ihost(
+            personality=constants.WORKER,
+            hostname='compute-0',
+            uuid=str(uuid.uuid4()),
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+        )
+        host_uuid = ihost['uuid']
+        host_id = ihost['id']
+
+        # Both nodes exist in DB initially
+        utils.create_test_node(id=1, numa_node=0, forihostid=host_id,
+                               capabilities={'is_active': True})
+        utils.create_test_node(id=2, numa_node=1, forihostid=host_id,
+                               capabilities={'is_active': True})
+
+        # Agent now reports only node 0 (node 1 disappeared)
+        inuma_dict_array = [{'numa_node': 0}]
+        self.service.inumas_update_by_ihost(self.context, host_uuid, inuma_dict_array)
+
+        inodes = self.dbapi.inode_get_by_ihost(host_uuid)
+        numa_map = {n['numa_node']: n for n in inodes}
+
+        # Both rows must still exist (additive-only)
+        self.assertIn(0, numa_map)
+        self.assertIn(1, numa_map)
+        # Node 0 stays active, node 1 must be marked inactive
+        self.assertTrue(numa_map[0]['capabilities'].get('is_active'))
+        self.assertFalse(numa_map[1]['capabilities'].get('is_active'))
+
+    def test_iport_update_by_ihost_numa_affinity_change_snc1_to_snc2(self):
+        """Test port numa_node and node_id update when SNC-1 expands to SNC-2.
+
+        On SNC-1 all ports are on numa_node 0. When BIOS is switched to SNC-2
+        some ports physically move to numa_node 1. The agent reports the new
+        numa_node for those ports and iport_update_by_ihost must update both
+        port.numa_node and port.node_id to point to the correct inode.
+        """
+        config_uuid = str(uuid.uuid4())
+        ihost = self._create_test_ihost(
+            hostname='compute-0', mgmt_mac='22:44:33:55:11:77', uuid=str(uuid.uuid4()),
+            personality=constants.WORKER, config_status=None, config_applied=config_uuid,
+            config_target=config_uuid, invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED, operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+        )
+
+        mock_find_local_mgmt_interface_vlan_id = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.conductor.manager.ConductorManager._find_local_mgmt_interface_vlan_id',
+            mock_find_local_mgmt_interface_vlan_id)
+        p.start().return_value = 0
+        self.addCleanup(p.stop)
+
+        mock_socket_gethostname = mock.MagicMock()
+        p2 = mock.patch('socket.gethostname', mock_socket_gethostname)
+        p2.start().return_value = 'controller-0'
+        self.addCleanup(p2.stop)
+
+        mock_is_aio_simplex_system = mock.MagicMock()
+        p3 = mock.patch('sysinv.common.utils.is_aio_simplex_system', mock_is_aio_simplex_system)
+        p3.start().return_value = True
+        self.addCleanup(p3.stop)
+
+        # SNC-1: all ports report numa_node=0
+        inic_dict_array = self._create_test_iports()
+        for inic in inic_dict_array:
+            inic['numa_node'] = 0
+        self.service.iport_update_by_ihost(self.context, ihost['uuid'], inic_dict_array)
+
+        # Create inode for numa_node 0 only (SNC-1 state)
+        inuma_dict_array = [{'numa_node': 0, 'capabilities': {}}]
+        self.service.inumas_update_by_ihost(self.context, ihost['uuid'], inuma_dict_array)
+
+        inode0 = self.dbapi.inode_get_by_ihost(ihost['uuid'])[0]
+
+        # Verify all ports initially point to inode0
+        for port in self.dbapi.ethernet_port_get_by_host(ihost['uuid']):
+            self.assertEqual(0, port.numa_node)
+            self.assertEqual(inode0['id'], port.node_id)
+
+        # SNC-2: BIOS change — agent now reports two numa nodes and some ports
+        # have moved to numa_node 1 (enp134s0f0, enp134s0f1 at pciaddr 0000:86:00.x)
+        inuma_dict_array2 = [{'numa_node': 0, 'capabilities': {}},
+                             {'numa_node': 1, 'capabilities': {}}]
+        self.service.inumas_update_by_ihost(self.context, ihost['uuid'], inuma_dict_array2)
+
+        inodes = {n['numa_node']: n for n in self.dbapi.inode_get_by_ihost(ihost['uuid'])}
+
+        inic_dict_array2 = self._create_test_iports()  # original numa_node values restored
+        self.service.iport_update_by_ihost(self.context, ihost['uuid'], inic_dict_array2)
+
+        pciaddr_to_inic = {inic['pciaddr']: inic for inic in inic_dict_array2}
+        for port in self.dbapi.ethernet_port_get_by_host(ihost['uuid']):
+            expected_numa = pciaddr_to_inic[port.pciaddr]['numa_node']
+            expected_node_id = inodes[expected_numa]['id']
+            self.assertEqual(expected_numa, port.numa_node,
+                             "port %s numa_node mismatch" % port.pciaddr)
+            self.assertEqual(expected_node_id, port.node_id,
+                             "port %s node_id mismatch" % port.pciaddr)
+
+    def test_iport_update_by_ihost_numa_affinity_change_snc2_to_snc1(self):
+        """Test port numa_node and node_id update when SNC-2 collapses to SNC-1.
+
+        On SNC-2 ports are spread across numa_node 0 and 1. When BIOS is
+        switched back to SNC-1 all ports move to numa_node 0. The agent
+        reports numa_node=0 for all ports and iport_update_by_ihost must
+        update port.numa_node and port.node_id accordingly.
+        """
+        config_uuid = str(uuid.uuid4())
+        ihost = self._create_test_ihost(
+            hostname='compute-0', mgmt_mac='22:44:33:55:11:77', uuid=str(uuid.uuid4()),
+            personality=constants.WORKER, config_status=None, config_applied=config_uuid,
+            config_target=config_uuid, invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED, operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+        )
+
+        mock_find_local_mgmt_interface_vlan_id = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.conductor.manager.ConductorManager._find_local_mgmt_interface_vlan_id',
+            mock_find_local_mgmt_interface_vlan_id)
+        p.start().return_value = 0
+        self.addCleanup(p.stop)
+
+        mock_socket_gethostname = mock.MagicMock()
+        p2 = mock.patch('socket.gethostname', mock_socket_gethostname)
+        p2.start().return_value = 'controller-0'
+        self.addCleanup(p2.stop)
+
+        mock_is_aio_simplex_system = mock.MagicMock()
+        p3 = mock.patch('sysinv.common.utils.is_aio_simplex_system', mock_is_aio_simplex_system)
+        p3.start().return_value = True
+        self.addCleanup(p3.stop)
+
+        # SNC-2: ports spread across numa_node 0 and 1
+        inic_dict_array = self._create_test_iports()
+        self.service.iport_update_by_ihost(self.context, ihost['uuid'], inic_dict_array)
+
+        inuma_dict_array = [{'numa_node': 0, 'capabilities': {}},
+                            {'numa_node': 1, 'capabilities': {}}]
+        self.service.inumas_update_by_ihost(self.context, ihost['uuid'], inuma_dict_array)
+
+        inodes = {n['numa_node']: n for n in self.dbapi.inode_get_by_ihost(ihost['uuid'])}
+        inode0 = inodes[0]
+
+        # SNC-1: BIOS change — agent now reports only numa_node 0, all ports
+        # collapse to numa_node 0
+        inuma_dict_array2 = [{'numa_node': 0, 'capabilities': {}}]
+        self.service.inumas_update_by_ihost(self.context, ihost['uuid'], inuma_dict_array2)
+
+        inic_dict_array2 = self._create_test_iports()
+        for inic in inic_dict_array2:
+            inic['numa_node'] = 0
+        self.service.iport_update_by_ihost(self.context, ihost['uuid'], inic_dict_array2)
+
+        for port in self.dbapi.ethernet_port_get_by_host(ihost['uuid']):
+            self.assertEqual(0, port.numa_node,
+                             "port %s should be on numa_node 0" % port.pciaddr)
+            self.assertEqual(inode0['id'], port.node_id,
+                             "port %s node_id should point to inode0" % port.pciaddr)
+
     def test_fpga_device_update_by_host(self):
         # Create compute-0 node
         config_uuid = str(uuid.uuid4())
