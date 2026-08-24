@@ -829,6 +829,25 @@ class AgentManager(service.PeriodicService):
                          'sriov_vf_numchannels': port.sriov_vf_numchannels,
                          'sriov_vf_maxchannels': port.sriov_vf_maxchannels}
 
+            # Report DPLL clock_id for E825/zl3073x NICs.
+            # On GNR-D platforms the zl3073x DPLL chip has a firmware
+            # clock_id that cannot be derived from the port MAC. Store
+            # it in the port capabilities so the conductor can persist
+            # it in the DB for hieradata generation on remote hosts.
+            capabilities = {}
+            if (port.driver == 'ice'
+                    and 'E825' in (port.ipci.pdevice or '')):
+                zl_path = '/sys/module/zl3073x/parameters/clock_id'
+                try:
+                    with open(zl_path, 'r') as f:
+                        dpll_clock_id = f.readline().strip()
+                        if dpll_clock_id and dpll_clock_id != '0':
+                            capabilities['dpll_clock_id'] = dpll_clock_id
+                except Exception:
+                    LOG.debug("Cannot read %s" % zl_path)
+            if capabilities:
+                inic_dict['capabilities'] = capabilities
+
             LOG.debug('Sysinv Agent inic {}'.format(inic_dict))
 
             port_list.append(inic_dict)

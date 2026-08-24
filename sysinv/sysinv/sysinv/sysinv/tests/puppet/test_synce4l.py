@@ -456,17 +456,17 @@ class TestSynce4lParameters(test_base.TestCase):
         self.assertEqual(
             inst['device_parameters']['clock_id'], expected_clock_id)
 
-    @mock.patch('builtins.open',
-                mock.mock_open(read_data='12345678\n'))
     def test_e825_auto_generates_module_name_and_clock_id(self):
-        """E825 (GNR-D) gets module_name=zl3073x and clock_id from sysfs.
+        """E825 (GNR-D) gets module_name=zl3073x and clock_id from port capabilities.
 
         E825 uses DPLL netlink mode. synce4l needs clock_id and module_name
-        to find the correct DPLL device via netlink.
+        to find the correct DPLL device via netlink. The clock_id is
+        read from the port capabilities (reported by sysinv-agent).
         """
         host = self._make_host()
         e825_port = self._make_port(
             'enp81s0f0', 'Ethernet Controller E825-C for backplane')
+        e825_port.capabilities = {'dpll_clock_id': '12345678'}
         self.operator.dbapi.ethernet_port_get_by_host.return_value = \
             [e825_port]
 
@@ -481,8 +481,6 @@ class TestSynce4lParameters(test_base.TestCase):
         self.assertEqual(
             inst['device_parameters']['clock_id'], '12345678')
 
-    @mock.patch('builtins.open',
-                mock.mock_open(read_data='12345678\n'))
     def test_e825_user_clock_id_not_overridden(self):
         """User-supplied clock_id is preserved (not overridden by auto-detect)."""
         host = self._make_host()
