@@ -1,0 +1,16 @@
+---
+- hosts: all
+  tasks:
+    - name: Upload coverage reports
+      synchronize:
+        src: "{{ zuul.project.src_dir }}/UTCoverage/"
+        dest: "{{ zuul.executor.log_root }}/coverage/"
+        mode: pull
+      failed_when: false
+    - name: Return coverage report URL
+      zuul_return:
+        data:
+          zuul:
+            artifacts:
+              - name: "Coverage Report"
+                url: "coverage/index.html"

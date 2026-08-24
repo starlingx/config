@@ -21,6 +21,26 @@
         - cgtsclient-tox-py39
         - cgtsclient-tox-pep8
         - cgtsclient-tox-pylint
+        - controllerconfig-tox-coverage
+        - tsconfig-tox-coverage
+        - sysinv-tox-coverage
+        - cgtsclient-tox-coverage
+        - sysinv-tox-py313
+        - sysinv-tox-flake8-trixie
+        - sysinv-tox-pylint-trixie
+        - sysinv-tox-bandit-trixie
+        - sysinv-tox-coverage-trixie
+        - controllerconfig-tox-flake8-trixie
+        - controllerconfig-tox-pylint-trixie
+        - controllerconfig-tox-coverage-trixie
+        - tsconfig__tox-py313
+        - tsconfig__tox-flake8-trixie
+        - tsconfig__tox-pylint-trixie
+        - tsconfig-tox-coverage-trixie
+        - cgtsclient-tox-py313
+        - cgtsclient-tox-pep8-trixie
+        - cgtsclient-tox-pylint-trixie
+        - cgtsclient-tox-coverage-trixie
     gate:
       jobs:
         - openstack-tox-linters
@@ -289,3 +309,326 @@
           rCPU+JGxUyND22pc5g2mYz+jnA6nBHpJR/l3uVRknVOGku0bFVftVeYt8xSCjXnKC+4tb
           nSgZvcV5dD6UfMHjwgMWrFKiNRnJ6uk7Mpn2/AqTls4WtYHHraBHhlGHi95lCEQ8XaMek
           wv31TwJKAWRzXWokOqoquq12SuqzNtDfzi06WxjoROfLS9m0249Xo24Or6UzBg=
+
+- job:
+    name: controllerconfig-tox-coverage
+    parent: tox
+    voting: false
+    description: |
+      Run coverage for controllerconfig
+    timeout: 1800
+    nodeset: debian-bullseye
+    files:
+      - controllerconfig/*
+    vars:
+      tox_envlist: coverage
+      zuul_work_dir: '{{ zuul.project.src_dir }}/controllerconfig/controllerconfig'
+    post-run: playbooks/upload-coverage-reports.yaml
+
+- job:
+    name: tsconfig-tox-coverage
+    parent: tox
+    voting: false
+    description: |
+      Run coverage for tsconfig
+    timeout: 1800
+    nodeset: debian-bullseye
+    files:
+      - tsconfig/*
+    vars:
+      tox_envlist: coverage
+      zuul_work_dir: '{{ zuul.project.src_dir }}/tsconfig/tsconfig'
+    post-run: playbooks/upload-coverage-reports.yaml
+
+- job:
+    name: sysinv-tox-coverage
+    parent: tox
+    voting: false
+    description: |
+      Run coverage for sysinv
+    timeout: 1800
+    nodeset: debian-bullseye
+    required-projects:
+      - starlingx/fault
+      - starlingx/utilities
+      - starlingx/update
+    files:
+      - sysinv/sysinv/*
+    vars:
+      tox_envlist: coverage
+      zuul_work_dir: '{{ zuul.project.src_dir }}/sysinv/sysinv/sysinv'
+    post-run: playbooks/upload-coverage-reports.yaml
+
+- job:
+    name: cgtsclient-tox-coverage
+    parent: tox
+    voting: false
+    description: |
+      Run coverage tests for cgts-client
+    timeout: 1800
+    nodeset: debian-bullseye
+    required-projects:
+      - starlingx/utilities
+    files:
+      - sysinv/cgts-client/*
+    vars:
+      tox_envlist: coverage
+      zuul_work_dir: '{{ zuul.project.src_dir }}/sysinv/cgts-client/cgts-client'
+    post-run: playbooks/upload-coverage-reports.yaml
+
+- job:
+    name: sysinv-tox-py313
+    parent: tox
+    description: |
+      Run py313 test for sysinv
+    timeout: 2700
+    nodeset: debian-trixie-8GB
+    voting: false
+    required-projects:
+      - starlingx/fault
+      - starlingx/utilities
+      - starlingx/update
+    files:
+      - sysinv/sysinv/*
+    vars:
+      tox_envlist: py313
+      ensure_tox_version: ">=4"
+      zuul_work_dir: '{{ zuul.project.src_dir }}/sysinv/sysinv/sysinv'
+
+- job:
+    name: sysinv-tox-flake8-trixie
+    parent: tox
+    required-projects:
+      - starlingx/fault
+      - starlingx/utilities
+      - starlingx/update
+    description: |
+      Run flake8 test for sysinv (trixie)
+    nodeset: debian-trixie-8GB
+    voting: false
+    files:
+      - sysinv/sysinv/*
+    vars:
+      tox_envlist: flake8-trixie
+      ensure_tox_version: ">=4"
+      zuul_work_dir: '{{ zuul.project.src_dir }}/sysinv/sysinv/sysinv'
+
+- job:
+    name: sysinv-tox-pylint-trixie
+    parent: tox
+    description: |
+      Run pylint test for sysinv (trixie)
+    nodeset: debian-trixie-8GB
+    voting: false
+    required-projects:
+      - starlingx/fault
+      - starlingx/utilities
+      - starlingx/update
+    files:
+      - sysinv/sysinv/*
+    vars:
+      tox_envlist: pylint-trixie
+      ensure_tox_version: ">=4"
+      zuul_work_dir: '{{ zuul.project.src_dir }}/sysinv/sysinv/sysinv'
+
+- job:
+    name: sysinv-tox-bandit-trixie
+    parent: tox
+    required-projects:
+      - starlingx/fault
+      - starlingx/utilities
+      - starlingx/update
+    description: |
+      Run bandit test for sysinv (trixie)
+    nodeset: debian-trixie-8GB
+    voting: false
+    files:
+      - sysinv/sysinv/*
+    vars:
+      tox_envlist: bandit-trixie
+      ensure_tox_version: ">=4"
+      zuul_work_dir: '{{ zuul.project.src_dir }}/sysinv/sysinv/sysinv'
+
+- job:
+    name: sysinv-tox-coverage-trixie
+    parent: tox
+    description: |
+      Run coverage for sysinv (trixie)
+    timeout: 1800
+    nodeset: debian-trixie-8GB
+    voting: false
+    required-projects:
+      - starlingx/fault
+      - starlingx/utilities
+      - starlingx/update
+    files:
+      - sysinv/sysinv/*
+    vars:
+      tox_envlist: coverage-trixie
+      ensure_tox_version: ">=4"
+      zuul_work_dir: '{{ zuul.project.src_dir }}/sysinv/sysinv/sysinv'
+- job:
+    name: controllerconfig-tox-flake8-trixie
+    parent: tox
+    required-projects:
+      - starlingx/fault
+    description: Run flake8 tests for controllerconfig (trixie)
+    nodeset: debian-trixie-8GB
+    voting: false
+    files:
+      - controllerconfig/*
+    vars:
+      tox_envlist: flake8-trixie
+      ensure_tox_version: ">=4"
+      zuul_work_dir: '{{ zuul.project.src_dir }}/controllerconfig/controllerconfig'
+
+- job:
+    name: controllerconfig-tox-pylint-trixie
+    parent: tox
+    description: Run pylint tests for controllerconfig (trixie)
+    nodeset: debian-trixie-8GB
+    voting: false
+    required-projects:
+      - starlingx/fault
+    files:
+      - controllerconfig/*
+    vars:
+      tox_envlist: pylint-trixie
+      ensure_tox_version: ">=4"
+      zuul_work_dir: '{{ zuul.project.src_dir }}/controllerconfig/controllerconfig'
+
+- job:
+    name: controllerconfig-tox-coverage-trixie
+    parent: tox
+    required-projects:
+      - starlingx/fault
+    description: |
+      Run coverage for controllerconfig (trixie)
+    timeout: 1800
+    nodeset: debian-trixie-8GB
+    voting: false
+    files:
+      - controllerconfig/*
+    vars:
+      tox_envlist: coverage-trixie
+      ensure_tox_version: ">=4"
+      zuul_work_dir: '{{ zuul.project.src_dir }}/controllerconfig/controllerconfig'
+
+- job:
+    name: tsconfig__tox-py313
+    parent: tox
+    description: Run py313 tests for tsconfig
+    nodeset: debian-trixie-8GB
+    voting: false
+    files:
+      - tsconfig/*
+    vars:
+      tox_envlist: py313
+      ensure_tox_version: ">=4"
+      zuul_work_dir: '{{ zuul.project.src_dir }}/tsconfig/tsconfig'
+
+- job:
+    name: tsconfig__tox-flake8-trixie
+    parent: tox
+    description: Run flake8 tests for tsconfig (trixie)
+    nodeset: debian-trixie-8GB
+    voting: false
+    files:
+      - tsconfig/*
+    vars:
+      tox_envlist: flake8-trixie
+      ensure_tox_version: ">=4"
+      zuul_work_dir: '{{ zuul.project.src_dir }}/tsconfig/tsconfig'
+
+- job:
+    name: tsconfig__tox-pylint-trixie
+    parent: tox
+    description: Run pylint tests for tsconfig (trixie)
+    nodeset: debian-trixie-8GB
+    voting: false
+    files:
+      - tsconfig/*
+    vars:
+      tox_envlist: pylint-trixie
+      ensure_tox_version: ">=4"
+      zuul_work_dir: '{{ zuul.project.src_dir }}/tsconfig/tsconfig'
+
+- job:
+    name: tsconfig-tox-coverage-trixie
+    parent: tox
+    description: |
+      Run coverage for tsconfig (trixie)
+    timeout: 1800
+    nodeset: debian-trixie-8GB
+    voting: false
+    files:
+      - tsconfig/*
+    vars:
+      tox_envlist: coverage-trixie
+      ensure_tox_version: ">=4"
+      zuul_work_dir: '{{ zuul.project.src_dir }}/tsconfig/tsconfig'
+
+- job:
+    name: cgtsclient-tox-py313
+    parent: tox
+    description: |
+      Run py313 test for cgts-client
+    nodeset: debian-trixie-8GB
+    voting: false
+    files:
+      - sysinv/cgts-client/*
+    required-projects:
+      - starlingx/utilities
+    vars:
+      tox_envlist: py313
+      ensure_tox_version: ">=4"
+      zuul_work_dir: '{{ zuul.project.src_dir }}/sysinv/cgts-client/cgts-client'
+
+- job:
+    name: cgtsclient-tox-pep8-trixie
+    parent: tox
+    description: |
+      Run pep8 test for cgts-client (trixie)
+    nodeset: debian-trixie-8GB
+    voting: false
+    files:
+      - sysinv/cgts-client/*
+    required-projects:
+      - starlingx/utilities
+    vars:
+      tox_envlist: pep8-trixie
+      ensure_tox_version: ">=4"
+      zuul_work_dir: '{{ zuul.project.src_dir }}/sysinv/cgts-client/cgts-client'
+
+- job:
+    name: cgtsclient-tox-pylint-trixie
+    parent: tox
+    description: |
+      Run pylint test for cgts-client (trixie)
+    nodeset: debian-trixie-8GB
+    voting: false
+    files:
+      - sysinv/cgts-client/*
+    required-projects:
+      - starlingx/utilities
+    vars:
+      tox_envlist: pylint-trixie
+      ensure_tox_version: ">=4"
+      zuul_work_dir: '{{ zuul.project.src_dir }}/sysinv/cgts-client/cgts-client'
+
+- job:
+    name: cgtsclient-tox-coverage-trixie
+    parent: tox
+    description: |
+      Run coverage tests for cgts-client (trixie)
+    timeout: 1800
+    nodeset: debian-trixie-8GB
+    voting: false
+    required-projects:
+      - starlingx/utilities
+    files:
+      - sysinv/cgts-client/*
+    vars:
+      tox_envlist: coverage-trixie
+      ensure_tox_version: ">=4"
+      zuul_work_dir: '{{ zuul.project.src_dir }}/sysinv/cgts-client/cgts-client'
