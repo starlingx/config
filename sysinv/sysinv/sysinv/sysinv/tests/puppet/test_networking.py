@@ -947,7 +947,7 @@ class TestDpllMgrHieradata(testtools.TestCase):
             'pmc_gm_settings': {},
             'device_parameters': {},
             'gnss_uart_disable': True,
-            'external_source': {},
+            'external_sources': [],
             'monitoring_parameters': {},
             'section_parameters': section_params or {}
         }
@@ -1106,7 +1106,7 @@ class TestDpllMgrHieradata(testtools.TestCase):
             'pmc_gm_settings': {},
             'device_parameters': {},
             'gnss_uart_disable': True,
-            'external_source': {},
+            'external_sources': [],
             'monitoring_parameters': {},
             'section_parameters': {},
         }
@@ -1133,7 +1133,7 @@ class TestDpllMgrHieradata(testtools.TestCase):
             'pmc_gm_settings': {},
             'device_parameters': {},
             'gnss_uart_disable': True,
-            'external_source': {},
+            'external_sources': [],
             'monitoring_parameters': {},
             'section_parameters': {},
         }

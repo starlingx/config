@@ -44,7 +44,7 @@ class TestSynce4lParameters(test_base.TestCase):
             'cmdline_opts': '',
             'pmc_gm_settings': {},
             'gnss_uart_disable': True,
-            'external_source': {},
+            'external_sources': [],
         }
 
     def _make_ptp4l_instance(self, name='test_ptp4l'):
@@ -534,3 +534,172 @@ class TestSynce4lParameters(test_base.TestCase):
         self.assertEqual(result['params']['board_label'], 'SMA1')
         self.assertNotIn('external_enable_cmd', result['params'])
         self.assertNotIn('external_disable_cmd', result['params'])
+
+    # ===================================================================
+    # Multiple external sources per instance
+    # ===================================================================
+
+    def test_multiple_external_sources_appended(self):
+        """Two interfaces with external_source produce two entries in list."""
+        inst = self._make_instance(name='synce_dual')
+        iface1_uuid = str(uuidutils.uuid4())
+        iface2_uuid = str(uuidutils.uuid4())
+        inst['interfaces'] = [
+            {
+                'ifname': 'eno8303',
+                'port_names': ['eno8303'],
+                'parameters': {},
+                'uuid': iface1_uuid,
+            },
+            {
+                'ifname': 'eno8403',
+                'port_names': ['eno8403'],
+                'parameters': {},
+                'uuid': iface2_uuid,
+            },
+        ]
+        ptp_parameters_interface = [
+            {'name': 'external_source', 'value': 'GNSS_1PPS_IN',
+             'owners': [iface1_uuid]},
+            {'name': 'internal_prio', 'value': '128',
+             'owners': [iface1_uuid]},
+            {'name': 'external_source', 'value': 'CLK_78M125_NAC0_SYNCE0',
+             'owners': [iface2_uuid]},
+            {'name': 'internal_prio', 'value': '0',
+             'owners': [iface2_uuid]},
+            {'name': 'source_ports', 'value': 'eno8303',
+             'owners': [iface2_uuid]},
+        ]
+        host = self._make_host()
+        port1 = self._make_port('eno8303',
+                                'Ethernet Controller E825-C for backplane')
+        port2 = self._make_port('eno8403',
+                                'Ethernet Controller E825-C for backplane',
+                                pciaddr='0000:13:00.1')
+        self.operator.dbapi.ethernet_port_get_by_host.return_value = \
+            [port1, port2]
+
+        ptp_instances = {'synce_dual': inst}
+        self.operator._set_ptp_instance_interface_parameters(
+            host, ptp_instances, ptp_parameters_interface)
+
+        ext_sources = ptp_instances['synce_dual']['external_sources']
+        self.assertEqual(len(ext_sources), 2)
+        # First ext_src: GNSS
+        self.assertEqual(ext_sources[0]['name'], 'GNSS_1PPS_IN')
+        self.assertEqual(ext_sources[0]['params']['internal_prio'], '128')
+        self.assertEqual(ext_sources[0]['params']['board_label'],
+                         'GNSS_1PPS_IN')
+        # Second ext_src: SyncE rclk
+        self.assertEqual(ext_sources[1]['name'], 'CLK_78M125_NAC0_SYNCE0')
+        self.assertEqual(ext_sources[1]['params']['internal_prio'], '0')
+        self.assertEqual(ext_sources[1]['params']['source_ports'], 'eno8303')
+        self.assertEqual(ext_sources[1]['params']['board_label'],
+                         'CLK_78M125_NAC0_SYNCE0')
+
+    def test_single_external_source_still_works(self):
+        """Single interface with external_source produces list of one."""
+        inst = self._make_instance(name='synce_single')
+        iface_uuid = str(uuidutils.uuid4())
+        inst['interfaces'] = [
+            {
+                'ifname': 'eno8303',
+                'port_names': ['eno8303'],
+                'parameters': {},
+                'uuid': iface_uuid,
+            },
+        ]
+        ptp_parameters_interface = [
+            {'name': 'external_source', 'value': 'GNSS_1PPS_IN',
+             'owners': [iface_uuid]},
+        ]
+        host = self._make_host()
+        port = self._make_port('eno8303',
+                               'Ethernet Controller E825-C for backplane')
+        self.operator.dbapi.ethernet_port_get_by_host.return_value = [port]
+
+        ptp_instances = {'synce_single': inst}
+        self.operator._set_ptp_instance_interface_parameters(
+            host, ptp_instances, ptp_parameters_interface)
+
+        ext_sources = ptp_instances['synce_single']['external_sources']
+        self.assertEqual(len(ext_sources), 1)
+        self.assertEqual(ext_sources[0]['name'], 'GNSS_1PPS_IN')
+
+    def test_no_external_source_produces_empty_list(self):
+        """Interface without external_source leaves external_sources empty."""
+        inst = self._make_instance(name='synce_plain')
+        iface_uuid = str(uuidutils.uuid4())
+        inst['interfaces'] = [
+            {
+                'ifname': 'eno8303',
+                'port_names': ['eno8303'],
+                'parameters': {},
+                'uuid': iface_uuid,
+            },
+        ]
+        ptp_parameters_interface = [
+            {'name': 'rx_heartbeat_msec', 'value': '500',
+             'owners': [iface_uuid]},
+        ]
+        host = self._make_host()
+        port = self._make_port('eno8303',
+                               'Ethernet Controller E825-C for backplane')
+        self.operator.dbapi.ethernet_port_get_by_host.return_value = [port]
+
+        ptp_instances = {'synce_plain': inst}
+        self.operator._set_ptp_instance_interface_parameters(
+            host, ptp_instances, ptp_parameters_interface)
+
+        ext_sources = ptp_instances['synce_plain']['external_sources']
+        self.assertEqual(ext_sources, [])
+
+    def test_multiple_ext_sources_same_port_deduplicates(self):
+        """Two ptp-interfaces on same port produce one port section."""
+        inst = self._make_instance(name='synce_dedup')
+        iface1_uuid = str(uuidutils.uuid4())
+        iface2_uuid = str(uuidutils.uuid4())
+        inst['interfaces'] = [
+            {
+                'ifname': 'data0',
+                'port_names': ['eno8303'],
+                'parameters': {},
+                'uuid': iface1_uuid,
+            },
+            {
+                'ifname': 'data0',
+                'port_names': ['eno8303'],
+                'parameters': {},
+                'uuid': iface2_uuid,
+            },
+        ]
+        ptp_parameters_interface = [
+            {'name': 'external_source', 'value': 'GNSS_1PPS_IN',
+             'owners': [iface1_uuid]},
+            {'name': 'internal_prio', 'value': '128',
+             'owners': [iface1_uuid]},
+            {'name': 'external_source', 'value': 'CLK_78M125_NAC0_SYNCE0',
+             'owners': [iface2_uuid]},
+            {'name': 'internal_prio', 'value': '0',
+             'owners': [iface2_uuid]},
+            {'name': 'source_ports', 'value': 'eno8303',
+             'owners': [iface2_uuid]},
+        ]
+        host = self._make_host()
+        port = self._make_port('eno8303',
+                               'Ethernet Controller E825-C for backplane')
+        self.operator.dbapi.ethernet_port_get_by_host.return_value = [port]
+
+        ptp_instances = {'synce_dedup': inst}
+        self.operator._set_ptp_instance_interface_parameters(
+            host, ptp_instances, ptp_parameters_interface)
+
+        # Only one port section after deduplication
+        interfaces = ptp_instances['synce_dedup']['interfaces']
+        self.assertEqual(len(interfaces), 1)
+        self.assertEqual(interfaces[0]['port_names'], ['eno8303'])
+        # But both ext_src sections are present
+        ext_sources = ptp_instances['synce_dedup']['external_sources']
+        self.assertEqual(len(ext_sources), 2)
+        self.assertEqual(ext_sources[0]['name'], 'GNSS_1PPS_IN')
+        self.assertEqual(ext_sources[1]['name'], 'CLK_78M125_NAC0_SYNCE0')
