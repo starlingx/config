@@ -21,6 +21,7 @@ from ipaddress import IPv4Address
 import json
 import os
 import re
+import socket
 import requests
 import shutil
 import subprocess
@@ -223,8 +224,37 @@ KUBE_APP_UPDATE_TIMEOUT_LIMIT_IN_MINUTES = 30
 KUBE_APP_UPDATE_PROGRESS_CHECK_INTERVAL_IN_SECONDS = 10
 
 
+def get_apiserver_readyz_endpoint():
+    """Return the readyz endpoint for the kube-apiserver on this host.
+
+    kube-apiserver is started with --bind-address set to this controller's
+    cluster-host address, so it does not listen on the loopback address and
+    cannot be probed there. The address is resolved through the host's own
+    cluster-host name, which is present in /etc/hosts on every controller and
+    resolves correctly in every system mode -- on simplex it maps to the
+    floating cluster-host address, since no controller unit address is
+    allocated there.
+
+    Falls back to the loopback endpoint if the name cannot be resolved, so a
+    resolution failure degrades to the previous behaviour rather than raising
+    inside a health check.
+    """
+    try:
+        name = "%s-%s" % (socket.gethostname(),
+                          constants.NETWORK_TYPE_CLUSTER_HOST)
+        socket.getaddrinfo(name, None)
+    except Exception:
+        LOG.warning("Could not resolve the local cluster-host name; falling "
+                    "back to %s for the apiserver health check",
+                    constants.APISERVER_READYZ_ENDPOINT)
+        return constants.APISERVER_READYZ_ENDPOINT
+
+    return "https://%s:%s/readyz" % (
+        name, str(constants.KUBE_APISERVER_INTERNAL_PORT))
+
+
 def k8s_health_check(tries=20, try_sleep=5, timeout=5,
-                     healthz_endpoint=constants.APISERVER_READYZ_ENDPOINT,
+                     healthz_endpoint=None,
                      log=True):
     """This checks k8s control-plane component health for a specified
     endpoint, and waits for that endpoint to be up and running.
@@ -244,6 +274,8 @@ def k8s_health_check(tries=20, try_sleep=5, timeout=5,
     - rc = False, k8s component health check failed.
     """
     # pylint: disable-msg=broad-except
+    if healthz_endpoint is None:
+        healthz_endpoint = get_apiserver_readyz_endpoint()
     rc = False
     _tries = tries
     kwargs = {"verify": False, "timeout": timeout}
@@ -289,7 +321,7 @@ def k8s_wait_for_control_plane_terminated(tries=5, try_sleep=1, timeout=5):
              False otherwise
     """
 
-    healthz_endpoints = [constants.APISERVER_READYZ_ENDPOINT,
+    healthz_endpoints = [get_apiserver_readyz_endpoint(),
                          constants.CONTROLLER_MANAGER_HEALTHZ_ENDPOINT,
                          constants.SCHEDULER_HEALTHZ_ENDPOINT]
 
@@ -341,7 +373,7 @@ def k8s_wait_for_endpoints_health(tries=20, try_sleep=5, timeout=5, quiet=False)
              False if at least one of the enpoints is unhealthy
     """
 
-    healthz_endpoints = [constants.APISERVER_READYZ_ENDPOINT,
+    healthz_endpoints = [get_apiserver_readyz_endpoint(),
                          constants.CONTROLLER_MANAGER_HEALTHZ_ENDPOINT,
                          constants.SCHEDULER_HEALTHZ_ENDPOINT,
                          constants.KUBELET_HEALTHZ_ENDPOINT]
