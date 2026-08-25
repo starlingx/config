@@ -197,6 +197,7 @@ class AppOperator(object):
             if db_app.status in [constants.APP_UPLOAD_IN_PROGRESS,
                               constants.APP_APPLY_IN_PROGRESS,
                               constants.APP_UPDATE_IN_PROGRESS,
+                              constants.APP_UPDATE_STARTING,
                               constants.APP_RECOVER_IN_PROGRESS,
                               constants.APP_REMOVE_IN_PROGRESS]:
                 app = AppOperator.Application(db_app)
@@ -446,6 +447,7 @@ class AppOperator(object):
                 False)
         elif (app.status == constants.APP_APPLY_IN_PROGRESS or
               app.status == constants.APP_UPDATE_IN_PROGRESS or
+              app.status == constants.APP_UPDATE_STARTING or
               app.status == constants.APP_RECOVER_IN_PROGRESS):
             new_status = constants.APP_APPLY_FAILURE
             if reset_status:
@@ -526,8 +528,43 @@ class AppOperator(object):
                         " was in progress. The application status " +\
                         "has changed from \'" + app.status +\
                         "\' to \'" + new_status + "\'."
+            if new_status == constants.APP_UPLOAD_SUCCESS:
+                error_msg = self._append_missing_dependent_apps_msg(app, error_msg)
             values = {'progress': error_msg, 'status': new_status}
             self._dbapi.kube_app_update(app.id, values)
+
+    def _append_missing_dependent_apps_msg(self, app, progress_msg):
+        """Append the missing dependent apps information to a progress message
+
+        An application reset back to the 'uploaded' state cannot be applied
+        until its dependent apps are present. Re-evaluate the dependencies so
+        that the progress message keeps reporting them, in the same way
+        perform_app_upload does when an upload completes.
+
+        :param app: instance of AppOperator.Application that was reset
+        :param progress_msg: progress message to be complemented
+        :return: the given progress message, with the missing dependent apps
+                 appended to it when there are any
+        """
+
+        metadata_file = self.retrieve_application_metadata_from_file(
+            app.sync_metadata_file)
+        dependent_apps_missing_list = app_dependents.get_dependent_apps_missing(
+            metadata_file, self._dbapi)
+
+        if not dependent_apps_missing_list:
+            return progress_msg
+
+        missing_apps = app_dependents.format_missing_apps_output(
+            dependent_apps_missing_list)
+        LOG.warning("Application %s (%s) was reset to '%s'. This app has "
+                    "dependent apps missing: %s. Please install the missing "
+                    "apps first before starting the apply process."
+                    % (app.name, app.version, constants.APP_UPLOAD_SUCCESS,
+                       missing_apps))
+
+        return ("%s This app depends on the following missing apps: %s."
+                % (progress_msg, missing_apps))
 
     def _download_tarfile(self, app):
         from six.moves.urllib.request import urlopen
