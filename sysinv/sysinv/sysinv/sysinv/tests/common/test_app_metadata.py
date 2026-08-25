@@ -12,8 +12,13 @@ from dataclasses import dataclass
 import io
 import mock
 import os.path
+import shutil
+import tarfile
+import tempfile
 import testtools
 import yaml
+
+from oslo_config import cfg
 
 from sysinv.common import app_metadata
 from sysinv.common import constants
@@ -1183,3 +1188,81 @@ class TestLoadMetadata(testtools.TestCase):
             ], any_order=True
         )
         self.assertEqual(mock_operator.call_count, 3)
+
+
+METADATA_TEMPLATE = """
+app_name: test-app
+app_version: 1.0-1
+supported_k8s_version:
+  minimum: {minimum}
+{maximum_line}
+"""
+
+
+class Extract_bundle_metadata(testtools.TestCase):
+    """Kubernetes version fields stored from an application bundle
+
+    A maximum supported Kubernetes version declared as major.minor must be
+    stored as declared, since it covers every patch release of that minor
+    series, while a minimum is padded to major.minor.0.
+    See https://bugs.launchpad.net/starlingx/+bug/2165067
+    """
+
+    def setUp(self):
+        super(Extract_bundle_metadata, self).setUp()
+        # this option is registered by the conductor manager on a running system
+        try:
+            cfg.CONF.app_framework.missing_auto_update
+        except cfg.NoSuchOptError:
+            cfg.CONF.register_opt(
+                cfg.StrOpt('missing_auto_update', default='false'),
+                group='app_framework')
+
+    def _build_bundle(self, minimum, maximum=None):
+        """Create an application bundle containing only a metadata file
+
+        :param minimum: value of the supported_k8s_version:minimum field
+        :param maximum: value of the supported_k8s_version:maximum field,
+                        omitted from the metadata when not provided
+        :return: path of the created tarball
+        """
+
+        maximum_line = '  maximum: {}'.format(maximum) if maximum else ''
+        metadata = METADATA_TEMPLATE.format(
+            minimum=minimum, maximum_line=maximum_line).encode('utf-8')
+
+        tarball_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tarball_dir, ignore_errors=True)
+        tarball_path = os.path.join(tarball_dir, 'test-app-1.0-1.tgz')
+
+        with tarfile.open(tarball_path, 'w:gz') as tarball:
+            info = tarfile.TarInfo('./{}'.format(constants.APP_METADATA_FILE))
+            info.size = len(metadata)
+            tarball.addfile(info, io.BytesIO(metadata))
+
+        return tarball_path
+
+    def test_maximum_version_without_patch_is_kept(self):
+        bundle_data = app_metadata.extract_bundle_metadata(
+            self._build_bundle('v1.24', maximum='v1.29'))
+
+        self.assertEqual('1.29', bundle_data['k8s_maximum_version'])
+
+    def test_maximum_version_with_patch_is_kept(self):
+        bundle_data = app_metadata.extract_bundle_metadata(
+            self._build_bundle('v1.24', maximum='v1.29.2'))
+
+        self.assertEqual('1.29.2', bundle_data['k8s_maximum_version'])
+
+    def test_minimum_version_without_patch_is_padded(self):
+        bundle_data = app_metadata.extract_bundle_metadata(
+            self._build_bundle('v1.24', maximum='v1.29'))
+
+        self.assertEqual('1.24.0', bundle_data['k8s_minimum_version'])
+
+    def test_maximum_version_is_optional(self):
+        bundle_data = app_metadata.extract_bundle_metadata(
+            self._build_bundle('v1.24.4'))
+
+        self.assertEqual('1.24.4', bundle_data['k8s_minimum_version'])
+        self.assertIsNone(bundle_data['k8s_maximum_version'])

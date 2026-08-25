@@ -326,6 +326,14 @@ class KubeAppBundleDatabase(KubeAppBundleStorageFactory):
         """Insert a list of bundles to the database."""
         self.dbapi.kube_app_bundle_create_all(bundle_bulk_data)
 
+    def update(self, file_path, bundle_data):
+        """Update a bundle in the database.
+
+        :param file_path: Application bundle file path.
+        :param bundle_data: Extracted application bundle metadata.
+        """
+        self.dbapi.kube_app_bundle_update_by_file_path(file_path, bundle_data)
+
     def is_empty(self):
         """Check if the table is empty."""
         return self.dbapi.kube_app_bundle_is_empty()
@@ -8776,8 +8784,9 @@ class ConductorManager(service.PeriodicService):
                           .format(k8s_version,
                                   bundle_metadata.k8s_minimum_version,
                                   bundle_metadata.file_path))
-            elif ((bundle_metadata.k8s_maximum_version is not None) and (LooseVersion(k8s_version) >
-                    LooseVersion(bundle_metadata.k8s_maximum_version))):
+            elif ((bundle_metadata.k8s_maximum_version is not None) and
+                    kubernetes.exceeds_max_kube_version(
+                        k8s_version, bundle_metadata.k8s_maximum_version)):
                 LOG.debug("Kubernetes version {} is higher than {} which is "
                           "the maximum allowed for bundle {}"
                           .format(k8s_version,
@@ -8795,8 +8804,8 @@ class ConductorManager(service.PeriodicService):
             elif ((k8s_upgrade_timing is not None) and
                     (k8s_upgrade_timing == constants.APP_METADATA_TIMING_PRE) and
                     (bundle_metadata.k8s_maximum_version is not None) and
-                    (LooseVersion(current_k8s_version) >
-                     LooseVersion(bundle_metadata.k8s_maximum_version))):
+                    kubernetes.exceeds_max_kube_version(
+                        current_k8s_version, bundle_metadata.k8s_maximum_version)):
                 LOG.debug("Running Kubernetes version {} is higher than {} which is "
                           "the minimum required for pre updating with bundle {}"
                           .format(current_k8s_version,
@@ -10004,11 +10013,45 @@ class ConductorManager(service.PeriodicService):
         self._cached_app_bundle_set = set(bundle.file_path for bundle in
                                          self._kube_app_bundle_storage.get_all())
 
+    def _refresh_app_bundle_metadata(self, bundle):
+        """Refresh cached metadata when a bundle changed in place.
+
+        Application bundle records are derived from tarballs on the
+        filesystem. Re-extracting the metadata also updates records written by
+        older software that normalized a major.minor maximum version to
+        major.minor.0.
+
+        :param bundle: Existing application bundle database record.
+        """
+        bundle_data = app_metadata.extract_bundle_metadata(bundle.file_path)
+        if not bundle_data:
+            return
+
+        stored_data = {key: getattr(bundle, key) for key in bundle_data}
+        if stored_data == bundle_data:
+            return
+
+        LOG.info("Application bundle metadata updated: {}"
+                 .format(bundle.file_path))
+        try:
+            self._kube_app_bundle_storage.update(bundle.file_path, bundle_data)
+        except Exception as e:
+            LOG.exception("Error while updating bundle data for {}: {}"
+                          .format(bundle.file_path, e))
+
     def _update_app_bundles_storage(self):
-        """Update application bundle storage to account for new and removed files"""
+        """Reconcile application bundle storage with the filesystem."""
 
         filesystem_app_bundle_set = set(glob.glob("{}/*.tgz"
                                                   .format(constants.HELM_APP_ISO_INSTALL_PATH)))
+
+        stored_bundles = {
+            bundle.file_path: bundle
+            for bundle in self._kube_app_bundle_storage.get_all()
+        }
+        for file_path in filesystem_app_bundle_set & set(stored_bundles):
+            self._refresh_app_bundle_metadata(stored_bundles[file_path])
+
         if filesystem_app_bundle_set != self._cached_app_bundle_set:
             new_files = set(file_path for file_path in filesystem_app_bundle_set
                             if file_path not in self._cached_app_bundle_set)

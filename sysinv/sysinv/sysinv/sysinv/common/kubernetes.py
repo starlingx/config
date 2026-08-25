@@ -731,8 +731,61 @@ def get_latest_supported_version():
     return latest_version
 
 
+def _declares_patch_version(version):
+    """Check whether a version number specifies a patch component
+
+    :param version: version number without the 'v' prefix (e.g. '1.42.3')
+
+    :returns bool: True if the version is in the major.minor.patch format
+    """
+
+    return len(version.split('.')) > 2
+
+
+def _truncate_to_minor_version(version):
+    """Keep only the major and minor components of a version number
+
+    :param version: version number without the 'v' prefix (e.g. '1.42.3')
+
+    :returns str: the major.minor components of the version (e.g. '1.42')
+    """
+
+    return '.'.join(version.split('.')[:2])
+
+
+def exceeds_max_kube_version(kube_version, max_version):
+    """Check if a k8s version is above a declared maximum supported version.
+
+    A maximum version declared as major.minor is an inclusive upper bound over
+    the entire minor release series, so every major.minor.patch release of that
+    series is within the bound. A maximum version that declares a patch
+    component is compared as is.
+
+    :param kube_version: the running or target k8s version
+    :param max_version: maximum k8s version supported by the app
+
+    :returns bool: True if kube_version is above max_version
+    """
+
+    kube_version = kube_version.strip().lstrip('v')
+    max_version = max_version.strip().lstrip('v')
+
+    if _declares_patch_version(max_version):
+        candidate = kube_version
+    else:
+        candidate = _truncate_to_minor_version(kube_version)
+
+    return LooseVersion(candidate) > LooseVersion(max_version)
+
+
 def is_kube_version_supported(kube_version, min_version=None, max_version=None):
     """Check if the k8s version is supported by the application.
+
+    A maximum version declared as major.minor is an inclusive upper bound over
+    the entire minor release series, so every major.minor.patch release of that
+    series is supported. A maximum version that declares a patch component is
+    compared as is. The minimum version is always compared as is, which means
+    that a minor release series is entered at its first patch release.
 
     :param kube_version: the running or target k8s version
     :param min_version (optional): minimum k8s version supported by the app
@@ -741,12 +794,15 @@ def is_kube_version_supported(kube_version, min_version=None, max_version=None):
     :returns bool: True if k8s version is supported
     """
 
-    kube_version = kube_version.strip().lstrip('v')
-    if ((min_version is not None and LooseVersion(kube_version) <
-         LooseVersion(min_version.strip().lstrip('v'))) or
-            (max_version is not None and LooseVersion(kube_version) >
-             LooseVersion(max_version.strip().lstrip('v')))):
-        return False
+    if min_version is not None:
+        if (LooseVersion(kube_version.strip().lstrip('v')) <
+                LooseVersion(min_version.strip().lstrip('v'))):
+            return False
+
+    if max_version is not None:
+        if exceeds_max_kube_version(kube_version, max_version):
+            return False
+
     return True
 
 

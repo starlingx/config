@@ -19,6 +19,7 @@
 
 """SQLAlchemy storage backend."""
 
+from distutils.version import LooseVersion
 import functools
 import sys
 
@@ -29,7 +30,6 @@ from oslo_db.sqlalchemy import enginefacade
 from oslo_db.sqlalchemy import utils as db_utils
 
 from sqlalchemy import case
-from sqlalchemy import func
 from sqlalchemy import insert
 from sqlalchemy import inspect
 from sqlalchemy import or_
@@ -49,6 +49,7 @@ from sysinv import objects
 from sysinv.common import constants
 from sysinv.common import device as dconstants
 from sysinv.common import exception
+from sysinv.common import kubernetes
 from sysinv.common import utils
 from sysinv.db import api
 from sysinv.db.sqlalchemy import models
@@ -1244,6 +1245,27 @@ def add_deviceimage_filter(query, value):
                                 models.DeviceImageKeyRevocation.id == value))
     else:
         return add_identity_filter(query, value, use_name=True)
+
+
+def _bundle_supports_k8s_versions(bundle, k8s_versions):
+    """Check whether a bundle's maximum k8s version covers the given versions
+
+    The maximum supported Kubernetes version of a bundle may be declared as
+    major.minor, in which case it covers every patch release of that minor
+    series. That cannot be expressed as a string comparison in SQL, so bundles
+    are filtered here instead.
+
+    :param bundle: a KubeAppBundle database object
+    :param k8s_versions: list of Kubernetes versions to check against the bound
+    :returns bool: True if the bundle supports every given version
+    """
+
+    if bundle.k8s_maximum_version is None:
+        return True
+
+    return not any(
+        kubernetes.exceeds_max_kube_version(version, bundle.k8s_maximum_version)
+        for version in k8s_versions)
 
 
 @db_session_cleanup
@@ -9754,6 +9776,19 @@ class Connection(api.Connection):
             columns = ', '.join(e.columns)
             raise exception.KubeAppBundleAlreadyExistsBulk(columns=columns, values=e.value)
 
+    @db_objects.objectify(objects.kube_app_bundle)
+    def kube_app_bundle_update_by_file_path(self, file_path, values):
+        with _session_for_write() as session:
+            bundle = model_query(models.KubeAppBundle, session=session).filter_by(
+                file_path=file_path).one_or_none()
+            if bundle is None:
+                raise exception.KubeAppBundleNotFound(
+                    name=values.get('name'), version=values.get('version'))
+
+            bundle.update(values)
+            session.flush()
+            return bundle
+
     def kube_app_bundle_is_empty(self):
         result = model_query(models.KubeAppBundle).first()
 
@@ -9785,19 +9820,17 @@ class Connection(api.Connection):
         query = query.filter(
             models.KubeAppBundle.name == name,
             models.KubeAppBundle.version.regexp_match(sql_full_match_regex),
-            models.KubeAppBundle.k8s_minimum_version <= k8s_version,
-            or_(models.KubeAppBundle.k8s_maximum_version.is_(None),
-                models.KubeAppBundle.k8s_maximum_version >= k8s_version
-                )
+            models.KubeAppBundle.k8s_minimum_version <= k8s_version
         )
         query = query.order_by(models.KubeAppBundle.version.desc())
 
-        result = query.first()
+        # The maximum supported version is filtered here instead of in the query
+        # above because it may be declared as major.minor.
+        for bundle in query.all():
+            if _bundle_supports_k8s_versions(bundle, [k8s_version]):
+                return bundle
 
-        if result is None:
-            raise exception.KubeAppBundleNotFound(name=name, version=version_regex)
-
-        return result
+        raise exception.KubeAppBundleNotFound(name=name, version=version_regex)
 
     def kube_app_bundle_destroy_all(self, file_path=None):
         with _session_for_write() as session:
@@ -9825,15 +9858,16 @@ class Connection(api.Connection):
                                 k8s_auto_update=True,
                                 k8s_timing=k8s_timing)
         query = query.filter(models.KubeAppBundle.k8s_minimum_version <= target_k8s_version)
-        query = query.filter(or_(models.KubeAppBundle.k8s_maximum_version >= target_k8s_version,
-                                 models.KubeAppBundle.k8s_maximum_version.is_(None)))
+        k8s_versions = [target_k8s_version]
         if current_k8s_version:
             current_k8s_version = current_k8s_version.strip().lstrip('v')
             query = query.filter(models.KubeAppBundle.k8s_minimum_version <= current_k8s_version)
-            query = query.filter(or_(models.KubeAppBundle.k8s_maximum_version >= current_k8s_version,
-                                     models.KubeAppBundle.k8s_maximum_version.is_(None)))
+            k8s_versions.append(current_k8s_version)
 
-        return query.count() > 0
+        # The maximum supported version is filtered here instead of in the query
+        # above because it may be declared as major.minor.
+        return any(_bundle_supports_k8s_versions(bundle, k8s_versions)
+                   for bundle in query.all())
 
     def kube_app_bundle_max_k8s_compatible_by_name(self,
                                                    name,
@@ -9843,18 +9877,20 @@ class Connection(api.Connection):
         # Stacking filters for better readability
         current_k8s_version = current_k8s_version.strip().lstrip('v')
         target_k8s_version = target_k8s_version.strip().lstrip('v')
-        query = model_query(func.max(models.KubeAppBundle.k8s_maximum_version))
+        query = model_query(models.KubeAppBundle.k8s_maximum_version)
         query = query.filter_by(name=name, auto_update=True, k8s_auto_update=True)
         query = query.filter(or_(
             models.KubeAppBundle.k8s_timing == constants.APP_METADATA_TIMING_POST,
             models.KubeAppBundle.k8s_minimum_version == current_k8s_version))
-        query = query.filter(models.KubeAppBundle.k8s_maximum_version <= target_k8s_version)
 
-        try:
-            result = query.one()[0]
-        except NoResultFound:
-            result = None
-        except MultipleResultsFound:
-            raise exception.MultipleResults()
+        # The highest bound is selected here instead of through a SQL max()
+        # because bounds may mix the major.minor and major.minor.patch formats,
+        # which do not sort correctly as strings.
+        bounds = [row[0] for row in query.all() if row[0] is not None]
+        bounds = [bound for bound in bounds
+                  if LooseVersion(bound) <= LooseVersion(target_k8s_version)]
 
-        return result
+        if not bounds:
+            return None
+
+        return max(bounds, key=LooseVersion)

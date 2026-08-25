@@ -2532,6 +2532,44 @@ class TestKubernetesUtilities(base.TestCase):
         self.assertFalse(kube.is_kube_version_supported('v1.42.3', 'v1.43.1', None))
         self.assertFalse(kube.is_kube_version_supported('v1.42.3', None, 'v1.41.5'))
 
+    def test_is_kube_version_supported_max_version_without_patch(self):
+        """A maximum declared as major.minor covers the whole minor series
+
+        See https://bugs.launchpad.net/starlingx/+bug/2165067
+        """
+
+        # every patch release of the maximum minor series is supported
+        self.assertTrue(kube.is_kube_version_supported('v1.42.0', 'v1.41.1', 'v1.42'))
+        self.assertTrue(kube.is_kube_version_supported('v1.42.3', 'v1.41.1', 'v1.42'))
+        self.assertTrue(kube.is_kube_version_supported('v1.42.11', 'v1.41.1', 'v1.42'))
+        self.assertTrue(kube.is_kube_version_supported('v1.42.3', None, 'v1.42'))
+        self.assertTrue(kube.is_kube_version_supported('v1.42', None, 'v1.42'))
+
+        # releases beyond the maximum minor series are still rejected
+        self.assertFalse(kube.is_kube_version_supported('v1.43.0', 'v1.41.1', 'v1.42'))
+        self.assertFalse(kube.is_kube_version_supported('v1.43.1', None, 'v1.42'))
+
+        # a minimum declared as major.minor is still equivalent to major.minor.0
+        self.assertTrue(kube.is_kube_version_supported('v1.42.0', 'v1.42', None))
+        self.assertFalse(kube.is_kube_version_supported('v1.41.9', 'v1.42', None))
+
+        # single digit minor releases are not mistaken for higher ones
+        self.assertTrue(kube.is_kube_version_supported('v1.9.3', None, 'v1.42'))
+        self.assertFalse(kube.is_kube_version_supported('v1.42.3', None, 'v1.9'))
+
+    def test_exceeds_max_kube_version(self):
+        # a bound declared as major.minor covers the whole minor series
+        self.assertFalse(kube.exceeds_max_kube_version('v1.42.0', 'v1.42'))
+        self.assertFalse(kube.exceeds_max_kube_version('v1.42.11', 'v1.42'))
+        self.assertTrue(kube.exceeds_max_kube_version('v1.43.0', 'v1.42'))
+
+        # a bound declaring a patch component is compared as is
+        self.assertFalse(kube.exceeds_max_kube_version('v1.42.2', 'v1.42.2'))
+        self.assertTrue(kube.exceeds_max_kube_version('v1.42.3', 'v1.42.2'))
+
+        # patch numbers are compared numerically, not as strings
+        self.assertFalse(kube.exceeds_max_kube_version('v1.42.9', 'v1.42.10'))
+
 
 class TestFilterHighestPatchVersions(base.TestCase):
     def test_filter_highest_patch_versions(self):

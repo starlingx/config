@@ -247,8 +247,9 @@ class KubeUpgradeController(rest.RestController):
                         LooseVersion(max_compatible_version)):
                     max_compatible_version = applied_app_kube_max_version
 
-                incompatible_versions = [x for x in next_versions if LooseVersion(x) >
-                                        LooseVersion(max_compatible_version)]
+                incompatible_versions = [
+                    x for x in next_versions
+                    if kubernetes.exceeds_max_kube_version(x, max_compatible_version)]
                 LOG.error("Unable to find a suitable version of application {} "
                           "compatible with the following Kubernetes versions: {}."
                           .format(app.name, ', '.join(str(s) for s in incompatible_versions)))
