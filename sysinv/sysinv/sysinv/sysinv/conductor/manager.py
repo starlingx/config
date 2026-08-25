@@ -14954,15 +14954,11 @@ class ConductorManager(service.PeriodicService):
                         try:
                             # if active controller, update without check
                             if utils.is_host_active_controller(host) and not skip_update_config:
-                                self._puppet.update_host_config(
-                                    host, config_uuid, generate_optimized_hieradata
-                                )
+                                self._puppet.update_host_config(host, config_uuid)
                                 host_updated = True
                             # if force flag, check the host available config first.
                             elif self._check_host_config(host):
-                                self._puppet.update_host_config(
-                                    host, config_uuid, generate_optimized_hieradata
-                                )
+                                self._puppet.update_host_config(host, config_uuid)
                                 host_updated = True
                         except Exception as e:
                             LOG.exception(
@@ -16880,8 +16876,7 @@ class ConductorManager(service.PeriodicService):
             config_uuid = self._config_update_hosts(context, personalities)
             config_dict = {
                 "personalities": personalities,
-                "classes": ['platform::config::runtime'],
-                "generate_optimized_hieradata": True
+                "classes": ['platform::config::runtime']
             }
             self._config_apply_runtime_manifest(context,
                                                 config_uuid,
