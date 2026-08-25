@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2018,2025,2026 Wind River Systems, Inc.
+# Copyright (c) 2013-2018,2025-2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -65,13 +65,7 @@ def do_host_stor_show(cc, args):
     _print_istor_show(i)
 
 
-@utils.arg('hostnameorid',
-           metavar='<hostname or id>',
-           help="Name or ID of host")
-def do_host_stor_list(cc, args):
-    """List host storage."""
-    ihost = ihost_utils._find_ihost(cc, args.hostnameorid)
-
+def _print_istor_list(cc, ihost):
     istors = cc.istor.list(ihost.uuid)
     for i in istors:
         istor_utils._get_disks(cc, ihost, i)
@@ -87,6 +81,15 @@ def do_host_stor_list(cc, args):
               'idisk_uuid', 'journal_path', 'journal_node', 'journal_size_mib',
               'tier_name']
     utils.print_list(istors, fields, field_labels, sortby=0)
+
+
+@utils.arg('hostnameorid',
+           metavar='<hostname or id>',
+           help="Name or ID of host")
+def do_host_stor_list(cc, args):
+    """List host storage."""
+    ihost = ihost_utils._find_ihost(cc, args.hostnameorid)
+    _print_istor_list(cc, ihost)
 
 
 @utils.arg('hostnameorid',
@@ -226,8 +229,20 @@ def do_host_stor_update(cc, args):
            help=argparse.SUPPRESS)
 def do_host_stor_delete(cc, args):
     """Delete a stor"""
+
+    # Get the stor to obtain the ihost_uuid for listing after delete
+    istor = cc.istor.get(args.stor)
+    if istor is None:
+        raise exc.CommandError('Delete failed, stor: %s not found'
+                               % args.stor)
+
+    ihost_uuid = istor.ihost_uuid
+
     try:
         cc.istor.delete(args.stor, args.force)
     except exc.HTTPNotFound:
         raise exc.CommandError('Delete failed, stor: %s not found'
                                % args.stor)
+
+    ihost = ihost_utils._find_ihost(cc, ihost_uuid)
+    _print_istor_list(cc, ihost)

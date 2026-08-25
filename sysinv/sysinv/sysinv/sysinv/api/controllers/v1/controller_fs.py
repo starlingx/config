@@ -42,6 +42,7 @@ from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import kubernetes
 from sysinv.common import utils as cutils
+from sysinv.common.storage_utils import StorageRookUtils
 from sysinv import objects
 
 LOG = log.getLogger(__name__)
@@ -723,11 +724,13 @@ def _delete(controller_fs):
             msg = _("Deleting controller filesystem failed: filesystem "
                     "{}".format(controller_fs['name']))
             raise wsme.exc.ClientSideError(msg)
+        return
 
     elif (eval(controller_fs['state'])['status'] in [
             constants.CONTROLLER_FS_CREATING_IN_PROGRESS,
             constants.CONTROLLER_FS_RESIZING_IN_PROGRESS,
-            constants.CONTROLLER_FS_DELETING_IN_PROGRESS]):
+            constants.CONTROLLER_FS_DELETING_IN_PROGRESS,
+            constants.CONTROLLER_FS_RECONFIGURE_WITH_APP]):
         msg = _("Controller filesystem {} must have the status {} for deletion.".format(
             controller_fs['state'], constants.CONTROLLER_FS_AVAILABLE))
         raise wsme.exc.ClientSideError(msg)
@@ -777,11 +780,34 @@ def _check_capabilities(fs_name, functions):
                     constants.SB_TYPE_CEPH_ROOK))
         raise wsme.exc.ClientSideError(msg)
 
+    # Reject capability updates when the controller filesystem is in a
+    # transient state.
+    storage_rook = StorageRookUtils(pecan.request.dbapi)
+    try:
+        controller_fs = pecan.request.dbapi.controller_fs_get_by_name(fs_name)
+        if storage_rook.is_controller_fs_in_transient_state(controller_fs):
+            current_status = eval(controller_fs.state).get('status', '')
+            msg = _("ControllerFs update failed: cannot modify capabilities "
+                    "while filesystem '%s' is in '%s' state. Please wait for "
+                    "the current operation to complete." %
+                    (fs_name, current_status))
+            raise wsme.exc.ClientSideError(msg)
+    except exception.ControllerFSNameNotFound:
+        pass
+
     rook_ceph = pecan.request.dbapi.storage_backend_get_list_by_type(
                     backend_type=constants.SB_TYPE_CEPH_ROOK)
     if not rook_ceph:
         msg = _("%s must be configured as the storage backend to add/remove "
                 "the monitor function." % constants.SB_TYPE_CEPH_ROOK)
+        raise wsme.exc.ClientSideError(msg)
+
+    # Block capability updates when the rook-ceph app is in a transitional state
+    if storage_rook.is_app_in_transition():
+        msg = _("ControllerFs update failed: the %s application is in "
+                "transition, please wait for the current operation "
+                "to complete before making changes." %
+                constants.HELM_APP_ROOK_CEPH)
         raise wsme.exc.ClientSideError(msg)
 
     for function in functions:
@@ -969,6 +995,20 @@ class ControllerFsController(rest.RestController):
                         raise wsme.exc.ClientSideError(msg)
                     else:
                         update_fs_list.append(fs_name)
+                    # Check if this filesystem is in update_error state
+                    for fs in controller_fs_list:
+                        if fs.name == fs_name:
+                            fs_state = eval(fs.state) if fs.state else {}
+                            if fs_state.get('status') == \
+                                    constants.CONTROLLER_FS_UPDATE_ERROR:
+                                msg = _(
+                                    "ControllerFs update failed: filesystem "
+                                    "'%s' is in %s state. Please delete and "
+                                    "recreate the filesystem." %
+                                    (fs_name,
+                                     constants.CONTROLLER_FS_UPDATE_ERROR))
+                                raise wsme.exc.ClientSideError(msg)
+                            break
                 elif p_obj['path'] == '/capabilities':
                     p_obj['value'] = jsonutils.loads(p_obj['value'])
                     _check_capabilities(fs_name,
@@ -1042,6 +1082,19 @@ class ControllerFsController(rest.RestController):
         elif update_capabilities:
             for fs in controller_fs_list_new:
                 if fs.name in modified_fs:
+                    # Compare new capabilities with current — if identical,
+                    # skip the update entirely (no-op)
+                    current_fs = [f for f in controller_fs_list
+                                  if f['name'] == fs.name][0]
+                    current_functions = sorted(
+                        current_fs.get('capabilities', {}).get('functions', []))
+                    new_functions = sorted(
+                        fs.capabilities.get('functions', []))
+
+                    if new_functions == current_functions:
+                        # No change — do nothing
+                        continue
+
                     state = {'status': constants.CONTROLLER_FS_RECONFIGURE_WITH_APP}
                     values = {'capabilities': fs.capabilities,
                               'state': str(state)}

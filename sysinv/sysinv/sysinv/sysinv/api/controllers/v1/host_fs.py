@@ -24,6 +24,7 @@ from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils as cutils
 from sysinv.common.storage_backend_conf import StorageBackendConfig
+from sysinv.common.storage_utils import StorageRookUtils
 from sysinv import objects
 
 LOG = log.getLogger(__name__)
@@ -350,6 +351,19 @@ class HostFsController(rest.RestController):
         elif update_capabilities:
             for fs in host_fs_list_new:
                 if fs.name in modified_fs:
+                    # Compare new capabilities with current — if identical,
+                    # skip the update entirely (no-op)
+                    current_fs = [f for f in current_host_fs_list
+                                  if f['name'] == fs.name][0]
+                    current_functions = sorted(
+                        current_fs.get('capabilities', {}).get('functions', []))
+                    new_functions = sorted(
+                        fs.capabilities.get('functions', []))
+
+                    if new_functions == current_functions:
+                        # No change — do nothing
+                        continue
+
                     values = {'capabilities': fs.capabilities,
                               'state': constants.HOST_FS_STATUS_RECONFIGURE_WITH_APP}
                     pecan.request.dbapi.host_fs_update(fs.uuid, values)
@@ -539,6 +553,17 @@ def _check_capabilities(fs_name, functions, current_fs_list):
 
     hostfs = hostfs[0]
 
+    # Reject capability updates when the filesystem is in a transient state.
+    # The filesystem must be in a stable state (Ready or In-Use) before
+    # capabilities can be modified.
+    storage_rook = StorageRookUtils(pecan.request.dbapi)
+    if storage_rook.is_host_fs_in_transient_state(hostfs):
+        current_state = hostfs.get('state', None)
+        msg = _("HostFs update failed: cannot modify capabilities while "
+                "filesystem '%s' is in '%s' state. Please wait for the "
+                "current operation to complete." % (fs_name, current_state))
+        raise wsme.exc.ClientSideError(msg)
+
     rook_ceph = pecan.request.dbapi.storage_backend_get_list_by_type(
                     backend_type=constants.SB_TYPE_CEPH_ROOK)
     if not rook_ceph:
@@ -548,9 +573,14 @@ def _check_capabilities(fs_name, functions, current_fs_list):
 
     current_fs_functions = hostfs.get('capabilities', {})['functions']
 
-    # Block removal of the last monitor, regardless of whether OSD is kept
-    if (constants.FILESYSTEM_CEPH_FUNCTION_MONITOR in current_fs_functions and
-            constants.FILESYSTEM_CEPH_FUNCTION_MONITOR not in functions):
+    # Block capability updates when the rook-ceph app is in a transitional state
+    if storage_rook.is_app_in_transition():
+        msg = _("HostFs update failed: the %s application is in transition, "
+                "please wait for the current operation to complete "
+                "before making changes." % constants.HELM_APP_ROOK_CEPH)
+        raise wsme.exc.ClientSideError(msg)
+
+    if not functions:
         if (cutils.count_local_monitors_assigned(pecan.request.dbapi) == 1 and
                 hostfs.get('state', None) == constants.HOST_FS_STATUS_IN_USE):
             msg = _("HostFs update failed: it is not possible to remove the last "
@@ -592,6 +622,11 @@ def _check_capabilities(fs_name, functions, current_fs_list):
     if (constants.FILESYSTEM_CEPH_FUNCTION_MONITOR not in functions and
             constants.FILESYSTEM_CEPH_FUNCTION_MONITOR in current_fs_functions):
         _check_ceph_floating_monitor("update")
+        if (cutils.count_local_monitors_assigned(pecan.request.dbapi) == 1 and
+                hostfs.get('state', None) == constants.HOST_FS_STATUS_IN_USE):
+            msg = _("HostFs update failed: it is not possible to remove the last "
+                    "monitor in use.")
+            raise wsme.exc.ClientSideError(msg)
 
 
 def _check_host_fs(host_fs):
