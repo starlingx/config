@@ -94,11 +94,11 @@ def _load():
     # https://bugs.launchpad.net/starlingx/+bug/1931529 is fixed, allowing
     # python3 parser to work in strict mode.
     if six.PY2:
-        config = configparser.SafeConfigParser()
+        config = configparser.ConfigParser()
         config.readfp(ini_fp)  # pylint: disable=deprecated-method
     elif six.PY3:
         if is_debian_bullseye():
-            config = configparser.SafeConfigParser(strict=False)  # pylint: disable=unexpected-keyword-arg
+            config = configparser.ConfigParser(strict=False)  # pylint: disable=unexpected-keyword-arg
         else:
             config = configparser.ConfigParser(strict=False)  # pylint: disable=unexpected-keyword-arg
         config.read_file(ini_fp)

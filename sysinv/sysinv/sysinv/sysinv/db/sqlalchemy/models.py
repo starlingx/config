@@ -935,6 +935,10 @@ class PtpParameterOwnerships(Base):
     PTP parameters and their owners: PTP instances and PTP interfaces.
     """
     __tablename__ = "ptp_parameter_ownerships"
+    __table_args__ = (
+        UniqueConstraint('parameter_uuid', 'owner_uuid',
+                         name='u_paramowner'),
+    )
 
     id = Column(Integer, primary_key=True, nullable=False)
     uuid = Column(String(UUID_LENGTH), unique=True)
@@ -950,8 +954,6 @@ class PtpParameterOwnerships(Base):
 
     parameter = relationship("PtpParameters", lazy="selectin", join_depth=1)
     owner = relationship("PtpParameterOwners", lazy="selectin", join_depth=1)
-
-    UniqueConstraint('parameter_uuid', 'owner_uuid', name='u_paramowner')
 
 
 class PtpInstanceMaps(Base):
