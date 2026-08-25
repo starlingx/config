@@ -56,6 +56,7 @@ from sysinv.common import helper
 from sysinv.common import kubernetes
 from sysinv.common import utils as cutils
 from sysinv.common import usm_service
+from sysinv.common import image_download
 from sysinv.common.image_download import ContainerImageDownloader
 from sysinv.conductor import kube_app
 from sysinv.conductor import manager
@@ -2059,10 +2060,19 @@ class ManagerTestCase(base.DbTestCase):
         self.addCleanup(p.stop)
 
         p = mock.patch(
-            'sysinv.conductor.manager.ContainerImageDownloader.docker_registry_image_list',
+            'sysinv.common.image_download.ContainerImageDownloader._docker_registry_tagged_image_targeted_list',
             mock.MagicMock()
         )
-        p.start().return_value = [{"name": 'fake_image5'}]
+        p.start().return_value = {'fake_image5'}
+        self.addCleanup(p.stop)
+
+        # Already-present images pass the presence check in this scenario.
+        p = mock.patch(
+            'sysinv.common.image_download.ContainerImageDownloader.'
+            '_verify_local_registry_image_present',
+            mock.MagicMock()
+        )
+        p.start().return_value = True
         self.addCleanup(p.stop)
 
         mock_docker_apiclient_pull = mock.MagicMock()
@@ -2171,6 +2181,380 @@ class ManagerTestCase(base.DbTestCase):
         # Image 4 is in crictl, but 5 is not
         self.assertEqual(mock_pull_image_to_crictl.call_count, 4)
 
+    def test_download_images_from_upstream_to_local_reg_and_crictl_all_already_prestaged(self):
+        """Test download_images_from_upstream_to_local_reg_and_crictl: all images prestaged
+
+        When every requested image is already present in both the local
+        registry and crictl, the method must return True immediately without
+        invoking any docker pull or crictl pull. This validates the
+        skip-download behaviour.
+        """
+
+        images_to_be_downloaded = ['fake_image1', 'fake_image2', 'fake_image3']
+
+        p = mock.patch("docker.APIClient.__init__", mock.MagicMock(return_value=None))
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_get_local_docker_registry_auth = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.get_local_docker_registry_auth',
+                       mock_get_local_docker_registry_auth)
+        p.start().return_value = {'username': 'fake_username', 'password': 'fake_password'}
+        self.addCleanup(p.stop)
+
+        mock_retrieve_specified_registries = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.kube_app.DockerHelper.retrieve_specified_registries',
+                       mock_retrieve_specified_registries)
+        p.start().return_value = {'fake_registries': 'fake_registries'}
+        self.addCleanup(p.stop)
+
+        # crictl comparison uses the registry-prefixed image refs
+        mock_get_crictl_image_list = mock.MagicMock()
+        p = mock.patch('sysinv.common.containers.get_crictl_image_list',
+                       mock_get_crictl_image_list)
+        p.start().return_value = [
+            f"{constants.DOCKER_REGISTRY_SERVER}/{image}"
+            for image in images_to_be_downloaded
+        ]
+        self.addCleanup(p.stop)
+
+        mock_get_img_tag_with_registry = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.kube_app.DockerHelper._get_img_tag_with_registry',
+                       mock_get_img_tag_with_registry)
+        p.start()
+        self.addCleanup(p.stop)
+
+        # local registry comparison uses the unprefixed image refs
+        p = mock.patch(
+            'sysinv.common.image_download.ContainerImageDownloader._docker_registry_tagged_image_targeted_list',
+            mock.MagicMock()
+        )
+        p.start().return_value = set(images_to_be_downloaded)
+        self.addCleanup(p.stop)
+
+        # All present images pass the presence check, so none are re-queued.
+        p = mock.patch(
+            'sysinv.common.image_download.ContainerImageDownloader.'
+            '_verify_local_registry_image_present',
+            mock.MagicMock()
+        )
+        p.start().return_value = True
+        self.addCleanup(p.stop)
+
+        mock_docker_apiclient_pull = mock.MagicMock()
+        p = mock.patch('docker.APIClient.pull', mock_docker_apiclient_pull)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_docker_apiclient_tag = mock.MagicMock()
+        p = mock.patch('docker.APIClient.tag', mock_docker_apiclient_tag)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_docker_apiclient_push = mock.MagicMock()
+        p = mock.patch('docker.APIClient.push', mock_docker_apiclient_push)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_docker_apiclient_inspect = mock.MagicMock()
+        p = mock.patch('docker.APIClient.inspect_distribution', mock_docker_apiclient_inspect)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_docker_apiclient_remove_image = mock.MagicMock()
+        p = mock.patch('docker.APIClient.remove_image', mock_docker_apiclient_remove_image)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_pull_image_to_crictl = mock.MagicMock()
+        p = mock.patch('sysinv.common.containers.pull_image_to_crictl',
+                       mock_pull_image_to_crictl)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_docker_system_prune = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.common.image_download.ContainerImageDownloader._docker_system_prune',
+            mock_docker_system_prune)
+        p.start()
+        self.addCleanup(p.stop)
+
+        result = \
+            self.service._image_downloader.download_images_from_upstream_to_local_reg_and_crictl(
+                images_to_be_downloaded)
+
+        # Assertions start here
+        # Assert Main Result: returns True immediately
+        self.assertTrue(result)
+
+        # crictl image list is still queried to determine what is missing
+        mock_get_crictl_image_list.assert_called_once()
+
+        # Nothing should be pulled, tagged, pushed, removed or pruned since
+        # all images are already present in both the local registry and crictl
+        mock_get_img_tag_with_registry.assert_not_called()
+        mock_docker_apiclient_pull.assert_not_called()
+        mock_docker_apiclient_tag.assert_not_called()
+        mock_docker_apiclient_push.assert_not_called()
+        mock_docker_apiclient_inspect.assert_not_called()
+        mock_docker_apiclient_remove_image.assert_not_called()
+        mock_pull_image_to_crictl.assert_not_called()
+        mock_docker_system_prune.assert_not_called()
+
+    def test_download_images_from_upstream_to_local_reg_and_crictl_corrupted_blob_repull(self):
+        """Test download_images_from_upstream_to_local_reg_and_crictl: corrupted prestaged image
+
+        Every requested image is listed in the local registry catalog and is
+        present in crictl, so the naive check would skip the download entirely.
+        However one image fails the blob presence check (listed but with a
+        bad/missing blob). That image must be re-queued and re-pulled through
+        the pull/tag/push path so the recovery mechanism is not defeated.
+        """
+
+        images_to_be_downloaded = ['fake_image1', 'fake_image2', 'fake_image3']
+        corrupted_image = 'fake_image2'
+        fake_local_registry_auth = {'username': 'fake_username', 'password': 'fake_password'}
+        fake_registries = {'fake_registries': 'fake_registries'}
+        get_img_tag_with_registry_output = ('fake_target_image', fake_local_registry_auth)
+
+        p = mock.patch("docker.APIClient.__init__", mock.MagicMock(return_value=None))
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_get_local_docker_registry_auth = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.get_local_docker_registry_auth',
+                       mock_get_local_docker_registry_auth)
+        p.start().return_value = {'username': 'fake_username', 'password': 'fake_password'}
+        self.addCleanup(p.stop)
+
+        mock_retrieve_specified_registries = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.kube_app.DockerHelper.retrieve_specified_registries',
+                       mock_retrieve_specified_registries)
+        p.start().return_value = fake_registries
+        self.addCleanup(p.stop)
+
+        # All images already present in crictl.
+        mock_get_crictl_image_list = mock.MagicMock()
+        p = mock.patch('sysinv.common.containers.get_crictl_image_list',
+                       mock_get_crictl_image_list)
+        p.start().return_value = [
+            f"{constants.DOCKER_REGISTRY_SERVER}/{image}"
+            for image in images_to_be_downloaded
+        ]
+        self.addCleanup(p.stop)
+
+        mock_get_img_tag_with_registry = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.kube_app.DockerHelper._get_img_tag_with_registry',
+                       mock_get_img_tag_with_registry)
+        p.start().return_value = get_img_tag_with_registry_output
+        self.addCleanup(p.stop)
+
+        # All images are listed as present in the local registry.
+        p = mock.patch(
+            'sysinv.common.image_download.ContainerImageDownloader._docker_registry_tagged_image_targeted_list',
+            mock.MagicMock()
+        )
+        p.start().return_value = set(images_to_be_downloaded)
+        self.addCleanup(p.stop)
+
+        # Only the corrupted image fails the presence check.
+        mock_verify_present = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.common.image_download.ContainerImageDownloader.'
+            '_verify_local_registry_image_present',
+            mock_verify_present)
+        p.start().side_effect = lambda image: image != corrupted_image
+        self.addCleanup(p.stop)
+
+        mock_docker_apiclient_pull = mock.MagicMock()
+        p = mock.patch('docker.APIClient.pull', mock_docker_apiclient_pull)
+        p.start()
+        self.addCleanup(p.stop)
+
+        p = mock.patch("docker.APIClient.inspect_image", mock.MagicMock())
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_docker_apiclient_tag = mock.MagicMock()
+        p = mock.patch('docker.APIClient.tag', mock_docker_apiclient_tag)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_docker_apiclient_push = mock.MagicMock()
+        p = mock.patch('docker.APIClient.push', mock_docker_apiclient_push)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_docker_apiclient_inspect = mock.MagicMock()
+        p = mock.patch('docker.APIClient.inspect_distribution', mock_docker_apiclient_inspect)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_docker_apiclient_remove_image = mock.MagicMock()
+        p = mock.patch('docker.APIClient.remove_image', mock_docker_apiclient_remove_image)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_pull_image_to_crictl = mock.MagicMock()
+        p = mock.patch('sysinv.common.containers.pull_image_to_crictl',
+                       mock_pull_image_to_crictl)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_docker_system_prune = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.common.image_download.ContainerImageDownloader._docker_system_prune',
+            mock_docker_system_prune)
+        p.start()
+        self.addCleanup(p.stop)
+
+        result = \
+            self.service._image_downloader.download_images_from_upstream_to_local_reg_and_crictl(
+                images_to_be_downloaded)
+
+        # Assertions start here
+        # Assert Main Result
+        self.assertTrue(result)
+
+        # Presence was checked for every already-present image.
+        self.assertEqual(mock_verify_present.call_count, len(images_to_be_downloaded))
+
+        # Only the corrupted image should be pulled/tagged/pushed again; the
+        # two healthy images are skipped.
+        mock_get_img_tag_with_registry.assert_called_once_with(
+            corrupted_image, fake_registries)
+        mock_docker_apiclient_pull.assert_called_once_with(
+            get_img_tag_with_registry_output[0],
+            auth_config=get_img_tag_with_registry_output[1])
+        mock_docker_apiclient_tag.assert_called_once_with(
+            get_img_tag_with_registry_output[0],
+            f"{constants.DOCKER_REGISTRY_SERVER}/{corrupted_image}")
+        mock_docker_apiclient_push.assert_called_once_with(
+            f"{constants.DOCKER_REGISTRY_SERVER}/{corrupted_image}",
+            auth_config=get_img_tag_with_registry_output[1])
+
+        # Push succeeded on first attempt, so no prune/retry recovery needed.
+        mock_docker_system_prune.assert_not_called()
+
+        # All images already present in crictl, so no crictl pull.
+        mock_pull_image_to_crictl.assert_not_called()
+
+    def test_verify_local_registry_image_present_all_present(self):
+        """Manifest resolves and every blob HEAD returns 200 -> True."""
+        downloader = self.service._image_downloader
+        manifest = mock.Mock(status_code=200)
+        manifest.json.return_value = {
+            'config': {'digest': 'sha256:cfg'},
+            'layers': [{'digest': 'sha256:l1'}, {'digest': 'sha256:l2'}],
+        }
+        blob = mock.Mock(status_code=200)
+        with mock.patch.object(image_download.docker_registry,
+                               'docker_registry_get',
+                               return_value=manifest) as m_get, \
+                mock.patch.object(image_download.docker_registry,
+                                  'docker_registry_head',
+                                  return_value=blob) as m_head:
+            self.assertTrue(
+                downloader._verify_local_registry_image_present(
+                    "registry.k8s.io/kube-apiserver:v1.35.2"))
+        # Manifest fetched once via GET.
+        m_get.assert_called_once()
+        # One HEAD per digest (config + 2 layers), and no blob body streamed
+        # (blobs are never fetched via GET).
+        self.assertEqual(m_head.call_count, 3)
+
+    def test_verify_local_registry_image_present_missing_blob(self):
+        """A blob HEAD returning a non-200/307 status -> False."""
+        downloader = self.service._image_downloader
+        manifest = mock.Mock(status_code=200)
+        manifest.json.return_value = {
+            'config': {'digest': 'sha256:cfg'},
+            'layers': [{'digest': 'sha256:l1'}],
+        }
+        present = mock.Mock(status_code=200)
+        missing = mock.Mock(status_code=404)
+        with mock.patch.object(image_download.docker_registry,
+                               'docker_registry_get',
+                               return_value=manifest), \
+                mock.patch.object(image_download.docker_registry,
+                                  'docker_registry_head',
+                                  side_effect=[present, missing]):
+            self.assertFalse(
+                downloader._verify_local_registry_image_present(
+                    "registry.k8s.io/kube-apiserver:v1.35.2"))
+
+    def test_verify_local_registry_image_present_blob_redirect(self):
+        """A blob HEAD returning 307 (redirect to storage) counts as present."""
+        downloader = self.service._image_downloader
+        manifest = mock.Mock(status_code=200)
+        manifest.json.return_value = {
+            'config': {'digest': 'sha256:cfg'},
+            'layers': [{'digest': 'sha256:l1'}],
+        }
+        redirect = mock.Mock(status_code=307)
+        with mock.patch.object(image_download.docker_registry,
+                               'docker_registry_get',
+                               return_value=manifest), \
+                mock.patch.object(image_download.docker_registry,
+                                  'docker_registry_head',
+                                  return_value=redirect):
+            self.assertTrue(
+                downloader._verify_local_registry_image_present(
+                    "registry.k8s.io/kube-apiserver:v1.35.2"))
+
+    def test_verify_local_registry_image_present_manifest_error(self):
+        """A non-200 manifest response -> False and no blob HEAD attempted."""
+        downloader = self.service._image_downloader
+        with mock.patch.object(image_download.docker_registry,
+                               'docker_registry_get',
+                               return_value=mock.Mock(status_code=500)), \
+                mock.patch.object(image_download.docker_registry,
+                                  'docker_registry_head') as m_head:
+            self.assertFalse(
+                downloader._verify_local_registry_image_present(
+                    "registry.k8s.io/kube-apiserver:v1.35.2"))
+        m_head.assert_not_called()
+
+    def test_verify_local_registry_image_present_manifest_list(self):
+        """A multi-arch manifest list (no config/layers) is treated as present
+        without deep verification (no blob HEAD attempted)."""
+        downloader = self.service._image_downloader
+        manifest = mock.Mock(status_code=200)
+        # Manifest list: no top-level config/layers, only per-arch manifests.
+        manifest.json.return_value = {
+            'manifests': [{'digest': 'sha256:arch1'},
+                          {'digest': 'sha256:arch2'}],
+        }
+        with mock.patch.object(image_download.docker_registry,
+                               'docker_registry_get',
+                               return_value=manifest), \
+                mock.patch.object(image_download.docker_registry,
+                                  'docker_registry_head') as m_head:
+            self.assertTrue(
+                downloader._verify_local_registry_image_present(
+                    "registry.k8s.io/kube-apiserver:v1.35.2"))
+        m_head.assert_not_called()
+
+    def test_verify_local_registry_image_present_bad_ref(self):
+        """An image ref with no tag is not blocked (assumed present)."""
+        downloader = self.service._image_downloader
+        with mock.patch.object(image_download.docker_registry,
+                               'docker_registry_get') as m_get:
+            self.assertTrue(
+                downloader._verify_local_registry_image_present("no-tag-here"))
+        # Malformed ref short-circuits before any registry call.
+        m_get.assert_not_called()
+
+    def test_verify_local_registry_image_present_exception(self):
+        """An unexpected exception during the check -> False (safe re-pull)."""
+        downloader = self.service._image_downloader
+        with mock.patch.object(image_download.docker_registry,
+                               'docker_registry_get',
+                               side_effect=Exception("boom")):
+            self.assertFalse(
+                downloader._verify_local_registry_image_present(
+                    "registry.k8s.io/kube-apiserver:v1.35.2"))
+
     def test_download_images_from_upstream_to_local_reg_and_crictl_failure_docker_pull_fail(self):
         """Test download_images_from_upstream_to_local_reg_and_crictl: docker pull failed
 
@@ -2211,10 +2595,10 @@ class ManagerTestCase(base.DbTestCase):
         self.addCleanup(p.stop)
 
         p = mock.patch(
-            'sysinv.conductor.manager.ConductorManager.docker_registry_image_list',
+            'sysinv.common.image_download.ContainerImageDownloader._docker_registry_tagged_image_targeted_list',
             mock.MagicMock()
         )
-        p.start().return_value = []
+        p.start().return_value = set()
         self.addCleanup(p.stop)
 
         mock_docker_apiclient_pull = mock.MagicMock()
@@ -2341,10 +2725,10 @@ class ManagerTestCase(base.DbTestCase):
         self.addCleanup(p.stop)
 
         p = mock.patch(
-            "sysinv.conductor.manager.ConductorManager.docker_registry_image_list",
+            "sysinv.common.image_download.ContainerImageDownloader._docker_registry_tagged_image_targeted_list",
             mock.MagicMock(),
         )
-        p.start().return_value = []
+        p.start().return_value = set()
         self.addCleanup(p.stop)
 
         mock_docker_apiclient_pull = mock.MagicMock()
@@ -2463,10 +2847,10 @@ class ManagerTestCase(base.DbTestCase):
         self.addCleanup(p.stop)
 
         p = mock.patch(
-            'sysinv.conductor.manager.ConductorManager.docker_registry_image_list',
+            'sysinv.common.image_download.ContainerImageDownloader._docker_registry_tagged_image_targeted_list',
             mock.MagicMock()
         )
-        p.start().return_value = []
+        p.start().return_value = set()
         self.addCleanup(p.stop)
 
         mock_docker_apiclient_pull = mock.MagicMock()
@@ -2580,10 +2964,10 @@ class ManagerTestCase(base.DbTestCase):
         self.addCleanup(p.stop)
 
         p = mock.patch(
-            'sysinv.conductor.manager.ConductorManager.docker_registry_image_list',
+            'sysinv.common.image_download.ContainerImageDownloader._docker_registry_tagged_image_targeted_list',
             mock.MagicMock()
         )
-        p.start().return_value = []
+        p.start().return_value = set()
         self.addCleanup(p.stop)
 
         mock_docker_apiclient_pull = mock.MagicMock()
@@ -2695,10 +3079,10 @@ class ManagerTestCase(base.DbTestCase):
         self.addCleanup(p.stop)
 
         p = mock.patch(
-            'sysinv.conductor.manager.ConductorManager.docker_registry_image_list',
+            'sysinv.common.image_download.ContainerImageDownloader._docker_registry_tagged_image_targeted_list',
             mock.MagicMock()
         )
-        p.start().return_value = []
+        p.start().return_value = set()
         self.addCleanup(p.stop)
 
         mock_docker_apiclient_pull = mock.MagicMock()
@@ -2827,10 +3211,10 @@ class ManagerTestCase(base.DbTestCase):
         self.addCleanup(p.stop)
 
         p = mock.patch(
-            'sysinv.conductor.manager.ConductorManager.docker_registry_image_list',
+            'sysinv.common.image_download.ContainerImageDownloader._docker_registry_tagged_image_targeted_list',
             mock.MagicMock()
         )
-        p.start().return_value = []
+        p.start().return_value = set()
         self.addCleanup(p.stop)
 
         mock_docker_apiclient_pull = mock.MagicMock()

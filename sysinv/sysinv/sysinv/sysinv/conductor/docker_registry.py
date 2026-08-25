@@ -115,6 +115,39 @@ def docker_registry_get(path, registry_url=REGISTRY_BASEURL):
     return resp
 
 
+def docker_registry_head(path, registry_url=REGISTRY_BASEURL):
+    # HEAD returns status + headers (e.g. Content-Length) without the
+    # response body. Used to check blob presence/reachability without
+    # streaming the (potentially large) layer. allow_redirects=False so a
+    # blob redirect (307) to the storage backend is reported rather than
+    # transparently followed.
+    headers = {"Accept": "application/vnd.docker.distribution.manifest.v2+json"}
+
+    try:
+        resp = requests.head("%s%s" % (registry_url, path),
+                             verify=SYSTEM_CERT_PATH, headers=headers,
+                             allow_redirects=False)
+    except requests.exceptions.SSLError:
+        resp = requests.head("%s%s" % (registry_url, path),
+                             verify=DOCKER_CERT_PATH, headers=headers,
+                             allow_redirects=False)
+
+    # authenticated registry, need to do auth with token server
+    if resp.status_code == 401:
+        auth_headers = docker_registry_authenticate(resp.headers["Www-Authenticate"])
+        headers.update(auth_headers)
+        try:
+            resp = requests.head("%s%s" % (registry_url, path),
+                                 verify=SYSTEM_CERT_PATH, headers=headers,
+                                 allow_redirects=False)
+        except requests.exceptions.SSLError:
+            resp = requests.head("%s%s" % (registry_url, path),
+                                 verify=DOCKER_CERT_PATH, headers=headers,
+                                 allow_redirects=False)
+
+    return resp
+
+
 def docker_registry_delete(path, registry_url=REGISTRY_BASEURL):
     headers = {}
 

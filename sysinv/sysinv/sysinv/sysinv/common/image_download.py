@@ -216,6 +216,129 @@ class ContainerImageDownloader(object):
             return False
         return True
 
+    def _docker_registry_tagged_image_targeted_list(self, target_images):
+        """Return the set of "repo:tag" refs present in the local registry,
+        restricted to repos relevant to target_images.
+
+        This is a targeted, tag-level companion to
+        docker_registry_image_list(). That method returns repo-level entries
+        ({'name': repo}) and raises on registry errors; this one returns
+        "repo:tag" strings, queries only repos relevant to the requested
+        images, and degrades to an empty set on failure so a transient
+        catalog error does not abort the download.
+
+        :param: target_images: set of requested image refs (e.g.
+                {"registry.k8s.io/kube-apiserver:v1.35.2", ...})
+                Used to filter the catalog so only relevant repos are queried.
+
+        :returns: set of tagged image references (e.g.
+                  {"registry.k8s.io/kube-apiserver:v1.35.2", ...})
+        """
+        tagged_images = set()
+        target_repos = {img.rsplit(':', 1)[0] for img in target_images}
+
+        try:
+            image_list_response = docker_registry.docker_registry_get("_catalog")
+        except Exception:
+            LOG.warning("Failed to get docker registry catalog for "
+                        "tagged image check")
+            return tagged_images
+
+        if image_list_response.status_code != 200:
+            LOG.warning("Bad response from docker registry catalog: %s"
+                        % image_list_response.status_code)
+            return tagged_images
+
+        # responses from the registry looks like this
+        # {u'repositories': [u'meliodas/satesatesate', ...]}
+        repos = image_list_response.json().get('repositories', [])
+        for repo in repos:
+            if repo not in target_repos:
+                continue
+            try:
+                tags_response = docker_registry.docker_registry_get(
+                    "%s/tags/list" % repo)
+                if tags_response.status_code != 200:
+                    LOG.warning("Failed to get tags for repo %s: "
+                                "HTTP %s" % (repo, tags_response.status_code))
+                    continue
+                tags = tags_response.json().get('tags') or []
+                for tag in tags:
+                    tagged_images.add(f"{repo}:{tag}")
+            except Exception as e:
+                LOG.warning("Failed to get tags for repo %s: %s" % (repo, e))
+                continue
+        return tagged_images
+
+    def _verify_local_registry_image_present(self, image):
+        """Verify a tagged image in the local registry has a resolvable
+        manifest and that all referenced blobs are present.
+
+        The catalog/tags listing only confirms a "repo:tag" reference exists;
+        it does not guarantee the underlying layers are present. An abrupt
+        reboot can leave a listed image with a missing blob. This check
+        resolves the manifest and verifies each referenced blob is present so
+        such images can be treated as "needs re-pull" and routed through the
+        existing prune/retry recovery path.
+
+        Note: this checks presence, not byte-level integrity. A blob that is
+        present but silently corrupt is not detected here; that is caught
+        later at "crictl pull".
+
+        :param: image: tagged image ref, e.g.
+                "registry.k8s.io/kube-apiserver:v1.35.2"
+
+        :returns: True if the manifest and all blobs resolve, False otherwise
+        """
+        repo, _, tag = image.rpartition(':')
+        if not repo or not tag:
+            # Unexpected format, do not block on it - assume present.
+            return True
+        try:
+            manifest_resp = docker_registry.docker_registry_get(
+                "%s/manifests/%s" % (repo, tag))
+            if manifest_resp.status_code != 200:
+                LOG.warning("Manifest check failed for [%s]: HTTP %s"
+                            % (image, manifest_resp.status_code))
+                return False
+
+            manifest = manifest_resp.json()
+            # Collect config + layer digests from a v2 manifest.
+            # NOTE: multi-arch images use a manifest list (no top-level
+            # config/layers, only a 'manifests' array of per-arch
+            # descriptors), so 'digests' ends up empty and such an image is
+            # treated as present without deep verification.
+            # TODO: descend into per-arch manifests to verify blobs for
+            # multi-arch images if we start prestaging them.
+            digests = []
+            config = manifest.get('config') or {}
+            if config.get('digest'):
+                digests.append(config['digest'])
+            for layer in manifest.get('layers') or []:
+                if layer.get('digest'):
+                    digests.append(layer['digest'])
+
+            for digest in digests:
+                # Use HEAD: we only need to confirm the blob exists/reachable,
+                # not stream the (potentially large) layer body. Note this
+                # checks presence, not byte-level integrity - a present-but-
+                # corrupt blob is only caught later at crictl pull.
+                blob_resp = docker_registry.docker_registry_head(
+                    "%s/blobs/%s" % (repo, digest))
+                # The registry may serve the blob directly (200) or redirect
+                # to storage (307, with allow_redirects=False on the HEAD).
+                # Anything else means the blob is missing.
+                if blob_resp.status_code not in (200, 307):
+                    LOG.warning("Blob [%s] missing for image [%s]: "
+                                "HTTP %s" % (digest, image,
+                                             blob_resp.status_code))
+                    return False
+        except Exception as e:
+            LOG.warning("Presence check failed for image [%s]: %s"
+                        % (image, e))
+            return False
+        return True
+
     def download_images_from_upstream_to_local_reg_and_crictl(self, images):
         """Download images from upstream private/public registry to local
            registry and crictl
@@ -229,28 +352,31 @@ class ContainerImageDownloader(object):
         """
 
         # Verify which image needs to be downloaded to docker and crictl
+        # 'images' are unprefixed refs (no local registry prefix), e.g.
+        # "registry.k8s.io/kube-apiserver:v1.35.2".
         images = set(images)
-        # Create a list of images with the registry server prefix
+        # Create a list of images with the registry server prefix.
+        # 'images_with_prefix' are the same refs with the local registry
+        # server prepended (e.g.
+        # "registry.local:9001/registry.k8s.io/kube-apiserver:v1.35.2"),
+        # which is how crictl stores/reports them.
         images_with_prefix = {
             f"{constants.DOCKER_REGISTRY_SERVER}/{image}"
             for image in images
         }
 
-        try:
-            # The list method returns a list of dictionaries in the format
-            # [{"name": "<image>"}, {"name": "<image>"}]
-            docker_images = {
-                image["name"]
-                # The context parameter is unused in the method. It is just setup for
-                # RPC calls
-                for image in self.docker_registry_image_list(False)
-            }
-        except exception.DockerRegistryAPIException as e:
-            LOG.warning(f"An error occurred when retrieving docker image list: {e}")
-            docker_images = set()
-        except Exception as e:
-            LOG.error(f"An error occurred when retrieving docker image list: {e}")
-            raise e
+        # Get tagged image refs (repo:tag) from the local registry so we can
+        # do an accurate comparison against the requested images. Returns a
+        # set of "repo:tag" strings, e.g.
+        # {"registry.k8s.io/kube-apiserver:v1.35.2"}. This helper handles its
+        # own errors and always returns a set (empty on failure).
+        # NOTE: on registry failure this returns an empty set, so below
+        # docker_images_to_pull = images - {} = images, i.e. we fall back to
+        # attempting a pull for every requested image rather than wrongly
+        # skipping. The pull path is idempotent and independently retried, and
+        # the prune/retry recovery below is driven by pull failures, not by
+        # this set - so degrading to empty is safe.
+        docker_images = self._docker_registry_tagged_image_targeted_list(images)
 
         try:
             crictl_images = set(containers_util.get_crictl_image_list())
@@ -262,10 +388,31 @@ class ContainerImageDownloader(object):
             raise e
 
         docker_images_to_pull = images - docker_images
+
+        # The catalog only tells us a repo:tag reference exists; it does not
+        # guarantee blob presence. An image reported as present but with a
+        # missing blob must be re-pulled so it can go through the
+        # prune/retry recovery path (added in change 985912). Verify the
+        # images we would otherwise skip and re-queue any that fail.
+        already_present = images & docker_images
+        missing_images = {
+            image for image in already_present
+            if not self._verify_local_registry_image_present(image)
+        }
+        if missing_images:
+            LOG.warning("Images present in local registry catalog but failed "
+                        "presence check, re-pulling: %s" % missing_images)
+            docker_images_to_pull |= missing_images
+
         crictl_images_to_pull = images_with_prefix - crictl_images
 
+        LOG.info("Image download check: %d requested, "
+                 "%d missing from local registry, %d missing from crictl."
+                 % (len(images), len(docker_images_to_pull),
+                    len(crictl_images_to_pull)))
+
         # Check if there is any image to pull in either crictl or docker registry
-        if not (docker_images_to_pull and crictl_images_to_pull):
+        if not docker_images_to_pull and not crictl_images_to_pull:
             LOG.info("All images are already stored in local registry and crictl.")
             return True
 
@@ -285,51 +432,61 @@ class ContainerImageDownloader(object):
 
         # Pull all necessary images to docker first
         docker_tasks = {}
-        with ThreadPoolExecutor() as executor:
-            for image in docker_images_to_pull:
-                docker_tasks[image] = executor.submit(
-                    self._pull_image_from_upstream_tag_and_push_to_local_reg,
-                    docker_client, local_registry_auth, registries, image
-                )
-
-        # Collect images that failed the first attempt
-        failed_images = [
-            image for image, task in docker_tasks.items()
-            if not task.result()
-        ]
-
-        # An abrupt reboot (e.g. during a previous upgrade attempt) can leave
-        # corrupted layers in docker storage, causing "file integrity checksum
-        # failed" on push. Prune all docker data once and retry all failed
-        # images together.
-        if failed_images:
-            LOG.info("Attempting recovery: pruning docker data and "
-                     "retrying pull/tag/push for %s" % failed_images)
-            self._docker_system_prune()
-            retry_tasks = {}
+        if docker_images_to_pull:
             with ThreadPoolExecutor() as executor:
-                for image in failed_images:
-                    retry_tasks[image] = executor.submit(
+                for image in docker_images_to_pull:
+                    docker_tasks[image] = executor.submit(
                         self._pull_image_from_upstream_tag_and_push_to_local_reg,
                         docker_client, local_registry_auth, registries, image
                     )
-            still_failed = [
-                image for image, task in retry_tasks.items()
+
+            # Collect images that failed the first attempt
+            failed_images = [
+                image for image, task in docker_tasks.items()
                 if not task.result()
             ]
-            if still_failed:
-                LOG.error("Image pull/tag/push retry failed for: %s"
-                          % still_failed)
-                return False
 
-        # Pull all necessary images to crictl if docker pull was successfull
-        crictl_tasks = []
-        with ThreadPoolExecutor() as executor:
-            for image in crictl_images_to_pull:
-                crictl_tasks.append(executor.submit(
-                    self._pull_image_to_crictl, image, crictl_auth
-                ))
+            # An abrupt reboot (e.g. during a previous upgrade attempt) can leave
+            # corrupted layers in docker storage, causing "file integrity checksum
+            # failed" on push. Prune all docker data once and retry all failed
+            # images together.
+            if failed_images:
+                LOG.info("Attempting recovery: pruning docker data and "
+                         "retrying pull/tag/push for %s" % failed_images)
+                self._docker_system_prune()
+                retry_tasks = {}
+                with ThreadPoolExecutor() as executor:
+                    for image in failed_images:
+                        retry_tasks[image] = executor.submit(
+                            self._pull_image_from_upstream_tag_and_push_to_local_reg,
+                            docker_client, local_registry_auth, registries, image
+                        )
+                still_failed = [
+                    image for image, task in retry_tasks.items()
+                    if not task.result()
+                ]
+                if still_failed:
+                    LOG.error("Image pull/tag/push retry failed for: %s"
+                              % still_failed)
+                    return False
+        else:
+            LOG.info("All images already present in local registry, "
+                     "skipping upstream pull.")
 
-        # No need to log the results again as we have already logged them inside the
-        # worker method. Simply check for any failures.
-        return all([task.result() for task in as_completed(crictl_tasks)])
+        # Pull all necessary images to crictl
+        if crictl_images_to_pull:
+            crictl_tasks = []
+            with ThreadPoolExecutor() as executor:
+                for image in crictl_images_to_pull:
+                    crictl_tasks.append(executor.submit(
+                        self._pull_image_to_crictl, image, crictl_auth
+                    ))
+
+            # No need to log the results again as we have already logged them
+            # inside the worker method. Simply check for any failures.
+            return all([task.result() for task in as_completed(crictl_tasks)])
+        else:
+            LOG.info("All images already present in crictl, "
+                     "skipping crictl pull.")
+
+        return True
