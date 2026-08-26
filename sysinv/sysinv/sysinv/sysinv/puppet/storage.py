@@ -525,8 +525,6 @@ class StoragePuppet(base.BasePuppet):
             self.dbapi.restore_get_one(
                 filters={'state': constants.RESTORE_STATE_IN_PROGRESS})
         except exception.NotFound:
-            pass
-        else:
             return {'platform::lvm::csi::params::clean_restore::kube_pvs': []}
 
         volume_handles = []
