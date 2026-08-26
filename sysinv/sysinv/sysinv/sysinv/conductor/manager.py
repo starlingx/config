@@ -11406,6 +11406,8 @@ class ConductorManager(service.PeriodicService):
         config_dict = {
             "personalities": personalities,
             "classes": ['platform::rook::runtime'],
+            puppet_common.REPORT_STATUS_CFG:
+                puppet_common.REPORT_CEPH_ROOK_BACKEND_CONFIG,
         }
 
         config_uuid = self._config_update_hosts(context, personalities)
@@ -11661,6 +11663,11 @@ class ConductorManager(service.PeriodicService):
             success = _process_config_report(
                 self.report_ceph_config_success, [context, host_uuid],
                 self.report_ceph_config_failure, [host_uuid, error]
+            )
+        elif reported_cfg == puppet_common.REPORT_CEPH_ROOK_BACKEND_CONFIG:
+            success = _process_config_report(
+                self.report_ceph_rook_config_success, [host_uuid],
+                self.report_ceph_rook_config_failure, [host_uuid, error]
             )
         elif reported_cfg == puppet_common.REPORT_CEPH_EXTERNAL_BACKEND_CONFIG:
             success = _process_config_report(
@@ -12466,6 +12473,10 @@ class ConductorManager(service.PeriodicService):
         self._update_storage_backend_alarm(fm_constants.FM_ALARM_STATE_CLEAR,
                                            constants.CINDER_BACKEND_CEPH)
 
+        # Force the CephWrapper singleton to re-detect the backend type
+        # now that the platform flag has been written by puppet.
+        ceph.CephWrapper().recheck_backend()
+
     def report_ceph_config_failure(self, host_uuid, error):
         """ Callback for Sysinv Agent
 
@@ -12486,6 +12497,25 @@ class ConductorManager(service.PeriodicService):
         self._update_storage_backend_alarm(fm_constants.FM_ALARM_STATE_SET,
                                            constants.CINDER_BACKEND_CEPH,
                                            reason)
+
+    def report_ceph_rook_config_success(self, host_uuid):
+        """ Callback for Sysinv Agent
+
+        Rook Ceph backend manifest applied successfully.
+        Force the CephWrapper singleton to re-detect the backend type
+        now that the platform flag has been written by puppet.
+        """
+        LOG.info("Rook Ceph manifests success on host: %s" % host_uuid)
+        ceph.CephWrapper().recheck_backend()
+
+    def report_ceph_rook_config_failure(self, host_uuid, error):
+        """ Callback for Sysinv Agent
+
+        Rook Ceph backend manifest failed to apply.
+        """
+        args = {'host': host_uuid, 'error': error}
+        LOG.error("Rook Ceph manifests failed on host: %(host)s. "
+                  "Error: %(error)s" % args)
 
     def report_ceph_services_config_success(self, host_uuid):
         """
