@@ -293,6 +293,81 @@ class TestAppUpdateManager(unittest.TestCase):
         self.assertEqual(self.manager.successfully_updated, [])
         self.assertEqual(self.manager.failed_apps, [])
 
+    def test_update_a_list_of_apps_retry_switches_update_to_recover_op(self):
+        # First call fails for app2 during APP_UPDATE_OP, triggering a retry.
+        # On retry the operation must switch to APP_RECOVER_UPDATE_OP so the
+        # apply-failed app gets recovered before the update is re-attempted.
+        self.manager.apps_to_retry = []
+        self.mock_update_strategy_fn.side_effect = [
+            (None, ['app1'], ['app2']),
+            (None, ['app2'], [])
+        ]
+        result = self.manager._update_a_list_of_apps(
+            self.context, ['app1', 'app2'], constants.APP_UPDATE_OP
+        )
+
+        self.assertTrue(result)
+
+        # The second (retry) call should use APP_RECOVER_UPDATE_OP with only
+        # the failed apps.
+        retry_call = self.mock_update_strategy_fn.call_args_list[1]
+        self.assertEqual(retry_call.args[1], ['app2'])
+        self.assertEqual(retry_call.args[2], constants.APP_RECOVER_UPDATE_OP)
+
+    def test_update_a_list_of_apps_retry_filters_kwargs_for_recover_op(self):
+        # On retry, kwargs not accepted by recover_and_update_apply_failed_app
+        # (everything except k8s_version and k8s_upgrade_timing) must be
+        # stripped out.
+        self.manager.apps_to_retry = []
+        self.mock_update_strategy_fn.side_effect = [
+            (None, [], ['app1']),
+            (None, ['app1'], [])
+        ]
+        result = self.manager._update_a_list_of_apps(
+            self.context,
+            ['app1'],
+            constants.APP_UPDATE_OP,
+            k8s_version='v1.29.2',
+            k8s_upgrade_timing='pre',
+            async_update=False,
+            skip_validations=True,
+            ignore_locks=True
+        )
+
+        self.assertTrue(result)
+
+        retry_call = self.mock_update_strategy_fn.call_args_list[1]
+        self.assertEqual(retry_call.args[2], constants.APP_RECOVER_UPDATE_OP)
+        self.assertEqual(
+            retry_call.kwargs,
+            {'k8s_version': 'v1.29.2', 'k8s_upgrade_timing': 'pre'}
+        )
+
+    def test_update_a_list_of_apps_retry_keeps_non_update_operation(self):
+        # For operations other than APP_UPDATE_OP the retry must keep the same
+        # operation and preserve the provided kwargs.
+        self.manager.apps_to_retry = []
+        self.mock_update_strategy_fn.side_effect = [
+            (None, [], ['app1']),
+            (None, ['app1'], [])
+        ]
+        result = self.manager._update_a_list_of_apps(
+            self.context,
+            ['app1'],
+            constants.APP_APPLY_OP,
+            k8s_version='v1.29.2',
+            k8s_upgrade_timing='pre'
+        )
+
+        self.assertTrue(result)
+
+        retry_call = self.mock_update_strategy_fn.call_args_list[1]
+        self.assertEqual(retry_call.args[2], constants.APP_APPLY_OP)
+        self.assertEqual(
+            retry_call.kwargs,
+            {'k8s_version': 'v1.29.2', 'k8s_upgrade_timing': 'pre'}
+        )
+
     # Tests for update_apps method
     def test_update_apps_successful_flow(self):
         with (
@@ -309,6 +384,56 @@ class TestAppUpdateManager(unittest.TestCase):
             }
 
             self.manager.update_apps(self.context)
+
+            mock_get_order.assert_called_once()
+            expected_calls = [
+                mock.call(
+                    self.context,
+                    ['app_upload'],
+                    constants.APP_UPLOAD_OP,
+                    k8s_version=None,
+                    k8s_upgrade_timing=None,
+                    async_upload=False,
+                    skip_validations=True
+                ),
+                mock.call(
+                    self.context,
+                    ['app_recover'],
+                    constants.APP_RECOVER_UPDATE_OP,
+                    k8s_version=None,
+                    k8s_upgrade_timing=None
+                ),
+                mock.call(
+                    self.context,
+                    ['app_update'],
+                    constants.APP_UPDATE_OP,
+                    k8s_version=None,
+                    k8s_upgrade_timing=None,
+                    async_update=False,
+                    skip_validations=True,
+                    ignore_locks=True
+                )
+            ]
+            mock_update_list.assert_has_calls(expected_calls, any_order=False)
+            self.assertEqual(self.manager._status.value, 'completed')
+
+    def test_update_apps_rollback_flow(self):
+        # update_apps with is_rollback=True should drive the same update flow
+        # (this replaces the removed rollback_apps method).
+        with (
+            mock.patch.object(self.manager, "_get_apps_update_order") as mock_get_order,
+            mock.patch.object(
+                self.manager, "_update_a_list_of_apps", return_value=True
+            ) as mock_update_list,
+        ):
+
+            self.manager.apps_to_update = {
+                constants.APP_UPLOAD_OP: ['app_upload'],
+                constants.APP_RECOVER_UPDATE_OP: ['app_recover'],
+                constants.APP_UPDATE_OP: [{'class_type': 'critical', 'apps': ['app_update']}]
+            }
+
+            self.manager.update_apps(self.context, is_rollback=True)
 
             mock_get_order.assert_called_once()
             expected_calls = [
