@@ -112,6 +112,7 @@ class AppOperationsAudit():  # noqa: H238
             op_strategy_fn (callable): A function to execute the operation strategy.
         """
         apps_to_operation_list = []
+        is_reapply_process = False
 
         for app_name in apps_list:
             if app_name not in self._managed_apps:
@@ -130,6 +131,7 @@ class AppOperationsAudit():  # noqa: H238
                     ):
                         apps_to_operation_list.append(app_name)
             elif op == constants.APP_REAPPLY_OP:
+                is_reapply_process = True
                 if status == constants.APP_APPLY_SUCCESS and \
                         self._app_operator.needs_reapply(app_name):
                     apps_to_operation_list.append(app_name)
@@ -164,6 +166,7 @@ class AppOperationsAudit():  # noqa: H238
                 self._context,
                 apps_to_operation_list,
                 op,
+                is_reapply_process=is_reapply_process,
                 async_apply=False
             )
         if result is None:
