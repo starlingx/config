@@ -3469,19 +3469,6 @@ class HostController(rest.RestController):
                 else:
                     LOG.debug("No sriovfec custom resource found, continue")
 
-        if dev.extra_info:
-            extra_info = ast.literal_eval(dev.extra_info)
-            expected_numvfs = int(extra_info['expected_numvfs'])
-            if sriov_numvfs != expected_numvfs:
-                msg = (_("Expecting sriov_numvfs=%d for FEC device pciaddr=%s. "
-                         "Please wait a few minutes for inventory update and "
-                         "retry host-unlock." % (expected_numvfs, dev.pciaddr)))
-                LOG.info(msg)
-                pecan.request.rpcapi.update_sriov_config(
-                    pecan.request.context,
-                    host['uuid'])
-                raise wsme.exc.ClientSideError(msg)
-
         if not dev.sriov_vfs_pci_address or len(dev.sriov_vfs_pci_address) == 0:
             sriov_vfs_pci_address = []
         else:

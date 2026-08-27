@@ -4557,7 +4557,7 @@ class ConductorManager(service.PeriodicService):
                             'sriov_vf_pdevice_id':
                                 pci_dev.get('sriov_vf_pdevice_id', None),
                             'driver': pci_dev['driver'],
-                            'extra_info': dev.get('extra_info', None)}
+                            'extra_info': None}
 
                         inic_numa = pci_dev.get('numa_node')
                         if inic_numa is not None:
