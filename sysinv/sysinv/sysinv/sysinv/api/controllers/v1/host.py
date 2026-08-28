@@ -4731,23 +4731,17 @@ class HostController(rest.RestController):
         elif action == constants.SUBFUNCTION_CONFIG_ACTION:
             self._check_subfunction_config(hostupdate)
 
-            # openstack local storage
-            labels = pecan.request.dbapi.label_get_by_host(hostupdate.ihost_orig['uuid'])
-            if cutils.has_openstack_compute(labels):
-                # Required: make sure present
-                if not cutils.is_host_filesystem_enabled(pecan.request.dbapi,
-                                                         hostupdate.ihost_orig['uuid'],
-                                                         constants.FILESYSTEM_NAME_INSTANCES):
-                    self._semantic_check_nova_local_storage(
-                        hostupdate.ihost_orig['uuid'],
-                        hostupdate.ihost_orig['personality'],
-                        required=True)
-            else:
-                # Optional: Check if partially added
-                self._semantic_check_nova_local_storage(
-                    hostupdate.ihost_orig['uuid'],
-                    hostupdate.ihost_orig['personality'],
-                    required=False)
+            # Nova local storage is no longer mandatory for OpenStack
+            # compute nodes. stx-openstack selects its storage backend
+            # through its own Helm override framework (storage_conf) and
+            # supports remote backends, so the platform must not block the
+            # host on missing local storage. Only validate that a
+            # partially-configured nova-local volume group is not left in an
+            # invalid state.
+            self._semantic_check_nova_local_storage(
+                hostupdate.ihost_orig['uuid'],
+                hostupdate.ihost_orig.get('personality'),
+                required=False)
 
         else:
             raise wsme.exc.ClientSideError(_(
@@ -5984,21 +5978,15 @@ class HostController(rest.RestController):
                               "Note that this will select the storage deployment model, "
                               "check documentation for details and restrictions."))
 
-        # openstack local storage
-        labels = pecan.request.dbapi.label_get_by_host(ihost['uuid'])
-        if cutils.has_openstack_compute(labels):
-            # Required: make sure present
-            if not cutils.is_host_filesystem_enabled(pecan.request.dbapi,
-                                                     ihost['uuid'],
-                                                     constants.FILESYSTEM_NAME_INSTANCES):
-                self._semantic_check_nova_local_storage(ihost['uuid'],
-                                                        ihost['personality'],
-                                                        required=True)
-        else:
-            # Optional: Check if partially added
-            self._semantic_check_nova_local_storage(ihost['uuid'],
-                                                    ihost['personality'],
-                                                    required=False)
+        # Nova local storage is no longer mandatory for OpenStack compute
+        # nodes. stx-openstack selects its storage backend through its own
+        # Helm override framework (storage_conf) and supports remote
+        # backends, so the platform must not block the unlock on missing
+        # local storage. Only validate that a partially-configured
+        # nova-local volume group is not left in an invalid state.
+        self._semantic_check_nova_local_storage(ihost['uuid'],
+                                                ihost.get('personality'),
+                                                required=False)
 
     @staticmethod
     def check_unlock_storage(hostupdate):
