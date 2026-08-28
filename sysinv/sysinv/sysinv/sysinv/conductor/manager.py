@@ -3511,6 +3511,33 @@ class ConductorManager(service.PeriodicService):
             str_found = None
         return str_found
 
+    def _is_data_interface(self, ihost, iface):
+        """Determine whether an interface is, or is used by, a data interface.
+
+        Based on the logic from sysinv/puppet/interface.py is_data_interface(),
+        an interface that is not itself of the data class can still have a data
+        interface above it, reached through used_by. That is, for example,
+        the case for an AE member and for the lower interface of a VLAN,
+        which own the port but have no class of their own.
+
+        :param ihost: host object
+        :param iface: interface object owning the port being evaluated
+        :returns: True if the interface is, or is used by, a data interface
+        """
+        if iface.ifclass == constants.INTERFACE_CLASS_DATA:
+            return True
+        for upper_ifname in iface.used_by or []:
+            try:
+                upper_iface = self.dbapi.iinterface_get(upper_ifname,
+                                                        ihost['uuid'])
+            except Exception as ex:
+                LOG.warning("Failed to get interface %s, exception: %s" %
+                            (upper_ifname, type(ex).__name__))
+                continue
+            if self._is_data_interface(ihost, upper_iface):
+                return True
+        return False
+
     def _get_replaced_ports_on_pciaddr(self, ihost, inic_pciaddr_dict, replaced_ports,
                                        unreported_ports, cannot_replace, updated_description,
                                        updated_numa):
@@ -3597,7 +3624,7 @@ class ConductorManager(service.PeriodicService):
                                                         iface.ifclass, iface.used_by))
                     # if class is DATA the interface might be owned by user space poll mode driver
                     # like ovs-dpdk and no longer be reported by the OS
-                    if (iface.ifclass != constants.INTERFACE_CLASS_DATA):
+                    if not self._is_data_interface(ihost, iface):
                         alarm_port_list.append((port, "Port {} on DB is no longer reported"
                                                      " by the OS".format(port.name)))
 
