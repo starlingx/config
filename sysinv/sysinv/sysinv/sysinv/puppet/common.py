@@ -64,6 +64,7 @@ REPORT_OPENSTACK_ENDPOINTS_CONFIG_REQUESTED = "openstack_endpoint_config_request
 REPORT_UPGRADE_ABORT = 'upgrade_abort'
 REPORT_APPARMOR_CONFIG = 'host_apparmor_config'
 REPORT_UPGRADE_CONTROL_PLANE = 'upgrade_control_plane'
+REPORT_CEPH_ROOK_BACKEND_CONFIG = 'ceph_rook_config'
 
 
 def puppet_apply_manifest(ip_address, personality,
