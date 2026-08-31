@@ -508,7 +508,7 @@ class NetworkingPuppet(base.BasePuppet):
             instance['interfaces'] = []
             instance['pmc_gm_settings'] = {}
             instance['device_parameters'] = {}
-            instance['gnss_uart_disable'] = True
+            instance['gnss_uart_disable'] = False
             instance['external_sources'] = []
             instance['monitoring_parameters'] = {}
 
