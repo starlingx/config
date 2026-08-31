@@ -23,12 +23,16 @@
 """Test class for Sysinv ManagerService."""
 
 import copy
+import datetime
+import inspect
 import io
+import json
 import mock
 import os.path
 import netaddr
 import uuid
 import threading
+import wsme
 from time import sleep
 
 from docker.errors import ImageNotFound
@@ -39,16 +43,22 @@ from fm_api import constants as fm_constants
 from oslo_context import context
 from oslo_db import exception as oslo_db_exception
 from oslo_serialization import base64
+from oslo_utils import timeutils
 from sysinv.agent import rpcapi as agent_rpcapi
+from sysinv.api.controllers.v1 import host as host_api
+from sysinv.api.controllers.v1 import label as label_api
+from sysinv.api.controllers.v1 import memory as memory_api
 from sysinv.common import constants
 from sysinv.common import device as dconstants
 from sysinv.common import exception
+from sysinv.common import helper
 from sysinv.common import kubernetes
 from sysinv.common import utils as cutils
 from sysinv.common import usm_service
 from sysinv.common.image_download import ContainerImageDownloader
 from sysinv.conductor import kube_app
 from sysinv.conductor import manager
+from sysinv.helm import common as helm_common
 
 from sysinv.db import api as dbapi
 from sysinv.tests.db import utils as dbutils
@@ -10846,6 +10856,1726 @@ class ManagerTestCase(base.DbTestCase):
 
         mock_config_update_hosts.assert_not_called()
         mock_apply_runtime_manifest.assert_not_called()
+
+    GRUB_RUNTIME_CLASSES = ['platform::compute::grub::runtime',
+                            'platform::compute::config::runtime']
+
+    def _create_test_worker_ihost(self, hostname='controller-1', **kwargs):
+        """Create a host with the worker subfunction, as in an AIO system"""
+        config_uuid = str(uuid.uuid4())
+        values = {
+            'personality': constants.CONTROLLER,
+            'hostname': hostname,
+            'subfunctions': "%s,%s" % (constants.CONTROLLER,
+                                       constants.WORKER),
+            'uuid': str(uuid.uuid4()),
+            'config_status': None,
+            'config_applied': config_uuid,
+            'config_target': config_uuid,
+            'invprovision': constants.PROVISIONED,
+            'inv_state': constants.INV_STATE_INITIAL_INVENTORIED,
+            'administrative': constants.ADMIN_LOCKED,
+            'operational': constants.OPERATIONAL_DISABLED,
+            'availability': constants.AVAILABILITY_ONLINE,
+            'mgmt_mac': '22:44:33:55:11:88',
+        }
+        values.update(kwargs)
+        return self._create_test_ihost(**values)
+
+    def _create_pending_runtime_config(
+            self, host, classes,
+            state=constants.RUNTIME_CONFIG_STATE_PENDING,
+            cpu_watermark=None):
+        """Create a runtime config entry applying the given classes
+
+        Defaults to a pending entry. The state can be overridden so that an
+        entry that already left the queue, such as an applied one, can be
+        created as well.
+
+        When cpu_watermark is given it is stored under
+        GRUB_CPU_WATERMARK_KEY, exactly as update_grub_config() persists it
+        at enqueue time. When it is None the key is left out entirely,
+        which is the shape of a row predating the watermark.
+        """
+        config_dict = {
+            'personalities': [constants.CONTROLLER, constants.WORKER],
+            'classes': classes,
+        }
+        if cpu_watermark is not None:
+            watermark_key = manager.ConductorManager.GRUB_CPU_WATERMARK_KEY
+            config_dict[watermark_key] = cpu_watermark
+
+        config_uuid = str(uuid.uuid4())
+        self.dbapi.runtime_config_create({
+            'config_uuid': config_uuid,
+            'config_dict': json.dumps(config_dict),
+            'forihostid': host.id,
+            'state': state,
+        })
+        return config_uuid
+
+    def _create_test_icpus(self, host, count=2,
+                           allocated_function=constants.PLATFORM_FUNCTION):
+        """Create cpu rows for a host, as the agent inventory would"""
+        return [self.dbapi.icpu_create(
+                    host.id,
+                    dbutils.get_test_icpu(cpu=cpu, core=cpu, thread=0,
+                                          forinodeid=None,
+                                          allocated_function=(
+                                              allocated_function)))
+                for cpu in range(count)]
+
+    def _cpu_watermark(self, host):
+        """Return max(icpu.updated_at) for a host, read straight from the DB
+
+        Deliberately computed here rather than through the conductor
+        helper, so a test comparing a persisted watermark against this
+        value is not comparing the implementation with itself.
+        """
+        stamps = [cpu.updated_at
+                  for cpu in self.dbapi.icpu_get_by_ihost(host.uuid)
+                  if cpu.updated_at is not None]
+        if not stamps:
+            return None
+        return max(stamps).isoformat()
+
+    def _bump_icpu_watermark(self, host, allocated_function=None, seconds=0):
+        """Move the host's cpu updated_at, as a genuine cpu change does
+
+        dbutils.get_test_icpu() creates rows with updated_at = None, so a
+        freshly inventoried test host carries no watermark at all and the
+        predicate fails open. On a real change host_cpus_modify() calls
+        icpu_update(), which moves updated_at; this mirrors that. The stamp
+        is passed explicitly so two bumps in the same test are guaranteed
+        to differ regardless of clock resolution.
+        """
+        stamp = timeutils.utcnow() + datetime.timedelta(seconds=seconds)
+        values = {'updated_at': stamp}
+        if allocated_function is not None:
+            values['allocated_function'] = allocated_function
+        for cpu in self.dbapi.icpu_get_by_ihost(host.uuid):
+            self.dbapi.icpu_update(cpu.uuid, values)
+        return self._cpu_watermark(host)
+
+    # --- Watermark-dependent fix checking (design.md unit tests 8-14).
+    #
+    # These replace the four PS1 fix-checking tests, which asserted an exact
+    # puppet CLASS-SET match against pending rows -- superseded, because a
+    # class-set criterion only ever sees the harmless re-stamp half of the
+    # churn ({personalities, classes} was invariant across all 516 grub
+    # occurrences at the customer). The predicate under test is now a
+    # STORED-WATERMARK comparison: the host's current max(icpu.updated_at)
+    # against the value persisted in the most recent grub runtime_config's
+    # config_dict -- the same column sampled at two points in time, so the
+    # ordering of icpu_update() and update_grub_config() is irrelevant and
+    # the row's created_at never enters the comparison.
+    #
+    # The two suppression tests leave _config_update_hosts() UNMOCKED, so
+    # the assertion is "config_target is byte-identical after the call",
+    # not "a mock was not called". _config_apply_runtime_manifest stays
+    # mocked, as in every other update_grub_config test here: it needs
+    # puppet hieradata paths on disk and the agent RPC.
+
+    def test_update_grub_config_suppressed_when_watermark_unchanged_pending_row(
+            self):
+        # design.md unit test 8 -- Property 1. Bug condition C_A with a
+        # PENDING row present: WORKER subfunction, force_grub_update False,
+        # and the cpu updated_at watermark unchanged since that row was
+        # written. Nothing about the host's desired cpu configuration
+        # changed, so the enqueue must be suppressed BEFORE any config
+        # state advances.
+        host = self._create_test_worker_ihost()
+        self._create_test_icpus(host)
+        watermark = self._bump_icpu_watermark(host)
+        self.assertIsNotNone(watermark)
+        self._create_pending_runtime_config(
+            host, self.GRUB_RUNTIME_CLASSES, cpu_watermark=watermark)
+        rows_before = [(row.config_uuid, row.state, row.created_at)
+                       for row in self.dbapi.runtime_config_get_all(
+                           forihostid=host.id)]
+        self.assertEqual(1, len(rows_before))
+        config_target_before = host.config_target
+
+        with mock.patch('sysinv.conductor.manager.ConductorManager.'
+                        '_config_apply_runtime_manifest') as mock_apply:
+            self.service.update_grub_config(self.context, host.uuid)
+
+        # The real _config_update_hosts() ran (it is not mocked here), so
+        # config_target is observed on the host row itself.
+        updated_host = self.dbapi.ihost_get(host.uuid)
+        self.assertEqual(config_target_before, updated_host.config_target)
+        mock_apply.assert_not_called()
+        # No row created and none re-stamped: config_uuid, state and
+        # created_at are all untouched.
+        rows_after = [(row.config_uuid, row.state, row.created_at)
+                      for row in self.dbapi.runtime_config_get_all(
+                          forihostid=host.id)]
+        self.assertEqual(rows_before, rows_after)
+
+    def test_update_grub_config_suppressed_when_watermark_unchanged_row_applied(
+            self):
+        # design.md unit test 9 -- Property 1. Same assertions as the
+        # previous test, but the most recent grub row is already APPLIED and
+        # no pending row survives. This is the INSERT half PS1 missed, and
+        # the half that renewed the unlock gate window ~166 times at the
+        # customer.
+        #
+        # GREEN since Open Design Decision 3 was resolved to "most recent
+        # row regardless of state" (§3.4 of the implementation context:
+        # a lab A/B showed that a PENDING-only lookup does not merely miss
+        # this half, it actively converts a re-stamp -- which ages out of
+        # the unlock gate's created_at window on its own -- into an
+        # insert, which renews it, i.e. it makes the pending-only variant
+        # WORSE than no fix at all on this path).
+        # _get_most_recent_grub_runtime_config() now queries any state and
+        # scopes by GRUB_RUNTIME_CLASS membership instead, so an APPLIED
+        # row is visible to the comparison.
+        host = self._create_test_worker_ihost()
+        self._create_test_icpus(host)
+        watermark = self._bump_icpu_watermark(host)
+        self.assertIsNotNone(watermark)
+        self._create_pending_runtime_config(
+            host, self.GRUB_RUNTIME_CLASSES,
+            state=constants.RUNTIME_CONFIG_STATE_APPLIED,
+            cpu_watermark=watermark)
+        rows_before = [(row.config_uuid, row.state, row.created_at)
+                       for row in self.dbapi.runtime_config_get_all(
+                           forihostid=host.id)]
+        self.assertEqual(1, len(rows_before))
+        config_target_before = host.config_target
+
+        with mock.patch('sysinv.conductor.manager.ConductorManager.'
+                        '_config_apply_runtime_manifest') as mock_apply:
+            self.service.update_grub_config(self.context, host.uuid)
+
+        updated_host = self.dbapi.ihost_get(host.uuid)
+        self.assertEqual(
+            config_target_before, updated_host.config_target,
+            "unchanged cpu watermark with the most recent row APPLIED "
+            "still advanced config_target from %s to %s -- the "
+            "state-agnostic lookup should have suppressed this enqueue" %
+            (config_target_before, updated_host.config_target))
+        mock_apply.assert_not_called()
+        rows_after = [(row.config_uuid, row.state, row.created_at)
+                      for row in self.dbapi.runtime_config_get_all(
+                          forihostid=host.id)]
+        self.assertEqual(rows_before, rows_after)
+
+    @mock.patch('sysinv.conductor.manager.'
+                'ConductorManager._config_apply_runtime_manifest')
+    @mock.patch('sysinv.conductor.manager.'
+                'ConductorManager._config_update_hosts')
+    def test_update_grub_config_enqueues_when_cpu_updated_at_bumped(
+            self, mock_config_update_hosts,
+            mock_config_apply_runtime_manifest):
+        # design.md unit test 10 -- Property 22. A genuine cpu change moves
+        # icpu.updated_at, so the watermark diverges from the one stored on
+        # the pending row and the enqueue must happen ANYWAY. This is the
+        # headline regression risk of the predicate: a wrongly suppressed
+        # real change leaves the grub cmdline silently lagging the requested
+        # layout, with no alarm and no failure log.
+        host = self._create_test_worker_ihost()
+        self._create_test_icpus(host)
+        stored_watermark = self._bump_icpu_watermark(host)
+        self._create_pending_runtime_config(
+            host, self.GRUB_RUNTIME_CLASSES,
+            cpu_watermark=stored_watermark)
+
+        # The operator changes the cpu allocation: host_cpus_modify() calls
+        # icpu_update() only when allocated_function actually differs, which
+        # is what moves the watermark.
+        current_watermark = self._bump_icpu_watermark(
+            host, allocated_function=constants.APPLICATION_FUNCTION,
+            seconds=60)
+        self.assertNotEqual(stored_watermark, current_watermark)
+        mock_config_update_hosts.return_value = str(uuid.uuid4())
+
+        self.service.update_grub_config(self.context, host.uuid)
+
+        mock_config_update_hosts.assert_called_once()
+        mock_config_apply_runtime_manifest.assert_called_once()
+
+    @mock.patch('sysinv.conductor.manager.'
+                'ConductorManager._config_apply_runtime_manifest')
+    @mock.patch('sysinv.conductor.manager.'
+                'ConductorManager._config_update_hosts')
+    def test_update_grub_config_created_row_carries_cpu_watermark(
+            self, mock_config_update_hosts,
+            mock_config_apply_runtime_manifest):
+        # design.md unit test 11 -- Property 3. The entry created at enqueue
+        # time must carry the cpu updated_at watermark, otherwise the next
+        # enqueue has nothing to compare the live value against: the
+        # persisted dict is {personalities, classes} only (host_uuids and
+        # puppet_path are popped before saving) and that pair was invariant
+        # across all 516 grub occurrences at the customer.
+        host = self._create_test_worker_ihost()
+        self._create_test_icpus(host)
+        self._bump_icpu_watermark(host)
+        expected_watermark = self._cpu_watermark(host)
+        self.assertIsNotNone(expected_watermark)
+        config_uuid = str(uuid.uuid4())
+        mock_config_update_hosts.return_value = config_uuid
+
+        self.service.update_grub_config(self.context, host.uuid)
+
+        watermark_key = manager.ConductorManager.GRUB_CPU_WATERMARK_KEY
+        config_dict = mock_config_apply_runtime_manifest.call_args[0][2]
+        self.assertIn(watermark_key, config_dict)
+        self.assertEqual(expected_watermark, config_dict[watermark_key])
+
+        # And it survives onto the persisted row.
+        # _config_apply_runtime_manifest() is mocked here (it needs puppet
+        # hieradata paths on disk and the agent RPC), so the entry creation
+        # it would reach is driven directly with the dict just captured.
+        self.service._create_runtime_config_entries(config_uuid, config_dict)
+
+        rows = self.dbapi.runtime_config_get_all(forihostid=host.id)
+        self.assertEqual(1, len(rows))
+        persisted_dict = json.loads(rows[0].config_dict)
+        self.assertEqual(expected_watermark, persisted_dict[watermark_key])
+        # The 2-class grub pair the agent's UNLOCK_READY_FLAG path keys off
+        # is untouched by the added key.
+        self.assertEqual(self.GRUB_RUNTIME_CLASSES,
+                         persisted_dict['classes'])
+
+    @mock.patch('sysinv.conductor.manager.'
+                'ConductorManager._config_apply_runtime_manifest')
+    @mock.patch('sysinv.conductor.manager.'
+                'ConductorManager._config_update_hosts')
+    def test_update_grub_config_enqueues_when_row_has_no_watermark(
+            self, mock_config_update_hosts,
+            mock_config_apply_runtime_manifest):
+        # design.md unit test 12 -- Property 4. A row written before this
+        # change carries no watermark key at all, so there is nothing to
+        # compare against: fail open into a normal enqueue rather than
+        # suppress on an assumption.
+        host = self._create_test_worker_ihost()
+        self._create_test_icpus(host)
+        self.assertIsNotNone(self._bump_icpu_watermark(host))
+        # No cpu_watermark argument: the config_dict is exactly the
+        # pre-change {personalities, classes} shape.
+        self._create_pending_runtime_config(host, self.GRUB_RUNTIME_CLASSES)
+        mock_config_update_hosts.return_value = str(uuid.uuid4())
+
+        self.service.update_grub_config(self.context, host.uuid)
+
+        mock_config_update_hosts.assert_called_once()
+        mock_config_apply_runtime_manifest.assert_called_once()
+
+    @mock.patch('sysinv.conductor.manager.'
+                'ConductorManager._config_apply_runtime_manifest')
+    @mock.patch('sysinv.conductor.manager.'
+                'ConductorManager._config_update_hosts')
+    def test_update_grub_config_enqueues_when_watermark_unparseable(
+            self, mock_config_update_hosts,
+            mock_config_apply_runtime_manifest):
+        # design.md unit test 13 -- Property 4. A watermark that is present
+        # but not the canonical shape this code writes (a value from a
+        # release that stored a different layout, or a corrupted entry) logs
+        # a warning and fails open. Rejecting rather than coercing matters:
+        # a coarser rendering would let two DIFFERENT cpu layouts compare
+        # equal and swallow a genuine change.
+        host = self._create_test_worker_ihost()
+        self._create_test_icpus(host)
+        self.assertIsNotNone(self._bump_icpu_watermark(host))
+        self._create_pending_runtime_config(
+            host, self.GRUB_RUNTIME_CLASSES,
+            cpu_watermark='not-a-timestamp')
+        mock_config_update_hosts.return_value = str(uuid.uuid4())
+
+        patcher = mock.patch.object(manager, 'LOG')
+        mock_log = patcher.start()
+        self.addCleanup(patcher.stop)
+
+        self.service.update_grub_config(self.context, host.uuid)
+
+        mock_config_update_hosts.assert_called_once()
+        mock_config_apply_runtime_manifest.assert_called_once()
+        self.assertTrue(
+            any('not-a-timestamp' in str(call)
+                for call in mock_log.warn.call_args_list),
+            "the unrecognised watermark was not reported: %s"
+            % mock_log.warn.call_args_list)
+
+    def test_update_grub_config_predicate_reads_no_memory_timestamp(self):
+        # design.md unit test 14 -- Property 5. The watermark is scoped to
+        # CPU. Memory divergence always arrives with force_grub_update=True
+        # (memory.py, hugepages) so it bypasses this guard anyway, while
+        # mem.updated_at moves on its own: the agent compares a dict
+        # carrying the volatile memavail_mib (free memory), so the guard in
+        # host_memory_update() fires for reasons unrelated to configured
+        # memory and the conductor's imemory_update() bumps updated_at.
+        #
+        # Two claims are asserted: mutating imemory.updated_at (including
+        # through a memavail_mib update) does not change the decision while
+        # the cpu watermark is held constant, and the predicate reads no
+        # memory table at all.
+        host = self._create_test_worker_ihost()
+        self._create_test_icpus(host)
+        watermark = self._bump_icpu_watermark(host)
+        self._create_pending_runtime_config(
+            host, self.GRUB_RUNTIME_CLASSES, cpu_watermark=watermark)
+        memory = self.dbapi.imemory_create(
+            host.id, dbutils.get_test_imemory(forinodeid=None))
+        config_target_before = host.config_target
+
+        for offset, memavail_mib in ((60, 2000), (120, 512)):
+            # A memavail_mib-driven inventory update, which is what really
+            # bumps mem.updated_at on a live host.
+            self.dbapi.imemory_update(
+                memory.uuid,
+                {'memavail_mib': memavail_mib,
+                 'updated_at': (timeutils.utcnow() +
+                                datetime.timedelta(seconds=offset))})
+
+            with mock.patch('sysinv.conductor.manager.ConductorManager.'
+                            '_config_apply_runtime_manifest') as mock_apply:
+                self.service.update_grub_config(self.context, host.uuid)
+
+            # Same decision as with the untouched memory row: suppressed,
+            # because the cpu watermark did not move.
+            updated_host = self.dbapi.ihost_get(host.uuid)
+            self.assertEqual(
+                config_target_before, updated_host.config_target,
+                "the decision changed after mutating imemory.updated_at "
+                "(memavail_mib=%s) while the cpu watermark was held "
+                "constant" % memavail_mib)
+            mock_apply.assert_not_called()
+
+        # The predicate reads no memory timestamp: every memory accessor on
+        # the dbapi the helper could reach stays untouched.
+        memory_accessors = ['imemory_get', 'imemory_get_all',
+                            'imemory_get_by_ihost',
+                            'imemory_get_by_ihost_inode']
+        patchers = [mock.patch.object(self.service.dbapi, accessor)
+                    for accessor in memory_accessors]
+        mocks = [patcher.start() for patcher in patchers]
+        for patcher in patchers:
+            self.addCleanup(patcher.stop)
+
+        self.assertTrue(self.service._grub_runtime_config_is_redundant(host))
+
+        for accessor, mocked in zip(memory_accessors, mocks):
+            mocked.assert_not_called()
+
+    # --- Tests for the three changes made after §3.4 of the implementation
+    # context (dropping the state=PENDING filter, the added class filter,
+    # and the cpu_driven parameter). The state-agnostic lookup itself is
+    # exercised by test_update_grub_config_suppressed_when_watermark_
+    # unchanged_row_applied above, which now passes.
+
+    def test_get_most_recent_grub_runtime_config_ignores_non_grub_row(self):
+        # A row whose classes do not contain GRUB_RUNTIME_CLASS at all
+        # (e.g. a stalld-only apply) must never be picked as "the most
+        # recent grub row", regardless of state or created_at ordering.
+        host = self._create_test_worker_ihost()
+        self._create_pending_runtime_config(
+            host, ['platform::stalld::runtime'],
+            state=constants.RUNTIME_CONFIG_STATE_APPLIED)
+
+        self.assertIsNone(
+            self.service._get_most_recent_grub_runtime_config(host))
+
+    def test_get_most_recent_grub_runtime_config_matches_by_membership(self):
+        # The kernel-config path (~L1780) applies GRUB_RUNTIME_CLASS
+        # alongside two other classes, not the exact 2-class grub pair.
+        # Membership, not equality, is what identifies it as a grub row,
+        # so it must be picked up by the lookup once the state filter is
+        # gone -- otherwise the guard would silently fail open every time
+        # the most recent row happens to come from that path.
+        host = self._create_test_worker_ihost()
+        kernel_config_classes = [
+            'platform::grub::kernel_image::runtime',
+            'platform::config::file::subfunctions::lowlatency::runtime',
+            'platform::compute::grub::runtime',
+        ]
+        config_uuid = self._create_pending_runtime_config(
+            host, kernel_config_classes,
+            state=constants.RUNTIME_CONFIG_STATE_APPLIED)
+
+        recent = self.service._get_most_recent_grub_runtime_config(host)
+
+        self.assertIsNotNone(recent)
+        self.assertEqual(config_uuid, recent.config_uuid)
+
+    def test_get_most_recent_grub_runtime_config_picks_newest_grub_row(self):
+        # Among several grub-classed rows in different states, the lookup
+        # must pick the one with the latest created_at, not simply the
+        # first or the last inserted.
+        host = self._create_test_worker_ihost()
+        self._create_pending_runtime_config(
+            host, self.GRUB_RUNTIME_CLASSES,
+            state=constants.RUNTIME_CONFIG_STATE_APPLIED)
+        newest_uuid = self._create_pending_runtime_config(
+            host, self.GRUB_RUNTIME_CLASSES,
+            state=constants.RUNTIME_CONFIG_STATE_PENDING)
+
+        recent = self.service._get_most_recent_grub_runtime_config(host)
+
+        self.assertIsNotNone(recent)
+        self.assertEqual(newest_uuid, recent.config_uuid)
+
+    def test_runtime_config_classes_contain_grub_fails_open_on_malformed_dict(
+            self):
+        # A row whose config_dict is not valid JSON, not a mapping, or has
+        # no 'classes' list must be treated as "not a grub row" rather
+        # than raising -- this lookup must never be the reason a real
+        # grub row's presence check breaks.
+        host = self._create_test_worker_ihost()
+        malformed_shapes = [
+            'not valid json',
+            json.dumps(['a', 'list', 'not', 'a', 'dict']),
+            json.dumps({'personalities': [constants.CONTROLLER]}),
+            json.dumps({'classes': 'not-a-list'}),
+        ]
+        for config_dict in malformed_shapes:
+            config_uuid = str(uuid.uuid4())
+            self.dbapi.runtime_config_create({
+                'config_uuid': config_uuid,
+                'config_dict': config_dict,
+                'forihostid': host.id,
+                'state': constants.RUNTIME_CONFIG_STATE_PENDING,
+            })
+            runtime_config = self.dbapi.runtime_config_get(config_uuid)
+            self.assertFalse(
+                self.service._runtime_config_classes_contain_grub(
+                    runtime_config),
+                "malformed config_dict %r was not treated as a non-grub "
+                "row" % config_dict)
+
+    @mock.patch('sysinv.conductor.manager.'
+                'ConductorManager._config_apply_runtime_manifest')
+    def test_update_grub_config_not_cpu_driven_always_enqueues_label_shape(
+            self, mock_config_apply_runtime_manifest):
+        # cpu_driven=False callers (label.py's disable-nohz-full and
+        # power-management labels) must always enqueue, even when the cpu
+        # updated_at watermark is unchanged and the most recent grub row
+        # is already APPLIED -- exactly the shape that reproduced the
+        # label.py regression in §3.4: widening the lookup to any state
+        # made an already-applied label-driven row visible to the
+        # watermark comparison, which would otherwise have suppressed a
+        # genuine kernel-args change.
+        host = self._create_test_worker_ihost()
+        self._create_test_icpus(host)
+        watermark = self._bump_icpu_watermark(host)
+        self._create_pending_runtime_config(
+            host, self.GRUB_RUNTIME_CLASSES,
+            state=constants.RUNTIME_CONFIG_STATE_APPLIED,
+            cpu_watermark=watermark)
+        config_target_before = host.config_target
+
+        self.service.update_grub_config(
+            self.context, host.uuid, cpu_driven=False)
+
+        updated_host = self.dbapi.ihost_get(host.uuid)
+        self.assertNotEqual(
+            config_target_before, updated_host.config_target,
+            "a cpu_driven=False request (label-driven) was suppressed by "
+            "the cpu watermark guard, which must never apply to it")
+        mock_config_apply_runtime_manifest.assert_called_once()
+
+    @mock.patch('sysinv.conductor.manager.'
+                'ConductorManager._config_apply_runtime_manifest')
+    def test_update_grub_config_not_cpu_driven_always_enqueues_memory_shape(
+            self, mock_config_apply_runtime_manifest):
+        # Same as above for a memory-driven shape (the memory.py hugepage
+        # caller), with a PENDING row present instead of APPLIED. force
+        # is not passed here on purpose: cpu_driven=False alone must be
+        # sufficient to bypass the guard, independent of force_grub_update.
+        host = self._create_test_worker_ihost()
+        self._create_test_icpus(host)
+        watermark = self._bump_icpu_watermark(host)
+        self._create_pending_runtime_config(
+            host, self.GRUB_RUNTIME_CLASSES, cpu_watermark=watermark)
+        config_target_before = host.config_target
+
+        self.service.update_grub_config(
+            self.context, host.uuid, cpu_driven=False)
+
+        updated_host = self.dbapi.ihost_get(host.uuid)
+        self.assertNotEqual(
+            config_target_before, updated_host.config_target,
+            "a cpu_driven=False request (memory-driven) was suppressed "
+            "by the cpu watermark guard, which must never apply to it")
+        mock_config_apply_runtime_manifest.assert_called_once()
+
+    def test_update_grub_config_cpu_driven_defaults_to_true(self):
+        # The parameter's default preserves every existing cpu-driven
+        # caller (host_cpus_modify, the cpu API, the conductor's own cpu
+        # topology handling) without requiring them to pass cpu_driven
+        # explicitly: an unchanged watermark must still suppress when the
+        # parameter is omitted.
+        host = self._create_test_worker_ihost()
+        self._create_test_icpus(host)
+        watermark = self._bump_icpu_watermark(host)
+        self._create_pending_runtime_config(
+            host, self.GRUB_RUNTIME_CLASSES, cpu_watermark=watermark)
+        config_target_before = host.config_target
+
+        with mock.patch('sysinv.conductor.manager.ConductorManager.'
+                        '_config_apply_runtime_manifest') as mock_apply:
+            self.service.update_grub_config(self.context, host.uuid)
+
+        updated_host = self.dbapi.ihost_get(host.uuid)
+        self.assertEqual(config_target_before, updated_host.config_target)
+        mock_apply.assert_not_called()
+
+    def test_label_apply_manifest_calls_update_grub_config_not_cpu_driven(
+            self):
+        # label.py::_apply_manifest_after_label_operation() is the caller
+        # this parameter exists for: assert it reaches the rpcapi with
+        # cpu_driven=False for both label keys that trigger a grub apply.
+        for label_key in (helm_common.LABEL_DISABLE_NOHZ_FULL,
+                          constants.KUBE_POWER_MANAGER_LABEL):
+            controller = label_api.LabelController()
+
+            with mock.patch(
+                    'sysinv.api.controllers.v1.label.pecan') as mock_pecan:
+                controller._apply_manifest_after_label_operation(
+                    'some-host-uuid', [label_key])
+
+                mock_pecan.request.rpcapi.update_grub_config.\
+                    assert_called_once_with(
+                        mock_pecan.request.context, 'some-host-uuid',
+                        cpu_driven=False)
+
+    def test_memory_patch_calls_update_grub_config_not_cpu_driven(self):
+        # memory.py's hugepage caller is the other cpu_driven=False call
+        # site: assert it passes cpu_driven=False alongside force=True.
+        source = inspect.getsource(memory_api.MemoryController.patch)
+        self.assertIn('cpu_driven=False', source)
+        self.assertIn('force=True', source)
+
+    # --- Property 12 preservation: call-site behavior for every non-bug
+    # input, signature-independent. Written BEFORE the fix; observed on the
+    # UNFIXED baseline (git worktree at 286d37452) and expected to keep
+    # PASSING unchanged once the fix lands (tasks 7.3, 8.5).
+
+    @mock.patch('sysinv.conductor.manager.'
+                'ConductorManager._config_apply_runtime_manifest')
+    @mock.patch('sysinv.conductor.manager.'
+                'ConductorManager._config_update_hosts')
+    def test_update_grub_config_enqueues_when_no_previous_grub_config(
+            self, mock_config_update_hosts,
+            mock_config_apply_runtime_manifest):
+        # No prior grub runtime_config row for this host: the request must
+        # be enqueued as before, both calls happening exactly once
+        # (design.md unit test 1) -- Property 12.
+        host = self._create_test_worker_ihost()
+        config_uuid = str(uuid.uuid4())
+        mock_config_update_hosts.return_value = config_uuid
+
+        self.service.update_grub_config(self.context, host.uuid)
+
+        mock_config_update_hosts.assert_called_once()
+        mock_config_apply_runtime_manifest.assert_called_once_with(
+            mock.ANY,
+            config_uuid,
+            {
+                "personalities": [constants.CONTROLLER, constants.WORKER],
+                "host_uuids": [host.uuid],
+                "classes": self.GRUB_RUNTIME_CLASSES,
+            },
+            force=True)
+
+    @mock.patch('sysinv.conductor.manager.utils.is_host_simplex_controller')
+    @mock.patch('sysinv.conductor.manager.'
+                'ConductorManager._config_apply_runtime_manifest')
+    def test_update_grub_config_forced_always_enqueues(
+            self, mock_config_apply_runtime_manifest,
+            mock_is_simplex_controller):
+        # force_grub_update=True must bypass the redundancy check and
+        # always enqueue despite a prior pending row, with config_target
+        # advancing -- documenting the accepted memory.py limitation that
+        # this path remains exposed to the churn (Requirement 3.14).
+        #
+        # Exercised against the real _config_update_hosts() (not a mock),
+        # with is_host_simplex_controller() patched both True and False,
+        # so the bypass decision is shown to follow the force_grub_update
+        # PARAMETER, never the local `force` variable (design.md unit
+        # test 2) -- Properties 13, 7, 15.
+        for simplex, mac_suffix in ((True, '10'), (False, '11')):
+            mock_config_apply_runtime_manifest.reset_mock()
+            mock_is_simplex_controller.return_value = simplex
+
+            host = self._create_test_worker_ihost(
+                mgmt_mac='22:44:33:55:11:%s' % mac_suffix)
+            self._create_pending_runtime_config(host,
+                                               self.GRUB_RUNTIME_CLASSES)
+            config_target_before = host.config_target
+
+            self.service.update_grub_config(self.context, host.uuid,
+                                            force_grub_update=True)
+
+            # The bypass fires regardless of is_host_simplex_controller():
+            # the decision to skip the redundancy check reads only the
+            # force_grub_update parameter, so config_target still advances
+            # despite the prior pending row.
+            updated_host = self.dbapi.ihost_get(host.uuid)
+            self.assertNotEqual(config_target_before,
+                                updated_host.config_target)
+
+            # The local `force` variable is
+            # (not is_host_simplex_controller(host) or force_grub_update);
+            # with force_grub_update=True it is always True regardless of
+            # is_host_simplex_controller(), and that local value -- not a
+            # literal reading of the parameter -- is what is passed to
+            # _config_apply_runtime_manifest() and printed by the
+            # 'force: (%s)' log line.
+            mock_config_apply_runtime_manifest.assert_called_once_with(
+                mock.ANY, mock.ANY, mock.ANY, force=True)
+
+    @mock.patch('sysinv.conductor.manager.'
+                'ConductorManager._config_apply_runtime_manifest')
+    @mock.patch('sysinv.conductor.manager.'
+                'ConductorManager._config_update_hosts')
+    def test_update_grub_config_applied_when_pending_classes_differ(
+            self, mock_config_update_hosts,
+            mock_config_apply_runtime_manifest):
+        # A pending config applying unrelated classes is not equivalent
+        host = self._create_test_worker_ihost()
+        self._create_pending_runtime_config(
+            host, ['platform::stalld::runtime'])
+        mock_config_update_hosts.return_value = str(uuid.uuid4())
+
+        self.service.update_grub_config(self.context, host.uuid)
+
+        mock_config_update_hosts.assert_called_once()
+        mock_config_apply_runtime_manifest.assert_called_once()
+
+    @mock.patch('sysinv.conductor.manager.'
+                'ConductorManager._config_apply_runtime_manifest')
+    @mock.patch('sysinv.conductor.manager.'
+                'ConductorManager._config_update_hosts')
+    def test_update_grub_config_applied_when_pending_classes_are_superset(
+            self, mock_config_update_hosts,
+            mock_config_apply_runtime_manifest):
+        # The kernel config manifest also applies the grub runtime class, but
+        # the set of classes differs. It is not equivalent, as the sysinv
+        # agent keys off the exact set of applied classes to signal that the
+        # initial controller is ready to be unlocked
+        host = self._create_test_worker_ihost()
+        self._create_pending_runtime_config(host, [
+            'platform::grub::kernel_image::runtime',
+            'platform::config::file::subfunctions::lowlatency::runtime',
+            'platform::compute::grub::runtime',
+        ])
+        mock_config_update_hosts.return_value = str(uuid.uuid4())
+
+        self.service.update_grub_config(self.context, host.uuid)
+
+        mock_config_update_hosts.assert_called_once()
+        mock_config_apply_runtime_manifest.assert_called_once()
+
+    @mock.patch('sysinv.conductor.manager.'
+                'ConductorManager._config_apply_runtime_manifest')
+    @mock.patch('sysinv.conductor.manager.'
+                'ConductorManager._config_update_hosts')
+    def test_update_grub_config_applied_when_pending_classes_are_subset(
+            self, mock_config_update_hosts,
+            mock_config_apply_runtime_manifest):
+        # A pending config applying only part of the class set is not
+        # equivalent, the remaining classes still need to be applied
+        host = self._create_test_worker_ihost()
+        self._create_pending_runtime_config(
+            host, ['platform::compute::grub::runtime'])
+        mock_config_update_hosts.return_value = str(uuid.uuid4())
+
+        self.service.update_grub_config(self.context, host.uuid)
+
+        mock_config_update_hosts.assert_called_once()
+        mock_config_apply_runtime_manifest.assert_called_once()
+
+    @mock.patch('sysinv.conductor.manager.'
+                'ConductorManager._config_apply_runtime_manifest')
+    @mock.patch('sysinv.conductor.manager.'
+                'ConductorManager._config_update_hosts')
+    def test_update_grub_config_enqueues_when_config_dict_malformed(
+            self, mock_config_update_hosts,
+            mock_config_apply_runtime_manifest):
+        # A malformed / unparseable config_dict on the existing row must log
+        # a warning and fail open into a normal enqueue, rather than
+        # preventing the grub config from being applied (design.md unit
+        # test 4) -- Property 4.
+        host = self._create_test_worker_ihost()
+        self.dbapi.runtime_config_create({
+            'config_uuid': str(uuid.uuid4()),
+            'config_dict': 'not valid json',
+            'forihostid': host.id,
+            'state': constants.RUNTIME_CONFIG_STATE_PENDING,
+        })
+        mock_config_update_hosts.return_value = str(uuid.uuid4())
+
+        self.service.update_grub_config(self.context, host.uuid)
+
+        mock_config_update_hosts.assert_called_once()
+        mock_config_apply_runtime_manifest.assert_called_once()
+
+    @mock.patch('sysinv.conductor.manager.'
+                'ConductorManager._config_apply_runtime_manifest')
+    @mock.patch('sysinv.conductor.manager.'
+                'ConductorManager._config_update_hosts')
+    def test_update_grub_config_ignores_other_host_runtime_config(
+            self, mock_config_update_hosts,
+            mock_config_apply_runtime_manifest):
+        # A runtime_config row whose forihostid is another host must not
+        # influence the decision for this host; the lookup stays scoped by
+        # forihostid.
+        host = self._create_test_worker_ihost()
+        other_host = self._create_test_worker_ihost(
+            hostname='controller-0', mgmt_mac='22:44:33:55:11:99')
+        self._create_pending_runtime_config(other_host,
+                                           self.GRUB_RUNTIME_CLASSES)
+        mock_config_update_hosts.return_value = str(uuid.uuid4())
+
+        self.service.update_grub_config(self.context, host.uuid)
+
+        mock_config_update_hosts.assert_called_once()
+        mock_config_apply_runtime_manifest.assert_called_once()
+
+    @mock.patch('sysinv.conductor.manager.'
+                'ConductorManager._config_apply_runtime_manifest')
+    @mock.patch('sysinv.conductor.manager.'
+                'ConductorManager._config_update_hosts')
+    def test_update_grub_config_no_worker_subfunction(
+            self, mock_config_update_hosts,
+            mock_config_apply_runtime_manifest):
+        # A host without the worker subfunction takes no action: neither
+        # call happens, unchanged early return (design.md unit test 3) --
+        # Property 14.
+        host = self._create_test_worker_ihost(
+            subfunctions=constants.CONTROLLER)
+        self._create_pending_runtime_config(host,
+                                           self.GRUB_RUNTIME_CLASSES)
+
+        self.service.update_grub_config(self.context, host.uuid)
+
+        mock_config_update_hosts.assert_not_called()
+        mock_config_apply_runtime_manifest.assert_not_called()
+
+    def test_update_grub_config_decision_is_host_agnostic(self):
+        # Sweep controller-0, controller-1 and worker-0 with identical
+        # cpu/memory and runtime_config state and assert an identical
+        # decision: the predicate reads no hostname, personality or host id
+        # (design.md unit test 6) -- Property 6.
+        #
+        # The sweep does not hardcode which decision (skip or enqueue) is
+        # expected -- that depends on which redundancy condition is active
+        # on the code under test -- only that all three hosts get the SAME
+        # decision, since none of hostname/personality/host id may be a
+        # term in the predicate.
+        decisions = []
+        for hostname, personality, mac_suffix in (
+                ('controller-0', constants.CONTROLLER, '01'),
+                ('controller-1', constants.CONTROLLER, '02'),
+                ('worker-0', constants.WORKER, '03')):
+            patch_apply = mock.patch(
+                'sysinv.conductor.manager.'
+                'ConductorManager._config_apply_runtime_manifest')
+            patch_update_hosts = mock.patch(
+                'sysinv.conductor.manager.'
+                'ConductorManager._config_update_hosts')
+            with patch_apply as mock_config_apply_runtime_manifest, \
+                    patch_update_hosts as mock_config_update_hosts:
+                host = self._create_test_worker_ihost(
+                    hostname=hostname, personality=personality,
+                    mgmt_mac='22:44:33:55:22:%s' % mac_suffix)
+                self._create_pending_runtime_config(
+                    host, self.GRUB_RUNTIME_CLASSES)
+                mock_config_update_hosts.return_value = str(uuid.uuid4())
+
+                self.service.update_grub_config(self.context, host.uuid)
+
+                decisions.append(mock_config_update_hosts.called)
+                self.assertEqual(mock_config_update_hosts.called,
+                                mock_config_apply_runtime_manifest.called,
+                                "%s: _config_update_hosts and "
+                                "_config_apply_runtime_manifest must agree"
+                                % hostname)
+
+        self.assertEqual(
+            1, len(set(decisions)),
+            "the decision differed across the host-agnostic sweep: %s -- "
+            "the predicate must not read hostname, personality or host id"
+            % decisions)
+
+    def test_update_grub_config_repeated_requests_enqueue_once(self):
+        # Rewritten against the watermark: the reported DM loop, where a
+        # reconcile re-sends an identical cpu layout every ~12s. The first
+        # request enqueues and persists the watermark; every later request
+        # must be suppressed while that watermark is unchanged, so
+        # config_target stops advancing after the first call.
+        #
+        # _config_update_hosts() is left unmocked, so config_target is
+        # observed on the host row rather than through a call count.
+        host = self._create_test_worker_ihost()
+        self._create_test_icpus(host)
+        self.assertIsNotNone(self._bump_icpu_watermark(host))
+
+        with mock.patch('sysinv.conductor.manager.ConductorManager.'
+                        '_config_apply_runtime_manifest') as mock_apply:
+            self.service.update_grub_config(self.context, host.uuid)
+
+            # The first request enqueued: persist the entry it would have
+            # created, watermark included, exactly as
+            # _create_runtime_config_entries() does downstream of the
+            # mocked _config_apply_runtime_manifest().
+            config_uuid = mock_apply.call_args[0][1]
+            config_dict = copy.deepcopy(mock_apply.call_args[0][2])
+            self.service._create_runtime_config_entries(
+                config_uuid, config_dict)
+            mock_apply.assert_called_once()
+
+            config_target_after_first = self.dbapi.ihost_get(
+                host.uuid).config_target
+            rows_after_first = [
+                (row.config_uuid, row.state, row.created_at)
+                for row in self.dbapi.runtime_config_get_all(
+                    forihostid=host.id)]
+            self.assertEqual(1, len(rows_after_first))
+
+            for _ in range(5):
+                self.service.update_grub_config(self.context, host.uuid)
+
+            # Still exactly one enqueue, no further config_target advance,
+            # and no row inserted or re-stamped: neither half of the churn
+            # happens.
+            mock_apply.assert_called_once()
+
+        self.assertEqual(config_target_after_first,
+                         self.dbapi.ihost_get(host.uuid).config_target)
+        self.assertEqual(
+            rows_after_first,
+            [(row.config_uuid, row.state, row.created_at)
+             for row in self.dbapi.runtime_config_get_all(
+                 forihostid=host.id)])
+
+    # --- Property 1 (Bug Condition C_A) exploration tests ------------------
+    #
+    # Goal: surface counterexamples showing that update_grub_config() advances
+    # config_target for a cpu/memory layout that did not change. Written
+    # BEFORE the fix, against the UNFIXED baseline (git worktree at
+    # 286d37452, the parent of PS1). They are EXPECTED TO FAIL on unfixed
+    # code -- the failure confirms isBugCondition_A(input) triggers unwanted
+    # config state advancement. Do not fix the test or the code when it
+    # fails here.
+    #
+    # Both tests call the real _config_update_hosts() (not a mock), so the
+    # assertion is "config_target is byte-identical after the call", not
+    # "a mock was not called" -- design.md unit tests 8 and 9.
+    #
+    # These stay RED through tasks 5-7 (signature-independent work) and only
+    # go green in task 8.4, once the cpu/memory divergence predicate lands
+    # (gated on Open Design Decision 1). That is expected, not a regression.
+
+    @mock.patch('sysinv.conductor.manager.'
+                'ConductorManager._config_apply_runtime_manifest')
+    def test_exploration_unchanged_layout_advances_config_target(
+            self, mock_config_apply_runtime_manifest):
+        # Bug condition C_A: WORKER in subfunctions, force_grub_update=False,
+        # and the cpu/memory layout did NOT diverge from what the most
+        # recent grub runtime_config row already requested. A prior grub
+        # row is PENDING (the harmless re-stamp half PS1 could see).
+        #
+        # Counterexample sought: config_target moves from <uuid-a> to
+        # <uuid-b> even though nothing about the host's desired cpu/memory
+        # allocation changed between the two update_grub_config() calls.
+        #
+        # Fixture note (task 8.3): dbutils.get_test_icpu() creates rows with
+        # updated_at = None, so cpu rows must exist AND have been stamped
+        # for the host to have a watermark at all, and the prior row must
+        # carry the watermark the way update_grub_config() now persists it.
+        # Without both, the predicate fails open for a fixture reason rather
+        # than because the layout diverged. The assertions are unchanged
+        # from task 3.
+        host = self._create_test_worker_ihost()
+        self._create_test_icpus(host)
+        watermark = self._bump_icpu_watermark(host)
+        self._create_pending_runtime_config(host, self.GRUB_RUNTIME_CLASSES,
+                                           cpu_watermark=watermark)
+        config_target_before = host.config_target
+
+        self.service.update_grub_config(self.context, host.uuid)
+
+        updated_host = self.dbapi.ihost_get(host.uuid)
+        # EXPECTED OUTCOME on unfixed code: this FAILS. The unfixed
+        # update_grub_config() has no cpu/memory divergence check, so
+        # _config_update_hosts() mints a fresh config_uuid unconditionally
+        # and config_target advances for an unchanged layout.
+        self.assertEqual(
+            config_target_before, updated_host.config_target,
+            "counterexample: unchanged cpu/memory layout (pending row "
+            "present) still advanced config_target from %s to %s -- "
+            "_config_update_hosts() was called for a redundant request" %
+            (config_target_before, updated_host.config_target))
+        mock_config_apply_runtime_manifest.assert_not_called()
+
+    @mock.patch('sysinv.conductor.manager.'
+                'ConductorManager._config_apply_runtime_manifest')
+    def test_exploration_unchanged_layout_inserts_new_row(
+            self, mock_config_apply_runtime_manifest):
+        # Bug condition C_A, config_target half: same unchanged layout, but
+        # the most recent grub runtime_config row is already APPLIED (no
+        # pending row survives to be re-stamped). This is the case PS1's
+        # exact-class-set-against-PENDING-only check could not see.
+        #
+        # _config_apply_runtime_manifest is mocked here, matching every
+        # other update_grub_config test in this module (it needs puppet
+        # hieradata paths on disk and the agent RPC); the real
+        # _config_update_hosts() still runs, so config_target is observed
+        # on the real host row via the DB, not via a mock call count.
+        #
+        # GREEN since Open Design Decision 3 was resolved to "most recent
+        # row regardless of state" (see the sibling test
+        # test_update_grub_config_suppressed_when_watermark_unchanged_row_applied
+        # for the measurement that motivated it):
+        # _get_most_recent_grub_runtime_config() now queries any state and
+        # scopes by GRUB_RUNTIME_CLASS membership, so the APPLIED row is
+        # visible to the comparison.
+        host = self._create_test_worker_ihost()
+        self._create_test_icpus(host)
+        watermark = self._bump_icpu_watermark(host)
+        self._create_pending_runtime_config(
+            host, self.GRUB_RUNTIME_CLASSES,
+            state=constants.RUNTIME_CONFIG_STATE_APPLIED,
+            cpu_watermark=watermark)
+        config_target_before = host.config_target
+
+        self.service.update_grub_config(self.context, host.uuid)
+
+        updated_host = self.dbapi.ihost_get(host.uuid)
+        # EXPECTED OUTCOME on unfixed code: this FAILS. With no matching
+        # PENDING row to re-stamp, config_target still advances -- there is
+        # no cpu/memory divergence check on this path at all.
+        self.assertEqual(
+            config_target_before, updated_host.config_target,
+            "counterexample: unchanged cpu/memory layout (most recent row "
+            "already APPLIED, none pending) still advanced config_target "
+            "from %s to %s" % (config_target_before,
+                               updated_host.config_target))
+
+    # --- Property 9 (Bug Condition C_B) exploration tests ------------------
+    #
+    # Goal: surface counterexamples showing that update_grub_config()
+    # advances config_target and creates a runtime_config row for a host
+    # whose state does not permit hieradata generation, and that the host's
+    # report releases such a row from pending anyway. Written BEFORE the
+    # fix, against the UNFIXED baseline (git worktree at 286d37452, the
+    # parent of PS1). They are EXPECTED TO FAIL on unfixed code -- the
+    # failure confirms isBugCondition_B(input) triggers unwanted config
+    # state advancement and row creation. Do not fix the test or the code
+    # when it fails here.
+    #
+    # No lab reaches this branch (force=True in every current lab, see
+    # design.md SS7), so these unit tests are the only pre-fix red signal
+    # available for Change B.
+
+    @mock.patch('sysinv.conductor.manager.utils.is_host_simplex_controller',
+                return_value=True)
+    @mock.patch('os.path.isdir', return_value=True)
+    @mock.patch('shutil.copytree')
+    @mock.patch('sysinv.conductor.manager.tempfile.mkdtemp',
+                return_value='/tmp/mock-temp-dir')
+    def test_exploration_row_created_for_host_that_cannot_be_configured(
+            self, mock_mkdtemp, mock_copytree, mock_isdir,
+            mock_is_simplex_controller):
+        # Bug condition C_B: invprovision is UNPROVISIONED, i.e. outside
+        # PROVISIONED/UPGRADING and not a PROVISIONING controller, so
+        # hieradata generation is refused with "the node is not ready" --
+        # exactly the 340 occurrences at the customer. is_host_simplex_
+        # controller is patched True so the local `force` computed inside
+        # update_grub_config() is False (not utils.is_host_simplex_
+        # controller(host) or force_grub_update == not True or False ==
+        # False), matching the customer's day-1 topology where
+        # /etc/platform/simplex is still present on the conductor node.
+        # inv_state=INITIAL_INVENTORIED is the ONLY one of the three state
+        # guards that passed at the customer -- it is what lets the row get
+        # created despite hieradata generation being refused.
+        host = self._create_test_worker_ihost(
+            invprovision=constants.UNPROVISIONED,
+            inv_state=constants.INV_STATE_INITIAL_INVENTORIED)
+        config_target_before = host.config_target
+        rows_before = self.dbapi.runtime_config_get_all(forihostid=host.id)
+        self.assertEqual(0, len(rows_before))
+
+        self.service.update_grub_config(self.context, host.uuid)
+
+        updated_host = self.dbapi.ihost_get(host.uuid)
+        rows_after = self.dbapi.runtime_config_get_all(forihostid=host.id)
+        # EXPECTED OUTCOME on unfixed code: this FAILS. config_target
+        # advances unconditionally inside _config_update_hosts(), which
+        # runs before hieradata generation is even attempted.
+        self.assertEqual(
+            config_target_before, updated_host.config_target,
+            "counterexample: host cannot be configured (invprovision=%s, "
+            "hieradata generation refused with 'the node is not ready') "
+            "but config_target still advanced from %s to %s" %
+            (host.invprovision, config_target_before,
+             updated_host.config_target))
+        # EXPECTED OUTCOME on unfixed code: this FAILS. The row-creation
+        # guard in _create_runtime_config_entries() checks only inv_state,
+        # not invprovision/sw_version, so it creates and dispatches a row
+        # for a host whose hieradata was just refused.
+        self.assertEqual(
+            0, len(rows_after),
+            "counterexample: host cannot be configured (invprovision=%s) "
+            "but a runtime_config row was still created and dispatched: "
+            "%s" % (host.invprovision,
+                    [(r.config_uuid, r.state) for r in rows_after]))
+
+    # --- Change B fix checking (design.md unit tests 15, 16 and 18).
+    #
+    # These assert the guard task 9.1 added: a runtime enqueue must not
+    # advance config_target and must not create a runtime_config row for a
+    # host whose state does not allow its hieradata to be regenerated, i.e.
+    # NOT (invprovision in [PROVISIONED, UPGRADING] or (PROVISIONING and
+    # CONTROLLER)) or the host does not run the active controller's load.
+    # Both call sites share the single predicate
+    # _host_state_allows_hieradata().
+    #
+    # Scoped to the RUNTIME path on purpose (_config_update_hosts is
+    # guarded only when reboot is False). That is the customer's path and
+    # the only one that creates runtime_config rows or feeds the unlock
+    # gate; a reboot-required update deliberately still advances its
+    # target, because its hieradata comes from configure_ihost() through
+    # the lock and unlock cycle.
+    #
+    # INDEPENDENT OF CHANGE A by construction: none of the three leaves a
+    # grub runtime_config row carrying a cpu updated_at watermark, so the
+    # Change A comparison can only fail open and the host-state guard is
+    # unambiguously what makes every assertion below hold. No Change A
+    # helper or constant is referenced either, so these pass on a tree
+    # carrying the Change B hunks alone.
+    #
+    # _config_apply_runtime_manifest is mocked, as in every other
+    # update_grub_config test in this module (it needs puppet hieradata
+    # paths on disk and the agent RPC), and the entry creation it reaches
+    # downstream is driven directly with the config_uuid / config_dict it
+    # was handed. _config_update_hosts() is left REAL, so config_target is
+    # observed on the host row rather than through a mock call count.
+
+    @mock.patch('sysinv.conductor.manager.utils.is_host_simplex_controller',
+                return_value=True)
+    @mock.patch('sysinv.conductor.manager.'
+                'ConductorManager._config_apply_runtime_manifest')
+    def test_runtime_config_not_enqueued_when_host_not_ready(
+            self, mock_config_apply_runtime_manifest,
+            mock_is_simplex_controller):
+        # design.md unit test 15 -- Property 12, Requirements 1.2, 2.12.
+        # invprovision is UNPROVISIONED, so it is outside
+        # PROVISIONED/UPGRADING and the host is not a PROVISIONING
+        # controller: hieradata generation is refused with "the node is not
+        # ready", exactly the 340 occurrences at the customer.
+        # inv_state=INITIAL_INVENTORIED is the only one of the three state
+        # guards that passed there, and it is what used to let the row be
+        # created anyway.
+        #
+        # is_host_simplex_controller is patched True so the local `force`
+        # computed inside update_grub_config() is False, matching the
+        # customer's day-1 topology where /etc/platform/simplex is still
+        # present on the node running the conductor. The guard does not read
+        # that local; it is patched to keep the scenario the customer's.
+        host = self._create_test_worker_ihost(
+            invprovision=constants.UNPROVISIONED,
+            inv_state=constants.INV_STATE_INITIAL_INVENTORIED)
+
+        # The intended state has to be in the DATABASE, not only on the
+        # dict this helper returns: other fixtures in this module set
+        # invprovision on the returned object after the row was created, so
+        # the value never reaches the database and the guard sees the
+        # default instead.
+        db_host = self.dbapi.ihost_get(host.uuid)
+        self.assertEqual(constants.UNPROVISIONED, db_host.invprovision)
+        self.assertEqual(constants.INV_STATE_INITIAL_INVENTORIED,
+                         db_host.inv_state)
+        # The load term is left as the suite sets it: host_load_matches_sw_
+        # version is mocked True module-wide, so invprovision is the only
+        # term that fails the predicate here.
+        self.assertTrue(self.mock_host_load_matches_sw_version.return_value)
+        # No prior grub row, so Change A's watermark comparison has nothing
+        # to compare against and fails open.
+        self.assertEqual(
+            0, len(self.dbapi.runtime_config_get_all(forihostid=host.id)))
+        config_target_before = host.config_target
+
+        self.service.update_grub_config(self.context, host.uuid)
+
+        # config_target half: the real _config_update_hosts() ran and did
+        # not move the target of a host that cannot be configured.
+        updated_host = self.dbapi.ihost_get(host.uuid)
+        self.assertEqual(
+            config_target_before, updated_host.config_target,
+            "config_target advanced from %s to %s for a host that cannot "
+            "be configured (invprovision=%s): nothing will ever apply that "
+            "config_uuid, so config_applied is left permanently behind" %
+            (config_target_before, updated_host.config_target,
+             db_host.invprovision))
+
+        # Row half: drive the entry creation with the exact config_uuid and
+        # config_dict update_grub_config() handed to the mocked
+        # _config_apply_runtime_manifest().
+        mock_config_apply_runtime_manifest.assert_called_once()
+        config_uuid = mock_config_apply_runtime_manifest.call_args[0][1]
+        config_dict = copy.deepcopy(
+            mock_config_apply_runtime_manifest.call_args[0][2])
+        self.service._create_runtime_config_entries(config_uuid, config_dict)
+
+        rows_after = self.dbapi.runtime_config_get_all(forihostid=host.id)
+        self.assertEqual(
+            0, len(rows_after),
+            "a runtime_config row was created for a host that cannot be "
+            "configured (invprovision=%s): the manifest never runs for it, "
+            "and the fresh created_at renews the window "
+            "check_unlock_runtime_manifests() rejects the unlock on: %s" %
+            (db_host.invprovision,
+             [(row.config_uuid, row.state) for row in rows_after]))
+
+    @mock.patch('sysinv.conductor.manager.utils.is_host_simplex_controller',
+                return_value=True)
+    @mock.patch('sysinv.conductor.manager.'
+                'ConductorManager._config_apply_runtime_manifest')
+    def test_runtime_config_not_enqueued_when_sw_version_mismatch(
+            self, mock_config_apply_runtime_manifest,
+            mock_is_simplex_controller):
+        # design.md unit test 16 -- Property 12, Requirements 1.2, 2.12.
+        # Same assertions as the previous test, driven through the OTHER
+        # term of the predicate: the host is PROVISIONED, so the
+        # invprovision term passes, and the load check is what refuses the
+        # hieradata. The hieradata of a host running a different load is
+        # written by update_host_config_upgrade() into that host's own load
+        # directory instead, so nothing on this path ever applies the
+        # config.
+        #
+        # The mismatch is driven through the suite's existing mechanism:
+        # _host_state_allows_hieradata() routes the term through
+        # host_load_matches_sw_version(), which this module patches to
+        # return True for every test (setUp), while tsc.SW_VERSION is
+        # 'TEST.SW.VERSION' and test hosts are created on '0.0'. Flipping
+        # the raw column alone would therefore change nothing.
+        host = self._create_test_worker_ihost(
+            inv_state=constants.INV_STATE_INITIAL_INVENTORIED)
+        self.mock_host_load_matches_sw_version.return_value = False
+
+        db_host = self.dbapi.ihost_get(host.uuid)
+        # The invprovision term passes, so the load term is unambiguously
+        # what fails the predicate.
+        self.assertEqual(constants.PROVISIONED, db_host.invprovision)
+        self.assertEqual(constants.INV_STATE_INITIAL_INVENTORIED,
+                         db_host.inv_state)
+        # And the state really is a mismatch, mock aside.
+        self.assertNotEqual(manager.tsc.SW_VERSION, db_host.sw_version)
+        self.assertEqual(
+            0, len(self.dbapi.runtime_config_get_all(forihostid=host.id)))
+        config_target_before = host.config_target
+
+        self.service.update_grub_config(self.context, host.uuid)
+
+        updated_host = self.dbapi.ihost_get(host.uuid)
+        self.assertEqual(
+            config_target_before, updated_host.config_target,
+            "config_target advanced from %s to %s for a host running a "
+            "different load (sw_version=%s, active=%s)" %
+            (config_target_before, updated_host.config_target,
+             db_host.sw_version, manager.tsc.SW_VERSION))
+
+        mock_config_apply_runtime_manifest.assert_called_once()
+        config_uuid = mock_config_apply_runtime_manifest.call_args[0][1]
+        config_dict = copy.deepcopy(
+            mock_config_apply_runtime_manifest.call_args[0][2])
+        self.service._create_runtime_config_entries(config_uuid, config_dict)
+
+        rows_after = self.dbapi.runtime_config_get_all(forihostid=host.id)
+        self.assertEqual(
+            0, len(rows_after),
+            "a runtime_config row was created for a host running a "
+            "different load (sw_version=%s, active=%s): %s" %
+            (db_host.sw_version, manager.tsc.SW_VERSION,
+             [(row.config_uuid, row.state) for row in rows_after]))
+
+    @mock.patch('sysinv.conductor.manager.utils.is_host_simplex_controller',
+                return_value=True)
+    @mock.patch('sysinv.conductor.manager.'
+                'ConductorManager._config_apply_runtime_manifest')
+    def test_repeated_reconciles_against_non_configurable_host_create_no_rows(
+            self, mock_config_apply_runtime_manifest,
+            mock_is_simplex_controller):
+        # design.md unit test 18 -- Property 14, Requirements 1.4, 2.14.
+        # The reported DM loop, aimed at a host that cannot be configured:
+        # a reconcile re-sends the same platform cpu configuration every
+        # ~12s. Each cycle used to INSERT a fresh row (~166 of them at the
+        # customer, median 11.8s apart), and every insert carried a fresh
+        # created_at, which renewed the window
+        # check_unlock_runtime_manifests() rejects the unlock on. That
+        # window caps at CONF.host_unlock_blocking_period (600s), so it can
+        # never age out while the inserts continue: the host stalls.
+        #
+        # What is asserted is that NO NEW ROW IS INSERTED, not that nothing
+        # at all happens to any row. A pending row whose config_dict
+        # matches is still superseded IN PLACE by
+        # _create_runtime_config_entries() -- that branch is deliberately
+        # reached before the guard -- so its config_uuid moves on while its
+        # created_at, and therefore its position relative to the unlock
+        # window, does not (Property 20, Requirement 3.6).
+        #
+        # Change A neutralised explicitly: the host has no cpu rows, so
+        # there is no cpu updated_at watermark to persist, and the pending
+        # row below is created without one. Change A's comparison hits its
+        # "row predates the watermark" fail-open branch on every cycle and
+        # cannot be the reason nothing is inserted. It also keeps the two
+        # config_dicts equal, which is what routes the cycles through the
+        # in-place re-stamp rather than the insert branch.
+        host = self._create_test_worker_ihost(
+            invprovision=constants.UNPROVISIONED,
+            inv_state=constants.INV_STATE_INITIAL_INVENTORIED)
+        db_host = self.dbapi.ihost_get(host.uuid)
+        self.assertEqual(constants.UNPROVISIONED, db_host.invprovision)
+        self.assertEqual(constants.INV_STATE_INITIAL_INVENTORIED,
+                         db_host.inv_state)
+        self.assertTrue(self.mock_host_load_matches_sw_version.return_value)
+        self.assertEqual([], self.dbapi.icpu_get_by_ihost(host.uuid))
+
+        pending_config_uuid = self._create_pending_runtime_config(
+            host, self.GRUB_RUNTIME_CLASSES)
+        rows_before = self.dbapi.runtime_config_get_all(forihostid=host.id)
+        self.assertEqual(1, len(rows_before))
+        row_id_before = rows_before[0].id
+        created_at_before = rows_before[0].created_at
+        config_target_before = host.config_target
+
+        config_uuids = []
+        for _ in range(5):
+            self.service.update_grub_config(self.context, host.uuid)
+            config_uuid = mock_config_apply_runtime_manifest.call_args[0][1]
+            config_dict = copy.deepcopy(
+                mock_config_apply_runtime_manifest.call_args[0][2])
+            config_uuids.append(config_uuid)
+            self.service._create_runtime_config_entries(
+                config_uuid, config_dict)
+
+        # Every cycle really did reach the enqueue with a distinct
+        # config_uuid, so the row count below is not flat because the
+        # reconciles collapsed into one another.
+        self.assertEqual(5, len(set(config_uuids)))
+
+        rows_after = self.dbapi.runtime_config_get_all(forihostid=host.id)
+        self.assertEqual(
+            1, len(rows_after),
+            "%d reconciles against a host that cannot be configured "
+            "inserted rows instead of leaving the count at 1: %s -- each "
+            "insert carries a fresh created_at and renews the window the "
+            "host unlock is rejected on" %
+            (len(config_uuids),
+             [(row.config_uuid, row.state, row.created_at)
+              for row in rows_after]))
+        # The pre-existing row was superseded in place, not replaced: same
+        # row, same created_at, so the unlock window is not renewed and it
+        # ages out normally.
+        self.assertEqual(row_id_before, rows_after[0].id)
+        self.assertEqual(
+            created_at_before, rows_after[0].created_at,
+            "the re-stamp moved created_at, which would renew the unlock "
+            "window just as an insert does")
+        self.assertNotEqual(pending_config_uuid, rows_after[0].config_uuid)
+        self.assertEqual(constants.RUNTIME_CONFIG_STATE_PENDING,
+                         rows_after[0].state)
+        # And no config_target advanced across the whole loop.
+        self.assertEqual(config_target_before,
+                         self.dbapi.ihost_get(host.uuid).config_target)
+
+    # --- Property 17 / 16 / 21 / 20 preservation: the surrounding
+    # machinery -- re-stamp, unlock gate, audits, prune and the other five
+    # conductor grub enqueue sites -- is untouched by either change.
+    # Written BEFORE the fix, observed and passing on the UNFIXED baseline
+    # (git worktree at 286d37452). Observation-first: these assert that
+    # nothing OUTSIDE update_grub_config() moves.
+
+    def test_create_runtime_config_entries_restamp_preserves_created_at(
+            self):
+        # An incoming config_dict equal to an existing PENDING row
+        # supersedes it in place via
+        # runtime_config_update(existing_config.id,
+        # {"config_uuid": config_uuid}), changing only config_uuid and
+        # leaving created_at unchanged, so the row's position relative to
+        # the unlock window does not move (design.md unit test 7) --
+        # Property 17.
+        #
+        # Corollary asserted below: the count of "Updating existing
+        # config_uuid" log lines is NOT the metric of the churn -- it
+        # marks only the harmless re-stamp half, and lab Run A showed 7
+        # enqueues with ZERO re-stamps when every row reached applied
+        # between cycles. This test only proves the re-stamp itself is
+        # harmless (created_at frozen); it does not claim re-stamp counts
+        # measure anything about the insert half.
+        host = self._create_test_worker_ihost()
+        existing_config_uuid = self._create_pending_runtime_config(
+            host, self.GRUB_RUNTIME_CLASSES)
+        existing_rows = self.dbapi.runtime_config_get_all(forihostid=host.id)
+        self.assertEqual(1, len(existing_rows))
+        created_at_before = existing_rows[0].created_at
+        existing_id = existing_rows[0].id
+
+        config_dict = {
+            "personalities": [constants.CONTROLLER, constants.WORKER],
+            "host_uuids": [host.uuid],
+            "classes": self.GRUB_RUNTIME_CLASSES,
+        }
+        new_config_uuid = str(uuid.uuid4())
+        self.assertNotEqual(existing_config_uuid, new_config_uuid)
+
+        self.service._create_runtime_config_entries(
+            new_config_uuid, config_dict)
+
+        rows_after = self.dbapi.runtime_config_get_all(forihostid=host.id)
+        # Still exactly one row: the incoming config_dict matched the
+        # existing pending row, so it was superseded in place, not
+        # inserted alongside it.
+        self.assertEqual(1, len(rows_after))
+        updated_row = rows_after[0]
+        self.assertEqual(existing_id, updated_row.id)
+        # Only config_uuid changed...
+        self.assertEqual(new_config_uuid, updated_row.config_uuid)
+        self.assertNotEqual(existing_config_uuid, updated_row.config_uuid)
+        # ...created_at is untouched, so the row's age and its position
+        # relative to the unlock gate's created_at window do not change.
+        self.assertEqual(created_at_before, updated_row.created_at)
+
+    def test_check_unlock_runtime_manifests_blocks_within_window(self):
+        # The unlock gate check_unlock_runtime_manifests() is untouched by
+        # either change: same runtime_config_get_all(state=PENDING,
+        # younger_than=now-CONF.host_unlock_blocking_period,
+        # forihostid=...) selection on created_at, same
+        # config_dict['classes'] intersection with
+        # get_blocking_runtime_manifest_list() -- Property 16.
+        host = self._create_test_worker_ihost(hostname='controller-1')
+        self._create_pending_runtime_config(host, self.GRUB_RUNTIME_CLASSES)
+
+        controller = host_api.HostController()
+        hostupdate = mock.Mock()
+        hostupdate.ihost_patch = {'hostname': host.hostname}
+        hostupdate.ihost_orig = {'id': host.id}
+
+        with mock.patch(
+                'sysinv.api.controllers.v1.host.pecan') as mock_pecan:
+            mock_pecan.request.dbapi = self.dbapi
+            self.assertRaises(
+                wsme.exc.ClientSideError,
+                controller.check_unlock_runtime_manifests,
+                hostupdate, False, helper.get_blocking_runtime_manifest_list())
+
+    def test_check_unlock_runtime_manifests_ignores_non_blocking_classes(
+            self):
+        # A pending row whose classes do not intersect
+        # get_blocking_runtime_manifest_list() must not block unlock --
+        # same class-intersection behavior as today -- Property 16.
+        host = self._create_test_worker_ihost(hostname='controller-1')
+        self._create_pending_runtime_config(
+            host, ['platform::unrelated::runtime'])
+
+        controller = host_api.HostController()
+        hostupdate = mock.Mock()
+        hostupdate.ihost_patch = {'hostname': host.hostname}
+        hostupdate.ihost_orig = {'id': host.id}
+
+        with mock.patch(
+                'sysinv.api.controllers.v1.host.pecan') as mock_pecan:
+            mock_pecan.request.dbapi = self.dbapi
+            # Must not raise.
+            controller.check_unlock_runtime_manifests(
+                hostupdate, False, helper.get_blocking_runtime_manifest_list())
+
+    def test_check_unlock_runtime_manifests_force_unlock_returns_early(
+            self):
+        # force_unlock returns before even querying the runtime_config
+        # table -- same early return as today -- Property 16.
+        host = self._create_test_worker_ihost(hostname='controller-1')
+        self._create_pending_runtime_config(host, self.GRUB_RUNTIME_CLASSES)
+
+        controller = host_api.HostController()
+        hostupdate = mock.Mock()
+        hostupdate.ihost_patch = {'hostname': host.hostname}
+        hostupdate.ihost_orig = {'id': host.id}
+
+        with mock.patch(
+                'sysinv.api.controllers.v1.host.pecan') as mock_pecan:
+            mock_dbapi = mock.Mock(wraps=self.dbapi)
+            mock_pecan.request.dbapi = mock_dbapi
+            # Must not raise despite the pending blocking row.
+            controller.check_unlock_runtime_manifests(
+                hostupdate, True, helper.get_blocking_runtime_manifest_list())
+            mock_dbapi.runtime_config_get_all.assert_not_called()
+
+    def test_check_unlock_runtime_manifests_row_older_than_window_does_not_block(
+            self):
+        # A pending row older than CONF.host_unlock_blocking_period does
+        # NOT block unlock even though it was never applied -- the gate
+        # filters strictly on created_at falling inside the window, with
+        # no notion of whether the row ever reached applied -- Property
+        # 16. This is the consequence explicitly called out in the task:
+        # a row older than the window does not block unlock even if it
+        # was never applied.
+        host = self._create_test_worker_ihost(hostname='controller-1')
+        self._create_pending_runtime_config(host, self.GRUB_RUNTIME_CLASSES)
+
+        controller = host_api.HostController()
+        hostupdate = mock.Mock()
+        hostupdate.ihost_patch = {'hostname': host.hostname}
+        hostupdate.ihost_orig = {'id': host.id}
+
+        # Simulate the window having elapsed by moving "now" forward,
+        # rather than mutating created_at directly -- the row is still
+        # PENDING and was never applied.
+        far_future = timeutils.utcnow() + datetime.timedelta(days=1)
+        with mock.patch(
+                'sysinv.api.controllers.v1.host.pecan') as mock_pecan, \
+                mock.patch(
+                    'sysinv.api.controllers.v1.host.datetime.datetime') \
+                as mock_dt:
+            mock_pecan.request.dbapi = self.dbapi
+            mock_dt.now.return_value = far_future
+            # Must not raise: the row aged out of the window.
+            controller.check_unlock_runtime_manifests(
+                hostupdate, False, helper.get_blocking_runtime_manifest_list())
+
+    @mock.patch('sysinv.conductor.manager.'
+                'ConductorManager._update_host_deferred_runtime_config')
+    def test_audit_pending_runtime_config_retries_stale_rows(
+            self, mock_deferred_config):
+        # _audit_pending_runtime_config() re-enqueues a pending row older
+        # than RUNTIME_CONFIG_APPLY_TIMEOUT_IN_SECS (1200s), advances
+        # config_target to it and marks the row RETRIED -- unchanged by
+        # either change -- Property 21.
+        host = self._create_test_worker_ihost()
+        config_uuid = str(uuid.uuid4())
+        rc = self.dbapi.runtime_config_create({
+            'config_uuid': config_uuid,
+            'config_dict': json.dumps({
+                'personalities': [constants.CONTROLLER, constants.WORKER],
+                'classes': self.GRUB_RUNTIME_CLASSES,
+                'config_type': manager.CONFIG_APPLY_RUNTIME_MANIFEST,
+            }),
+            'forihostid': host.id,
+            'state': constants.RUNTIME_CONFIG_STATE_PENDING,
+        })
+        stale_created_at = (
+            timeutils.utcnow() - datetime.timedelta(
+                seconds=constants.RUNTIME_CONFIG_APPLY_TIMEOUT_IN_SECS + 100))
+        from sysinv.db.sqlalchemy import api as db_sqlalchemy_api
+        from sysinv.db.sqlalchemy import models as db_models
+        with db_sqlalchemy_api._session_for_write() as session:
+            session.query(db_models.RuntimeConfig).filter_by(
+                id=rc.id).update({'created_at': stale_created_at})
+
+        self.service._audit_pending_runtime_config()
+
+        updated_host = self.dbapi.ihost_get(host.uuid)
+        self.assertEqual(config_uuid, updated_host.config_target)
+        mock_deferred_config.assert_called_once()
+        updated_rc = self.dbapi.runtime_config_get(
+            config_uuid, host_id=host.id)
+        self.assertEqual(constants.RUNTIME_CONFIG_STATE_RETRIED,
+                         updated_rc.state)
+
+    @mock.patch('sysinv.conductor.manager.'
+                'ConductorManager._update_host_deferred_runtime_config')
+    def test_audit_config_out_of_date_hosts_skips_offline_host(
+            self, mock_deferred_config):
+        # _audit_config_out_of_date_hosts() skips hosts whose availability
+        # is explicitly offline, even when the 250.001 alarm is stale --
+        # unchanged by either change -- Property 21.
+        host = self._create_test_worker_ihost(
+            availability=constants.AVAILABILITY_OFFLINE)
+        entity_instance_id = "%s=%s" % (
+            fm_constants.FM_ENTITY_TYPE_HOST, host.hostname)
+        stale_timestamp = (
+            datetime.datetime.utcnow() - datetime.timedelta(
+                seconds=constants.RUNTIME_CONFIG_APPLY_TIMEOUT_IN_SECS + 100)
+        ).strftime("%Y-%m-%d %H:%M:%S.%f")
+        fake_fault = mock.Mock(entity_instance_id=entity_instance_id,
+                               timestamp=stale_timestamp)
+        self.service.fm_api.get_faults_by_id.return_value = [fake_fault]
+
+        self.service._audit_config_out_of_date_hosts()
+
+        mock_deferred_config.assert_not_called()
+
+    @mock.patch('sysinv.conductor.manager.'
+                'ConductorManager._delete_old_temp_hieradata')
+    def test_prune_runtime_config_table_removes_only_24h_and_older(
+            self, mock_delete_hieradata):
+        # _prune_runtime_config_table() removes rows only at the 24-hour
+        # cutoff, leaving more recent rows (including orphans that were
+        # never applied) untouched -- unchanged by either change --
+        # Property 21.
+        host = self._create_test_worker_ihost()
+        old_config_uuid = self._create_pending_runtime_config(
+            host, self.GRUB_RUNTIME_CLASSES)
+        recent_config_uuid = self._create_pending_runtime_config(
+            host, self.GRUB_RUNTIME_CLASSES)
+        from sysinv.db.sqlalchemy import api as db_sqlalchemy_api
+        from sysinv.db.sqlalchemy import models as db_models
+        old_row = self.dbapi.runtime_config_get(
+            old_config_uuid, host_id=host.id)
+        with db_sqlalchemy_api._session_for_write() as session:
+            session.query(db_models.RuntimeConfig).filter_by(
+                id=old_row.id).update(
+                    {'created_at': datetime.datetime.utcnow() -
+                     datetime.timedelta(hours=25)})
+
+        self.service._prune_runtime_config_table()
+
+        remaining_uuids = [
+            r.config_uuid for r in
+            self.dbapi.runtime_config_get_all(forihostid=host.id)]
+        self.assertNotIn(old_config_uuid, remaining_uuids)
+        self.assertIn(recent_config_uuid, remaining_uuids)
+
+    # --- Property 20: the other five conductor grub enqueue sites stay
+    # OUTSIDE the update_grub_config() guard. Reuses the three PS1
+    # class-set negatives' shape: assert each site still enqueues, since
+    # the redundancy check must not be centralized lower than
+    # update_grub_config() (Requirement 3.9).
+
+    @mock.patch('sysinv.conductor.manager.'
+                'ConductorManager._config_apply_runtime_manifest')
+    @mock.patch('sysinv.conductor.manager.'
+                'ConductorManager._config_update_hosts')
+    def test_kernel_config_enqueue_site_outside_guard(
+            self, mock_config_update_hosts,
+            mock_config_apply_runtime_manifest):
+        # kernel config (~L1780, 3-class): kernel_runtime_manifests()
+        # always enqueues, regardless of any prior grub runtime_config
+        # row -- it is a separate call site from update_grub_config() and
+        # is not subject to its redundancy guard.
+        self._create_test_ihosts()
+        ihost = self.service.get_ihost_by_hostname(
+            self.context, 'controller-0')
+        mock_config_update_hosts.return_value = str(uuid.uuid4())
+
+        self.service.kernel_runtime_manifests(
+            context=self.context, ihost_uuid=ihost['uuid'])
+
+        mock_config_update_hosts.assert_called_once()
+        mock_config_apply_runtime_manifest.assert_called_once()
+        config_dict = mock_config_apply_runtime_manifest.call_args[0][2]
+        self.assertEqual([
+            'platform::grub::kernel_image::runtime',
+            'platform::config::file::subfunctions::lowlatency::runtime',
+            'platform::compute::grub::runtime'
+        ], config_dict['classes'])
+
+    @mock.patch('sysinv.conductor.manager.'
+                'ConductorManager._config_apply_runtime_manifest')
+    @mock.patch('sysinv.conductor.manager.'
+                'ConductorManager._config_update_hosts')
+    @mock.patch('sysinv.conductor.manager.os.path.isfile')
+    def test_aio_pre_unlock_two_class_grub_enqueue_site_outside_guard(
+            self, mock_isfile, mock_config_update_hosts,
+            mock_config_apply_runtime_manifest):
+        # AIO pre-unlock (~L2656, 2-class grub pair): _configure_
+        # controller_host() always applies the exact 2-class grub pair
+        # ahead of the initial controller's unlock on an AIO system with
+        # the Ansible bootstrap flag present -- outside
+        # update_grub_config()'s guard. Explicit assertion: the 2-class
+        # grub apply the agent's UNLOCK_READY_FLAG path depends on is
+        # never suppressed here -- Property 20.
+        def isfile_side_effect(path):
+            return path == constants.ANSIBLE_BOOTSTRAP_FLAG
+        mock_isfile.side_effect = isfile_side_effect
+        cutils.is_aio_system = mock.Mock(return_value=True)
+
+        host = self._create_test_worker_ihost(
+            administrative=constants.ADMIN_LOCKED,
+            availability=constants.AVAILABILITY_ONLINE)
+        mock_config_update_hosts.return_value = str(uuid.uuid4())
+
+        self.service._configure_controller_host(self.context, host)
+
+        two_class_calls = [
+            call for call in
+            mock_config_apply_runtime_manifest.call_args_list
+            if call[0][2].get('classes') == self.GRUB_RUNTIME_CLASSES]
+        self.assertEqual(
+            1, len(two_class_calls),
+            "the 2-class grub apply the agent's UNLOCK_READY_FLAG path "
+            "depends on must never be suppressed on the AIO pre-unlock "
+            "path")
+        self.assertTrue(two_class_calls[0][1].get('force'))
+
+    @mock.patch('sysinv.conductor.manager.'
+                'ConductorManager._config_apply_runtime_manifest')
+    @mock.patch('sysinv.conductor.manager.'
+                'ConductorManager._config_update_hosts')
+    def test_kernel_service_parameter_enqueue_site_outside_guard(
+            self, mock_config_update_hosts,
+            mock_config_apply_runtime_manifest):
+        # kernel service parameter (~L13294): update_service_config() for
+        # SERVICE_PARAM_SECTION_PLATFORM_KERNEL enqueues the single-class
+        # grub runtime unconditionally -- outside update_grub_config()'s
+        # guard.
+        mock_config_update_hosts.return_value = str(uuid.uuid4())
+
+        self.service.update_service_config(
+            self.context,
+            service=constants.SERVICE_TYPE_PLATFORM,
+            do_apply=False,
+            section=constants.SERVICE_PARAM_SECTION_PLATFORM_KERNEL,
+            name=constants.SERVICE_PARAM_NAME_PLATFORM_AUDITD)
+
+        mock_config_update_hosts.assert_called_once()
+        mock_config_apply_runtime_manifest.assert_called_once()
+        config_dict = mock_config_apply_runtime_manifest.call_args[0][2]
+        self.assertEqual(['platform::compute::grub::runtime'],
+                         config_dict['classes'])
+
+    @mock.patch('sysinv.conductor.manager.'
+                'ConductorManager._config_apply_runtime_manifest')
+    @mock.patch('sysinv.conductor.manager.'
+                'ConductorManager._config_update_hosts')
+    def test_intel_pstate_enqueue_site_outside_guard(
+            self, mock_config_update_hosts,
+            mock_config_apply_runtime_manifest):
+        # intel_pstate (~L13317): update_service_config() enqueues the
+        # single-class grub runtime unconditionally -- outside
+        # update_grub_config()'s guard.
+        mock_config_update_hosts.return_value = str(uuid.uuid4())
+
+        self.service.update_service_config(
+            self.context,
+            service=constants.SERVICE_TYPE_PLATFORM,
+            do_apply=False,
+            section=constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG,
+            name=constants.SERVICE_PARAM_NAME_PLAT_CONFIG_INTEL_PSTATE)
+
+        mock_config_update_hosts.assert_called_once()
+        mock_config_apply_runtime_manifest.assert_called_once()
+        config_dict = mock_config_apply_runtime_manifest.call_args[0][2]
+        self.assertEqual(['platform::compute::grub::runtime'],
+                         config_dict['classes'])
+
+    @mock.patch('sysinv.conductor.manager.'
+                'ConductorManager._config_apply_runtime_manifest')
+    @mock.patch('sysinv.conductor.manager.'
+                'ConductorManager._config_update_hosts')
+    def test_amd_pstate_enqueue_site_outside_guard(
+            self, mock_config_update_hosts,
+            mock_config_apply_runtime_manifest):
+        # amd_pstate (~L13334): update_service_config() enqueues the
+        # single-class grub runtime unconditionally -- outside
+        # update_grub_config()'s guard.
+        mock_config_update_hosts.return_value = str(uuid.uuid4())
+
+        self.service.update_service_config(
+            self.context,
+            service=constants.SERVICE_TYPE_PLATFORM,
+            do_apply=False,
+            section=constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG,
+            name=constants.SERVICE_PARAM_NAME_PLAT_CONFIG_AMD_PSTATE)
+
+        mock_config_update_hosts.assert_called_once()
+        mock_config_apply_runtime_manifest.assert_called_once()
+        config_dict = mock_config_apply_runtime_manifest.call_args[0][2]
+        self.assertEqual(['platform::compute::grub::runtime'],
+                         config_dict['classes'])
 
     @mock.patch('sysinv.conductor.manager.'
                 'ConductorManager._config_apply_runtime_manifest')
