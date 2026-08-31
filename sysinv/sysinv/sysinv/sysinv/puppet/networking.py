@@ -824,21 +824,12 @@ class NetworkingPuppet(base.BasePuppet):
             # Derive clock_id based on NIC type.
             if not device_params.get('clock_id'):
                 if is_gnrd:
-                    # E825/zl3073x: firmware clock_id from port
-                    # capabilities (reported by sysinv-agent on each
-                    # host during inventory). This avoids reading local
-                    # sysfs which would give the wrong value when
-                    # generating hieradata for a remote DX controller.
-                    caps = getattr(port_obj, 'capabilities', None) or {}
-                    clock_id = caps.get('dpll_clock_id')
-                    if clock_id and clock_id != '0':
-                        instance['device_parameters'][
-                            'clock_id'] = clock_id
-                    else:
-                        LOG.warning(
-                            "No dpll_clock_id in port capabilities for "
-                            "base port %s on host %s"
-                            % (base_port, host.hostname))
+                    # E825/zl3073x: clock_id is a random value assigned
+                    # at kernel module probe time and changes on every
+                    # reboot. Skip setting it here; puppet will read
+                    # the current value from local sysfs on the target
+                    # host before starting synce4l.
+                    pass
                 else:
                     # E810/E830: EUI-64 derived from base port MAC.
                     # Uses DB value to avoid sysfs reads on remote

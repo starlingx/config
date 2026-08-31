@@ -3990,9 +3990,6 @@ class ConductorManager(service.PeriodicService):
                             'sriov_vf_numchannels': inic['sriov_vf_numchannels'],
                         }
 
-                        if 'capabilities' in inic:
-                            port_dict['capabilities'] = inic['capabilities']
-
                         LOG.info("port %s update attr: %s" %
                                  (port.uuid, port_dict))
                         self.dbapi.ethernet_port_update(port.uuid, port_dict)
