@@ -7471,14 +7471,27 @@ class ConductorManager(service.PeriodicService):
                     personalities = [constants.CONTROLLER]
                     config_uuid = self._config_update_hosts(
                         context, personalities)
+                    # Apply keystone federation AND horizon runtime together.
+                    # horizon::runtime regenerates the WebSSO settings file
+                    # (_31_websso_settings.py) which is gated on the
+                    # oidc-issuer-url hiera key. On the upgrade path the
+                    # horizon class runs during activate BEFORE oidc-issuer-url
+                    # is set, so _31 is not created; the federation flow (which
+                    # is when oidc-issuer-url becomes available) must re-trigger
+                    # horizon so _31 is generated with the OAM WebSSO URL.
+                    # Co-applying in one manifest shares a single config target
+                    # (no extra config-out-of-date churn). horizon's own
+                    # 'if $oidc_issuer_url' gate and subcloud guard keep this
+                    # a no-op where horizon/WebSSO does not apply.
                     config_dict = {
                         "personalities": personalities,
-                        "classes": ['openstack::keystone::server::runtime']
+                        "classes": ['openstack::keystone::server::runtime',
+                                    'openstack::horizon::runtime']
                     }
                     self._config_apply_runtime_manifest(
                         context, config_uuid, config_dict)
-                    LOG.info("Applied deferred Keystone federation "
-                             "configuration")
+                    LOG.info("Applied deferred Keystone federation and "
+                             "Horizon WebSSO configuration")
                 except Exception as e:
                     LOG.error("Failed to apply deferred federation "
                               "config: %s" % e)
