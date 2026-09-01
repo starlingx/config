@@ -7842,6 +7842,20 @@ class ConductorManager(service.PeriodicService):
         PUPPET_RUNTIME_CLASS_OSDS,
         PUPPET_RUNTIME_CLASS_PCI
     ]
+
+    # GRUB-related runtime classes that are safe to apply on locked hosts.
+    # These only modify files on disk and take effect on next reboot (unlock),
+    # avoiding an extra reboot cycle.
+    # Note: platform::config::file::subfunctions::lowlatency::runtime is not
+    # included here as it modifies platform.conf, not GRUB. It is always
+    # dispatched alongside GRUB classes in kernel_runtime_manifests(), so the
+    # any() check will still match via the actual GRUB classes.
+    PUPPET_RUNTIME_GRUB_CLASSES = [
+        'platform::grub::kernel_image::runtime',
+        'platform::compute::grub::runtime',
+        'platform::grub::cgroup_version::runtime',
+        'platform::grub::security_features::runtime',
+    ]
     PUPPET_RUNTIME_FILTER_FILES = [
         PUPPET_RUNTIME_FILES_DOCKER_REGISTRY_KEY_FILE,
         PUPPET_RUNTIME_FILES_DOCKER_REGISTRY_CERT_FILE,
@@ -8070,6 +8084,55 @@ class ConductorManager(service.PeriodicService):
                 LOG.warn("Unable to reapply target config %s to host %s, host may require "
                          "manual lock/unlock to recover: %s" % (config_uuid, host.hostname, e))
 
+    def _should_skip_deferred_config(self, config_uuid, config_dict,
+                                     classes_list):
+        """Determine whether a deferred runtime config should be skipped.
+
+        A non-GRUB runtime manifest targeting only offline (or deleted)
+        hosts can never complete — an offline host has no running puppet
+        agent — so it would block the deferred queue indefinitely. Such
+        configs are skipped and re-applied via a full puppet apply on host
+        unlock. GRUB-related manifests are allowed through since they only
+        write files on disk that take effect on the next reboot (unlock),
+        avoiding an extra reboot cycle.
+
+        Force-applied configs are never skipped — the operator explicitly
+        requested immediate application regardless of host state.
+
+        :param config_uuid: uuid of the deferred config (for logging).
+        :param config_dict: the config dict, containing 'host_uuids'.
+        :param classes_list: list of puppet classes in the manifest.
+        :returns: True if the config should be removed from the deferred
+                  queue, False otherwise.
+        """
+        if config_dict.get('force'):
+            return False
+
+        host_uuids = config_dict.get('host_uuids') or []
+        if not host_uuids:
+            return False
+
+        is_grub_manifest = any(
+            c in self.PUPPET_RUNTIME_GRUB_CLASSES
+            for c in classes_list)
+        if is_grub_manifest:
+            return False
+
+        for host_uuid in host_uuids:
+            try:
+                host = self.dbapi.ihost_get(host_uuid)
+                if host.availability != constants.AVAILABILITY_OFFLINE:
+                    # At least one target host is reachable - do not skip.
+                    return False
+            except exception.ServerNotFound:
+                # Host deleted — ignore it, check remaining hosts.
+                LOG.info(
+                    "Deferred config %s: target host %s no longer "
+                    "exists, ignoring" % (config_uuid, host_uuid))
+                continue
+
+        return True
+
     def _audit_deferred_runtime_config(self, context):
         """With rlock, apply deferred config runtime manifests when ready"""
 
@@ -8097,6 +8160,18 @@ class ConductorManager(service.PeriodicService):
                     # already be in progress
                     config_dict = config.get('config_dict') or {}
                     classes_list = list(config_dict.get('classes') or [])
+
+                    if self._should_skip_deferred_config(
+                            config['config_uuid'], config_dict, classes_list):
+                        LOG.info(
+                            "Skipping non-GRUB deferred config %s for "
+                            "offline host(s) %s, classes: %s. Config will "
+                            "be applied on host unlock." %
+                            (config['config_uuid'],
+                             config_dict.get('host_uuids'), classes_list))
+                        self._host_deferred_runtime_config.remove(config)
+                        continue
+
                     filter_classes = [x for x in self.PUPPET_RUNTIME_FILTER_CLASSES
                                       if x in classes_list]
                     LOG.info("config type %s found filter_classes=%s cd= %s" %
