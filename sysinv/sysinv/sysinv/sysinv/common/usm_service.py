@@ -54,11 +54,13 @@ class UsmUpgrade(object):
 
 
 class UsmHostUpgrade(object):
-    def __init__(self, hostname, from_sw_version, to_sw_version, state):
+    def __init__(self, hostname, from_sw_version, to_sw_version, state,
+                 pre_upgrade_deploy=False):
         self.hostname = hostname
         self.from_sw_version = get_software_version(from_sw_version)
         self.to_sw_version = get_software_version(to_sw_version)
         self.state = state
+        self.pre_upgrade_deploy = pre_upgrade_deploy
 
     # backward compatibility
     @property
@@ -77,7 +79,8 @@ class UsmHostUpgrade(object):
             return UsmHostUpgrade(host_deploy.get("hostname"),
                                   host_deploy.get("software_release"),
                                   host_deploy.get("target_release"),
-                                  host_deploy.get("host_state"))
+                                  host_deploy.get("host_state"),
+                                  host_deploy.get("pre_upgrade_deploy", False))
         return None
 
     @staticmethod
