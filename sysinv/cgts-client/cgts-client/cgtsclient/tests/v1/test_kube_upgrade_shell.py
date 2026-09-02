@@ -10,6 +10,11 @@ from cgtsclient.tests import test_shell
 from cgtsclient.v1.kube_upgrade import KubeUpgrade
 
 
+class FakeCompletedProcess(object):
+    def __init__(self, stdout):
+        self.stdout = stdout
+
+
 class KubeUpgradeTest(test_shell.ShellTest):
 
     def setUp(self):
@@ -303,9 +308,9 @@ class KubeUpgradeTest(test_shell.ShellTest):
         results = self.shell("kube-upgrade-delete --yes")
         self.assertIn("Kubernetes upgrade deleted", results)
 
-    @mock.patch('os.path.exists')
+    @mock.patch('subprocess.run')
     @mock.patch('cgtsclient.v1.kube_upgrade.KubeUpgradeManager.update')
-    def test_kube_upgrade_abort(self, mock_update, mock_os_path_exists):
+    def test_kube_upgrade_abort(self, mock_update, mock_subprocess_run):
         fake_kube_upgrade = {'from_version': 'v1.42.1',
                              'to_version': 'v1.42.2',
                              'state': 'upgrade-aborting',
@@ -314,7 +319,8 @@ class KubeUpgradeTest(test_shell.ShellTest):
                              'updated_at': 'fake-updated-time',
                              }
         mock_update.return_value = KubeUpgrade(None, fake_kube_upgrade, True)
-        mock_os_path_exists.return_value = False
+        fake_completed_process = FakeCompletedProcess("No deploy in progress")
+        mock_subprocess_run.return_value = fake_completed_process
 
         self.make_env()
         results = self.shell("kube-upgrade-abort")
@@ -325,9 +331,9 @@ class KubeUpgradeTest(test_shell.ShellTest):
         self.assertIn(fake_kube_upgrade['created_at'], results)
         self.assertIn(fake_kube_upgrade['updated_at'], results)
 
-    @mock.patch('os.path.exists')
+    @mock.patch('subprocess.run')
     @mock.patch('cgtsclient.v1.kube_upgrade.KubeUpgradeManager.update')
-    def test_kube_upgrade_abort_blocked(self, mock_update, mock_os_path_exists):
+    def test_kube_upgrade_abort_blocked(self, mock_update, mock_subprocess_run):
         """Test that kube-upgrade-abort is blocked when combined p&k upgrade is in progress.
         """
         fake_kube_upgrade = {'from_version': 'v1.42.1',
@@ -338,7 +344,9 @@ class KubeUpgradeTest(test_shell.ShellTest):
                              'updated_at': 'fake-updated-time',
                              }
         mock_update.return_value = KubeUpgrade(None, fake_kube_upgrade, True)
-        mock_os_path_exists.return_value = True
+        # Fake any output from the subprocess.run command that does not contain "No deploy in progress"
+        fake_completed_process = FakeCompletedProcess("deploy-start-done")
+        mock_subprocess_run.return_value = fake_completed_process
 
         self.make_env()
         results = self.shell("kube-upgrade-abort")
