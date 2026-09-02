@@ -20327,9 +20327,9 @@ class ConductorManager(service.PeriodicService):
 
             # FUTURE USE: keep framework, k8s version specific, uncomment as needed
             # The kubelet configmap is used by the K8s upgrade itself.
-            # if self.sanitize_feature_gates_kubelet_configmap(target_version) == 1:
-            #    LOG.error("Problem sanitizing kubelet configmap feature gates.")
-            #    rc = 1
+            if self.sanitize_kubelet_configmap(target_version) == 1:
+                LOG.error("Problem sanitizing kubelet configmap.")
+                rc = 1
 
             # Work around upstream kubeadm configmap parsing issue.
             if self._kube.kubeadm_configmap_reformat(target_version) == 1:
@@ -22969,10 +22969,12 @@ class ConductorManager(service.PeriodicService):
         LOG.info('Successfully updated feature gates in bootstrap file.')
         return rc
 
-    def sanitize_feature_gates_kubelet_configmap(self, target_version):
+    def sanitize_kubelet_configmap(self, target_version):
         """
-        Edit the kubelet configmap and remove stale feature gates that
-        are no longer applicable for the version of K8s that we are upgrading to.
+        Edit the kubelet configmap.
+
+        Remove stale feature gates that are no longer applicable, and set
+        any kubelet configuration fields required for the target version.
         """
         if cutils.is_debian_bullseye():
             newyaml = yaml.YAML()
@@ -22998,6 +23000,12 @@ class ConductorManager(service.PeriodicService):
             # If there aren't any feature gates left, remove the whole thing
             if not feature_gates:
                 kubelet_config.pop('featureGates', {})
+
+            # K8s 1.35+ enforces imagePullSecrets for cached images,
+            # breaking pods without credentials.
+            # Set imagePullCredentialsVerificationPolicy to NeverVerify.
+            if LooseVersion(target_version) >= LooseVersion('v1.35.0'):
+                kubelet_config['imagePullCredentialsVerificationPolicy'] = 'NeverVerify'
 
             # Re-format the embedded entry.
             outstream = StringIO()
