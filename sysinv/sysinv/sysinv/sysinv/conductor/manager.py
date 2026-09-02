@@ -20567,6 +20567,13 @@ class ConductorManager(service.PeriodicService):
         :raises: SysinvException in case of failure
         """
 
+        SECONDS_PER_NODE_ROLLOUT = 40
+        MIN_ROLLOUT_TIMEOUT = 120
+        num_hosts = len(self.dbapi.ihost_get_list())
+        rollout_timeout = max(MIN_ROLLOUT_TIMEOUT,
+                              num_hosts * SECONDS_PER_NODE_ROLLOUT)
+        rollout_timeout_arg = '--timeout=%ss' % rollout_timeout
+
         CALICO_CNI_IMAGE_KEY = 'calico_cni_img'
         CALICO_CTL_KEY = 'calico_ctl_img'
         CALICO_DIKASTES_KEY = 'calico_dikastes_img'
@@ -20920,7 +20927,8 @@ class ConductorManager(service.PeriodicService):
                     cutils.execute(
                         'kubectl', f'--kubeconfig={kubernetes.KUBERNETES_ADMIN_CONF}',
                         'rollout', 'status', 'ds/calico-node', '-n', 'kube-system',
-                        '--timeout=120s', run_as_root=False)
+                        rollout_timeout_arg, run_as_root=False,
+                        attempts=3, delay_on_retry=True)
                     LOG.info("Calico manifest rollout completed successfully.")
                 except Exception as e:
                     raise exception.SysinvException(
@@ -20963,47 +20971,40 @@ class ConductorManager(service.PeriodicService):
                     raise exception.SysinvException("Could not set "
                                                 "FELIX_IPV6SUPPORT=%s: %s" % (felix_ipv6_value, e))
 
-                # 4. Remove unsupported env vars from calico-node DaemonSet
-                # CALICO_ROUTER_ID=hash is needed only for IPv6-only (no IPv4 for BGP Router ID)
-                # Must be removed for IPv4-only and dual-stack configurations
-                unsupported_calico_node_envs = ['CALICO_STARTUP_LOGLEVEL', 'NO_DEFAULT_POOLS']
-                if cluster_network_ipv4:
-                    unsupported_calico_node_envs.append('CALICO_ROUTER_ID')
-
-                unsupported_envs = {
-                    'calico-node': unsupported_calico_node_envs,
-                    'install-cni': ['UPDATE_CNI_BINARIES'],
-                }
-
-                for container, env_vars in unsupported_envs.items():
-                    try:
-                        env_removals = ' '.join([f'{v}-' for v in env_vars])
-                        cutils.execute(
-                            'bash', '-c',
-                            f"kubectl --kubeconfig={kubernetes.KUBERNETES_ADMIN_CONF} "
-                            f"-n kube-system set env ds/calico-node "
-                            f"--containers={container} {env_removals}",
-                            run_as_root=False)
-                    except Exception as e:
-                        raise exception.SysinvException("Could not remove env vars from %s: %s"
-                                    % (container, str(e)))
-
-                # On IPv6-only systems, set CALICO_IPV4POOL_CIDR=none to prevent
-                # calico-node from creating a default IPv4 pool after restart.
-                # NO_DEFAULT_POOLS was removed above (required for operator migration),
-                # so without this, calico-node would create default-ipv4-ippool which
-                # triggers the operator to add nodeAddressAutodetectionV4: firstFound.
+                # 4. Adjust calico-node env vars for operator migration.
+                # On IPv6-only, replace NO_DEFAULT_POOLS with
+                # CALICO_IPV4POOL_CIDR=none in the SAME call: they are mutually
+                # exclusive (calico-node v3.31.x refuses to start with both set),
+                # and CALICO_IPV4POOL_CIDR=none disables the default IPv4 pool
+                # without triggering the operator's nodeAddressAutodetectionV4:
+                # firstFound (which fails on IPv6-only). IPv4/dual-stack keeps the
+                # default pool and drops CALICO_ROUTER_ID (IPv6-only only).
                 if not cluster_network_ipv4:
+                    env_mutations = [
+                        ('calico-node',
+                         'CALICO_STARTUP_LOGLEVEL- NO_DEFAULT_POOLS- '
+                         'CALICO_IPV4POOL_CIDR=none'),
+                        ('install-cni', 'UPDATE_CNI_BINARIES-'),
+                    ]
+                else:
+                    env_mutations = [
+                        ('calico-node',
+                         'CALICO_STARTUP_LOGLEVEL- NO_DEFAULT_POOLS- '
+                         'CALICO_ROUTER_ID-'),
+                        ('install-cni', 'UPDATE_CNI_BINARIES-'),
+                    ]
+
+                for container, env_args in env_mutations:
                     try:
                         cutils.execute(
                             'bash', '-c',
                             f"kubectl --kubeconfig={kubernetes.KUBERNETES_ADMIN_CONF} "
                             f"-n kube-system set env ds/calico-node "
-                            f"--containers=calico-node CALICO_IPV4POOL_CIDR=none",
+                            f"--containers={container} {env_args}",
                             run_as_root=False)
-                        LOG.info("Set CALICO_IPV4POOL_CIDR=none on IPv6-only system.")
                     except Exception as e:
-                        LOG.warning("Failed to set CALICO_IPV4POOL_CIDR=none: %s" % str(e))
+                        raise exception.SysinvException("Could not adjust env vars "
+                                    "on %s: %s" % (container, str(e)))
 
                 LOG.info("Calico-node DaemonSet prepared for operator migration.")
 
@@ -21016,7 +21017,8 @@ class ConductorManager(service.PeriodicService):
                     cutils.execute(
                         'kubectl', f'--kubeconfig={kubernetes.KUBERNETES_ADMIN_CONF}',
                         'rollout', 'status', 'ds/calico-node', '-n', 'kube-system',
-                        '--timeout=120s', run_as_root=False)
+                        rollout_timeout_arg, run_as_root=False,
+                        attempts=3, delay_on_retry=True)
                     LOG.info("Calico-node rollout restart completed.")
                 except Exception as e:
                     raise exception.SysinvException("Could not restart "
@@ -21086,8 +21088,8 @@ class ConductorManager(service.PeriodicService):
                 cutils.execute(
                     'kubectl', f'--kubeconfig={kubernetes.KUBERNETES_ADMIN_CONF}',
                     'rollout', 'status', 'deploy/tigera-operator',
-                    '-n', 'tigera-operator', '--timeout=120s',
-                    run_as_root=False)
+                    '-n', 'tigera-operator', rollout_timeout_arg,
+                    run_as_root=False, attempts=3, delay_on_retry=True)
                 LOG.info("Tigera operator is ready.")
             except Exception as e:
                 raise exception.SysinvException(
