@@ -199,6 +199,51 @@ class PlatformTestCaseKubernetesReservedMemory(base.PuppetTestCaseMixin,
         )
         self.assertEqual(k8s_reserved_memory_config, config)
 
+    @mock.patch('sysinv.common.utils.get_personalities')
+    @mock.patch('sysinv.db.api.get_instance')
+    @mock.patch('sysinv.common.utils.get_numa_index_list')
+    @mock.patch('sysinv.puppet.platform.PlatformPuppet._get_kubelet_eviction_hard_config_MiB')
+    def test_get_host_memory_config_vswitch_size_none(self, mock_eviction, mock_numa_list,
+                                                       mock_dbapi, mock_personalities):
+        """Regression for 2166308.
+
+        vswitch_hugepages_size_mib is a nullable column with no DB default.
+        On a host with no vSwitch hugepages configured (e.g. AIO-DX during
+        legacy restore, when the host is locked/offline and the memory audit
+        is skipped) the value is NULL/None. Previously this raised
+        'TypeError: unsupported operand type(s) for *: NoneType and int'
+        while generating the vswitch node string, crashing per-host hieradata
+        generation. It must now be tolerated and emitted as a 0kB entry.
+        """
+        mock_personalities.return_value = [constants.WORKER]
+
+        # Use a plain object so unset attributes are real None, not Mocks.
+        mock_memory = mock.MagicMock()
+        mock_memory.platform_reserved_mib = 8500
+        mock_memory.vm_pending_as_percentage = False
+        # The defect: this column is None when no vSwitch hugepages exist.
+        mock_memory.vswitch_hugepages_size_mib = None
+        mock_memory.vswitch_hugepages_reqd = None
+        mock_memory.vswitch_hugepages_nr = 0
+        mock_memory.vm_hugepages_nr_2M_pending = None
+        mock_memory.vm_hugepages_nr_2M = 0
+        mock_memory.vm_hugepages_nr_1G_pending = None
+        mock_memory.vm_hugepages_nr_1G = 0
+        mock_memory.vm_hugepages_nr_4K = 0
+
+        mock_dbapi.imemory_get_by_ihost.return_value = [mock_memory]
+        mock_numa_list.return_value = {0: [mock_memory]}
+        mock_eviction.return_value = 100
+
+        mock_host = mock.MagicMock()
+        mock_host.id = 1
+
+        # Must not raise TypeError, and vswitch node reports 0kB.
+        result = self.operator.platform._get_host_memory_config(mock_host)
+        self.assertIn(
+            'node0:0kB:0',
+            result['platform::compute::params::compute_vswitch_reserved'])
+
 
 class PlatformTestCaseStalldConfig(base.PuppetTestCaseMixin,
                                    dbbase.BaseHostTestCase):

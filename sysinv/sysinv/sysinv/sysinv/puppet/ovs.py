@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2018-2023 Wind River Systems, Inc.
+# Copyright (c) 2018-2023, 2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -354,7 +354,8 @@ class OVSPuppet(base.BasePuppet):
 
         host_memory = self.dbapi.imemory_get_by_ihost(host.id)
         for memory in host_memory:
-            vswitch_size = memory.vswitch_hugepages_size_mib
+            vswitch_size = memory.vswitch_hugepages_size_mib \
+                if memory.vswitch_hugepages_size_mib is not None else 0
             vswitch_pages = memory.vswitch_hugepages_reqd \
                 if memory.vswitch_hugepages_reqd is not None \
                 else memory.vswitch_hugepages_nr
