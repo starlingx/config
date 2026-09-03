@@ -9062,18 +9062,29 @@ class ConductorManager(service.PeriodicService):
             LOG.exception(e)
             return
 
-        if self._app.is_app_aborted(app_name):
+        if app.status != constants.APP_APPLY_FAILURE:
+            LOG.info("Auto recover skipped for app %s: status is %s, "
+                      "not apply-failed." % (app_name, app.status))
             return
 
-        if constants.APP_PROGRESS_IMAGES_DOWNLOAD_FAILED not in app.progress:
+        if self._app.is_app_aborted(app_name):
+            LOG.info("Auto recover skipped for app %s: app operation "
+                      "was aborted." % app_name)
             return
 
         if app.recovery_attempts >= constants.APP_AUTO_RECOVERY_MAX_COUNT:
+            LOG.warning("Auto recover skipped for app %s: max recovery "
+                        "attempts (%s) reached." %
+                        (app_name, constants.APP_AUTO_RECOVERY_MAX_COUNT))
             return
 
         tz = app.updated_at.tzinfo
         if (datetime.now(tz) - app.updated_at).total_seconds() \
                 < CONF.conductor.managed_app_auto_recovery_interval:
+            LOG.info("Auto recover skipped for app %s: recovery interval "
+                      "(%ss) has not elapsed since the last update." %
+                      (app_name,
+                       CONF.conductor.managed_app_auto_recovery_interval))
             return
 
         app.status = constants.APP_UPLOAD_SUCCESS

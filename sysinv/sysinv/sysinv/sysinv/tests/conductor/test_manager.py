@@ -59,6 +59,7 @@ from sysinv.common import usm_service
 from sysinv.common.image_download import ContainerImageDownloader
 from sysinv.conductor import kube_app
 from sysinv.conductor import manager
+from sysinv.objects import kube_app as kubeapp_obj
 from sysinv.helm import common as helm_common
 
 from sysinv.db import api as dbapi
@@ -2540,6 +2541,67 @@ class ManagerTestCase(base.DbTestCase):
 
         mock_docker_apiclient_remove_image.assert_not_called()
         mock_pull_image_to_crictl.assert_not_called()
+
+    def test_auto_recover_managed_app_retries_kube_health_failure(self):
+        """Validates the fix for LP #2166362.
+
+        Prior to the fix, _auto_recover_managed_app() only proceeded when
+        constants.APP_PROGRESS_IMAGES_DOWNLOAD_FAILED was present in
+        app.progress. A platform-managed app that failed its apply due to
+        a Kubernetes health check failure (raised from the pre-apply Helm
+        dry-run gate) never got that progress string, so the periodic
+        auto-recover audit skipped it on every cycle and the app stayed
+        stuck in apply-failed indefinitely, with a standing application
+        apply failure alarm.
+
+        The fix removes that overly narrow progress-string restriction so
+        any app in apply-failed status is eligible for auto recovery,
+        subject to the existing throttling (max attempts, recovery
+        interval, not aborted).
+        """
+        app = dbutils.create_test_app(
+            name='test-app',
+            status=constants.APP_APPLY_FAILURE,
+        )
+        # Simulate the progress message left behind by a Kubernetes health
+        # check failure during the pre-apply Helm dry-run.
+        progress_msg = ("Kubernetes health check failure: Kubernetes "
+                         "endpoints are not healthy. Cannot proceed with "
+                         "server-side dry-run.")
+        self.dbapi.kube_app_update(
+            app.id, {'progress': progress_msg})
+
+        # Make the app eligible on every other condition: not aborted,
+        # under the max recovery attempts, and past the recovery interval.
+        stale_updated_at = (timeutils.utcnow() -
+                             datetime.timedelta(seconds=(
+                                 manager.CONF.conductor.managed_app_auto_recovery_interval
+                                 + 60)))
+        self.dbapi.kube_app_update(
+            app.id, {'updated_at': stale_updated_at})
+
+        mock_is_app_aborted = mock.MagicMock(return_value=False)
+        self.service._app = mock.Mock()
+        self.service._app.is_app_aborted = mock_is_app_aborted
+
+        mock_auto_apply = mock.MagicMock()
+        p = mock.patch.object(self.service, '_auto_apply_managed_app',
+                               mock_auto_apply)
+        p.start()
+        self.addCleanup(p.stop)
+
+        self.service._auto_recover_managed_app(
+            self.context, app.name, async_recover=False)
+
+        # FIXED: the app is retried even though its progress message does
+        # not contain APP_PROGRESS_IMAGES_DOWNLOAD_FAILED, because it is a
+        # legitimate apply-failed app eligible for recovery.
+        mock_auto_apply.assert_called_once_with(
+            self.context, app.name, async_apply=False)
+
+        reloaded_app = kubeapp_obj.get_by_name(self.context, app.name)
+        self.assertEqual(constants.APP_UPLOAD_SUCCESS, reloaded_app.status)
+        self.assertEqual(1, reloaded_app.recovery_attempts)
 
     def test_download_images_push_fail_recovers_after_docker_prune(self):
         """Test download_images_from_upstream_to_local_reg_and_crictl:
