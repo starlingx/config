@@ -552,6 +552,20 @@ class OpenStackOperator(object):
             LOG.error("Unable to find Barbican secret %s", name)
             return None
 
+    def get_barbican_secret_by_name_strict(self, context, name):
+        """Look up a Barbican secret by name without swallowing errors.
+
+        Unlike get_barbican_secret_by_name, this does not catch
+        exceptions. Connection failures (e.g. Keystone/Barbican not yet
+        started) propagate to the caller so they can be distinguished
+        from a genuinely absent secret (which returns None). Used by the
+        host UUID Barbican secret migration so it can retry on
+        connectivity errors instead of silently dropping the migration.
+        """
+        client = self._get_barbicanclient()
+        secret_list = client.secrets.list(name=name)
+        return next(iter(secret_list), None)
+
     def create_barbican_secret(self, context, name, payload):
         if not payload:
             LOG.error("Empty password is passed to Barbican %s" % name)

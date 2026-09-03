@@ -75,6 +75,7 @@ from eventlet.green import subprocess
 from eventlet.green import threading
 from fm_api import constants as fm_constants
 from fm_api import fm_api
+from keystoneauth1 import exceptions as ks_exceptions
 from netaddr import IPAddress
 from netaddr import IPNetwork
 from oslo_config import cfg
@@ -150,6 +151,28 @@ from sysinv.zmq_rpc.zmq_rpc import ZmqRpcServer
 MANAGER_TOPIC = 'sysinv.conductor_manager'
 
 LOG = log.getLogger(__name__)
+
+# Keystone/Barbican connection errors that are transient during factory
+# restore-without-reinstall (flock services still starting). The Barbican
+# secret migration retries on these.
+BARBICAN_MIGRATE_RETRY_EXCEPTIONS = (
+    ks_exceptions.ConnectFailure,
+    ks_exceptions.DiscoveryFailure,
+    ks_exceptions.ConnectTimeout,
+)
+
+
+def _retry_on_keystone_unavailable(ex):
+    # During factory restore-without-reinstall, flock services (including
+    # Keystone/Barbican) are stopped/started around the conductor, so the
+    # first migration attempts may hit connection failures. Retry only on
+    # those, not on genuine errors.
+    retriable = isinstance(ex, BARBICAN_MIGRATE_RETRY_EXCEPTIONS)
+    if retriable:
+        LOG.info("Keystone/Barbican not reachable yet for Barbican secret "
+                 "migration; retrying... Exception: %s" % ex)
+    return retriable
+
 
 codename = get_debian_codename()
 
@@ -558,12 +581,20 @@ class ConductorManager(service.PeriodicService):
                 except Exception as e:
                     LOG.exception("Failed to update host UUID in DB: %s" % e)
                     raise
-                self._migrate_barbican_secret(old_uuid, tsc.host_uuid)
+                # Migrate the Barbican secret asynchronously. During factory
+                # restore-without-reinstall, Keystone/Barbican may still be
+                # starting when the conductor runs; the migration retries on
+                # connection failure until they are reachable, so it must not
+                # block conductor startup.
+                greenthread.spawn(self._migrate_barbican_secret,
+                                  old_uuid, tsc.host_uuid)
                 return tsc.host_uuid
             return ahost.uuid
         else:
             return None
 
+    @retry(wait_fixed=15 * 1000, stop_max_delay=300 * 1000,
+           retry_on_exception=_retry_on_keystone_unavailable)
     def _migrate_barbican_secret(self, old_name, new_name):
         """Migrate a Barbican secret from old_name to new_name.
 
@@ -571,32 +602,80 @@ class ConductorManager(service.PeriodicService):
         the old UUID becomes unreachable. This method retrieves the
         secret payload stored under old_name, creates a new secret
         under new_name, and deletes the old one.
+
+        This runs at conductor startup during factory
+        restore-without-reinstall, when Keystone/Barbican may not be up
+        yet. The strict lookup raises on connection failure (rather than
+        returning None like get_barbican_secret_by_name), so the @retry
+        decorator can wait for the services to become reachable instead
+        of mistaking "not reachable" for "secret absent" and silently
+        dropping the migration.
         """
+        openstack_op = openstack.OpenStackOperator(self.dbapi)
+        context = ctx.RequestContext(user_id='admin',
+                                     project_id='admin',
+                                     is_admin=True)
         try:
-            openstack_op = openstack.OpenStackOperator(self.dbapi)
-            context = ctx.RequestContext(user_id='admin',
-                                         project_id='admin',
-                                         is_admin=True)
-            secret = openstack_op.get_barbican_secret_by_name(
+            # Strict lookup: raises ConnectFailure if Keystone/Barbican are
+            # not reachable (retried), returns None only if genuinely absent.
+            secret = openstack_op.get_barbican_secret_by_name_strict(
                 context, old_name)
-            if not secret:
-                LOG.debug("No Barbican secret found under old host UUID %s, "
-                          "nothing to migrate." % old_name)
-                return
+        except BARBICAN_MIGRATE_RETRY_EXCEPTIONS:
+            # Connection failures are re-raised for @retry to handle;
+            # non-retriable errors fall through to give up gracefully.
+            raise
+        except Exception:
+            LOG.warning("Failed to look up Barbican secret %s for migration. "
+                        "BMC credentials may need to be re-entered."
+                        % old_name)
+            return
+
+        if not secret:
+            LOG.info("No Barbican secret found under old host UUID %s, "
+                     "nothing to migrate." % old_name)
+            return
+
+        try:
             # Retrieve the payload from the existing secret
             payload = secret.payload
-            if payload:
-                # Create the secret under the new name
-                openstack_op.create_barbican_secret(
-                    context, new_name, payload)
-                # Delete the old secret
-                openstack_op.delete_barbican_secret(context, old_name)
-                LOG.info("Migrated Barbican secret from %s to %s"
-                         % (old_name, new_name))
-            else:
-                LOG.warning("Barbican secret %s has no payload, "
-                            "deleting orphaned secret." % old_name)
-                openstack_op.delete_barbican_secret(context, old_name)
+            if not payload:
+                # The payload is fetched lazily by the barbicanclient (a
+                # separate GET on the secret). StarlingX never creates a
+                # secret without a payload (create_barbican_secret rejects an
+                # empty payload), so an empty payload here most likely means
+                # the lazy fetch failed or returned empty rather than the
+                # credential being truly absent. Log a warning for this,
+                # and leave it for manual re-provisioning.
+                LOG.warning("Barbican secret %s has no retrievable payload; "
+                            "not migrating and keeping the existing secret. "
+                            "BMC credentials may need to be re-entered."
+                            % old_name)
+                return
+
+            # Create the secret under the new name
+            openstack_op.create_barbican_secret(context, new_name, payload)
+
+            # Verify the new secret is actually present before deleting the
+            # old one. create_barbican_secret swallows connection errors and
+            # returns None/False, so confirm success to avoid losing the
+            # secret. If the new secret is not present (and the lookup did
+            # not raise a connection error, which would be retried), keep the
+            # old secret and leave it for manual re-provisioning rather than
+            # deleting it.
+            new_secret = openstack_op.get_barbican_secret_by_name_strict(
+                context, new_name)
+            if not new_secret:
+                LOG.warning("Barbican secret %s was not present after create; "
+                            "keeping old secret %s. BMC credentials may need "
+                            "to be re-entered." % (new_name, old_name))
+                return
+
+            # Delete the old secret
+            openstack_op.delete_barbican_secret(context, old_name)
+            LOG.info("Migrated Barbican secret from %s to %s"
+                     % (old_name, new_name))
+        except BARBICAN_MIGRATE_RETRY_EXCEPTIONS:
+            raise
         except Exception:
             LOG.warning("Failed to migrate Barbican secret from %s to %s. "
                         "BMC credentials may need to be re-entered."

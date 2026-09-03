@@ -40,6 +40,7 @@ from cryptography import x509
 from cryptography.hazmat.backends import default_backend
 
 from fm_api import constants as fm_constants
+from keystoneauth1 import exceptions as ks_exceptions
 from oslo_context import context
 from oslo_db import exception as oslo_db_exception
 from oslo_serialization import base64
@@ -13993,9 +13994,9 @@ class TestGetActiveControllerUuid(base.DbTestCase):
         platform.conf value."""
         new_uuid = str(uuid.uuid4())
         with mock.patch('tsconfig.tsconfig.host_uuid', new_uuid):
-            with mock.patch.object(
-                self.service, '_migrate_barbican_secret'
-            ) as mock_migrate:
+            with mock.patch(
+                'sysinv.conductor.manager.greenthread.spawn'
+            ) as mock_spawn:
                 result = self.service._get_active_controller_uuid()
                 self.assertEqual(new_uuid, result)
 
@@ -14004,8 +14005,10 @@ class TestGetActiveControllerUuid(base.DbTestCase):
                 self.assertEqual(new_uuid, updated_host.uuid)
                 self.assertEqual('controller-0', updated_host.hostname)
 
-                # Verify barbican migration was called with old and new uuid
-                mock_migrate.assert_called_once_with(
+                # Verify barbican migration was spawned asynchronously with
+                # old and new uuid (must not block conductor startup).
+                mock_spawn.assert_called_once_with(
+                    self.service._migrate_barbican_secret,
                     self.host_uuid, new_uuid)
 
     def test_platform_conf_uuid_update_fails_raises(self):
@@ -14051,14 +14054,20 @@ class TestMigrateBarbicanSecret(base.DbTestCase):
         mock_openstack = mock_openstack_cls.return_value
         mock_secret = mock.MagicMock()
         mock_secret.payload = self.bmc_password
-        mock_openstack.get_barbican_secret_by_name.return_value = mock_secret
+        # First strict lookup returns the old secret; the post-create
+        # verification lookup returns the new secret.
+        new_secret = mock.MagicMock()
+        mock_openstack.get_barbican_secret_by_name_strict.side_effect = [
+            mock_secret, new_secret]
 
         self.service._migrate_barbican_secret(self.old_uuid, self.new_uuid)
 
-        mock_openstack.get_barbican_secret_by_name.assert_called_once_with(
+        mock_openstack.get_barbican_secret_by_name_strict.assert_any_call(
             mock.ANY, self.old_uuid)
         mock_openstack.create_barbican_secret.assert_called_once_with(
             mock.ANY, self.new_uuid, self.bmc_password)
+        mock_openstack.get_barbican_secret_by_name_strict.assert_any_call(
+            mock.ANY, self.new_uuid)
         mock_openstack.delete_barbican_secret.assert_called_once_with(
             mock.ANY, self.old_uuid)
 
@@ -14066,36 +14075,37 @@ class TestMigrateBarbicanSecret(base.DbTestCase):
     def test_no_secret_exists_does_nothing(self, mock_openstack_cls):
         """When no secret exists under old UUID, nothing happens."""
         mock_openstack = mock_openstack_cls.return_value
-        mock_openstack.get_barbican_secret_by_name.return_value = None
+        mock_openstack.get_barbican_secret_by_name_strict.return_value = None
 
         self.service._migrate_barbican_secret(self.old_uuid, self.new_uuid)
 
-        mock_openstack.get_barbican_secret_by_name.assert_called_once_with(
+        mock_openstack.get_barbican_secret_by_name_strict.assert_called_once_with(
             mock.ANY, self.old_uuid)
         mock_openstack.create_barbican_secret.assert_not_called()
         mock_openstack.delete_barbican_secret.assert_not_called()
 
     @mock.patch('sysinv.conductor.openstack.OpenStackOperator')
     def test_secret_exists_but_empty_payload(self, mock_openstack_cls):
-        """When a secret exists but has no payload, delete the orphaned
-        secret."""
+        """When a secret exists but has no retrievable payload, keep the
+        existing secret and do not delete it (an empty payload is most
+        likely a failed lazy fetch, not a genuinely absent credential)."""
         mock_openstack = mock_openstack_cls.return_value
         mock_secret = mock.MagicMock()
         mock_secret.payload = None
-        mock_openstack.get_barbican_secret_by_name.return_value = mock_secret
+        mock_openstack.get_barbican_secret_by_name_strict.return_value = \
+            mock_secret
 
         self.service._migrate_barbican_secret(self.old_uuid, self.new_uuid)
 
         mock_openstack.create_barbican_secret.assert_not_called()
-        mock_openstack.delete_barbican_secret.assert_called_once_with(
-            mock.ANY, self.old_uuid)
+        mock_openstack.delete_barbican_secret.assert_not_called()
 
     @mock.patch('sysinv.conductor.openstack.OpenStackOperator')
     def test_barbican_lookup_fails_gracefully(self, mock_openstack_cls):
-        """When barbican raises an exception, migration logs warning
-        but does not crash."""
+        """When barbican raises a non-retriable exception, migration logs
+        warning but does not crash."""
         mock_openstack = mock_openstack_cls.return_value
-        mock_openstack.get_barbican_secret_by_name.side_effect = \
+        mock_openstack.get_barbican_secret_by_name_strict.side_effect = \
             Exception("Barbican unavailable")
 
         # Should not raise
@@ -14108,12 +14118,43 @@ class TestMigrateBarbicanSecret(base.DbTestCase):
         mock_openstack = mock_openstack_cls.return_value
         mock_secret = mock.MagicMock()
         mock_secret.payload = self.bmc_password
-        mock_openstack.get_barbican_secret_by_name.return_value = mock_secret
+        mock_openstack.get_barbican_secret_by_name_strict.return_value = \
+            mock_secret
         mock_openstack.create_barbican_secret.side_effect = \
             Exception("Barbican create failed")
 
         # Should not raise
         self.service._migrate_barbican_secret(self.old_uuid, self.new_uuid)
+
+    @mock.patch('sysinv.conductor.openstack.OpenStackOperator')
+    def test_migration_verifies_new_secret_before_delete(
+            self, mock_openstack_cls):
+        """If the new secret is not present after create, the old secret
+        must NOT be deleted (avoids losing the secret)."""
+        mock_openstack = mock_openstack_cls.return_value
+        mock_secret = mock.MagicMock()
+        mock_secret.payload = self.bmc_password
+        # Old lookup returns the secret; post-create verification returns
+        # None (create did not take effect). The forced ConnectFailure is
+        # caught by the method's handler so it does not crash the test, but
+        # the old secret must not be deleted.
+        mock_openstack.get_barbican_secret_by_name_strict.side_effect = [
+            mock_secret, None]
+
+        self.service._migrate_barbican_secret(self.old_uuid, self.new_uuid)
+
+        mock_openstack.create_barbican_secret.assert_called_once()
+        mock_openstack.delete_barbican_secret.assert_not_called()
+
+    def test_retry_predicate_matches_connection_errors(self):
+        """The retry predicate retries on Keystone connection failures
+        only, not on arbitrary exceptions."""
+        predicate = manager._retry_on_keystone_unavailable
+        self.assertTrue(predicate(ks_exceptions.ConnectFailure("x")))
+        self.assertTrue(predicate(ks_exceptions.DiscoveryFailure("x")))
+        self.assertTrue(predicate(ks_exceptions.ConnectTimeout("x")))
+        self.assertFalse(predicate(ValueError("x")))
+        self.assertFalse(predicate(Exception("x")))
 
 
 class TestIhostUpdateUuid(base.DbTestCase):
