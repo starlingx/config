@@ -282,13 +282,15 @@ start()
     mkdir -p $PLATFORM_DIR
     # nfs-mount controller-platform-nfs:$PLATFORM_DIR $PLATFORM_DIR
     mount_retries=5
+    nfs_mount_rc=1
     for retry in $(seq 1 ${mount_retries}); do
-        nfs-mount controller-platform-nfs:$PLATFORM_DIR $PLATFORM_DIR && break
+        nfs-mount controller-platform-nfs:$PLATFORM_DIR $PLATFORM_DIR
+        nfs_mount_rc=$?
+        [ $nfs_mount_rc -eq 0 ] && break
         logger -t ${LOGGER_TAG} -p daemon.warn "NFS mount failed (${retry}/${mount_retries}), retrying in 1s..."
         sleep 1
     done
-
-    if [ $? -ne 0 ]
+    if [ $nfs_mount_rc -ne 0 ]
     then
         fatal_error "Unable to mount $PLATFORM_DIR"
     fi
