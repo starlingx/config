@@ -41,7 +41,7 @@ from sysinv import objects
 LOG = log.getLogger(__name__)
 
 # Maximum number of equal cost paths for a destination subnet
-SYSINV_ROUTE_MAX_PATHS = 4
+SYSINV_ROUTE_MAX_PATHS = 1
 
 # Defines the list of interface network types that support routes
 ALLOWED_NETWORK_TYPES = [constants.NETWORK_TYPE_DATA,
@@ -297,6 +297,8 @@ class RouteController(rest.RestController):
         return
 
     def _check_duplicate_route(self, host_id, route):
+        # This code test duplicate route with ECMP support
+        # it means the network/prefix and gateway should be the same
         result = self._query_route(host_id, route)
         if not result:
             return
@@ -322,10 +324,16 @@ class RouteController(rest.RestController):
             if self._is_same_subnet(entry, route):
                 count += 1
         if count >= SYSINV_ROUTE_MAX_PATHS:
-            raise exception.RouteMaxPathsForSubnet(
-                count=SYSINV_ROUTE_MAX_PATHS,
-                network=entry['network'],
-                prefix=entry['prefix'])
+            # ECMP not supported
+            if SYSINV_ROUTE_MAX_PATHS == 1:
+                raise exception.RouteAlreadyExistsForSubnet(
+                    network=route['network'],
+                    prefix=route['prefix'])
+            else:
+                raise exception.RouteMaxPathsForSubnet(
+                    count=SYSINV_ROUTE_MAX_PATHS,
+                    network=entry['network'],
+                    prefix=entry['prefix'])
 
     def _check_reachable_gateway(self, interface_id, route):
         result = pecan.request.dbapi.addresses_get_by_interface(interface_id)

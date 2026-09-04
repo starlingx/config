@@ -192,6 +192,61 @@ class TestPost(RouteTestCase):
             error_message="not reachable by any address on this interface",
         )
 
+    def test_create_route_same_subnet_diff_gateway_fails(self):
+        # two routes with the same network/prefix/metric but a
+        # different gateway share the same kernel routing key.
+        # The kernel cannot install both, so the second one must
+        # be rejected even though the gateway differs.
+        self._test_create_route_success(
+            self.interface,
+            family=4,
+            network='10.10.10.0',
+            prefix=24,
+            gateway=str(self.system_controller_subnet[200]),
+        )
+        self._test_create_route_fail(
+            self.interface,
+            family=4,
+            network='10.10.10.0',
+            prefix=24,
+            gateway=str(self.system_controller_subnet[201]),
+            status_code=http_client.CONFLICT,
+            error_message="already exists on this host",
+        )
+
+    def test_create_route_same_subnet_diff_interface_fails(self):
+        # the same routing key installed via two different egress
+        # interfaces is also indistinguishable to the kernel and must be
+        # rejected.
+        second_interface = dbutils.create_test_interface(
+            ifname="test1",
+            ifclass=constants.INTERFACE_CLASS_PLATFORM,
+            forihostid=self.host.id,
+            ihost_uuid=self.host.uuid)
+        dbutils.create_test_address(
+            interface_id=second_interface.id,
+            name="enptest02",
+            family=self.system_controller_subnet.version,
+            address=str(self.system_controller_subnet[26]),
+            prefix=self.system_controller_subnet.prefixlen)
+
+        self._test_create_route_success(
+            self.interface,
+            family=4,
+            network='10.10.10.0',
+            prefix=24,
+            gateway=str(self.system_controller_subnet[200]),
+        )
+        self._test_create_route_fail(
+            second_interface,
+            family=4,
+            network='10.10.10.0',
+            prefix=24,
+            gateway=str(self.system_controller_subnet[201]),
+            status_code=http_client.CONFLICT,
+            error_message="already exists on this host",
+        )
+
 
 class TestPostUpgrade(RouteTestCase):
     """ Tests route create operation during an upgrade.
