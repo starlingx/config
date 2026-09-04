@@ -8524,7 +8524,9 @@ class ConductorManager(service.PeriodicService):
             return False
 
     @kubernetes.test_k8s_health
-    def _auto_apply_managed_app(self, context, app_name, async_apply=True):
+    def _auto_apply_managed_app(
+        self, context, app_name, async_apply=True, is_reapply_process=False
+    ):
         try:
             app = kubeapp_obj.get_by_name(context, app_name)
         except exception.KubeAppNotFound as e:
@@ -8559,7 +8561,8 @@ class ConductorManager(service.PeriodicService):
             context,
             app_name,
             status_constraints=(constants.APP_UPLOAD_SUCCESS, constants.APP_APPLY_SUCCESS,),
-            async_apply=async_apply
+            async_apply=async_apply,
+            is_reapply_process=is_reapply_process
         )
 
     def update_apps_based_on_k8s_version(self, context, k8s_version, k8s_upgrade_timing):
@@ -9786,9 +9789,13 @@ class ConductorManager(service.PeriodicService):
                                          app_name,
                                          status_constraints=None,
                                          async_apply=True,
-                                         is_reapply=False):
+                                         is_reapply_process=False):
         self._inner_sync_auto_apply(
-            context, app_name, status_constraints, async_apply, is_reapply=is_reapply
+            context,
+            app_name,
+            status_constraints,
+            async_apply,
+            is_reapply_process=is_reapply_process,
         )
 
     def _inner_sync_auto_apply(self,
@@ -9796,7 +9803,7 @@ class ConductorManager(service.PeriodicService):
                                app_name,
                                status_constraints=None,
                                async_apply=True,
-                               is_reapply=False):
+                               is_reapply_process=False):
         """
         Synchronizes and triggers the automatic apply/re-apply of a Kubernetes app
         based on its presence and status constraints.
@@ -9832,10 +9839,22 @@ class ConductorManager(service.PeriodicService):
         lifecycle_hook_info.mode = LifecycleConstants.APP_LIFECYCLE_MODE_AUTO
 
         if async_apply:
-            greenthread.spawn(self.perform_app_apply,
-                              context, app, app.mode, lifecycle_hook_info, is_reapply)
+            greenthread.spawn(
+                self.perform_app_apply,
+                context,
+                app,
+                app.mode,
+                lifecycle_hook_info,
+                is_reapply_process=is_reapply_process,
+            )
         else:
-            self.perform_app_apply(context, app, app.mode, lifecycle_hook_info, is_reapply)
+            self.perform_app_apply(
+                context,
+                app,
+                app.mode,
+                lifecycle_hook_info,
+                is_reapply_process=is_reapply_process,
+            )
 
     def check_nodes_stable(self):
         """Check if the nodes are in a stable state in order to allow apps to be applied"""
@@ -18240,7 +18259,7 @@ class ConductorManager(service.PeriodicService):
             ):
                 # Reapply on only targeted app if flag is set to 'reapply'.
                 try:
-                    self._auto_apply_managed_app(context, app_name)
+                    self._auto_apply_managed_app(context, app_name, is_reapply_process=True)
                 except Exception as e:
                     LOG.exception("Failed to perform on-demand reapply for "
                                   "application '%s'. Error: %s", app_name, e)
