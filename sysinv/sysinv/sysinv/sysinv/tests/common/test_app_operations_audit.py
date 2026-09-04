@@ -200,6 +200,49 @@ class TestAppOperationsAudit(unittest.TestCase):
 
         self.mock_perform_parallel.assert_not_called()
 
+    def test_update_uploaded_apps_with_uploaded_apps(self):
+        """Test updating apps that are in the uploaded state"""
+        self.audit._app_statuses = self._create_app_statuses(
+            cert_manager=constants.APP_UPLOAD_SUCCESS,
+            ipsec_policy_operator=constants.APP_UPLOAD_SUCCESS,
+        )
+
+        self.audit.update_uploaded_apps()
+
+        # Should trigger the update for the uploaded apps only
+        self.mock_perform_parallel.assert_called_once()
+        call_args = self.mock_perform_parallel.call_args[0]
+        self.assertEqual(call_args[0], self.mock_context)
+        self.assertIn("cert-manager", call_args[1])
+        self.assertIn("ipsec-policy-operator", call_args[1])
+        # Applied apps must not be included
+        self.assertNotIn("platform-integ-apps", call_args[1])
+        self.assertEqual(call_args[2], constants.APP_UPLOAD_OP)
+
+    def test_update_uploaded_apps_no_uploaded_apps(self):
+        """Test update when no apps are in the uploaded state"""
+        self.audit._app_statuses = self._create_app_statuses()
+
+        self.audit.update_uploaded_apps()
+
+        self.mock_perform_parallel.assert_not_called()
+
+    def test_update_uploaded_apps_skips_non_uploaded_states(self):
+        """Test that only uploaded apps are selected, ignoring other states"""
+        self.audit._app_statuses = self._create_app_statuses(
+            cert_manager=constants.APP_UPLOAD_SUCCESS,
+            oidc_auth_apps=constants.APP_NOT_PRESENT,
+            platform_integ_apps=constants.APP_APPLY_FAILURE,
+            rook_ceph=constants.APP_UPLOAD_FAILURE,
+        )
+
+        self.audit.update_uploaded_apps()
+
+        self.mock_perform_parallel.assert_called_once()
+        call_args = self.mock_perform_parallel.call_args[0]
+        self.assertEqual(call_args[1], ["cert-manager"])
+        self.assertEqual(call_args[2], constants.APP_UPLOAD_OP)
+
     def test_execute_apply_operation(self):
         """Test executing apply operation"""
         self.audit._app_statuses = self._create_app_statuses(
@@ -376,9 +419,9 @@ class TestAppOperationsAudit(unittest.TestCase):
             self.assertEqual(call[0][1], constants.APP_RECOVER_OP)
 
     @patch.object(AppOperationsAudit, '_execute_apply_reapply_recover_update')
-    def test_update_apps(self, mock_execute):
-        """Test update_apps calls execute with correct parameters"""
-        self.audit.update_apps()
+    def test_update_applied_apps(self, mock_execute):
+        """Test update_applied_apps calls execute with correct parameters"""
+        self.audit.update_applied_apps()
 
         # Should call for class apps (2 classes), independent apps, and dependent apps
         self.assertEqual(mock_execute.call_count, 4)
@@ -388,14 +431,16 @@ class TestAppOperationsAudit(unittest.TestCase):
         for call in calls:
             self.assertEqual(call[0][1], constants.APP_UPDATE_OP)
 
-    @patch.object(AppOperationsAudit, 'update_apps')
+    @patch.object(AppOperationsAudit, 'update_applied_apps')
+    @patch.object(AppOperationsAudit, 'update_uploaded_apps')
     @patch.object(AppOperationsAudit, 'recover_failed_apps')
     @patch.object(AppOperationsAudit, 'reapply_apps')
     @patch.object(AppOperationsAudit, 'apply_missing_apps')
     @patch.object(AppOperationsAudit, 'upload_missing_apps')
     @patch.object(AppOperationsAudit, 'load_app_status')
     def test_trigger_automatic_operations(self, mock_load, mock_upload, mock_apply,
-                                          mock_reapply, mock_recover, mock_update):
+                                          mock_reapply, mock_recover,
+                                          mock_update_uploaded, mock_update):
         """Test trigger_automatic_operations calls all operations in order"""
         self.audit.trigger_automatic_operations()
 
@@ -405,6 +450,7 @@ class TestAppOperationsAudit(unittest.TestCase):
         mock_apply.assert_called_once()
         mock_reapply.assert_called_once()
         mock_recover.assert_called_once()
+        mock_update_uploaded.assert_called_once()
         mock_update.assert_called_once()
 
     def test_apply_missing_apps_with_empty_class_lists(self):

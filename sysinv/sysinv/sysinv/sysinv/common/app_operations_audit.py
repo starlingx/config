@@ -272,7 +272,7 @@ class AppOperationsAudit():  # noqa: H238
             self._execute_automatic_operation_sync,
         )
 
-    def update_apps(self):
+    def update_applied_apps(self):
         """
         Attempt to update all applications by executing the update operation
         for each category of apps in a specific order:
@@ -305,6 +305,34 @@ class AppOperationsAudit():  # noqa: H238
             self._execute_automatic_operation_sync,
         )
 
+    def update_uploaded_apps(self):
+        """
+        Automatically updates platform-managed applications that are currently
+        in the uploaded state.
+
+        Iterates over the managed applications, selecting those whose status is
+        APP_UPLOAD_SUCCESS, and triggers a parallel update operation for them.
+        Only apps that have a newer, k8s-compatible tarball version available on
+        the platform will actually be updated; the others are left unchanged.
+        This allows uploaded but not yet applied apps to be updated to a higher
+        available version.
+        """
+        app_to_update_list = []
+
+        for app_name in self._managed_apps:
+            if self._app_statuses[app_name] == constants.APP_UPLOAD_SUCCESS:
+                app_to_update_list.append(app_name)
+
+        if not app_to_update_list:
+            return
+
+        LOG.info(f"Evaluating auto update for uploaded platform managed apps {app_to_update_list}")
+        self._perform_automatic_operation_in_parallel_fn(
+            self._context,
+            app_to_update_list,
+            constants.APP_UPLOAD_OP,
+        )
+
     def trigger_automatic_operations(self):
         """
         Performs a sequence of automatic operations related to platform application management.
@@ -314,8 +342,11 @@ class AppOperationsAudit():  # noqa: H238
             - Applying applications with desire state "applied" that have not yet been applied.
             - Reapplying applications as needed.
             - Recovering applications that have failed to apply.
-            - Performing updates on all applications if have tarballs with a superior version
-              available that are compatible with the k8s version of the platform.
+            - Updating uploaded applications that have a higher compatible version
+              available by removing the currently uploaded version and uploading the
+              new one from the tarball.
+            - Updating all applied applications that have a higher compatible version
+              available in a tarball on the platform.
         """
         # Populate the app statuses
         self.load_app_status()
@@ -324,4 +355,5 @@ class AppOperationsAudit():  # noqa: H238
         self.apply_missing_apps()
         self.reapply_apps()
         self.recover_failed_apps()
-        self.update_apps()
+        self.update_uploaded_apps()
+        self.update_applied_apps()
