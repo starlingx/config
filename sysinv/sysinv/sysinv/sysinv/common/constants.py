@@ -2913,12 +2913,9 @@ IPSEC_CERT_ALARM_BEFORE = '14d'
 
 # OS type
 OS_RELEASE_FILE = '/etc/os-release'
-OS_CENTOS = 'centos'
 OS_DEBIAN = 'debian'
 OS_DEBIAN_BULLSEYE = 'bullseye'
 OS_DEBIAN_TRIXIE = 'trixie'
-SUPPORTED_OS_TYPES = [OS_CENTOS, OS_DEBIAN]
-OS_UPGRADE_FEED_FOLDER = '/var/www/pages/feed/'
 
 # OSTree
 OSTREE_ROOT_FOLDER = '/sysroot/ostree/'

@@ -215,33 +215,6 @@ class LldpInterfaceDetailTestsMixin(object):
             self.assertIn(i_val, self.expected_neighbor_port_ids)
 
 
-# Centos environment is shipped with lldpcli version 0.9.0
-class TestCentosLldpInterfaceDetail(LldpInterfaceDetailTestsMixin,
-                                    base.TestCase):
-    version_dir = "0.9.0"
-    hostname = "controller-0"
-    # num_expected_agents
-    # parsed from lldp_show_interface_detail.json
-    num_expected_agents = 5
-    # num_expected_neighbors and expected_neighbor_ttl
-    # parsed from  lldp_show_neighbor_detail.json
-    num_expected_neighbors = 1
-    expected_neighbor_ttl = "3544"
-    # expected_neighbor_interfaces and expected_neighbor_port_ids
-    # parsed from  lldp_show_neighbor_summary.json
-    # centos has the port value as a 'ifname'
-    expected_neighbor_interfaces = ["eno1", ]
-    expected_neighbor_port_ids = ["Gi0/39"]
-
-    def setUp(self):
-        super(TestCentosLldpInterfaceDetail, self).setUp()
-        self.mocked_get_os_type = mock.patch(
-            'sysinv.common.utils.get_os_type',
-            return_value=constants.OS_CENTOS)
-        self.mocked_get_os_type.start()
-        self.addCleanup(self.mocked_get_os_type.stop)
-
-
 class TestDebianLldpInterfaceDetail(LldpInterfaceDetailTestsMixin,
                                     base.TestCase):
     version_dir = "1.0.11"

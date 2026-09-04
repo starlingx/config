@@ -2143,49 +2143,7 @@ class ConductorManager(service.PeriodicService):
         if hw_settle != "0":
             install_opts += ['-H', hw_settle]
 
-        if cutils.get_os_target(sw_version) == constants.OS_DEBIAN:
-            install_opts += ['-d']
-        else:
-            install_output = host.get('install_output') or "text"
-            if install_output == "text":
-                install_output_arg = "-t"
-            elif install_output == "graphical":
-                install_output_arg = "-g"
-            else:
-                LOG.warning("install_output set to invalid value (%s)"
-                            % install_output)
-                install_output_arg = "-t"
-            install_opts += [install_output_arg]
-
-            # This method is called during upgrades to
-            # re-generate the host's pxe config files to the appropriate host's
-            # software version. It is required specifically when we downgrade a
-            # host or when we lock/unlock a host.
-            host_uuid = host.get('uuid')
-            notify_url = \
-                "http://pxecontroller:%d/v1/ihosts/%s/install_progress" % \
-                (CONF.sysinv_api_port, host_uuid)
-            install_opts += ['-u', notify_url]
-
-            system = self.dbapi.isystem_get_one()
-
-            secprofile = system.security_profile
-            # ensure that the securtiy profile selection is valid
-            if secprofile not in [constants.SYSTEM_SECURITY_PROFILE_STANDARD,
-                                  constants.SYSTEM_SECURITY_PROFILE_EXTENDED]:
-                LOG.error("Security Profile (%s) not a valid selection. "
-                          "Defaulting to: %s" % (secprofile,
-                                                 constants.SYSTEM_SECURITY_PROFILE_STANDARD))
-                secprofile = constants.SYSTEM_SECURITY_PROFILE_STANDARD
-            install_opts += ['-s', secprofile]
-
-            # If 'tboot' is present in ihost_obj, retrieve and send the value
-            if 'tboot' in host:
-                tboot = host.get('tboot')
-                if tboot is not None and tboot != "":
-                    install_opts += ['-T', tboot]
-
-            install_opts += ['-k', system.security_feature]
+        install_opts += ['-d']
 
         # If 'console' is not present in ihost_obj, we use the default.
         # If, however, it is present and is explicitly set to None or "",

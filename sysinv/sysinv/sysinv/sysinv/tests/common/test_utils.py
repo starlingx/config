@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2021-2025 Wind River Systems, Inc.
+# Copyright (c) 2021-2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -372,72 +372,6 @@ class TestCommonUtils(base.TestCase):
         mock_host_label.label_key = 'sriovdp'
         mock_host_label.label_value = None
         self.assertFalse(utils.has_sriovdp_enabled([mock_host_label]))
-
-    @mock.patch("sysinv.common.utils.os")
-    def test_get_rpm_package_updates(self, mock_os):
-        load_version = "1.0"
-        playbook_pkg = "playbookconfig"
-
-        mock_os.path.isdir.return_value = True
-        mock_os.listdir.return_value = [playbook_pkg]
-
-        result = utils.get_rpm_package(load_version, playbook_pkg)
-
-        self.assertIsNotNone(result, playbook_pkg)
-
-    @mock.patch("sysinv.common.utils.os")
-    def test_get_rpm_package_feed(self, mock_os):
-        load_version = "1.0"
-        playbook_pkg = "playbookconfig"
-
-        mock_os.path.isdir.side_effect = [False, True]
-        mock_os.listdir.return_value = [playbook_pkg]
-
-        result = utils.get_rpm_package(load_version, playbook_pkg)
-
-        self.assertIsNotNone(result, playbook_pkg)
-
-    @mock.patch("sysinv.common.utils.os")
-    def test_get_rpm_package_not_found(self, mock_os):
-        load_version = "1.0"
-        playbook_pkg = "cowsay"
-
-        mock_os.listdir.return_value = ["playbookconfig"]
-
-        result = utils.get_rpm_package(load_version, playbook_pkg)
-
-        self.assertIsNone(result, playbook_pkg)
-
-    @mock.patch("sysinv.common.utils.subprocess")
-    def test_extract_rpm_package(self, mock_subprocess):
-        package = "playbookconfig"
-        destiny = "/tmp"
-
-        mock_subprocess.run.return_value = mock.MagicMock()
-
-        utils.extract_rpm_package(package, destiny)
-
-        self.assertTrue(mock_subprocess.method_calls)
-
-    @mock.patch("sysinv.common.utils.subprocess")
-    def test_extract_rpm_package_exception(self, mock_subprocess):
-        target_dir = "/tmp"
-        playbook_pkg = "playbookconfig"
-
-        mock_subprocess.CalledProcessError = \
-            subprocess.CalledProcessError
-
-        mock_subprocess.run.side_effect = \
-            subprocess.CalledProcessError(1, "")
-
-        self.assertRaises(
-            exception.SysinvException,
-            utils.extract_rpm_package,
-            playbook_pkg,
-            target_dir,
-        )
-
-        self.assertTrue(mock_subprocess.method_calls)
 
     @mock.patch("sysinv.common.utils.subprocess")
     def test_get_ostree_commit(self, mock_subprocess):

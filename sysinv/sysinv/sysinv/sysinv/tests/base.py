@@ -47,7 +47,6 @@ from sysinv.tests import conf_fixture
 from sysinv.tests import policy_fixture
 
 sys.modules['fm_core'] = mock.Mock()
-sys.modules['rpm'] = mock.Mock()
 
 CONF = cfg.CONF
 _DB_CACHE = None

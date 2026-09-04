@@ -137,8 +137,7 @@ class TestSynce4lParameters(test_base.TestCase):
         self.assertEqual(inst['monitoring_parameters']['holdover_ql'],
                          constants.PTP_SYNCE_HOLDOVER_QL)
 
-    @mock.patch('sysinv.common.utils.is_centos', return_value=False)
-    def test_ptp4l_instance_no_monitoring_params(self, mock_centos):
+    def test_ptp4l_instance_no_monitoring_params(self):
         """ptp4l instances do not get synce monitoring_parameters."""
         instances = [self._make_ptp4l_instance()]
         self.operator._set_ptp_instance_global_parameters(
