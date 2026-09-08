@@ -1001,7 +1001,8 @@ class PlatformPuppet(base.BasePuppet):
                 platform_reserved_memory = '{}:memory={}'.format(node, reserved_memory)
                 k8s_reserved_nodes.append(platform_reserved_memory)
 
-                vswitch_size = memory.vswitch_hugepages_size_mib
+                vswitch_size = memory.vswitch_hugepages_size_mib \
+                    if memory.vswitch_hugepages_size_mib is not None else 0
                 vswitch_pages = memory.vswitch_hugepages_reqd \
                     if memory.vswitch_hugepages_reqd is not None \
                     else memory.vswitch_hugepages_nr
