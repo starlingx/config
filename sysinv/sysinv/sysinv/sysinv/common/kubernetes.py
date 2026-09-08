@@ -975,7 +975,15 @@ class KubeOperator(object):
         self._kube_client_rbac_authorization = None
         self._kube_client_extensions = None
         self._kube_client_storage = None
-        self._config_mtime = 0
+        # Initialize to the current admin.conf mtime so a freshly-created
+        # (transient) KubeOperator does not falsely detect a config change
+        # on its first API call and needlessly rebuild all cached clients.
+        # A sentinel of 0 always mismatches the real mtime -> spurious
+        # invalidation storm at scale.
+        try:
+            self._config_mtime = os.path.getmtime(KUBERNETES_ADMIN_CONF)
+        except OSError:
+            self._config_mtime = 0
         self._kube_client_lock = threading.Lock()
 
     def _config_has_changed(self):
