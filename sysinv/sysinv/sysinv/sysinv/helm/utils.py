@@ -221,7 +221,11 @@ def install_helm_chart_with_dry_run(args=None, mode="server"):
                  performed before running the command. Defaults to 'server'.
     """
     if mode == "server":
-        if not kubernetes.k8s_wait_for_endpoints_health(tries=3, try_sleep=1, timeout=5):
+        # Kubelet can briefly restart to load new config after an upgrade
+        # activates, making the health endpoints unavailable for a few tens
+        # of seconds. Use the default retry window to wait it out instead of
+        # failing the apply; it returns immediately when Kubernetes is healthy.
+        if not kubernetes.k8s_wait_for_endpoints_health():
             raise exception.KubeHealthFailure(
                 reason="Kubernetes endpoints are not healthy. "
                        "Cannot proceed with server-side dry-run.")

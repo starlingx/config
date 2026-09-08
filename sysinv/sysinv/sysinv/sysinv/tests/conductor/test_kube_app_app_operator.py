@@ -201,6 +201,38 @@ class AppOperatorTestCase(base.DbTestCase):
         updated_app = obj_app.get_by_name(self.context, 'test-app-1')
         self.assertEqual(updated_app.status, constants.APP_APPLY_FAILURE)
 
+    def test_reset_recovery_attempts_clears_counter(self):
+        """A successful apply must clear the auto-recovery attempt counter.
+
+        A transient failure that is later recovered must not leave
+        recovery_attempts elevated, or a future failure inherits a
+        reduced retry budget.
+        """
+        dbutils.create_test_app(name='test-app-1',
+                                status=constants.APP_APPLY_SUCCESS,
+                                recovery_attempts=3)
+        test_app = obj_app.get_by_name(self.context, 'test-app-1')
+        app = kube_app.AppOperator.Application(test_app)
+        self.assertEqual(app.recovery_attempts, 3)
+
+        app.reset_recovery_attempts()
+
+        updated_app = obj_app.get_by_name(self.context, 'test-app-1')
+        self.assertEqual(updated_app.recovery_attempts, 0)
+
+    def test_reset_recovery_attempts_noop_when_already_zero(self):
+        """Resetting an already-zero counter should not raise or persist."""
+        dbutils.create_test_app(name='test-app-1',
+                                status=constants.APP_APPLY_SUCCESS,
+                                recovery_attempts=0)
+        test_app = obj_app.get_by_name(self.context, 'test-app-1')
+        app = kube_app.AppOperator.Application(test_app)
+
+        app.reset_recovery_attempts()
+
+        updated_app = obj_app.get_by_name(self.context, 'test-app-1')
+        self.assertEqual(updated_app.recovery_attempts, 0)
+
     def test_clear_stuck_applications_reports_missing_dependent_apps(self):
         """When a platform-managed app is reset back to 'uploaded', the
         progress message must keep reporting its missing dependent apps,

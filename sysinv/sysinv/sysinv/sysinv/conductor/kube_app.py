@@ -3308,6 +3308,9 @@ class AppOperator(object):
                                             constants.APP_APPLY_SUCCESS,
                                             progress_msg)
                     app.update_active(True)
+                    # Clear the auto-recovery budget so a later transient
+                    # failure gets the full set of retries.
+                    app.reset_recovery_attempts()
                     if not caller:
                         self._clear_app_alarm(app.name)
 
@@ -4073,6 +4076,16 @@ class AppOperator(object):
                 self._kube_app.active = active
                 self._kube_app.save()
             return was_active
+
+        def reset_recovery_attempts(self):
+            """Clear the auto-recovery attempt counter.
+
+            Called on a successful apply so transient failures over time do
+            not exhaust the finite auto-recovery budget.
+            """
+            if self.recovery_attempts:
+                self._kube_app.recovery_attempts = 0
+                self._kube_app.save()
 
         def update_error_message(self, new_error_message):
             self.error_message = new_error_message
