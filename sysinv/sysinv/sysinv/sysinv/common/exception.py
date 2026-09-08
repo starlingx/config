@@ -345,6 +345,10 @@ class RouteAlreadyExists(Conflict):
                 "exists on this host.")
 
 
+class RouteAlreadyExistsForSubnet(Conflict):
+    message = _("Route %(network)s/%(prefix)s already exists on this host.")
+
+
 class RouteMaxPathsForSubnet(Conflict):
     message = _("Maximum number of paths (%(count)s) already reached for "
                 "%(network)s/%(prefix)s already reached.")
