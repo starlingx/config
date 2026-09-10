@@ -3374,6 +3374,104 @@ class AppOperator(object):
 
         return False
 
+    def _suspend_helm_releases(self, from_app):
+        """Patch spec.suspend=True on the from_app HelmReleases.
+
+        Stops the FluxCD helm-controller from reconciling (and recreating)
+        their resources. On a downgrade this must run before the downgrade
+        hook, so the controller cannot undo the hook before the apply.
+
+        :param from_app: the currently applied Application being updated away from
+        """
+
+        LOG.info("Suspending HelmReleases for %s (%s)." %
+                 (from_app.name, from_app.version))
+
+        # Reconcile existing FluxCD's Helm repositories
+        resources_list = \
+            cutils.get_resources_list_via_kubectl_kustomize(from_app.sync_fluxcd_manifest)
+        helm_repos = cutils.filter_helm_repositories(resources_list)
+        helm_utils.call_fluxcd_repository_reconciliation(helm_repos)
+
+        from_app_charts = self._get_list_of_charts(from_app)
+        for chart in from_app_charts:
+            self._kube.patch_custom_resource(
+                constants.FLUXCD_CRD_HELM_REL_GROUP,
+                constants.FLUXCD_CRD_HELM_REL_VERSION,
+                chart.namespace,
+                constants.FLUXCD_CRD_HELM_REL_PLURAL,
+                chart.metadata_name,
+                {"spec": {"suspend": True}}
+            )
+
+    def _cleanup_helm_charts(self, from_app):
+        """Delete the from_app HelmCharts and wait for them to be removed.
+
+        Releases should already be suspended via _suspend_helm_releases().
+        On a downgrade this must run after the APP_DOWNGRADE_OP hook, which
+        may still use the existing releases.
+
+        :param from_app: the currently applied Application being updated away from
+        """
+
+        LOG.info("Deleting HelmCharts for %s (%s)." %
+                 (from_app.name, from_app.version))
+
+        from_app_charts = self._get_list_of_charts(from_app)
+        for chart in from_app_charts:
+            self._kube.delete_custom_resource(
+                constants.FLUXCD_CRD_HELM_CHART_GROUP,
+                constants.FLUXCD_CRD_HELM_REPO_VERSION,
+                chart.namespace,
+                constants.FLUXCD_CRD_HELM_CHART_PLURAL,
+                f"{chart.namespace}-{chart.name}"
+            )
+
+        MAX_HELMCHART_DELETION_RETRIES = 5
+        PROGRESS_CHECK_INTERVAL = 1
+        attempt = 0
+
+        while attempt < MAX_HELMCHART_DELETION_RETRIES:
+            aggregated_charts = []
+            for chart in from_app_charts:
+                helmcharts = self._kube.get_helmcharts_info(chart.namespace)
+                if helmcharts:
+                    aggregated_charts.append(helmcharts)
+            if aggregated_charts:
+                attempt += 1
+                time.sleep(PROGRESS_CHECK_INTERVAL)
+                continue
+            break
+
+    def _resume_helm_releases(self, from_app):
+        """Patch spec.suspend=False on the from_app HelmReleases.
+
+        Undoes _suspend_helm_releases when recovery does not run (e.g. skipped
+        during activate-rollback); otherwise the releases stay suspended and
+        the app is left broken.
+
+        :param from_app: the Application whose HelmReleases were suspended
+        """
+
+        LOG.info("Resuming (un-suspending) HelmReleases for %s (%s)." %
+                 (from_app.name, from_app.version))
+
+        try:
+            from_app_charts = self._get_list_of_charts(from_app)
+            for chart in from_app_charts:
+                self._kube.patch_custom_resource(
+                    constants.FLUXCD_CRD_HELM_REL_GROUP,
+                    constants.FLUXCD_CRD_HELM_REL_VERSION,
+                    chart.namespace,
+                    constants.FLUXCD_CRD_HELM_REL_PLURAL,
+                    chart.metadata_name,
+                    {"spec": {"suspend": False}}
+                )
+        except Exception as e:
+            LOG.exception(
+                "Failed to resume (un-suspend) HelmReleases for %s (%s): %s" %
+                (from_app.name, from_app.version, e))
+
     def perform_app_update(self, from_rpc_app, to_rpc_app, tarfile,
                            lifecycle_hook_info_app_update, reuse_user_overrides=None,
                            reuse_attributes=None, k8s_version=None):
@@ -3422,6 +3520,8 @@ class AppOperator(object):
             :return boolean: True if recovery was triggered. False otherwise.
             """
 
+            nonlocal recovery_triggered
+
             # During activate-rollback, automatic recovery during app downgrades is being
             # disabled. In this scenario, the N+1 versions may not be compatible with the
             # current state of the system, such as potential incompatibilities with the
@@ -3440,6 +3540,8 @@ class AppOperator(object):
                 self._perform_app_recover(to_rpc_app, from_app, to_app,
                                           lifecycle_hook_info_app_update,
                                           fluxcd_process_required)
+                # _perform_app_recover already resumes the releases.
+                recovery_triggered = True
                 return True
 
             return False
@@ -3464,12 +3566,28 @@ class AppOperator(object):
         skip_recovery = bool(strtobool(str(self._get_metadata_value(to_app, keys, False))))
         operation_successful = False
 
+        # Track early (downgrade) suspend and whether recovery ran, so a failed
+        # update without recovery can un-suspend the releases in the finally.
+        helm_releases_suspended_early = False
+        recovery_triggered = False
+
         try:
             self._update_app_status(
                 to_app, new_progress=constants.APP_PROGRESS_UPDATE_STARTING)
 
-            # Check if it's a downgrade operation. If true, create a lifecycle action.
-            if LooseVersion(from_app.version) > LooseVersion(to_app.version):
+            # Check if it's a downgrade operation.
+            is_downgrade = \
+                LooseVersion(from_app.version) > LooseVersion(to_app.version)
+
+            # For downgrades, suspend HelmReleases before the APP_DOWNGRADE_OP
+            # hook so the helm-controller cannot recreate immutable resources
+            # the hook deletes (e.g. the cephfs.csi.ceph.com CSIDriver) and fail
+            # the downgrade. HelmCharts are removed only after the hook, which
+            # may still rely on the existing releases.
+            if is_downgrade:
+                self._suspend_helm_releases(from_app)
+                helm_releases_suspended_early = True
+
                 lifecycle_downgrade = copy.deepcopy(lifecycle_hook_info_app_update)
                 lifecycle_downgrade.operation = constants.APP_DOWNGRADE_OP
                 lifecycle_downgrade.relative_timing = LifecycleConstants.APP_LIFECYCLE_TIMING_PRE
@@ -3497,46 +3615,12 @@ class AppOperator(object):
                 transitory_state=constants.APP_UPDATE_STARTING
             )
 
-            # Reconcile existing FluxCD's Helm repositories
-            resources_list = \
-                cutils.get_resources_list_via_kubectl_kustomize(from_app.sync_fluxcd_manifest)
-            helm_repos = cutils.filter_helm_repositories(resources_list)
-            helm_utils.call_fluxcd_repository_reconciliation(helm_repos)
+            # Downgrades already suspended before the APP_DOWNGRADE_OP hook;
+            # non-downgrades suspend here. Cleanup runs for both paths.
+            if not is_downgrade:
+                self._suspend_helm_releases(from_app)
 
-            from_app_charts = self._get_list_of_charts(from_app)
-            for chart in from_app_charts:
-                self._kube.patch_custom_resource(
-                    constants.FLUXCD_CRD_HELM_REL_GROUP,
-                    constants.FLUXCD_CRD_HELM_REL_VERSION,
-                    chart.namespace,
-                    constants.FLUXCD_CRD_HELM_REL_PLURAL,
-                    chart.metadata_name,
-                    {"spec": {"suspend": True}}
-                )
-
-                self._kube.delete_custom_resource(
-                    constants.FLUXCD_CRD_HELM_CHART_GROUP,
-                    constants.FLUXCD_CRD_HELM_REPO_VERSION,
-                    chart.namespace,
-                    constants.FLUXCD_CRD_HELM_CHART_PLURAL,
-                    f"{chart.namespace}-{chart.name}"
-                )
-
-            MAX_HELMCHART_DELETION_RETRIES = 5
-            PROGRESS_CHECK_INTERVAL = 1
-            attempt = 0
-
-            while attempt < MAX_HELMCHART_DELETION_RETRIES:
-                aggregated_charts = []
-                for chart in from_app_charts:
-                    helmcharts = self._kube.get_helmcharts_info(chart.namespace)
-                    if helmcharts:
-                        aggregated_charts.append(helmcharts)
-                if aggregated_charts:
-                    attempt += 1
-                    time.sleep(PROGRESS_CHECK_INTERVAL)
-                    continue
-                break
+            self._cleanup_helm_charts(from_app)
 
             lifecycle_hook_info_app_update.operation = constants.APP_UPDATE_OP
 
@@ -3665,6 +3749,16 @@ class AppOperator(object):
                 self._clear_app_alarm(to_app.name)
                 return False
         finally:
+            # If the downgrade suspended early but failed without recovery,
+            # resume the releases so the helm-controller keeps reconciling them.
+            if (helm_releases_suspended_early and
+                    not operation_successful and
+                    not recovery_triggered):
+                LOG.warn("Update of %s failed without recovery; resuming "
+                         "suspended HelmReleases for %s (%s)." %
+                         (to_app.name, from_app.name, from_app.version))
+                self._resume_helm_releases(from_app)
+
             self._deregister_app_abort(to_app.name)
 
         self._clear_app_alarm(to_app.name)
