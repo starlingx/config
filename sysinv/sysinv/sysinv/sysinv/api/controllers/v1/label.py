@@ -392,10 +392,6 @@ def evaluate_case_agnostic_policy_name(policy_name, policy_value):
     """
     if policy_name == constants.KUBE_TOPOLOGY_MANAGER_LABEL:
         _case_agnostic_check(policy_value, constants.KUBE_TOPOLOGY_MANAGER_VALUES, policy_name)
-    elif policy_name == 'kube-cpu-mgr-policy' and policy_value.casefold() == 'none':
-        raise wsme.exc.ClientSideError(
-            _(
-                "Setting kube-cpu-mgr-policy to 'none' is not supported"))
     else:
         _case_agnostic_check(policy_value, constants.KUBE_CPU_MEMORY_MANAGER_VALUES, policy_name)
 
