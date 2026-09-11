@@ -976,7 +976,8 @@ class PlatformPuppet(base.BasePuppet):
 
                 vm_pending_as_percentage = memory.vm_pending_as_percentage
 
-                platform_size = memory.platform_reserved_mib
+                platform_size = memory.platform_reserved_mib \
+                    if memory.platform_reserved_mib is not None else 0
                 platform_node = "\"node%d:%dMB:%d\"" % (
                     node, platform_size, platform_core_count)
                 platform_nodes.append(platform_node)
@@ -1007,8 +1008,8 @@ class PlatformPuppet(base.BasePuppet):
                     if memory.vswitch_hugepages_reqd is not None \
                     else memory.vswitch_hugepages_nr
 
-                if vswitch_pages == 0:
-                    vswitch_pages = memory.vswitch_hugepages_nr
+                if not vswitch_pages:
+                    vswitch_pages = memory.vswitch_hugepages_nr or 0
 
                 vswitch_node = "\"node%d:%dkB:%d\"" % (
                         node, vswitch_size * 1024, vswitch_pages)
@@ -1022,6 +1023,11 @@ class PlatformPuppet(base.BasePuppet):
                     else memory.vm_hugepages_nr_1G
                 vm_hugepages_nr_4K = memory.vm_hugepages_nr_4K \
                     if memory.vm_hugepages_nr_4K is not None else 0
+
+                if vm_hugepages_nr_2M is None:
+                    vm_hugepages_nr_2M = 0
+                if vm_hugepages_nr_1G is None:
+                    vm_hugepages_nr_1G = 0
 
                 total_hugepages_2M = vm_hugepages_nr_2M
                 total_hugepages_1G = vm_hugepages_nr_1G

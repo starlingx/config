@@ -360,8 +360,8 @@ class OVSPuppet(base.BasePuppet):
                 if memory.vswitch_hugepages_reqd is not None \
                 else memory.vswitch_hugepages_nr
 
-            if vswitch_pages == 0:
-                vswitch_pages = memory.vswitch_hugepages_nr
+            if not vswitch_pages:
+                vswitch_pages = memory.vswitch_hugepages_nr or 0
 
             vswitch_memory.append(str(vswitch_size * vswitch_pages))
 
