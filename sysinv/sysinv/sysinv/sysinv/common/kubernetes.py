@@ -10,6 +10,7 @@
 """ System Inventory Kubernetes Utilities and helper functions."""
 
 from __future__ import absolute_import
+from contextlib import suppress
 from datetime import datetime
 from datetime import timedelta
 from distutils.version import LooseVersion
@@ -24,6 +25,7 @@ import requests
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import urllib3
@@ -69,6 +71,7 @@ CERT_MANAGER_VERSION = 'v1'
 
 # Kubernetes Files
 KUBEADM_FLAGS_FILE = '/var/lib/kubelet/kubeadm-flags.env'
+KUBELET_CONFIG_FILE = '/var/lib/kubelet/config.yaml'
 KUBERNETES_CONF_DIR = '/etc/kubernetes/'
 KUBERNETES_ADMIN_CONF = os.path.join(KUBERNETES_CONF_DIR, 'admin.conf')
 KUBERNETES_KUBELET_CONF = os.path.join(KUBERNETES_CONF_DIR, 'kubelet.conf')
@@ -209,6 +212,9 @@ KUBE_CONTROL_PLANE_STATIC_PODS_BACKUP_PATH = os.path.join(
 KUBE_CONTROL_PLANE_ETCD_BACKUP_PATH = os.path.join(
     KUBE_CONTROL_PLANE_BACKUP_PATH, 'etcd')
 KUBE_CONFIG_BACKUP_PATH = os.path.join(KUBE_CONTROL_PLANE_BACKUP_PATH, 'k8s-config')
+KUBE_KUBELET_BACKUP_PATH = '/opt/backups/kubelet/'
+KUBELET_CONFIG_BACKUP_FILE = os.path.join(
+    KUBE_KUBELET_BACKUP_PATH, 'config.yaml')
 KUBE_CONTROL_PLANE_STATIC_PODS_MANIFESTS_ABORT = os.path.join(
     KUBE_CONTROL_PLANE_BACKUP_PATH, 'static-pod-manifests-abort')
 
@@ -848,6 +854,45 @@ def enable_kubelet_garbage_collection():
     except Exception as ex:
         raise exception.SysinvException("Failed to enable kubelet garbage "
                                         "collection. Error: [%s]" % (ex))
+
+
+def backup_kubelet_config():
+    """Backup the on-disk kubelet config for kube-upgrade-abort recovery.
+
+    Saves /var/lib/kubelet/config.yaml, per node, before the first operation
+    that rewrites it, so that on abort the original (pre-upgrade) config can
+    be restored as-is. Idempotent across retries and multi-hop upgrades.
+
+    :raises: SysinvException upon failure
+    """
+    try:
+        if os.path.exists(KUBELET_CONFIG_BACKUP_FILE):
+            LOG.info("Kubelet config backup %s already exists; keeping it."
+                     % (KUBELET_CONFIG_BACKUP_FILE))
+            return
+
+        if not os.path.exists(KUBELET_CONFIG_FILE):
+            raise exception.SysinvException(
+                "Kubelet config %s not found." % (KUBELET_CONFIG_FILE))
+
+        os.makedirs(KUBE_KUBELET_BACKUP_PATH, exist_ok=True)
+
+        fd, tmp_path = tempfile.mkstemp(
+            prefix=".kubelet-config.", dir=KUBE_KUBELET_BACKUP_PATH)
+        os.close(fd)
+        try:
+            shutil.copy2(KUBELET_CONFIG_FILE, tmp_path)
+            os.replace(tmp_path, KUBELET_CONFIG_BACKUP_FILE)
+        except Exception:
+            with suppress(FileNotFoundError):
+                os.unlink(tmp_path)
+            raise
+
+        LOG.info("Kubelet config %s backed up to %s"
+                 % (KUBELET_CONFIG_FILE, KUBELET_CONFIG_BACKUP_FILE))
+    except Exception as ex:
+        raise exception.SysinvException(
+            "Failed to backup kubelet config. Error: [%s]" % (ex))
 
 
 def create_configmap_obj(namespace, name, filename, **kwargs):

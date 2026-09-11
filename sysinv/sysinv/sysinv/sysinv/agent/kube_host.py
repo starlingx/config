@@ -449,6 +449,9 @@ class KubeWorkerOperator(KubeHostOperator):
             else:
                 LOG.info("No need to update the pause image. Skip pulling ...")
 
+            # Snapshot on-disk kubelet config before kubeadm rewrites it.
+            kubernetes.backup_kubelet_config()
+
             # kubeadm upgrade node
             self.kubeadm_upgrade_node(to_kube_version)
 
@@ -545,6 +548,36 @@ class KubeControllerOperator(KubeHostOperator):
         except Exception as ex:
             raise exception.SysinvException("Failed to restore static pod manifests. "
                                             "Error: [%s]" % (ex))
+
+    def restore_kubelet_config(self):
+        """Restore the kubelet config backed up before the kubernetes upgrade.
+
+        On a kube-upgrade-abort the kubelet binary is reverted to the original
+        version. The on-disk kubelet config (/var/lib/kubelet/config.yaml) may
+        still contain keys written for the newer upgrade target that the older
+        kubelet does not recognize (e.g. imagePullCredentialsVerificationPolicy,
+        which requires the KubeletEnsureSecretPulledImages feature gate added in
+        k8s 1.35). If left in place the kubelet fails config validation,
+        crash-loops, and the control plane never comes back up. Restoring the
+        pre-upgrade config avoids that, without needing to know which keys are
+        version-specific.
+
+        Best effort: does not raise, so it cannot fail the abort. If the backup
+        is missing the current config is left in place.
+        """
+        try:
+            if not os.path.exists(kubernetes.KUBELET_CONFIG_BACKUP_FILE):
+                LOG.warning("Kubelet config backup %s not found; skipping restore."
+                            % (kubernetes.KUBELET_CONFIG_BACKUP_FILE))
+                return
+            shutil.copy2(kubernetes.KUBELET_CONFIG_BACKUP_FILE,
+                         kubernetes.KUBELET_CONFIG_FILE)
+            LOG.info("Kubelet config restored from %s to %s"
+                     % (kubernetes.KUBELET_CONFIG_BACKUP_FILE,
+                        kubernetes.KUBELET_CONFIG_FILE))
+        except Exception as ex:
+            LOG.warning("Failed to restore kubelet config from %s during abort. "
+                        "Error: [%s]" % (kubernetes.KUBELET_CONFIG_BACKUP_FILE, ex))
 
     def _prepare_for_abort_recovery(self):
         """Save control plane manifests, admin.conf and super-admin.conf and etcd
@@ -671,6 +704,8 @@ class KubeControllerOperator(KubeHostOperator):
                 for link in [kubernetes.KUBERNETES_SYMLINKS_STAGE_1,
                              kubernetes.KUBERNETES_SYMLINKS_STAGE_2]:
                     self._update_kube_symlink(link, back_to_kube_version)
+
+                self.restore_kubelet_config()
 
                 kubernetes.enable_kubelet_garbage_collection()
 
@@ -1227,6 +1262,9 @@ class KubeControllerOperator(KubeHostOperator):
         :param: is_first_master: True if this is the first controller being upgraded else False
         """
         try:
+            # Snapshot on-disk kubelet config before kubeadm rewrites it.
+            kubernetes.backup_kubelet_config()
+
             if is_first_master:
                 self.kubeadm_upgrade_apply(to_kube_version)
             else:
