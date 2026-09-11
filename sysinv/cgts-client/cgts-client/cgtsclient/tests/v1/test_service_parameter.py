@@ -211,10 +211,10 @@ class ServiceParameterManagerTest(testtools.TestCase):
 
         self.assertEqual(self.api.calls, expect)
 
-        isinstance(
+        self.assertIsInstance(
             parameter_1,
             cgtsclient.v1.service_parameter.ServiceParameter)
-        isinstance(
+        self.assertIsInstance(
             parameter_2,
             cgtsclient.v1.service_parameter.ServiceParameter)
 
