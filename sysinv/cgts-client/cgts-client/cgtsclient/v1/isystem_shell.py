@@ -88,6 +88,7 @@ def do_show(cc, args):
            help='The HTTPS enabled or disabled flag')
 @utils.arg('-v', '--vswitch_type',
            metavar='<vswitch_type>',
+           choices=['none', 'ovs-dpdk'],
            help='The vswitch type for the system')
 @utils.arg('-S', '--security_feature',
            metavar='<security_feature>',

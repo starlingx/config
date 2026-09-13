@@ -352,6 +352,16 @@ VSWITCH_TYPE_OVS_DPDK = "ovs-dpdk"
 VSWITCH_TYPE_NUAGE_VRS = "nuage_vrs"
 VSWITCH_TYPE_NONE = "none"
 
+# Values accepted by 'system modify --vswitch_type'; these are the only
+# operator-selectable vswitch types. A value outside this set fails
+# is_vswitch_type_unaccelerated() in the puppet interface plugin and is
+# therefore treated as an accelerated datapath, which suppresses the kernel
+# interface config of dpdk-capable data interfaces.
+# VSWITCH_TYPE_NUAGE_VRS is deliberately excluded: nothing in the tree
+# configures a Nuage datapath, so setting it yields that same incoherent state.
+VSWITCH_TYPE_VALID_LIST = [VSWITCH_TYPE_NONE,
+                           VSWITCH_TYPE_OVS_DPDK]
+
 # Partition default sizes
 # These values must be aligned with the values used by
 # the apply_bootstrap_manifest task during the bootstrap
