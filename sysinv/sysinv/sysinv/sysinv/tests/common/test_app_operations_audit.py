@@ -437,21 +437,121 @@ class TestAppOperationsAudit(unittest.TestCase):
     @patch.object(AppOperationsAudit, 'reapply_apps')
     @patch.object(AppOperationsAudit, 'apply_missing_apps')
     @patch.object(AppOperationsAudit, 'upload_missing_apps')
+    @patch.object(AppOperationsAudit, 'recover_stale_upload_entries')
     @patch.object(AppOperationsAudit, 'load_app_status')
-    def test_trigger_automatic_operations(self, mock_load, mock_upload, mock_apply,
-                                          mock_reapply, mock_recover,
+    def test_trigger_automatic_operations(self, mock_load, mock_recover_stale, mock_upload,
+                                          mock_apply, mock_reapply, mock_recover,
                                           mock_update_uploaded, mock_update):
         """Test trigger_automatic_operations calls all operations in order"""
+        order_tracker = MagicMock()
+        order_tracker.attach_mock(mock_recover_stale, 'recover_stale_upload_entries')
+        order_tracker.attach_mock(mock_upload, 'upload_missing_apps')
+
         self.audit.trigger_automatic_operations()
 
         # Verify all methods are called
         mock_load.assert_called_once()
+        mock_recover_stale.assert_called_once()
         mock_upload.assert_called_once()
         mock_apply.assert_called_once()
         mock_reapply.assert_called_once()
         mock_recover.assert_called_once()
         mock_update_uploaded.assert_called_once()
         mock_update.assert_called_once()
+
+        # The stale upload entries have to be recovered before the upload of
+        # the missing apps, so that the retry happens in this same cycle
+        self.assertEqual(
+            [call_item[0] for call_item in order_tracker.mock_calls],
+            ['recover_stale_upload_entries', 'upload_missing_apps'])
+
+    def _audit_with_recovery(self, destroy_fn):
+        """Build an audit instance wired to a stale placeholder cleanup callback"""
+        return AppOperationsAudit(
+            dbapi=self.mock_dbapi,
+            context=self.mock_context,
+            app_operator=self.mock_app_operator,
+            apps_metadata=self.apps_metadata,
+            perform_automatic_operation_in_parallel_fn=self.mock_perform_parallel,
+            execute_automatic_operation_sync=self.mock_execute_sync,
+            destroy_stale_upload_placeholder_fn=destroy_fn,
+        )
+
+    def test_recover_stale_upload_entries_removes_stale_entry(self):
+        """An app left in the transitional 'uploading' status by an automatic
+        upload that never started must have its stale entry removed, so it is
+        seen as missing again and the upload can be retried.
+        """
+        mock_destroy = MagicMock(return_value=True)
+        audit = self._audit_with_recovery(mock_destroy)
+        audit._app_statuses = self._create_app_statuses(
+            cert_manager=constants.APP_UPLOAD_IN_PROGRESS,
+        )
+
+        audit.recover_stale_upload_entries()
+
+        mock_destroy.assert_called_once_with("cert-manager")
+        self.assertEqual(audit._app_statuses["cert-manager"],
+                         constants.APP_NOT_PRESENT)
+
+    def test_recover_stale_upload_entries_keeps_ongoing_upload(self):
+        """An app that is really being uploaded also reports the 'uploading'
+        status. The cleanup callback refuses to remove its entry, so the cached
+        status must be left untouched and no upload retry must be triggered.
+        """
+        mock_destroy = MagicMock(return_value=False)
+        audit = self._audit_with_recovery(mock_destroy)
+        audit._app_statuses = self._create_app_statuses(
+            cert_manager=constants.APP_UPLOAD_IN_PROGRESS,
+        )
+
+        audit.recover_stale_upload_entries()
+
+        mock_destroy.assert_called_once_with("cert-manager")
+        self.assertEqual(audit._app_statuses["cert-manager"],
+                         constants.APP_UPLOAD_IN_PROGRESS)
+
+    def test_recover_stale_upload_entries_no_stuck_apps(self):
+        """No app in the 'uploading' status means nothing to recover"""
+        mock_destroy = MagicMock(return_value=True)
+        audit = self._audit_with_recovery(mock_destroy)
+        audit._app_statuses = self._create_app_statuses()
+
+        audit.recover_stale_upload_entries()
+
+        mock_destroy.assert_not_called()
+
+    def test_recover_stale_upload_entries_retries_upload_same_cycle(self):
+        """After the stale entry is removed, upload_missing_apps() must pick the
+        app up in the same audit cycle instead of waiting for a conductor
+        restart or a manual database cleanup.
+        """
+        mock_destroy = MagicMock(return_value=True)
+        audit = self._audit_with_recovery(mock_destroy)
+        audit._app_statuses = self._create_app_statuses(
+            cert_manager=constants.APP_UPLOAD_IN_PROGRESS,
+        )
+
+        audit.recover_stale_upload_entries()
+        audit.upload_missing_apps()
+
+        self.mock_perform_parallel.assert_called_once()
+        call_args = self.mock_perform_parallel.call_args[0]
+        self.assertIn("cert-manager", call_args[1])
+        self.assertEqual(call_args[2], constants.APP_UPLOAD_OP)
+
+    def test_recover_stale_upload_entries_without_callback(self):
+        """Without a cleanup callback the recovery must be a no-op instead of
+        raising, keeping the audit backwards compatible.
+        """
+        self.audit._app_statuses = self._create_app_statuses(
+            cert_manager=constants.APP_UPLOAD_IN_PROGRESS,
+        )
+
+        self.audit.recover_stale_upload_entries()
+
+        self.assertEqual(self.audit._app_statuses["cert-manager"],
+                         constants.APP_UPLOAD_IN_PROGRESS)
 
     def test_apply_missing_apps_with_empty_class_lists(self):
         """Test apply_missing_apps handles empty class lists correctly"""
