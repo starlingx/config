@@ -27,6 +27,7 @@ from six.moves.urllib.parse import urlparse
 import tempfile
 import threading
 import time
+import uuid
 
 from collections import namedtuple
 from distutils.util import strtobool
@@ -2821,18 +2822,44 @@ class AppOperator(object):
 
         app = AppOperator.Application(rpc_app)
 
-        self._helm.plugins.activate_plugins(
-            app_name=app.name,
-            app_version=app.version,
-            has_plugin_path=app.system_app,
-            sync_plugins_dir=app.sync_plugins_dir,
-            args=(self._helm,)
-        )
-        LOG.info("lifecycle hook for application {} ({}) started {}."
-                 .format(app.name, app.version, hook_info))
+        # Unique identifier for this hook execution. Hooks from different
+        # applications may run concurrently, so this is what allows a start
+        # message to be matched with its corresponding finish message.
+        hook_execution_id = uuid.uuid4()
+        start_time = time.time()
 
-        lifecycle_op = self._helm.get_app_lifecycle_operator(app.name)
-        lifecycle_op.app_lifecycle_actions(context, conductor_obj, self, app, hook_info)
+        LOG.info("lifecycle hook for application {} ({}) started {}. "
+                 "Execution id: {}".format(app.name, app.version, hook_info,
+                                           hook_execution_id))
+
+        outcome = "completed"
+        try:
+            self._helm.plugins.activate_plugins(
+                app_name=app.name,
+                app_version=app.version,
+                has_plugin_path=app.system_app,
+                sync_plugins_dir=app.sync_plugins_dir,
+                args=(self._helm,)
+            )
+
+            lifecycle_op = self._helm.get_app_lifecycle_operator(app.name)
+            lifecycle_op.app_lifecycle_actions(context, conductor_obj, self, app, hook_info)
+        except (exception.LifecycleSemanticCheckException,
+                exception.LifecycleSemanticCheckOpererationBlocked,
+                exception.LifecycleSemanticCheckOperationNotSupported,
+                exception.LifecycleStatusCheckNotReady) as e:
+            # Not a failure: the hook deliberately rejected the operation or
+            # reported that the application is not ready yet.
+            outcome = "rejected ({}: {})".format(type(e).__name__, e)
+            raise
+        except Exception as e:
+            outcome = "failed ({}: {})".format(type(e).__name__, e)
+            raise
+        finally:
+            LOG.info("lifecycle hook for application {} ({}) {} in {:.3f} seconds. "
+                     "Execution id: {}".format(app.name, app.version, outcome,
+                                               time.time() - start_time,
+                                               hook_execution_id))
 
     @staticmethod
     def recompute_app_evaluation_order(apps_metadata_dict):

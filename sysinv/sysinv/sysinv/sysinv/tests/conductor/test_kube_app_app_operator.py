@@ -10,16 +10,20 @@
 """Test class for Sysinv kube_app AppOperator."""
 
 import fixtures
+import re
 
 from unittest import mock
 
 from oslo_context import context
 
 from sysinv.common import constants
+from sysinv.common import exception
 from sysinv.conductor import kube_app
 from sysinv.conductor import manager
 from sysinv.db import api as dbapi
 from sysinv.helm import helm
+from sysinv.helm.lifecycle_constants import LifecycleConstants
+from sysinv.helm.lifecycle_hook import LifecycleHookInfo
 from sysinv.objects import kube_app as obj_app
 
 from sysinv.tests.db import base
@@ -402,3 +406,127 @@ class VerifyPodsStatusForReleaseTestCase(base.DbTestCase):
         self._set_pods([])
         self.assertTrue(
             self.fluxcd.verify_pods_status_for_release(self.chart_obj))
+
+
+class AppOperatorLifecycleHookTestCase(base.DbTestCase):
+    """Tests for the lifecycle hook dispatch observability.
+
+    The lifecycle operator is mocked here, since what is under test is the
+    dispatch performed by AppOperator.app_lifecycle_actions() and not the
+    behaviour of any particular application plugin.
+    """
+
+    EXECUTION_ID_RE = re.compile(
+        r"Execution id: "
+        r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})")
+
+    def setUp(self):
+        super(AppOperatorLifecycleHookTestCase, self).setUp()
+
+        # Manager holds apps_metadata dict
+        self.service = manager.ConductorManager('test-host', 'test-topic')
+
+        self.helm_operator = mock.MagicMock()
+        self.app_operator = kube_app.AppOperator(dbapi.get_instance(),
+                                                 self.helm_operator,
+                                                 self.service.apps_metadata)
+        self.context = context.get_admin_context()
+
+    def _dispatch_lifecycle_hook(self, app_name='test-hook-app',
+                                 hook_side_effect=None,
+                                 activate_side_effect=None):
+        """Dispatch a lifecycle hook with a mocked lifecycle operator."""
+        dbutils.create_test_app(name=app_name)
+        rpc_app = obj_app.get_by_name(self.context, app_name)
+
+        hook_info = LifecycleHookInfo()
+        hook_info.init(LifecycleConstants.APP_LIFECYCLE_MODE_MANUAL,
+                       LifecycleConstants.APP_LIFECYCLE_TYPE_OPERATION,
+                       LifecycleConstants.APP_LIFECYCLE_TIMING_PRE,
+                       constants.APP_APPLY_OP)
+
+        lifecycle_op = mock.MagicMock()
+        lifecycle_op.app_lifecycle_actions.side_effect = hook_side_effect
+
+        self.helm_operator.get_app_lifecycle_operator.return_value = lifecycle_op
+        self.helm_operator.plugins.activate_plugins.side_effect = \
+            activate_side_effect
+
+        self.app_operator.app_lifecycle_actions(
+            None, None, rpc_app, hook_info)
+
+    def test_logs_start_and_finish(self):
+        """A successful hook execution must log both a start and a finish
+        message, sharing the same execution id, and the finish message must
+        report how long the hook took.
+        """
+        self._dispatch_lifecycle_hook()
+
+        output = self.log_fixture.output
+        execution_ids = self.EXECUTION_ID_RE.findall(output)
+
+        self.assertIn('started', output)
+        self.assertEqual(len(execution_ids), 2)
+        self.assertEqual(execution_ids[0], execution_ids[1])
+        self.assertIsNotNone(
+            re.search(r"completed in \d+\.\d{3} seconds", output))
+
+    def test_logs_finish_on_failure(self):
+        """A hook that raises must still log the finish message, reporting
+        the failure, and the exception must be propagated to the caller.
+        """
+        self.assertRaises(
+            exception.SysinvException,
+            self._dispatch_lifecycle_hook,
+            hook_side_effect=exception.SysinvException("hook exploded"))
+
+        output = self.log_fixture.output
+        execution_ids = self.EXECUTION_ID_RE.findall(output)
+
+        self.assertEqual(len(execution_ids), 2)
+        self.assertEqual(execution_ids[0], execution_ids[1])
+        self.assertIn('failed (SysinvException: hook exploded)', output)
+
+    def test_logs_rejection_as_rejected(self):
+        """An operation rejected by a semantic check is expected behaviour,
+        not a failure, and must be reported as such.
+        """
+        self.assertRaises(
+            exception.LifecycleSemanticCheckException,
+            self._dispatch_lifecycle_hook,
+            hook_side_effect=exception.LifecycleSemanticCheckException())
+
+        output = self.log_fixture.output
+
+        self.assertIn('rejected (LifecycleSemanticCheckException', output)
+        self.assertNotIn('failed (', output)
+
+    def test_logs_finish_on_plugin_activation_failure(self):
+        """Plugin activation failures must not leave a start message without
+        its matching finish message.
+        """
+        self.assertRaises(
+            exception.SysinvException,
+            self._dispatch_lifecycle_hook,
+            activate_side_effect=exception.SysinvException("no plugins"))
+
+        output = self.log_fixture.output
+        execution_ids = self.EXECUTION_ID_RE.findall(output)
+
+        self.assertEqual(len(execution_ids), 2)
+        self.assertEqual(execution_ids[0], execution_ids[1])
+        self.assertIn('failed (SysinvException: no plugins)', output)
+
+    def test_execution_ids_are_unique(self):
+        """Each hook execution must get its own id, so that concurrent
+        executions can be told apart.
+        """
+        self._dispatch_lifecycle_hook(app_name='test-hook-app-1')
+        self._dispatch_lifecycle_hook(app_name='test-hook-app-2')
+
+        execution_ids = self.EXECUTION_ID_RE.findall(self.log_fixture.output)
+
+        self.assertEqual(len(execution_ids), 4)
+        self.assertEqual(execution_ids[0], execution_ids[1])
+        self.assertEqual(execution_ids[2], execution_ids[3])
+        self.assertNotEqual(execution_ids[0], execution_ids[2])
