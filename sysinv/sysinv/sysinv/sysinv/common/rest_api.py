@@ -135,7 +135,7 @@ def rest_api_request(token, method, api_cmd, api_cmd_headers=None,
             request_info.data = encodeutils.safe_encode(api_cmd_payload)
 
         ca_file = get_system_ca_file()
-        ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH,
+        ssl_context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH,
                                                  cafile=ca_file)
         request = urlopen(request_info, timeout=timeout, context=ssl_context)
 
@@ -209,7 +209,7 @@ def rest_api_request_raise(token, method, api_cmd, api_cmd_headers=None,
             request_info.data = encodeutils.safe_encode(api_cmd_payload)
 
         ca_file = get_system_ca_file()
-        ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH,
+        ssl_context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH,
                                                  cafile=ca_file)
         request = urlopen(request_info, timeout=timeout, context=ssl_context)
 
