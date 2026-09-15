@@ -16485,14 +16485,17 @@ class ConductorManager(service.PeriodicService):
         host_upgrade = usm_service.UsmHostUpgrade.get_by_hostname(self.dbapi,
                                                                   host.hostname)
         if host_upgrade:
-            if (host_upgrade.state in constants.DEPLOY_HOST_DEPLOYED_STATES
-                    and not host_upgrade.pre_upgrade_deploy):
-                # if USM upgrade in progress and host is deployed target_load is the to_release
-                target_sw_version = host_upgrade.to_sw_version
+            if host_upgrade.state in constants.DEPLOY_HOST_DEPLOYED_STATES:
+                # For pre-upgrade-deploy type of deployment, the target release is always the
+                # lowest, as pre-upgrade-deploy is deployed (and removed) in the from_release feed
+                if host_upgrade.pre_upgrade_deploy:
+                    target_sw_version = min(host_upgrade.from_sw_version, host_upgrade.to_sw_version,
+                                            key=lambda r: tuple(int(x) for x in r.split(".")))
+                # If USM upgrade in progress and host is deployed target_load is the to_release
+                else:
+                    target_sw_version = host_upgrade.to_sw_version
             else:
-                # otherwise target_load is from_release
-                # pre-upgrade-deploy is installed into the from_release, so the host
-                # is expected to keep running from_release even when deployed
+                # Otherwise, target_load should be from_release
                 target_sw_version = host_upgrade.from_sw_version
             LOG.info(f"USM {'pre-upgrade-deploy ' if host_upgrade.pre_upgrade_deploy else ''}"
                      "deployment in progress, host_state=%s, %s should be running %s" % (
