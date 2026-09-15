@@ -2177,3 +2177,85 @@ class TestCpuFrequencyConfigurable(base.TestCase):
         result = self.agent_manager._is_max_cpu_mhz_configurable()
 
         self.assertEqual(result, constants.NOT_CONFIGURABLE)
+
+
+class TestHostPortUpdate(base.TestCase):
+    """Tests for change-detected periodic port re-report (CGTS-105820)."""
+
+    def setUp(self):
+        super(TestHostPortUpdate, self).setUp()
+        self.agent_manager = AgentManager('test-host', 'test-topic')
+        self.agent_manager._ihost_uuid = "FAKEUUID"
+        self.context = context.get_admin_context()
+        self.rpcapi = mock.MagicMock()
+
+    def tearDown(self):
+        super(TestHostPortUpdate, self).tearDown()
+
+    def _mock_ports_inventory(self, port_list):
+        mock_get = mock.MagicMock(return_value=(port_list, [], []))
+        p = mock.patch.object(
+            self.agent_manager, '_get_ports_inventory', mock_get)
+        p.start()
+        self.addCleanup(p.stop)
+        return mock_get
+
+    def test_host_port_update_first_report(self):
+        """First audit reports ports and records prev state."""
+        port_list = [{'name': 'ens1f1', 'numchannels': 8}]
+        self._mock_ports_inventory(port_list)
+
+        self.agent_manager.host_port_update(self.context, self.rpcapi)
+
+        self.rpcapi.iport_update_by_ihost.assert_called_once_with(
+            self.context, self.agent_manager._ihost_uuid, port_list)
+        self.assertEqual(self.agent_manager._prev_port, port_list)
+        self.assertIn(self.agent_manager.PORT,
+                      self.agent_manager._inventory_reported)
+
+    def test_host_port_update_reports_on_change(self):
+        """A numchannels change triggers a re-report."""
+        # Pretend a previous report already happened at numchannels=64.
+        self.agent_manager._prev_port = [{'name': 'ens1f1', 'numchannels': 64}]
+        self.agent_manager._inventory_reported.add(self.agent_manager.PORT)
+
+        changed = [{'name': 'ens1f1', 'numchannels': 8}]
+        self._mock_ports_inventory(changed)
+
+        self.agent_manager.host_port_update(self.context, self.rpcapi)
+
+        self.rpcapi.iport_update_by_ihost.assert_called_once_with(
+            self.context, self.agent_manager._ihost_uuid, changed)
+        self.assertEqual(self.agent_manager._prev_port, changed)
+
+    def test_host_port_update_no_report_when_unchanged(self):
+        """No re-report when the port inventory is unchanged."""
+        port_list = [{'name': 'ens1f1', 'numchannels': 8}]
+        self.agent_manager._prev_port = port_list
+        self.agent_manager._inventory_reported.add(self.agent_manager.PORT)
+        self._mock_ports_inventory(list(port_list))
+
+        self.agent_manager.host_port_update(self.context, self.rpcapi)
+
+        self.rpcapi.iport_update_by_ihost.assert_not_called()
+
+    def test_host_port_update_empty_inventory_noop(self):
+        """Empty port inventory results in no report."""
+        self._mock_ports_inventory([])
+
+        self.agent_manager.host_port_update(self.context, self.rpcapi)
+
+        self.rpcapi.iport_update_by_ihost.assert_not_called()
+        self.assertIsNone(self.agent_manager._prev_port)
+
+    def test_host_port_update_sysinv_exception_resets_prev(self):
+        """A SysinvException clears prev_port so the next audit retries."""
+        port_list = [{'name': 'ens1f1', 'numchannels': 8}]
+        self._mock_ports_inventory(port_list)
+        self.rpcapi.iport_update_by_ihost.side_effect = \
+            exception.SysinvException("boom")
+
+        self.agent_manager.host_port_update(self.context, self.rpcapi)
+
+        self.rpcapi.iport_update_by_ihost.assert_called_once()
+        self.assertIsNone(self.agent_manager._prev_port)

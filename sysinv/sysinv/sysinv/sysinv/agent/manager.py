@@ -220,6 +220,7 @@ class AgentManager(service.PeriodicService):
         self._prev_pv = None
         self._prev_fs = None
         self._prev_memory = None
+        self._prev_port = None
         self._prev_imsg_dict = None
         self._subfunctions = None
         self._subfunctions_configured = False
@@ -1759,6 +1760,41 @@ class AgentManager(service.PeriodicService):
                 LOG.exception("Sysinv Agent exception updating idisk conductor.")
                 self._prev_disk = None
 
+    def host_port_update(self, icontext, rpcapi):
+        """Re-report port inventory during audit when it has changed.
+
+        Port inventory (which includes numchannels/sriov_vf_numchannels) is
+        only reported to the conductor at initial inventory and immediately
+        after a runtime channel/SR-IOV manifest apply (via _report_inventory).
+        When a channel configuration is applied outside those paths, where the
+        channels runtime manifest is deferred and applied while the host is
+        locked/offline - the port is never re-reported, leaving the DB
+        numchannels stale (e.g. 64) while the hardware is correctly at the
+        configured value (e.g. 8). This results in a false, flapping 300.001
+        channel-mismatch alarm that only clears after a sysinv-agent restart.
+
+        Re-report here, with change detection, so the DB converges within one
+        audit cycle regardless of how the channels were applied.
+        """
+        port_list, _, _ = self._get_ports_inventory()
+        if not port_list:
+            return
+        if (self._prev_port is None) or (self._prev_port != port_list) or \
+           (self.PORT not in self._inventory_reported):
+            try:
+                rpcapi.iport_update_by_ihost(icontext,
+                                             self._ihost_uuid,
+                                             port_list)
+                self._inventory_reported.add(self.PORT)
+                self._prev_port = port_list
+            except RemoteError as e:
+                LOG.error("iport_update_by_ihost RemoteError exc_type=%s" %
+                          e.exc_type)
+                self._prev_port = None
+            except exception.SysinvException:
+                LOG.exception("Sysinv Agent exception updating iport conductor.")
+                self._prev_port = None
+
     def host_lvg_update(self, icontext, rpcapi, cinder_device=None):
         ilvg = self.get_ilvg_data(cinder_device=cinder_device)
         if not ilvg:
@@ -1924,7 +1960,7 @@ class AgentManager(service.PeriodicService):
                      (', '.join(force_updates)))
 
         # if this audit is requested by conductor, clear previous states
-        # for disk, lvg, pv, partition, fs and memory to force an update
+        # for disk, lvg, pv, partition, fs, memory and ports to force an update
         if force_updates:
             if constants.DISK_AUDIT_REQUEST in force_updates:
                 self._prev_disk = None
@@ -1938,6 +1974,8 @@ class AgentManager(service.PeriodicService):
                 self._prev_fs = None
             if constants.MEMORY_AUDIT_REQUEST in force_updates:
                 self._prev_memory = None
+            if constants.PORT_AUDIT_REQUEST in force_updates:
+                self._prev_port = None
 
         # Update memory
         self.host_memory_update(icontext, rpcapi)
@@ -1946,6 +1984,11 @@ class AgentManager(service.PeriodicService):
         # Update disk partitions
         if self._ihost_personality != constants.STORAGE:
             self._update_disk_partitions(rpcapi, icontext, self._ihost_uuid)
+        # Re-report ports if changed (e.g. numchannels updated by a channel
+        # config apply). Only after initial inventory to avoid racing the
+        # first port report.
+        if self._inventoried_initial:
+            self.host_port_update(icontext, rpcapi)
         # Update local volume groups
         self.host_lvg_update(icontext, rpcapi, cinder_device)
         # Update physical volumes
