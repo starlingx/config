@@ -5049,6 +5049,26 @@ class FluxCDHelper(object):
             return True
 
         for pod in pods:
+            # Guard against a pod with no status yet; re-check on next poll.
+            if pod.status is None:
+                LOG.warning("No status available for pod {} at the moment; "
+                            "skipping".format(pod.metadata.name))
+                continue
+
+            # Skip any pod in the terminal 'Failed' phase (e.g. an orphaned
+            # pod left by a node reboot, never garbage collected). A Failed
+            # pod can never become ready, so it must not block the release;
+            # the live replacement pod is still checked below. A real apply
+            # failure is already caught earlier by the helmrelease
+            # status == "False" path, so this cannot hide a genuine failure.
+            if pod.status.phase == 'Failed':
+                LOG.info("Skipping terminal pod {} (phase=Failed, reason={}) "
+                         "with label {} when verifying release readiness"
+                         .format(pod.metadata.name,
+                                 getattr(pod.status, 'reason', None),
+                                 label_selector))
+                continue
+
             completed = self.check_pod_completed(pod)
             running_and_ready = self.check_pod_running_and_ready_probe(pod)
 
