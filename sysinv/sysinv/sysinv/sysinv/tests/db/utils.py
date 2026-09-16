@@ -1659,6 +1659,7 @@ def get_test_app(**kw):
                                 constants.APP_TARFILE_NAME_PLACEHOLDER),
         'status': kw.get('status', constants.APP_UPLOAD_IN_PROGRESS),
         'active': kw.get('active', False),
+        'recovery_attempts': kw.get('recovery_attempts', 0),
         'app_metadata': kw.get('app_metadata'),
     }
     return app_data
