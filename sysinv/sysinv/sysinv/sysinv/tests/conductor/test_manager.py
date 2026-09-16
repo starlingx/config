@@ -726,6 +726,10 @@ class ManagerTestCase(base.DbTestCase):
         from_rpc_app._context = self.context
         self.assertEqual(constants.APP_APPLY_SUCCESS, from_rpc_app.status)
         self.assertIn('does not match any supported', from_rpc_app.progress)
+        # Nothing was updated nor recovered, the path is rejected up front
+        self.assertIn('rejected', from_rpc_app.progress)
+        self.assertNotIn('aborted', from_rpc_app.progress)
+        self.assertNotIn('recover', from_rpc_app.progress)
         self.assertEqual(constants.APP_INACTIVE_STATE, to_rpc_app.status)
         mock_perform_update.assert_not_called()
         self.assertRaises(
@@ -754,6 +758,57 @@ class ManagerTestCase(base.DbTestCase):
         mock_get_metadata.return_value = {
             constants.APP_METADATA_UPGRADES: {
                 constants.APP_METADATA_FROM_VERSIONS: [r'1\.0-\d+']
+            }
+        }
+        self.service._app = mock.Mock()
+        self.service._app.update_and_process_app_metadata.return_value = None
+        self.service._kube = mock.Mock()
+        self.service._kube.kube_get_kubernetes_version.return_value = 'v1.29.2'
+
+        with mock.patch.object(self.service._app, 'perform_app_update',
+                               return_value=True) as mock_perform_update, \
+             mock.patch.object(self.service,
+                               'perform_upload_apply_dependent_apps',
+                               return_value=True):
+            result = self.service.perform_app_update(
+                self.context,
+                from_rpc_app,
+                to_rpc_app,
+                '/tmp/test-app-2.0-1.tgz',
+                lifecycle_hook_info)
+
+        self.assertTrue(result)
+        mock_perform_update.assert_called_once_with(
+            from_rpc_app,
+            to_rpc_app,
+            '/tmp/test-app-2.0-1.tgz',
+            lifecycle_hook_info,
+            None,
+            None,
+            None)
+
+    @mock.patch('sysinv.common.utils.get_app_metadata_from_tarfile')
+    def test_perform_app_update_allows_from_versions_without_packaging_suffix(
+            self, mock_get_metadata):
+        """from_versions declaring only the base version must be supported."""
+        from_rpc_app = dbutils.create_test_app(
+            name='test-app',
+            app_version='1.0-1',
+            status=constants.APP_APPLY_SUCCESS,
+            active=True)
+        from_rpc_app = self.dbapi.kube_app_get_by_id(from_rpc_app.id)
+        from_rpc_app._context = self.context
+        to_rpc_app = dbutils.create_test_app(
+            name='test-app',
+            app_version='2.0-1',
+            status=constants.APP_UPDATE_IN_PROGRESS,
+            active=True)
+        to_rpc_app = self.dbapi.kube_app_get_by_id(to_rpc_app.id)
+        to_rpc_app._context = self.context
+        lifecycle_hook_info = mock.Mock()
+        mock_get_metadata.return_value = {
+            constants.APP_METADATA_UPGRADES: {
+                constants.APP_METADATA_FROM_VERSIONS: ['1.0']
             }
         }
         self.service._app = mock.Mock()

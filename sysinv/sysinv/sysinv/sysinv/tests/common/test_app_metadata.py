@@ -802,6 +802,109 @@ class TestUpdatePathSupport(testtools.TestCase):
 
         self.assertFalse(app_metadata.is_update_path_supported(metadata, '1.2-3'))
 
+    def test_is_update_path_supported_base_version_literal_match(self):
+        """from_versions may omit the packaging suffix carried by app_version."""
+        metadata = {
+            constants.APP_METADATA_UPGRADES: {
+                constants.APP_METADATA_FROM_VERSIONS: ['1.2']
+            }
+        }
+
+        self.assertTrue(app_metadata.is_update_path_supported(metadata, '1.2-3'))
+
+    def test_is_update_path_supported_base_version_match_warns(self):
+        """Accepting a suffix-less entry must warn, not pass silently.
+
+        The application is still expected to declare a conformant entry;
+        the relaxed match only avoids hard-blocking an already published
+        tarball.
+        """
+        metadata = {
+            constants.APP_METADATA_NAME: 'test-app',
+            constants.APP_METADATA_UPGRADES: {
+                constants.APP_METADATA_FROM_VERSIONS: ['1.2']
+            }
+        }
+
+        with mock.patch.object(app_metadata, 'LOG') as mock_log:
+            self.assertTrue(
+                app_metadata.is_update_path_supported(metadata, '1.2-3'))
+            mock_log.warning.assert_called_once()
+            logged = str(mock_log.warning.call_args)
+            self.assertIn('test-app', logged)
+            self.assertIn('backward', logged)
+
+    def test_is_update_path_supported_exact_match_does_not_warn(self):
+        """A conformant entry must not produce a deprecation warning."""
+        metadata = {
+            constants.APP_METADATA_NAME: 'test-app',
+            constants.APP_METADATA_UPGRADES: {
+                constants.APP_METADATA_FROM_VERSIONS: ['1.2-3']
+            }
+        }
+
+        with mock.patch.object(app_metadata, 'LOG') as mock_log:
+            self.assertTrue(
+                app_metadata.is_update_path_supported(metadata, '1.2-3'))
+            mock_log.warning.assert_not_called()
+
+    def test_is_update_path_supported_base_version_regex_match(self):
+        metadata = {
+            constants.APP_METADATA_UPGRADES: {
+                constants.APP_METADATA_FROM_VERSIONS: [r'1\.\d+']
+            }
+        }
+
+        self.assertTrue(app_metadata.is_update_path_supported(metadata, '1.2-3'))
+
+    def test_is_update_path_supported_base_version_multi_digit_suffix(self):
+        metadata = {
+            constants.APP_METADATA_UPGRADES: {
+                constants.APP_METADATA_FROM_VERSIONS: ['25.09']
+            }
+        }
+
+        self.assertTrue(app_metadata.is_update_path_supported(metadata, '25.09-57'))
+
+    def test_is_update_path_supported_rejects_other_base_version(self):
+        """Stripping the suffix must not accept an unrelated base version."""
+        metadata = {
+            constants.APP_METADATA_UPGRADES: {
+                constants.APP_METADATA_FROM_VERSIONS: ['1.3']
+            }
+        }
+
+        self.assertFalse(app_metadata.is_update_path_supported(metadata, '1.2-3'))
+
+    def test_is_update_path_supported_pattern_suffix_not_stripped(self):
+        """Only the current version is normalized, never the pattern."""
+        metadata = {
+            constants.APP_METADATA_UPGRADES: {
+                constants.APP_METADATA_FROM_VERSIONS: ['1.2-3']
+            }
+        }
+
+        self.assertFalse(app_metadata.is_update_path_supported(metadata, '1.2'))
+
+
+class TestStripPackagingSuffix(testtools.TestCase):
+
+    def test_strip_packaging_suffix(self):
+        self.assertEqual('1.2', app_metadata.strip_packaging_suffix('1.2-3'))
+        self.assertEqual('25.09', app_metadata.strip_packaging_suffix('25.09-57'))
+        self.assertEqual('2.1.0', app_metadata.strip_packaging_suffix('2.1.0-11'))
+
+    def test_strip_packaging_suffix_without_suffix(self):
+        self.assertEqual('1.2', app_metadata.strip_packaging_suffix('1.2'))
+        self.assertEqual('1.2-rc1', app_metadata.strip_packaging_suffix('1.2-rc1'))
+
+    def test_strip_packaging_suffix_strips_only_trailing_suffix(self):
+        self.assertEqual('1.2-3.4', app_metadata.strip_packaging_suffix('1.2-3.4'))
+
+    def test_strip_packaging_suffix_non_string(self):
+        self.assertIsNone(app_metadata.strip_packaging_suffix(None))
+        self.assertEqual(123, app_metadata.strip_packaging_suffix(123))
+
 
 class TestLoadMetadata(testtools.TestCase):
     '''
