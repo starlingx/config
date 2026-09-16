@@ -65,14 +65,15 @@ class TestSynce4lParameters(test_base.TestCase):
             ptp_config, [])
         self.assertIn('holdover_ql', inst['monitoring_parameters'])
         self.assertIn('freerun_ql', inst['monitoring_parameters'])
-        self.assertIn('holdover_timer', inst['monitoring_parameters'])
+        self.assertIn('holdover_seconds', inst['monitoring_parameters'])
+        self.assertNotIn('holdover_timer', inst['monitoring_parameters'])
         self.assertIn('source', inst['monitoring_parameters'])
         self.assertEqual(inst['monitoring_parameters']['holdover_ql'],
                          constants.PTP_SYNCE_HOLDOVER_QL)
         self.assertEqual(inst['monitoring_parameters']['freerun_ql'],
                          constants.PTP_SYNCE_FREERUN_QL)
-        self.assertEqual(inst['monitoring_parameters']['holdover_timer'],
-                         constants.PTP_SYNCE_HOLDOVER_TIMER)
+        self.assertEqual(inst['monitoring_parameters']['holdover_seconds'],
+                         constants.PTP_SYNCE_HOLDOVER_SECONDS)
         self.assertEqual(inst['monitoring_parameters']['source'],
                          constants.PTP_SYNCE_SOURCE_PRIORITY)
 

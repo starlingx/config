@@ -885,7 +885,7 @@ class NetworkingPuppet(base.BasePuppet):
             'synce4l': {
                 'holdover_ql': constants.PTP_SYNCE_HOLDOVER_QL,
                 'freerun_ql': constants.PTP_SYNCE_FREERUN_QL,
-                'holdover_timer': constants.PTP_SYNCE_HOLDOVER_TIMER,
+                'holdover_seconds': constants.PTP_SYNCE_HOLDOVER_SECONDS,
                 'source': constants.PTP_SYNCE_SOURCE_PRIORITY,
             },
             'dpll-mgr': {}

@@ -2624,7 +2624,7 @@ PTP_SYNCE_RX_HEARTBEAT_MSEC = '500'
 # SyncE QL controller parameters (read by collectd synce plugin)
 PTP_SYNCE_HOLDOVER_QL = '0x04'
 PTP_SYNCE_FREERUN_QL = '0x0f'
-PTP_SYNCE_HOLDOVER_TIMER = '300'
+PTP_SYNCE_HOLDOVER_SECONDS = '300'
 PTP_SYNCE_SOURCE_PRIORITY = 'GNSS'
 
 # PTP instance gnss-monitor default parameters
@@ -2681,7 +2681,7 @@ PTP_INSTANCE_TYPE_SYNCE4L_MONITORING_PARAMETERS = [
     'holdover_ql',
     'freerun_ql',
     'static_ql',
-    'holdover_timer',
+    'holdover_seconds',
 ]
 
 # PTP instances created during migration
