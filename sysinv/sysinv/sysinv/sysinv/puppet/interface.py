@@ -2156,10 +2156,26 @@ def generate_data_iface_channels(context, config, db_api):
 
         interfaces = context['interfaces'].values()
         for iface in interfaces:
-            if check_interface_channel_conditions(iface, db_api):
-                _build_iface_channel_config(context, iface, config,
-                                            platform_cpu_count,
-                                            application_cpu_count)
+            if not check_interface_channel_conditions(iface, db_api):
+                continue
+            # Channels are a property of the physical port. When multiple
+            # interfaces are layered over the same port (e.g. a platform
+            # 'pxeboot0' over a pci-sriov 'common0') they resolve to the same
+            # os_ifname; only the interface that OWNS the port may generate
+            # channel config. This prevents a layered interface's value from
+            # overwriting the port owner's under the same os_ifname key.
+            # The API (_check_channels_interface_type) forbids configuring
+            # channels on a non-port-owning interface, so the owner is the only
+            # interface that can carry an explicit value here. AE (bond)
+            # interfaces are exempt: they propagate channels to their member
+            # ports, handled within _build_iface_channel_config.
+            if iface.get('iftype') != constants.INTERFACE_TYPE_AE:
+                port = get_interface_port(context, iface)
+                if port is not None and port['interface_id'] != iface['id']:
+                    continue
+            _build_iface_channel_config(context, iface, config,
+                                        platform_cpu_count,
+                                        application_cpu_count)
     except Exception as e:
         LOG.error(f"Failed to generate interface data for interface channels: {e}", exc_info=True)
 
@@ -2258,7 +2274,7 @@ def _build_iface_channel_config(context, iface, config,
             ifname = iface.get('ifname', None)
             os_ifname = get_interface_os_ifname(context, iface)
             LOG.info(f"Configuring channels for {ifname} under "
-                     f"ifname: {os_ifname}")
+                     f"ifname: {os_ifname}: {channels}")
             config[CHANNEL_CONFIG_RESOURCE][os_ifname] = {
                 'channels': channels
             }

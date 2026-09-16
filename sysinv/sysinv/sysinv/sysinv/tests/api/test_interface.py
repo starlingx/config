@@ -1138,6 +1138,31 @@ class TestPatchMixin(object):
         self.assertIn(lower_iface['ifname'],
                       response.json['error_message'])
 
+    def test_modify_layered_ethernet_channels_rejected(self):
+        self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT,
+                              host=self.worker)
+        # common0 owns the physical port.
+        port, common0 = self._create_sriov(
+            'common0', host=self.worker, sriov_numvfs=4)
+        # pxeboot0 is an ethernet interface layered on common0 (uses common0);
+        # it does not own the port.
+        pxeboot0_port, pxeboot0 = self._create_ethernet(
+            'pxeboot0', constants.NETWORK_TYPE_PXEBOOT,
+            ifclass=constants.INTERFACE_CLASS_PLATFORM,
+            lower_iface=common0, host=self.worker)
+
+        response = self.patch_dict_json(
+            '%s' % self._get_path(pxeboot0['uuid']),
+            channels=4,
+            expect_errors=True)
+        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+        self.assertEqual('application/json', response.content_type)
+        self.assertTrue(response.json['error_message'])
+        self.assertIn("does not own its physical port",
+                      response.json['error_message'])
+        # The error should point at the port-owning interface.
+        self.assertIn(common0['ifname'], response.json['error_message'])
+
     def test_modify_vf_interface_vf_channels_allowed(self):
         """Setting --vf-channels on a VF type interface must be allowed."""
         self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT,

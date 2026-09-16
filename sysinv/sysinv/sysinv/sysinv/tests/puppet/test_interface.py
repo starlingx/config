@@ -2473,6 +2473,35 @@ class InterfaceTestCase2(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
             driver=constants.DRIVER_MLX_CX4, sriov_numvfs=vf_num, **kwargs)
         return port, iface
 
+    def test_channel_config_skips_non_port_owner(self):
+        # common0 owns port eno8303 (interface_id == common0.id); pxeboot0 is
+        # layered on common0 and resolves to the same port/os_ifname.
+        common0 = {'id': 1, 'ifname': 'common0', 'iftype': constants.INTERFACE_TYPE_ETHERNET,
+                   'ifclass': constants.INTERFACE_CLASS_PCI_SRIOV, 'ovs_access': False,
+                   'channels': 8, 'uses': []}
+        pxeboot0 = {'id': 22, 'ifname': 'pxeboot0', 'iftype': constants.INTERFACE_TYPE_ETHERNET,
+                    'ifclass': constants.INTERFACE_CLASS_PLATFORM, 'ovs_access': False,
+                    'channels': None, 'uses': ['common0']}
+        port = {'name': 'eno8303', 'interface_id': 1, 'maxchannels': 16}
+
+        context = {
+            'interfaces': {'common0': common0, 'pxeboot0': pxeboot0},
+            'ports': {1: port},
+            'platform_cpu_count': 1,
+            'application_cpu_count': 16,
+        }
+        config = {interface.CHANNEL_CONFIG_RESOURCE: {}}
+        interface.generate_data_iface_channels(context, config, self.dbapi)
+
+        # eno8303 must carry the port owner's explicit value (8), not the
+        # layered pxeboot0 platform default (platform_cpu_count = 1).
+        cc = config[interface.CHANNEL_CONFIG_RESOURCE]
+        self.assertIn('eno8303', cc)
+        self.assertEqual(cc['eno8303']['channels'], 8)
+        # No stray tracking keys leaked into the hieradata config or context.
+        self.assertEqual(list(config.keys()), [interface.CHANNEL_CONFIG_RESOURCE])
+        self.assertNotIn('_channel_config_meta', context)
+
     def test_channel_config_skipped_when_maxchannels_unsupported(self):
         """Test that channel hieradata is NOT generated when maxchannels is None.
 

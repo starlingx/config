@@ -1208,6 +1208,20 @@ def _check_channels_interface_type(rpc_interface):
             msg += _(" Did you mean '%s'?" % parent_name)
         raise wsme.exc.ClientSideError(msg)
 
+    # Channels are a property of the physical port.  An ethernet interface
+    # that is layered over another interface's port (e.g. a platform
+    # 'pxeboot0' that uses a pci-sriov 'common0') does not own the port, so
+    # configuring channels on it would collide with the port-owning
+    # interface.  Direct the operator to the port-owning interface instead.
+    if (rpc_interface['iftype'] == constants.INTERFACE_TYPE_ETHERNET and
+            rpc_interface.get('uses')):
+        owner_ifname = rpc_interface['uses'][0]
+        raise wsme.exc.ClientSideError(
+            _("Cannot apply channel settings to interface '%s' because it "
+              "does not own its physical port. Configure channels on the "
+              "port-owning interface '%s' instead." %
+              (rpc_interface['ifname'], owner_ifname)))
+
 
 def _check_channels_value(rpc_interface, patch):
     """Validate --channels value is positive and within port maxchannels.
