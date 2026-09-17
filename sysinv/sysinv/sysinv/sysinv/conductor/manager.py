@@ -9669,8 +9669,8 @@ class ConductorManager(service.PeriodicService):
                                             k8s_version=None,
                                             k8s_upgrade_timing=None):
         try:
-            self._inner_sync_auto_apply(context, app_name, async_apply=False)
-            self._auto_update_app(
+            is_applied = self._inner_sync_auto_apply(context, app_name, async_apply=False)
+            is_updated = self._auto_update_app(
                 context,
                 app_name,
                 k8s_version=k8s_version,
@@ -9679,10 +9679,12 @@ class ConductorManager(service.PeriodicService):
                 skip_validations=True,
                 ignore_locks=True
             )
+            if is_applied and is_updated:
+                return True
+            return False
         except Exception as e:
             LOG.error(e)
             return False
-        return True
 
     def _get_max_app_operations(self):
         """Get max-app-operations-per-platform-core service parameter.
@@ -9814,7 +9816,7 @@ class ConductorManager(service.PeriodicService):
                                          status_constraints=None,
                                          async_apply=True,
                                          is_reapply_process=False):
-        self._inner_sync_auto_apply(
+        return self._inner_sync_auto_apply(
             context,
             app_name,
             status_constraints,
@@ -9872,7 +9874,7 @@ class ConductorManager(service.PeriodicService):
                 is_reapply_process=is_reapply_process,
             )
         else:
-            self.perform_app_apply(
+            return self.perform_app_apply(
                 context,
                 app,
                 app.mode,
