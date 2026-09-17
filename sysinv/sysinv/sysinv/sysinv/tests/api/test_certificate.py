@@ -773,3 +773,106 @@ class ApiCertificateDeleteTestSuite(ApiCertificateTestCaseMixin,
         self.assertTrue(resp.get('error_message'))
         fault_string_expected = 'No certificate found for %s' % uuid
         self.assertIn(fault_string_expected, str(resp.get('error_message')))
+
+
+class TestMatchHostname(base.FunctionalTest):
+    """Tests for _match_hostname and _ssl_wildcard_match (RFC 6125)."""
+
+    def test_exact_match_san(self):
+        """Test exact hostname match via SAN entry."""
+        cert_dict = {
+            'subjectAltName': (('DNS', 'controller.example.com'),),
+            'subject': ()
+        }
+        # Should not raise
+        cert_api._match_hostname(cert_dict, 'controller.example.com')
+
+    def test_exact_match_cn_fallback(self):
+        """Test exact hostname match via CN when no SAN present."""
+        cert_dict = {
+            'subject': ((('commonName', 'controller.example.com'),),),
+        }
+        cert_api._match_hostname(cert_dict, 'controller.example.com')
+
+    def test_wildcard_match_san(self):
+        """Test wildcard *.domain matches single label."""
+        cert_dict = {
+            'subjectAltName': (('DNS', '*.example.com'),),
+            'subject': ()
+        }
+        cert_api._match_hostname(cert_dict, 'controller.example.com')
+
+    def test_wildcard_no_cross_dot(self):
+        """Test wildcard does NOT match across dot boundaries."""
+        import ssl
+        cert_dict = {
+            'subjectAltName': (('DNS', '*.example.com'),),
+            'subject': ()
+        }
+        self.assertRaises(
+            ssl.SSLCertVerificationError,
+            cert_api._match_hostname,
+            cert_dict, 'a.b.example.com')
+
+    def test_no_match_raises(self):
+        """Test mismatch raises SSLCertVerificationError."""
+        import ssl
+        cert_dict = {
+            'subjectAltName': (('DNS', 'other.example.com'),),
+            'subject': ()
+        }
+        self.assertRaises(
+            ssl.SSLCertVerificationError,
+            cert_api._match_hostname,
+            cert_dict, 'controller.example.com')
+
+    def test_multiple_san_entries(self):
+        """Test matching against multiple SAN entries."""
+        cert_dict = {
+            'subjectAltName': (
+                ('DNS', 'api.example.com'),
+                ('DNS', '*.internal.example.com'),
+                ('DNS', 'controller.example.com'),
+            ),
+            'subject': ()
+        }
+        cert_api._match_hostname(cert_dict, 'controller.example.com')
+
+    def test_case_insensitive_match(self):
+        """Test hostname matching is case-insensitive."""
+        cert_dict = {
+            'subjectAltName': (('DNS', 'Controller.Example.COM'),),
+            'subject': ()
+        }
+        cert_api._match_hostname(cert_dict, 'controller.example.com')
+
+    def test_wildcard_partial_label(self):
+        """Test partial wildcard like www*.example.com."""
+        cert_dict = {
+            'subjectAltName': (('DNS', 'www*.example.com'),),
+            'subject': ()
+        }
+        cert_api._match_hostname(cert_dict, 'www3.example.com')
+
+    def test_empty_hostname_no_match(self):
+        """Test empty hostname does not match."""
+        import ssl
+        cert_dict = {
+            'subjectAltName': (('DNS', '*.example.com'),),
+            'subject': ()
+        }
+        self.assertRaises(
+            ssl.SSLCertVerificationError,
+            cert_api._match_hostname,
+            cert_dict, '')
+
+    def test_empty_cert_no_match(self):
+        """Test empty cert raises error."""
+        import ssl
+        cert_dict = {
+            'subject': ()
+        }
+        self.assertRaises(
+            ssl.SSLCertVerificationError,
+            cert_api._match_hostname,
+            cert_dict, 'controller.example.com')

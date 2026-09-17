@@ -4170,7 +4170,14 @@ class Connection(api.Connection):
             type = constants.PTP_PARAMETER_OWNER_INTERFACE
         if uuid and type:
             query = query.join(
-                models.PtpParameters.ptp_parameter_owners).filter(
+                models.PtpParameterOwnerships,
+                models.PtpParameters.uuid ==
+                models.PtpParameterOwnerships.parameter_uuid
+            ).join(
+                models.PtpParameterOwners,
+                models.PtpParameterOwnerships.owner_uuid ==
+                models.PtpParameterOwners.uuid
+            ).filter(
                     models.PtpParameterOwners.uuid == uuid,
                     models.PtpParameterOwners.type == type)
         return _paginate_query(models.PtpParameters, limit, marker,
