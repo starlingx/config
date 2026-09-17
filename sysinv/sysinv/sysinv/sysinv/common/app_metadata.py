@@ -75,6 +75,24 @@ def _locate_metadata_file(directory):
     return glob.glob(directory + '/**/metadata.yaml', recursive=True)
 
 
+# Trailing packaging suffix of an app version, e.g. "-3" in "1.2-3".
+APP_VERSION_PACKAGING_SUFFIX = re.compile(r'-\d+$')
+
+
+def strip_packaging_suffix(version):
+    """Remove the trailing packaging suffix from an application version.
+
+    :param version: The application version string (e.g. "25.09-0").
+    :returns: The version without the trailing "-<digits>" suffix
+        (e.g. "25.09"). The version is returned unchanged when no packaging
+        suffix is present or when it is not a string.
+    """
+    if not isinstance(version, str):
+        return version
+
+    return APP_VERSION_PACKAGING_SUFFIX.sub('', version)
+
+
 def is_version_match(version, version_patterns):
     """Return whether a version matches any supported version pattern.
 
@@ -103,7 +121,9 @@ def is_update_path_supported(metadata, current_version):
         tarball.
     :param current_version: The currently applied app version string.
     :returns: True if from_versions is not defined (backward compatible),
-        or if current_version matches any entry. False otherwise.
+        or if current_version matches any entry. A match that only succeeds
+        after removing the packaging suffix is accepted for backward
+        compatibility and logs a warning. False otherwise.
     """
 
     upgrades = metadata.get(constants.APP_METADATA_UPGRADES, {}) or {}
@@ -114,7 +134,30 @@ def is_update_path_supported(metadata, current_version):
     if not isinstance(from_versions, list) or not from_versions:
         return False
 
-    return is_version_match(current_version, from_versions)
+    if is_version_match(current_version, from_versions):
+        return True
+
+    # Backward compatibility: accept entries that omit the packaging
+    # suffix, but warn so the metadata still gets corrected.
+    base_version = strip_packaging_suffix(current_version)
+    if base_version != current_version and \
+            is_version_match(base_version, from_versions):
+        LOG.warning(
+            "Application %s: applied version %s matches %s %s only after "
+            "removing its packaging suffix. Accepted for backward "
+            "compatibility. The entries are matched as full regular "
+            "expressions and should declare either the complete version "
+            "(e.g. '%s') or a pattern that tolerates the suffix "
+            "(e.g. '%s').",
+            metadata.get(constants.APP_METADATA_NAME, '<unknown>'),
+            current_version,
+            constants.APP_METADATA_FROM_VERSIONS,
+            from_versions,
+            current_version,
+            re.escape(base_version) + r'(-\d+)?')
+        return True
+
+    return False
 
 
 def validate_metadata_file(path, metadata_file, upgrade_from_release=None):
@@ -128,8 +171,10 @@ def validate_metadata_file(path, metadata_file, upgrade_from_release=None):
       auto_update: <true/false/yes/no>
       update_failure_no_rollback: <true/false/yes/no>
       from_versions:
-      - <version.1>
-      - <version.2>
+      - <regular expression (full match)> e.g: 25\.09-\d+
+      - <regular expression (full match)> e.g: 25.09
+        Note: the trailing packaging suffix of the applied version
+        (e.g. "-0" in "25.09-0") is optional when matching.
     supported_k8s_version:
       minimum: <version>
       maximum: <version>

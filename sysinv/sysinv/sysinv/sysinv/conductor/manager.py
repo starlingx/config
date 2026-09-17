@@ -19229,11 +19229,11 @@ class ConductorManager(service.PeriodicService):
 
         cutils.update_app_status(to_rpc_app, constants.APP_INACTIVE_STATE)
 
+        # The update path is validated before any update work is performed,
+        # so there is nothing to abort nor recover from at this point.
         progress_msg = (
-            constants.APP_PROGRESS_UPDATE_ABORTED.format(
+            constants.APP_PROGRESS_UPDATE_REJECTED.format(
                 from_rpc_app.app_version, to_rpc_app.app_version
-            ) + constants.APP_PROGRESS_RECOVER_COMPLETED.format(
-                from_rpc_app.app_version
             ) + reason
         )
         cutils.update_app_status(

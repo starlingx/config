@@ -2464,6 +2464,7 @@ APP_PROGRESS_DEPS_PLATFORM_APP = "%s is required and is not applied" % HELM_APP_
 APP_PROGRESS_ROLLBACK_RELEASES = 'rolling back application releases'
 APP_PROGRESS_UPDATE_STARTING = 'Application update starting.'
 APP_PROGRESS_UPDATE_ABORTED = 'Application update from version {} to version {} aborted. '
+APP_PROGRESS_UPDATE_REJECTED = 'Application update from version {} to version {} rejected. '
 APP_PROGRESS_UPDATE_COMPLETED = 'Application update from version {} to version {} completed.'
 APP_PROGRESS_RECOVER_ABORTED = 'Application recover to version {} aborted. '
 APP_PROGRESS_RECOVER_COMPLETED = 'Application recover to version {} completed. '
