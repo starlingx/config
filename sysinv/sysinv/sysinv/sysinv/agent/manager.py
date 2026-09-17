@@ -1760,6 +1760,27 @@ class AgentManager(service.PeriodicService):
                 LOG.exception("Sysinv Agent exception updating idisk conductor.")
                 self._prev_disk = None
 
+    @staticmethod
+    def _changed_channel_ports(prev_port, port_list):
+        """Return the set of physical port names whose channel counts changed
+        between the previous and current port inventory.
+        """
+        def _channel_counts_by_port(plist):
+            return {
+                p['pname']: p.get('numchannels')
+                for p in (plist or [])
+                if p.get('pname') is not None
+            }
+
+        prev = _channel_counts_by_port(prev_port)
+        curr = _channel_counts_by_port(port_list)
+
+        changed = set()
+        for name, cur_val in curr.items():
+            if name not in prev or prev[name] != cur_val:
+                changed.add(name)
+        return changed
+
     def host_port_update(self, icontext, rpcapi):
         """Re-report port inventory during audit when it has changed.
 
@@ -1786,6 +1807,29 @@ class AgentManager(service.PeriodicService):
                                              self._ihost_uuid,
                                              port_list)
                 self._inventory_reported.add(self.PORT)
+
+                if constants.WORKER in self.subfunctions_list_get():
+                    changed_ports = self._changed_channel_ports(
+                        self._prev_port, port_list)
+                    # Ports changed (e.g. numchannels) or first
+                    # audit.
+                    if self._prev_port is None or changed_ports:
+                        try:
+                            platform_interfaces = \
+                                rpcapi.get_platform_interfaces(
+                                    icontext, self._ihost_uuid)
+                            if self._prev_port is not None:
+                                platform_interfaces = [
+                                    iface for iface in platform_interfaces
+                                    if iface['name'] in changed_ports]
+                            if platform_interfaces:
+                                self._update_interface_irq_affinity(
+                                    self, platform_interfaces)
+                        except exception.SysinvException:
+                            LOG.exception("Sysinv Agent exception re-affining "
+                                          "platform interface IRQs after port "
+                                          "change.")
+
                 self._prev_port = port_list
             except RemoteError as e:
                 LOG.error("iport_update_by_ihost RemoteError exc_type=%s" %
@@ -2179,6 +2223,26 @@ class AgentManager(service.PeriodicService):
         if inventory_update in (puppet.REPORT_PCI_SRIOV_CONFIG,
                                 puppet.REPORT_CHANNEL_CONFIG):
             self._report_port_inventory(context)
+
+            # A channel change may create new IRQs that inherit
+            # the default affinity of the system, which will be application
+            # cores.  For platform interfaces, we need to re-affine them
+            # For platform interfaces those IRQs must be moved back to platform
+            # cores.
+            channel_ifclass = config_dict.get('channel_ifclass')
+            if (inventory_update == puppet.REPORT_CHANNEL_CONFIG and
+                    constants.WORKER in self.subfunctions_list_get() and
+                    channel_ifclass == constants.INTERFACE_CLASS_PLATFORM):
+                rpcapi = conductor_rpcapi.ConductorAPI(
+                    topic=conductor_rpcapi.MANAGER_TOPIC)
+                try:
+                    platform_interfaces = rpcapi.get_platform_interfaces(
+                        context, self._ihost_uuid)
+                    self._update_interface_irq_affinity(self, platform_interfaces)
+                except exception.SysinvException:
+                    LOG.exception("Sysinv Agent exception re-affining "
+                                  "platform interface IRQs after channel "
+                                  "config change.")
         else:
             LOG.error("report_inventory unknown request=%s" % inventory_update)
 

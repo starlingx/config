@@ -11105,7 +11105,7 @@ class ConductorManager(service.PeriodicService):
 
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
-    def update_interface_channel_config(self, context, host_uuid):
+    def update_interface_channel_config(self, context, host_uuid, ifclass):
         """update interface channel configuration of platform/SR-IOV interfaces
 
         :param context: an admin context
@@ -11123,6 +11123,7 @@ class ConductorManager(service.PeriodicService):
             "classes": ['platform::network::interfaces::channels::runtime'],
             puppet_common.REPORT_INVENTORY_UPDATE:
                 puppet_common.REPORT_CHANNEL_CONFIG,
+            'channel_ifclass': ifclass,
         }
 
         self._config_apply_runtime_manifest(
