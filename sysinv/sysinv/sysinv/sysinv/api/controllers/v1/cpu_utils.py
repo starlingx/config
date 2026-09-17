@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2025 Wind River Systems, Inc.
+# Copyright (c) 2013-2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -114,6 +114,60 @@ def append_ht_sibling(host, cpu_list):
     return list(set(cpus_to_add))
 
 
+def _build_sibling_map(host):
+    """Build a lookup table mapping cpu_num -> sibling_cpu_num.
+
+    Groups CPUs by (numa_node, core) in a single pass and, for cores that
+    have exactly two threads, maps each thread's CPU number to its sibling's
+    CPU number. CPUs without a sibling (non-HT systems or single-thread
+    cores) are simply absent from the returned dict.
+    """
+    cores = {}
+    for cpu in host.cpus:
+        cores.setdefault((cpu.numa_node, cpu.core), []).append(cpu.cpu)
+
+    sibling_map = {}
+    for cpu_nums in cores.values():
+        if len(cpu_nums) == 2:
+            a, b = cpu_nums
+            sibling_map[a] = b
+            sibling_map[b] = a
+    return sibling_map
+
+
+def _assign_with_sibling(host, cpu_functions_list, cpu_lists_s, cpu,
+                         sibling_map, list_drbd_limit=None):
+    """Assign cpu to the given function list and, if HT is enabled, also
+    assign its sibling to the same function.
+
+    Args:
+        host: the host object (used to check hyperthreading).
+        cpu_functions_list: the per-function list to append assignments to.
+        cpu_lists_s: the pool of available CPUs for this NUMA node. The
+            sibling is removed from this pool when it is assigned.
+        cpu: the CPU already selected for assignment (already removed from the
+            available pool by the caller).
+        sibling_map: precomputed cpu_num -> sibling_cpu_num lookup.
+        list_drbd_limit: optional DRBD-limited pool (only passed for the
+            platform function) from which the sibling is also removed.
+
+    Returns:
+        The number of CPUs consumed (1 if no sibling was assigned, 2 if the
+        sibling was also assigned).
+    """
+    cpu_functions_list.append(cpu)
+    consumed = 1
+    if host.hyperthreading:
+        sibling = sibling_map.get(cpu)
+        if sibling is not None and sibling in cpu_lists_s:
+            cpu_functions_list.append(sibling)
+            cpu_lists_s.remove(sibling)
+            if list_drbd_limit is not None and sibling in list_drbd_limit:
+                list_drbd_limit.remove(sibling)
+            consumed = 2
+    return consumed
+
+
 def init_cpu_counts(host):
     """Create empty data structures to track CPU assignments by socket and
     function."""
@@ -180,6 +234,61 @@ def check_core_allocations(host, cpu_counts, cpu_lists=None):
                 raise wsme.exc.ClientSideError(
                     "Some CPUs are specified for more than one function.")
             cpulist.extend(functionlist)
+
+        # On hyperthreaded hosts, reject any cpulist specification that would
+        # result in SMT siblings being assigned to different functions. The
+        # -c/cpulist option must not silently pull siblings along, so instead
+        # the admin is required to keep both siblings of a physical core
+        # together.
+        if host.hyperthreading:
+            sibling_map = _build_sibling_map(host)
+
+            # Map every explicitly specified CPU to its requested function.
+            cpu_to_function = {}
+            for function in CORE_FUNCTIONS:
+                for cpu in cpu_lists.get(function, []):
+                    cpu_to_function[cpu] = function
+
+            for cpu, function in cpu_to_function.items():
+                sibling = sibling_map.get(cpu)
+                if sibling is None:
+                    continue
+                if sibling in cpu_to_function:
+                    # Both siblings are explicitly specified: they must be
+                    # for the same function.
+                    if cpu_to_function[sibling] != function:
+                        raise wsme.exc.ClientSideError(
+                            "CPU %s and its SMT sibling %s cannot be assigned "
+                            "to different functions." % (cpu, sibling))
+                else:
+                    # Only one thread of the sibling pair is specified. The
+                    # unspecified sibling would fall through to count-based /
+                    # default allocation and could land in a different
+                    # function, so reject.
+                    raise wsme.exc.ClientSideError(
+                        "CPU %s is specified for function %s but its SMT "
+                        "sibling %s is not; SMT siblings must be assigned to "
+                        "the same function." % (cpu, function, sibling))
+
+    # On a hyperthreaded host, CPUs are assigned to functions a full
+    # physical core (both SMT siblings) at a time, so each per-function
+    # count must be even. The API/DM callers guarantee this by doubling
+    # the requested count; enforce it here as well so that an odd count
+    # cannot cause a function to consume one sibling of a core while the
+    # other falls through to a different function, silently splitting it.
+    if host.hyperthreading:
+        for s in range(0, len(host.nodes)):
+            for function in [constants.PLATFORM_FUNCTION,
+                             constants.VSWITCH_FUNCTION,
+                             constants.SHARED_FUNCTION,
+                             constants.ISOLATED_FUNCTION]:
+                if cpu_counts[s][function] % 2 != 0:
+                    raise wsme.exc.ClientSideError(
+                        "On a hyperthreaded host, the number of %s "
+                        "logical CPUs on processor %s must be even so "
+                        "that both SMT siblings of a physical core are "
+                        "assigned to the same function."
+                        % (function.lower(), s))
 
     # NOTE: contrary to the variable names, these are actually logical CPUs
     # rather than cores, so if hyperthreading is enabled they're SMT siblings.
@@ -287,13 +396,19 @@ def update_core_allocations(host, cpu_counts, cpulists=None):
         for f in CORE_FUNCTIONS:
             host.cpu_functions[s][f] = []
 
+    # Precompute the HT sibling lookup table once for this host.
+    sibling_map = _build_sibling_map(host)
+
     # Make per-numa-node lists of available CPUs
     cpu_lists = {}
     for s in range(0, len(host.nodes)):
         cpu_lists[s] = list(host.cpu_lists[s]) if s in host.cpu_lists else []
 
     # We need to reserve all of the cpulist-specified CPUs first, then
-    # reserve by counts.
+    # reserve by counts. cpulist assignments are honoured exactly as the
+    # admin specified them; siblings are NOT auto-included here. Any cpulist
+    # that would split SMT siblings across functions is rejected earlier in
+    # check_core_allocations().
     for function in CORE_FUNCTIONS:
         if cpulists and function in cpulists:
             for cpu in cpulists[function]:
@@ -309,30 +424,29 @@ def update_core_allocations(host, cpu_counts, cpulists=None):
         ]
 
         # Reserve for the platform first
-        for i in range(0, cpu_counts[s][constants.PLATFORM_FUNCTION]):
+        remaining = cpu_counts[s][constants.PLATFORM_FUNCTION]
+        while remaining > 0:
             if len(list_drbd_limit) > 0:
                 p_cpu = list_drbd_limit.pop(0)
-                host.cpu_functions[s][constants.PLATFORM_FUNCTION].append(
-                    p_cpu)
                 cpu_lists[s].remove(p_cpu)
             else:
-                host.cpu_functions[s][constants.PLATFORM_FUNCTION].append(
-                    cpu_lists[s].pop(0))
+                p_cpu = cpu_lists[s].pop(0)
+            remaining -= _assign_with_sibling(
+                host,
+                host.cpu_functions[s][constants.PLATFORM_FUNCTION],
+                cpu_lists[s], p_cpu, sibling_map,
+                list_drbd_limit=list_drbd_limit)
 
-        # Reserve for the vswitch next
-        for i in range(0, cpu_counts[s][constants.VSWITCH_FUNCTION]):
-            host.cpu_functions[s][constants.VSWITCH_FUNCTION].append(
-                cpu_lists[s].pop(0))
-
-        # Reserve for the shared next
-        for i in range(0, cpu_counts[s][constants.SHARED_FUNCTION]):
-            host.cpu_functions[s][constants.SHARED_FUNCTION].append(
-                cpu_lists[s].pop(0))
-
-        # Reserve for the isolated next
-        for i in range(0, cpu_counts[s][constants.ISOLATED_FUNCTION]):
-            host.cpu_functions[s][constants.ISOLATED_FUNCTION].append(
-                cpu_lists[s].pop(0))
+        # Reserve for the vswitch, shared and isolated functions next
+        for function in [constants.VSWITCH_FUNCTION,
+                         constants.SHARED_FUNCTION,
+                         constants.ISOLATED_FUNCTION]:
+            remaining = cpu_counts[s][function]
+            while remaining > 0:
+                cpu = cpu_lists[s].pop(0)
+                remaining -= _assign_with_sibling(
+                    host, host.cpu_functions[s][function],
+                    cpu_lists[s], cpu, sibling_map)
 
         # Assign the remaining cpus to the default function for this host
         host.cpu_functions[s][get_default_function(host)] += cpu_lists[s]
