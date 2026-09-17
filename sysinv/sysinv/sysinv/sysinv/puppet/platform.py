@@ -859,7 +859,7 @@ class PlatformPuppet(base.BasePuppet):
 
             if isolcpus_ranges:
                 # prevent kernel managed IRQs from landing on isolated cores
-                isolcpus_prefix = ['domain', 'managed_irq']
+                isolcpus_prefix = ['domain', 'managed_irq_strict']
                 if cpu_ranges.get('nohz_full') != 'disabled':
                     isolcpus_prefix.insert(0, 'nohz')
                 isolcpus_prefix.append(isolcpus_ranges)

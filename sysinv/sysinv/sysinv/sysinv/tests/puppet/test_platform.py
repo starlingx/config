@@ -644,9 +644,9 @@ class PlatformTestCaseDisableNohzFullIsolcpus(base.PuppetTestCaseMixin,
         isolcpus = self._get_isolcpus_value()
         self.assertIsNotNone(isolcpus)
         self.assertNotIn('nohz', isolcpus.split(','))
-        # Should still have domain and managed_irq
+        # Should still have domain and managed_irq_strict
         self.assertIn('domain', isolcpus.split(','))
-        self.assertIn('managed_irq', isolcpus.split(','))
+        self.assertIn('managed_irq_strict', isolcpus.split(','))
 
     def test_nohz_full_disabled_with_disable_label(self):
         """With disable-nohz-full=enabled, nohz_full should be 'disabled'."""
