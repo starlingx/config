@@ -546,14 +546,27 @@ class KubernetesPuppet(base.BasePuppet):
         if version is None:
             # The target version is not set if an upgrade hasn't been started,
             # so get the running kubernetes version.
-            try:
-                version = self._kube_operator.kube_get_kubernetes_version()
-            except Exception:
-                # During initial installation of the first controller,
-                # kubernetes may not be running yet. In that case, none of the
-                # puppet manifests being applied will need the kubernetes
-                # version.
-                LOG.warning("Unable to retrieve kubernetes version")
+            #
+            # admin.conf exists after the initial kubeadm init, but a bootstrap
+            # replay runs kubeadm reset which deletes /etc/kubernetes/. Without
+            # admin.conf the apiserver is down, and the version query below
+            # retries for a long time before giving up, which can stall the
+            # caller. So only query when admin.conf is present; otherwise skip
+            # and keep the version already recorded in the database.
+            if os.path.exists(kubernetes.KUBERNETES_ADMIN_CONF):
+                try:
+                    version = \
+                        self._kube_operator.kube_get_kubernetes_version()
+                except Exception:
+                    # During initial installation of the first controller,
+                    # kubernetes may not be running yet. In that case, none of
+                    # the puppet manifests being applied will need the
+                    # kubernetes version.
+                    LOG.warning("Unable to retrieve kubernetes version")
+            else:
+                LOG.info("Skipping kubernetes version query: %s not present "
+                         "(kubernetes not running on this host)."
+                         % kubernetes.KUBERNETES_ADMIN_CONF)
 
         config.update({'platform::kubernetes::params::version': version})
 
