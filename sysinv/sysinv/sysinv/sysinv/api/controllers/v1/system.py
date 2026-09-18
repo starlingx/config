@@ -595,6 +595,11 @@ class SystemController(rest.RestController):
                                                      % distributed_cloud_role))
 
         if 'vswitch_type' in updates:
+            if vswitch_type not in constants.VSWITCH_TYPE_VALID_LIST:
+                raise wsme.exc.ClientSideError(
+                    _("Invalid vswitch_type '%s'. Supported values are: %s"
+                      % (vswitch_type,
+                         ', '.join(constants.VSWITCH_TYPE_VALID_LIST))))
             if vswitch_type == rpc_isystem['capabilities']['vswitch_type']:
                 raise wsme.exc.ClientSideError(_("vswitch_type is already set"
                                                  " as %s" % vswitch_type))

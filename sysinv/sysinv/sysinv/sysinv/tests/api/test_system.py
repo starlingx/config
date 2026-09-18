@@ -848,3 +848,53 @@ class TestSystemUpdateModeFromDuplexDirect(TestSystem):
         update = {"system_mode": constants.SYSTEM_MODE_DUPLEX}
         self._patch_and_check(self._get_path(self.system.uuid),
                               update)
+
+
+class TestSystemUpdateVswitchType(TestSystem):
+    """Tests for validation of the vswitch_type capability.
+
+    Note the test fixture defaults vswitch_type to ovs-dpdk, so ovs-dpdk
+    exercises the pre-existing "already set as" path rather than the success
+    path.
+    """
+
+    def setUp(self):
+        super(TestSystemUpdateVswitchType, self).setUp()
+        self.system = dbutils.create_test_isystem()
+
+    def test_update_vswitch_type_unsupported_value_rejected(self):
+        update = {"vswitch_type": "ovs"}
+        msg = ("Invalid vswitch_type 'ovs'. Supported values are: %s"
+               % ', '.join(constants.VSWITCH_TYPE_VALID_LIST))
+        self._patch_and_check(self._get_path(self.system.uuid),
+                              update, expect_errors=True,
+                              expected_error_message=msg)
+
+    def test_update_vswitch_type_empty_value_rejected(self):
+        update = {"vswitch_type": ""}
+        self._patch_and_check(self._get_path(self.system.uuid),
+                              update, expect_errors=True)
+
+    def test_update_vswitch_type_nuage_vrs_rejected(self):
+        # nuage_vrs remains a defined constant but has no datapath
+        # implementation, so it is not an accepted value.
+        update = {"vswitch_type": constants.VSWITCH_TYPE_NUAGE_VRS}
+        self._patch_and_check(self._get_path(self.system.uuid),
+                              update, expect_errors=True)
+
+    def test_update_vswitch_type_already_set_preserved(self):
+        update = {"vswitch_type": constants.VSWITCH_TYPE_OVS_DPDK}
+        msg = ("vswitch_type is already set as %s"
+               % constants.VSWITCH_TYPE_OVS_DPDK)
+        self._patch_and_check(self._get_path(self.system.uuid),
+                              update, expect_errors=True,
+                              expected_error_message=msg)
+
+    @mock.patch('sysinv.conductor.rpcapi.ConductorAPI.update_vswitch_type')
+    def test_update_vswitch_type_none_accepted(self, mock_update_vswitch):
+        patch = [{"path": "/vswitch_type",
+                  "value": constants.VSWITCH_TYPE_NONE,
+                  "op": "replace"}]
+        response = self.patch_json(self._get_path(self.system.uuid), patch)
+        self.assertEqual(constants.VSWITCH_TYPE_NONE,
+                         response.json['capabilities']['vswitch_type'])
