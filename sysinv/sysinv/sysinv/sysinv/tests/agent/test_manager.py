@@ -2259,3 +2259,71 @@ class TestHostPortUpdate(base.TestCase):
 
         self.rpcapi.iport_update_by_ihost.assert_called_once()
         self.assertIsNone(self.agent_manager._prev_port)
+
+
+class TestChangedChannelPorts(base.TestCase):
+    """Tests for AgentManager._changed_channel_ports channel-count diff."""
+
+    def setUp(self):
+        super(TestChangedChannelPorts, self).setUp()
+        self.agent_manager = AgentManager('test-host', 'test-topic')
+
+    def test_no_change_returns_empty_set(self):
+        """Identical PF channel counts yield no changed ports."""
+        prev = [{'pname': 'ens1f0', 'numchannels': 8},
+                {'pname': 'ens1f1', 'numchannels': 8}]
+        curr = [{'pname': 'ens1f0', 'numchannels': 8},
+                {'pname': 'ens1f1', 'numchannels': 8}]
+        self.assertEqual(
+            self.agent_manager._changed_channel_ports(prev, curr), set())
+
+    def test_pf_channel_bump_reports_that_port(self):
+        """A numchannels change reports only the changed port."""
+        prev = [{'pname': 'ens1f0', 'numchannels': 4},
+                {'pname': 'ens1f1', 'numchannels': 8}]
+        curr = [{'pname': 'ens1f0', 'numchannels': 8},
+                {'pname': 'ens1f1', 'numchannels': 8}]
+        self.assertEqual(
+            self.agent_manager._changed_channel_ports(prev, curr),
+            {'ens1f0'})
+
+    def test_vf_channel_change_ignored(self):
+        """A VF channel change alone does not flag the port (PF unchanged)."""
+        prev = [{'pname': 'ens1f0', 'numchannels': 8,
+                 'sriov_vf_numchannels': 4}]
+        curr = [{'pname': 'ens1f0', 'numchannels': 8,
+                 'sriov_vf_numchannels': 8}]
+        self.assertEqual(
+            self.agent_manager._changed_channel_ports(prev, curr), set())
+
+    def test_new_port_is_reported(self):
+        """A port present only in the current inventory is reported."""
+        prev = [{'pname': 'ens1f0', 'numchannels': 8}]
+        curr = [{'pname': 'ens1f0', 'numchannels': 8},
+                {'pname': 'ens1f1', 'numchannels': 8}]
+        self.assertEqual(
+            self.agent_manager._changed_channel_ports(prev, curr),
+            {'ens1f1'})
+
+    def test_empty_prev_reports_all_current(self):
+        """With no previous entries, all current ports are 'changed'."""
+        curr = [{'pname': 'ens1f0', 'numchannels': 8},
+                {'pname': 'ens1f1', 'numchannels': 8}]
+        self.assertEqual(
+            self.agent_manager._changed_channel_ports([], curr),
+            {'ens1f0', 'ens1f1'})
+
+    def test_none_prev_treated_as_empty(self):
+        """prev_port=None behaves like an empty previous inventory."""
+        curr = [{'pname': 'ens1f0', 'numchannels': 8}]
+        self.assertEqual(
+            self.agent_manager._changed_channel_ports(None, curr),
+            {'ens1f0'})
+
+    def test_port_missing_pname_is_ignored(self):
+        """Entries without a pname are not considered."""
+        prev = [{'pname': 'ens1f0', 'numchannels': 8}]
+        curr = [{'pname': 'ens1f0', 'numchannels': 8},
+                {'numchannels': 8}]
+        self.assertEqual(
+            self.agent_manager._changed_channel_ports(prev, curr), set())

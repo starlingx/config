@@ -707,7 +707,8 @@ class InterfaceController(rest.RestController):
 
             if channelLimitRequested:
                 pecan.request.rpcapi.update_interface_channel_config(
-                    pecan.request.context, ihost['uuid'])
+                    pecan.request.context, ihost['uuid'],
+                    ifclass=new_interface['ifclass'])
 
             if vfChannelLimitRequested:
                 pecan.request.rpcapi.update_sriov_vf_config(

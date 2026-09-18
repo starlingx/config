@@ -905,7 +905,7 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.call(context, self.make_msg(
             'set_mgmt_network_reconfig_flag'))
 
-    def update_interface_channel_config(self, context, host_uuid):
+    def update_interface_channel_config(self, context, host_uuid, ifclass):
         """Synchronously, have a conductor configure interface channels.
 
         Does the following tasks:
@@ -915,11 +915,13 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
 
         :param context: request context.
         :param host_uuid: the host unique uuid
+        :param ifclass: ifclass of the interface whose channels changed
         """
         LOG.debug("ConductorApi.update_interface_channel_config: sending "
                   "update_interface_channel_config to conductor")
         return self.call(context, self.make_msg('update_interface_channel_config',
-                                                host_uuid=host_uuid))
+                                                host_uuid=host_uuid,
+                                                ifclass=ifclass))
 
     def update_host_filesystem_config(self, context,
                                       host=None,
