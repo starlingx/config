@@ -11,6 +11,8 @@
 
 import fixtures
 
+from unittest import mock
+
 from oslo_context import context
 
 from sysinv.common import constants
@@ -280,3 +282,123 @@ class AppOperatorTestCase(base.DbTestCase):
         updated_app = obj_app.get_by_name(self.context, 'platform-integ-apps')
         self.assertEqual(updated_app.status, constants.APP_UPLOAD_SUCCESS)
         self.assertNotIn('missing apps', updated_app.progress)
+
+
+class _FakeCondition(object):
+    def __init__(self, cond_type, status, reason=None):
+        self.type = cond_type
+        self.status = status
+        self.reason = reason
+
+
+class _FakePodStatus(object):
+    def __init__(self, phase=None, conditions=None, reason=None, message=None):
+        self.phase = phase
+        self.conditions = conditions
+        self.reason = reason
+        self.message = message
+
+
+class _FakeMeta(object):
+    def __init__(self, name):
+        self.name = name
+
+
+class _FakePod(object):
+    def __init__(self, name, *, phase=None, ready=None, ready_reason=None,
+                 reason=None, has_status=True):
+        self.metadata = _FakeMeta(name)
+        if not has_status:
+            self.status = None
+            return
+        conditions = None
+        if ready is not None:
+            status = 'True' if ready else 'False'
+            conditions = [_FakeCondition('Ready', status, ready_reason)]
+        self.status = _FakePodStatus(phase=phase, conditions=conditions,
+                                     reason=reason)
+
+
+class VerifyPodsStatusForReleaseTestCase(base.DbTestCase):
+    """Tests for FluxCDHelper.verify_pods_status_for_release().
+
+    An orphaned 'Failed' pod (left by a node reboot) must not block the
+    release, as long as the live replacement pod is ready. A genuinely
+    not-ready pod must still block it.
+    """
+
+    def setUp(self):
+        super(VerifyPodsStatusForReleaseTestCase, self).setUp()
+        self.dbapi = dbapi.get_instance()
+        self.kube = mock.MagicMock()
+        self.fluxcd = kube_app.FluxCDHelper(self.dbapi, self.kube)
+        self.chart_obj = {"chart_label": "dex", "namespace": "kube-system"}
+
+        # Force the AIO-SX code path (the check is a no-op otherwise).
+        p = mock.patch(
+            'sysinv.common.utils.is_aio_simplex_system', return_value=True)
+        p.start()
+        self.addCleanup(p.stop)
+
+    def _set_pods(self, pods):
+        self.kube.kube_get_pods_by_selector.return_value = pods
+
+    def test_orphaned_failed_pod_with_ready_replacement_is_ready(self):
+        # Orphaned Failed pod next to a ready replacement -> release ready.
+        self._set_pods([
+            _FakePod('oidc-dex-old-orphan', phase='Failed', ready=False,
+                     reason='Terminated'),
+            _FakePod('oidc-dex-new', phase='Running', ready=True),
+        ])
+        self.assertTrue(
+            self.fluxcd.verify_pods_status_for_release(self.chart_obj))
+
+    def test_genuinely_not_ready_pod_blocks(self):
+        # A live pod that is simply not ready yet must still gate readiness.
+        self._set_pods([
+            _FakePod('oidc-dex-new', phase='Running', ready=False),
+        ])
+        self.assertFalse(
+            self.fluxcd.verify_pods_status_for_release(self.chart_obj))
+
+    def test_all_pods_ready(self):
+        self._set_pods([
+            _FakePod('oidc-dex-a', phase='Running', ready=True),
+            _FakePod('oidc-dex-b', phase='Running', ready=True),
+        ])
+        self.assertTrue(
+            self.fluxcd.verify_pods_status_for_release(self.chart_obj))
+
+    def test_completed_job_pod_is_ready(self):
+        # A completed Job pod (Succeeded/PodCompleted) is treated as ready
+        # via check_pod_completed(), not skipped as a failure.
+        self._set_pods([
+            _FakePod('some-job', phase='Succeeded', ready=False,
+                     ready_reason='PodCompleted'),
+        ])
+        self.assertTrue(
+            self.fluxcd.verify_pods_status_for_release(self.chart_obj))
+
+    def test_failed_pod_alone_still_reports_ready(self):
+        # Only a Failed orphan and no live pod -> release is ready.
+        self._set_pods([
+            _FakePod('oidc-dex-old-orphan', phase='Failed', ready=False,
+                     reason='Terminated'),
+        ])
+        self.assertTrue(
+            self.fluxcd.verify_pods_status_for_release(self.chart_obj))
+
+    def test_pod_with_no_status_is_skipped(self):
+        # A pod with no status yet is skipped (not an error); a ready pod
+        # still keeps the result True.
+        self._set_pods([
+            _FakePod('pending-pod', has_status=False),
+            _FakePod('oidc-dex-new', phase='Running', ready=True),
+        ])
+        self.assertTrue(
+            self.fluxcd.verify_pods_status_for_release(self.chart_obj))
+
+    def test_no_pods_is_ready(self):
+        self._set_pods([])
+        self.assertTrue(
+            self.fluxcd.verify_pods_status_for_release(self.chart_obj))
