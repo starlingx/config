@@ -5657,6 +5657,26 @@ class HostController(rest.RestController):
                     "before host-lock action.") % constants.HELM_APP_ROOK_CEPH
             raise wsme.exc.ClientSideError(msg)
 
+        # TODO(ealmeida): move this guard to an app lifecycle hook that lets
+        # apps block a host-lock. That hook does not exist yet, so keep this
+        # check here until it does.
+        # Don't lock a controller while oidc-auth-apps is applying, it would
+        # fail the apply and then block the unlock. force-lock overrides.
+        if not force:
+            try:
+                oidc_app = pecan.request.dbapi.kube_app_get(
+                    constants.HELM_APP_OIDC_AUTH)
+                if oidc_app.status in [constants.APP_APPLY_IN_PROGRESS,
+                                       constants.APP_UPDATE_IN_PROGRESS,
+                                       constants.APP_RECOVER_IN_PROGRESS]:
+                    raise wsme.exc.ClientSideError(
+                        _("Rejected: The application %s is in transition, "
+                          "please wait for the current operation to complete "
+                          "before host-lock action.")
+                        % constants.HELM_APP_OIDC_AUTH)
+            except exception.KubeAppNotFound:
+                pass
+
         # Reject lock while Ceph OSD storage devices are configuring
         if not force:
             stors = pecan.request.dbapi.istor_get_by_ihost(
