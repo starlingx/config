@@ -209,6 +209,8 @@ class StoragePuppet(base.BasePuppet):
         cgts_thin_pool_enabled = False
         cgts_thin_pool_size = 0
         removing_lvgs = []
+        csi_vgs_by_id = {}
+        allresources_vgs = {}
 
         # LVM Global Filter is driven by:
         # - cgts-vg PVs       : all nodes
@@ -234,6 +236,8 @@ class StoragePuppet(base.BasePuppet):
                         if not lvm_type else lvm_type
                     cgts_thin_pool_enabled = True
                     cgts_thin_pool_size = lvm_pool_size
+                else:
+                    csi_vgs_by_id[vg.id] = vg
 
         # Go through the PVs and
         pvs = self.dbapi.ipv_get_by_ihost(host.id)
@@ -259,10 +263,27 @@ class StoragePuppet(base.BasePuppet):
                     vg_obj = next((vg for vg in vgs if vg.id == pv.forilvgid),
                                   None)
                     if vg_obj:
-                        lvm_type = vg_obj.capabilities.get('lvm_type', 'thick')
+                        lvm_type = vg_obj.capabilities.get(
+                            'lvm_type',
+                            constants.LVM_CSI_PROVISIONING_MODE_THICK)
                         lvm_csi_values[f"{lvm_type}_vg"] = pv.lvm_vg_name
                         lvm_csi_values[f"{lvm_type}_devices"].append(
                             pv.disk_or_part_device_path)
+
+                csi_vg = csi_vgs_by_id.get(pv.forilvgid, None)
+                if csi_vg is not None and pv.pv_state != constants.PV_DEL:
+                    lvm_type = csi_vg.capabilities.get(
+                        'lvm_type', constants.LVM_CSI_PROVISIONING_MODE_THICK)
+                    entry = allresources_vgs.setdefault(csi_vg.lvm_vg_name, {
+                        'provisioning': lvm_type,
+                        'physical_volumes': [],
+                    })
+                    entry['physical_volumes'].append(
+                        pv.disk_or_part_device_path)
+                    if lvm_type == constants.LVM_CSI_PROVISIONING_MODE_THIN:
+                        pool_size = csi_vg.capabilities.get('lvm_pool_size', 0)
+                        if pool_size:
+                            entry['pool_size'] = pool_size
             elif pv.lvm_vg_name.startswith("ceph"):
                 rook_osd_devices.append(pv.disk_or_part_device_path)
 
@@ -310,6 +331,8 @@ class StoragePuppet(base.BasePuppet):
                 lvm_csi_values['thin_vg'],
             'platform::lvm::csi::params::thin::physical_volumes':
                 lvm_csi_values['thin_devices'],
+            'platform::lvm::csi::params::allresources::volume_groups':
+                allresources_vgs,
         }
 
     def set_lvm_devices(self, devices):
