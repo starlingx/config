@@ -8070,10 +8070,16 @@ class ManagerTestCase(base.DbTestCase):
         self.addCleanup(p.stop)
 
         self.service.remove_kube_control_plane_backup(self.context)
-        mock_os_path_exists.assert_called_with(
+        # Both the control-plane backup dir and the kubelet-config backup dir
+        # are cleaned up.
+        mock_os_path_exists.assert_any_call(
             kubernetes.KUBE_CONTROL_PLANE_BACKUP_PATH)
-        mock_shutil_rmtree.assert_called_with(
+        mock_os_path_exists.assert_any_call(
+            kubernetes.KUBE_KUBELET_BACKUP_PATH)
+        mock_shutil_rmtree.assert_any_call(
             kubernetes.KUBE_CONTROL_PLANE_BACKUP_PATH)
+        mock_shutil_rmtree.assert_any_call(
+            kubernetes.KUBE_KUBELET_BACKUP_PATH)
 
     def test_kube_post_application_update(self):
 

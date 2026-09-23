@@ -681,6 +681,12 @@ class TestKubernetesOperator(base.TestCase):
         containerd_read_data = 'sandbox_image = "%s/%s"' % (constants.DOCKER_REGISTRY_SERVER,
                                                             same_fake_pause_image)
 
+        mock_backup_kubelet_config = mock.MagicMock()
+        p = mock.patch('sysinv.agent.kube_host.kubernetes.backup_kubelet_config',
+                       mock_backup_kubelet_config)
+        p.start()
+        self.addCleanup(p.stop)
+
         mock_get_k8s_images = mock.MagicMock()
         p = mock.patch('sysinv.common.kubernetes.get_k8s_images', mock_get_k8s_images)
         p.start().side_effect = [{'pause': same_fake_pause_image},
@@ -746,6 +752,12 @@ class TestKubernetesOperator(base.TestCase):
         containerd_write_data = 'sandbox_image = "%s/%s"' % (constants.DOCKER_REGISTRY_SERVER,
                                                             different_fake_pause_image)
         image_pull_result = True
+
+        mock_backup_kubelet_config = mock.MagicMock()
+        p = mock.patch('sysinv.agent.kube_host.kubernetes.backup_kubelet_config',
+                       mock_backup_kubelet_config)
+        p.start()
+        self.addCleanup(p.stop)
 
         mock_get_k8s_images = mock.MagicMock()
         p = mock.patch('sysinv.common.kubernetes.get_k8s_images', mock_get_k8s_images)
@@ -888,6 +900,12 @@ class TestKubernetesOperator(base.TestCase):
         containerd_read_data = 'sandbox_image = "%s/%s"' % (constants.DOCKER_REGISTRY_SERVER,
                                                             fake_pause_image)
         image_pull_result = True
+
+        mock_backup_kubelet_config = mock.MagicMock()
+        p = mock.patch('sysinv.agent.kube_host.kubernetes.backup_kubelet_config',
+                       mock_backup_kubelet_config)
+        p.start()
+        self.addCleanup(p.stop)
 
         mock_get_k8s_images = mock.MagicMock()
         p = mock.patch('sysinv.common.kubernetes.get_k8s_images', mock_get_k8s_images)
@@ -1074,6 +1092,12 @@ class TestKubernetesOperator(base.TestCase):
         to_kube_version = 'vfake_to_kube_version'
         is_first_master = True
 
+        mock_backup_kubelet_config = mock.MagicMock()
+        p = mock.patch('sysinv.agent.kube_host.kubernetes.backup_kubelet_config',
+                       mock_backup_kubelet_config)
+        p.start()
+        self.addCleanup(p.stop)
+
         mock_kubeadm_upgrade_apply = mock.MagicMock()
         p = mock.patch('sysinv.agent.kube_host.KubeControllerOperator.kubeadm_upgrade_apply',
                        mock_kubeadm_upgrade_apply)
@@ -1178,6 +1202,12 @@ class TestKubernetesOperator(base.TestCase):
         to_kube_version = 'vfake_to_kube_version'
         is_first_master = True
 
+        mock_backup_kubelet_config = mock.MagicMock()
+        p = mock.patch('sysinv.agent.kube_host.kubernetes.backup_kubelet_config',
+                       mock_backup_kubelet_config)
+        p.start()
+        self.addCleanup(p.stop)
+
         mock_kubeadm_upgrade_apply = mock.MagicMock()
         p = mock.patch('sysinv.agent.kube_host.KubeControllerOperator.kubeadm_upgrade_apply',
                        mock_kubeadm_upgrade_apply)
@@ -1259,6 +1289,12 @@ class TestKubernetesOperator(base.TestCase):
         from_kube_version = 'vfake_from_kube_version'
         to_kube_version = 'vfake_to_kube_version'
         is_first_master = False
+
+        mock_backup_kubelet_config = mock.MagicMock()
+        p = mock.patch('sysinv.agent.kube_host.kubernetes.backup_kubelet_config',
+                       mock_backup_kubelet_config)
+        p.start()
+        self.addCleanup(p.stop)
 
         mock_kubeadm_upgrade_apply = mock.MagicMock()
         p = mock.patch('sysinv.agent.kube_host.KubeControllerOperator.kubeadm_upgrade_apply',
@@ -1391,6 +1427,12 @@ class TestKubernetesOperator(base.TestCase):
         to_kube_version = 'vfake_to_kube_version'
         is_first_master = True
 
+        mock_backup_kubelet_config = mock.MagicMock()
+        p = mock.patch('sysinv.agent.kube_host.kubernetes.backup_kubelet_config',
+                       mock_backup_kubelet_config)
+        p.start()
+        self.addCleanup(p.stop)
+
         mock_kubeadm_upgrade_apply = mock.MagicMock()
         p = mock.patch('sysinv.agent.kube_host.KubeControllerOperator.kubeadm_upgrade_apply',
                        mock_kubeadm_upgrade_apply)
@@ -1470,6 +1512,12 @@ class TestKubernetesOperator(base.TestCase):
         from_kube_version = 'vfake_from_kube_version'
         to_kube_version = 'vfake_to_kube_version'
         is_first_master = False
+
+        mock_backup_kubelet_config = mock.MagicMock()
+        p = mock.patch('sysinv.agent.kube_host.kubernetes.backup_kubelet_config',
+                       mock_backup_kubelet_config)
+        p.start()
+        self.addCleanup(p.stop)
 
         mock_kubeadm_upgrade_apply = mock.MagicMock()
         p = mock.patch('sysinv.agent.kube_host.KubeControllerOperator.kubeadm_upgrade_apply',
@@ -2235,3 +2283,33 @@ class TestKubernetesOperator(base.TestCase):
 
         mock_endpoints.assert_called_once()
         mock_node_status.assert_called_once()
+
+
+class TestRestoreKubeletConfig(base.TestCase):
+    """Tests for KubeControllerOperator.restore_kubelet_config (abort)."""
+
+    def setUp(self):
+        super(TestRestoreKubeletConfig, self).setUp()
+        self.context = context.get_admin_context()
+        self.operator = kube_host.KubeControllerOperator(
+            self.context, "FAKE_UUID", "FAKE_HOSTNAME")
+
+    def test_restore_copies_backup_over_config(self):
+        with mock.patch('os.path.exists', return_value=True), \
+                mock.patch('shutil.copy2') as mock_copy:
+            self.operator.restore_kubelet_config()
+        mock_copy.assert_called_once_with(
+            kubernetes.KUBELET_CONFIG_BACKUP_FILE, kubernetes.KUBELET_CONFIG_FILE)
+
+    def test_restore_noop_when_backup_missing(self):
+        # No backup present -> leave current config in place, do not raise.
+        with mock.patch('os.path.exists', return_value=False), \
+                mock.patch('shutil.copy2') as mock_copy:
+            self.operator.restore_kubelet_config()
+        mock_copy.assert_not_called()
+
+    def test_restore_is_best_effort_on_error(self):
+        # copy2 raising must not propagate (must not fail the abort).
+        with mock.patch('os.path.exists', return_value=True), \
+                mock.patch('shutil.copy2', side_effect=IOError("boom")):
+            self.operator.restore_kubelet_config()

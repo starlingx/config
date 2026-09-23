@@ -2534,3 +2534,79 @@ class TestFilterHighestPatchVersions(base.TestCase):
         self.assertEqual(
             kube.filter_highest_patch_versions(ver_list, 'v1.42.1', 'v1.44.0'),
             ['v1.43.2', 'v1.44.0'])
+
+
+class TestKubeletConfigBackup(base.TestCase):
+    """Tests for backup_kubelet_config."""
+
+    @staticmethod
+    def _exists_side_effect(backup_exists, source_exists=True):
+        """os.path.exists side_effect: backup checked first, then source."""
+        def _se(path):
+            if path == kube.KUBELET_CONFIG_BACKUP_FILE:
+                return backup_exists
+            if path == kube.KUBELET_CONFIG_FILE:
+                return source_exists
+            return False
+        return _se
+
+    def test_backup_copies_config_when_no_prior_backup(self):
+        tmp_path = '/opt/backups/kubelet/.kubelet-config.abc123'
+        with mock.patch('os.path.exists',
+                        side_effect=self._exists_side_effect(False, True)), \
+                mock.patch('os.makedirs') as mock_mkdir, \
+                mock.patch('tempfile.mkstemp',
+                           return_value=(99, tmp_path)) as mock_mkstemp, \
+                mock.patch('os.close') as mock_close, \
+                mock.patch('shutil.copy2') as mock_copy, \
+                mock.patch('os.replace') as mock_replace:
+            kube.backup_kubelet_config()
+        mock_mkdir.assert_called_once()
+        mock_mkstemp.assert_called_once_with(
+            prefix='.kubelet-config.', dir=kube.KUBE_KUBELET_BACKUP_PATH)
+        mock_close.assert_called_once_with(99)
+        # Source is copied into the temp file, then atomically renamed
+        # into the final backup path.
+        mock_copy.assert_called_once_with(kube.KUBELET_CONFIG_FILE, tmp_path)
+        mock_replace.assert_called_once_with(
+            tmp_path, kube.KUBELET_CONFIG_BACKUP_FILE)
+
+    def test_backup_is_idempotent_when_backup_exists(self):
+        # Second/retry/multi-hop call must NOT overwrite the pre-upgrade backup.
+        with mock.patch('os.path.exists',
+                        side_effect=self._exists_side_effect(True, True)), \
+                mock.patch('shutil.copy2') as mock_copy, \
+                mock.patch('os.replace') as mock_replace, \
+                mock.patch('tempfile.mkstemp') as mock_mkstemp, \
+                mock.patch('os.makedirs') as mock_mkdir:
+            kube.backup_kubelet_config()
+        mock_copy.assert_not_called()
+        mock_replace.assert_not_called()
+        mock_mkstemp.assert_not_called()
+        mock_mkdir.assert_not_called()
+
+    def test_backup_raises_when_config_missing(self):
+        with mock.patch('os.path.exists',
+                        side_effect=self._exists_side_effect(False, False)):
+            self.assertRaises(exception.SysinvException,
+                              kube.backup_kubelet_config)
+
+    def test_backup_unlinks_tmp_and_raises_when_copy_fails(self):
+        # If shutil.copy2 fails mid-write, the temp file must be removed
+        # so the final backup path never contains partial content and no
+        # stale .kubelet-config.* files accumulate.
+        tmp_path = '/opt/backups/kubelet/.kubelet-config.xyz'
+        with mock.patch('os.path.exists',
+                        side_effect=self._exists_side_effect(False, True)), \
+                mock.patch('os.makedirs'), \
+                mock.patch('tempfile.mkstemp',
+                           return_value=(99, tmp_path)), \
+                mock.patch('os.close'), \
+                mock.patch('shutil.copy2',
+                           side_effect=IOError("disk full")), \
+                mock.patch('os.replace') as mock_replace, \
+                mock.patch('os.unlink') as mock_unlink:
+            self.assertRaises(exception.SysinvException,
+                              kube.backup_kubelet_config)
+        mock_replace.assert_not_called()
+        mock_unlink.assert_called_once_with(tmp_path)

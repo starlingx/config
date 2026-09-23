@@ -21671,6 +21671,17 @@ class ConductorManager(service.PeriodicService):
         except OSError as oe:
             LOG.error("Failed to remove k8s control-plane backup: %s" % oe)
 
+        # Also clean up the per-node kubelet config backup taken by
+        # backup_kubelet_config() at the start of the kubelet-config-rewriting
+        # kubeadm operations. Best effort: don't fail cleanup on error.
+        try:
+            if os.path.exists(kubernetes.KUBE_KUBELET_BACKUP_PATH):
+                shutil.rmtree(kubernetes.KUBE_KUBELET_BACKUP_PATH)
+                LOG.info("Kubelet config backup data at %s removed"
+                         % kubernetes.KUBE_KUBELET_BACKUP_PATH)
+        except OSError as oe:
+            LOG.error("Failed to remove kubelet config backup: %s" % oe)
+
     @retry(retry_on_exception=lambda x: isinstance(x, (
         exception.DockerRegistrySSLException, exception.DockerRegistryAPIException)),
         stop_max_attempt_number=2, wait_fixed=30 * 1000)
