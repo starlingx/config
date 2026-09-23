@@ -695,3 +695,35 @@ class TestSynce4lParameters(test_base.TestCase):
         self.assertEqual(len(ext_sources), 2)
         self.assertEqual(ext_sources[0]['name'], 'GNSS_1PPS_IN')
         self.assertEqual(ext_sources[1]['name'], 'CLK_78M125_NAC0_SYNCE0')
+
+    # ===================================================================
+    # synce4l does not generate recover_clock_*_cmd
+    # ===================================================================
+
+    def test_synce4l_no_recover_clock_cmds_in_interface_params(self):
+        """recover_clock_enable_cmd/disable_cmd are not generated.
+
+        Legacy sysfs-mode parameters; unused in DPLL netlink mode (the only
+        mode ice NICs use). The recovered clock is enabled by puppet from the
+        clock instance's synce_rclka/synce_rclkb parameter.
+        """
+        inst = self._make_instance(name='synce_rc')
+        iface_uuid = str(uuidutils.uuid4())
+        inst['interfaces'] = [{
+            'ifname': 'data0',
+            'port_names': ['eno8303'],
+            'parameters': {},
+            'uuid': iface_uuid,
+        }]
+        host = self._make_host()
+        port = self._make_port('eno8303',
+                               'Ethernet Controller E825-C for backplane')
+        self.operator.dbapi.ethernet_port_get_by_host.return_value = [port]
+
+        ptp_instances = {'synce_rc': inst}
+        self.operator._set_ptp_instance_interface_parameters(
+            host, ptp_instances, [])
+
+        params = ptp_instances['synce_rc']['interfaces'][0]['parameters']
+        self.assertNotIn('recover_clock_enable_cmd', params)
+        self.assertNotIn('recover_clock_disable_cmd', params)
