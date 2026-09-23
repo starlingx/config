@@ -217,6 +217,97 @@ class TestPciOperator(base.TestCase):
         result = self.pci_operator._get_pci_sriov_vf_netdev('82:10.0')
         assert result is None
 
+    # Two distinct MACs, one per possible source, so a test can prove the
+    # MAC was read from the correct place (netdev /sys vs bond file).
+    SYSFS_MAC = 'a0:36:90:34:0c:06'    # netdev's own /sys/.../address
+    BONDING_MAC = 'b0:11:22:33:44:55'  # /proc/net/bonding/<bond>
+
+    # PCIOperator getters that pci_get_net_attrs calls but whose values are
+    # irrelevant to the MAC-read logic under test.
+    _IRRELEVANT_GETTERS = {
+        'get_pci_numa_node': 1,
+        'get_pci_sriov_totalvfs': '64\n',
+        'get_pci_sriov_numvfs': '7\n',
+        'get_pci_sriov_vfs_pci_address': ['0000:98:0a.0'],
+        'get_pci_sriov_vf_module_name': 'iavf',
+        'get_pci_sriov_vf_device_id': '154c',
+        'get_pci_sriov_vf_maxchannels': (None, None),
+        'get_pci_driver_name': 'i40e',
+        '_get_interface_speed': '10000',
+        '_get_interface_channels': (None, None),
+    }
+
+    def _run_pci_get_net_attrs_mac(self, master_name, is_bond):
+        """Drive pci_get_net_attrs' MAC-read path for a netdev that has a
+        'master' symlink, and return the reported mac.
+
+        master_name: name the master symlink resolves to ('ovs-system',
+                     'bond0', ...).
+        is_bond:     whether /sys/class/net/<master>/bonding exists.
+        """
+        pciaddr = '0000:98:00.1'
+        netdev = 'enp152s0f1'
+        devices_dir = '/sys/bus/pci/devices/'
+        netdir = devices_dir + pciaddr + '/net/'
+        bonding_file = '/proc/net/bonding/' + master_name
+
+        bonding_contents = (
+            "Slave Interface: %s\n"
+            "MII Status: up\n"
+            "Permanent HW addr: %s\n" % (netdev, self.BONDING_MAC))
+
+        def fake_listdir(path):
+            # outer loop lists the pci devices dir; inner loop lists the
+            # device's net dir. Return the matching entry for each.
+            if path == devices_dir:
+                return [pciaddr]
+            if path == netdir:
+                return [netdev]
+            return []
+
+        def fake_open(path, *args, **kwargs):
+            # The two sources return DIFFERENT MACs so the assertion can
+            # prove which one the code actually read.
+            if path.endswith(netdev + '/address'):
+                return mock.mock_open(read_data=self.SYSFS_MAC + '\n')()
+            if path == bonding_file:
+                return mock.mock_open(read_data=bonding_contents)()
+
+            return mock.mock_open(read_data='0\n')()
+
+        getters = [mock.patch.object(PCIOperator, name, return_value=val)
+                   for name, val in self._IRRELEVANT_GETTERS.items()]
+
+        with nested(
+                mock.patch('os.listdir', side_effect=fake_listdir),
+                # the 'master' symlink exists; the /sys bonding dir only
+                # exists for a real bond -> drives the branch under test.
+                mock.patch('os.path.exists', return_value=True),
+                mock.patch('os.path.isdir', return_value=is_bond),
+                mock.patch('os.path.realpath',
+                           return_value='/sys/class/net/' + master_name),
+                mock.patch('sysinv.agent.pci.query_pci_id.call_query_pci_id',
+                           return_value=(True, '')),
+                mock.patch('builtins.open', side_effect=fake_open),
+                *getters):
+            attrs = self.pci_operator.pci_get_net_attrs(pciaddr)
+        return attrs
+
+    def test_pci_get_net_attrs_mac_ovs_system_master(self):
+        # A netdev enslaved to the OVS datapath 'ovs-system'
+        # has a 'master' symlink but is NOT a Linux bond. The MAC must be
+        # read from the netdev's own /sys .../address (SYSFS_MAC)
+        attrs = self._run_pci_get_net_attrs_mac('ovs-system', is_bond=False)
+        self.assertEqual(len(attrs), 1)
+        self.assertEqual(attrs[0]['mac'], self.SYSFS_MAC)
+
+    def test_pci_get_net_attrs_mac_real_bond_master(self):
+        # A netdev that is a genuine Linux bond slave must resolve its
+        # permanent HW address via /proc/net/bonding/<bond> (BONDING_MAC),
+        attrs = self._run_pci_get_net_attrs_mac('bond0', is_bond=True)
+        self.assertEqual(len(attrs), 1)
+        self.assertEqual(attrs[0]['mac'], self.BONDING_MAC)
+
 
 class TestAgentOperator(base.TestCase):
 

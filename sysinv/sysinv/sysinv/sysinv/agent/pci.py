@@ -819,9 +819,24 @@ class PCIOperator(object):
                     fmaster = dirpcinet + n + '/' + "master"
                     # if a port is a member of a bond the port MAC address
                     # must be retrieved from /proc/net/bonding/<bond_name>
+                    # A netdev may have a 'master' for reasons other than being
+                    # a Linux bond slave, i.e: being member of an OVS-system.
+                    # Only follow the bond MAC path when the master is an
+                    # actual bonding device.
+                    master_is_bond = False
+                    master_name = ""
                     if os.path.exists(fmaster):
                         dirmaster = os.path.realpath(fmaster)
                         master_name = os.path.basename(dirmaster)
+                        master_is_bond = os.path.isdir(
+                            '/sys/class/net/' + master_name + '/bonding')
+
+                        LOG.debug("Interface {} has the 'master' attribute, "
+                                 "it {} a bond interface. "
+                                 "Get MAC address from the correct place."
+                                 .format(n, "is" if master_is_bond else "is not"))
+
+                    if master_is_bond:
                         procnetbonding = '/proc/net/bonding/' + master_name
                         found_interface = False
 
