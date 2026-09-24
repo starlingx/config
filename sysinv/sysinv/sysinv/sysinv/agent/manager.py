@@ -100,6 +100,7 @@ audit_intervals_opts = [
        cfg.IntOpt('inventory_audit', default=60),
        cfg.IntOpt('lldp_audit', default=300),
        cfg.IntOpt('security_audit', default=900),
+       cfg.IntOpt('port_audit', default=300),
                   ]
 
 dpdk_opts = [
@@ -221,6 +222,7 @@ class AgentManager(service.PeriodicService):
         self._prev_fs = None
         self._prev_memory = None
         self._prev_port = None
+        self._prev_channel_sig = None
         self._prev_imsg_dict = None
         self._subfunctions = None
         self._subfunctions_configured = False
@@ -1684,6 +1686,27 @@ class AgentManager(service.PeriodicService):
         else:
             self._lldp_enable_and_report(icontext, rpcapi, self._ihost_uuid)
 
+    @periodic_task.periodic_task(spacing=CONF.agent_periodic_task_intervals.port_audit)
+    def _port_channel_audit(self, context):
+        # Periodically re-report port inventory when NIC channels have changed
+        # (e.g. numchannels updated by a channel config apply). Runs on its own,
+        # less frequent interval than the inventory audit because collecting
+        # the full port/PCI inventory is expensive; host_port_channel_update
+        # further gates the expensive collection behind a cheap
+        # channel-signature change check.
+        if not self._ihost_uuid:
+            return
+
+        # Only after initial inventory to avoid racing the first port report.
+        if not self._inventoried_initial:
+            return
+
+        LOG.debug("SysInv Agent Port Channel Audit running.")
+
+        icontext = mycontext.get_admin_context()
+        rpcapi = conductor_rpcapi.ConductorAPI(topic=conductor_rpcapi.MANAGER_TOPIC)
+        self.host_port_channel_update(icontext, rpcapi)
+
     @periodic_task.periodic_task(spacing=CONF.agent_periodic_task_intervals.security_audit)
     def _security_audit(self, context):
         if not self._ihost_uuid:
@@ -1781,7 +1804,37 @@ class AgentManager(service.PeriodicService):
                 changed.add(name)
         return changed
 
-    def host_port_update(self, icontext, rpcapi):
+    def _get_channel_signature(self):
+        """NIC channel signature for port-audit change detection.
+
+        Reads only `ethtool -l` (max/current Combined queues) for each
+        physical ethernet netdev. It is used to decide whether the expensive
+        port inventory report is actually needed on this audit cycle.
+
+        :returns: dict {netdev_name: (max_combined, current_combined)} on
+                  success, or None.
+        """
+        try:
+            sig = {}
+            skip_prefixes = ('cali', 'tunl', 'ip6tnl', 'vlan', 'docker',
+                             'veth', 'br-', 'ovs')
+            for name in self._ipci_operator.pci_get_net_names():
+                if name == 'lo' or name.startswith(skip_prefixes):
+                    continue
+                if not os.path.exists('/sys/class/net/' + name + '/device'):
+                    continue
+                max_c, cur_c = \
+                    self._ipci_operator._get_interface_channels(name)
+                # Only track devices that actually report channels.
+                if max_c is not None or cur_c is not None:
+                    sig[name] = (max_c, cur_c)
+            return sig
+        except Exception as e:
+            LOG.warning("Failed to build NIC channel signature, falling back "
+                        "to full port inventory: %s" % e)
+            return None
+
+    def host_port_channel_update(self, icontext, rpcapi):
         """Re-report port inventory during audit when it has changed.
 
         Port inventory (which includes numchannels/sriov_vf_numchannels) is
@@ -1796,7 +1849,23 @@ class AgentManager(service.PeriodicService):
 
         Re-report here, with change detection, so the DB converges within one
         audit cycle regardless of how the channels were applied.
+
+        Note: The full _get_ports_inventory() is expensive so this is driven
+        from its own periodic task rather than the more frequent inventory audit
+
+        Additionally, the audit is gated by a cheap `ethtool -l`
+        channel signature pre-check so the full collection only runs when NIC
+        channels actually change.
         """
+        # Avoid the expensive full port/PCI inventory unless the NIC channel
+        # configuration changed since the last successful report.
+        channel_sig = self._get_channel_signature()
+        if (channel_sig is not None and
+                self.PORT in self._inventory_reported and
+                self._prev_channel_sig is not None and
+                channel_sig == self._prev_channel_sig):
+            return
+
         port_list, _, _ = self._get_ports_inventory()
         if not port_list:
             return
@@ -1831,6 +1900,7 @@ class AgentManager(service.PeriodicService):
                                           "change.")
 
                 self._prev_port = port_list
+                self._prev_channel_sig = channel_sig
             except RemoteError as e:
                 LOG.error("iport_update_by_ihost RemoteError exc_type=%s" %
                           e.exc_type)
@@ -2028,11 +2098,6 @@ class AgentManager(service.PeriodicService):
         # Update disk partitions
         if self._ihost_personality != constants.STORAGE:
             self._update_disk_partitions(rpcapi, icontext, self._ihost_uuid)
-        # Re-report ports if changed (e.g. numchannels updated by a channel
-        # config apply). Only after initial inventory to avoid racing the
-        # first port report.
-        if self._inventoried_initial:
-            self.host_port_update(icontext, rpcapi)
         # Update local volume groups
         self.host_lvg_update(icontext, rpcapi, cinder_device)
         # Update physical volumes
