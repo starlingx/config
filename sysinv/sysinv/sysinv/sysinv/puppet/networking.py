@@ -702,7 +702,6 @@ class NetworkingPuppet(base.BasePuppet):
             },
             'dpll-mgr': {}
         }
-        recover_clk_cmd_fmt = 'echo %s 0 > /sys/class/net/%s/device/phy/synce'
 
         for instance in ptp_instances:
             current_instance = ptp_instances[instance]
@@ -721,10 +720,6 @@ class NetworkingPuppet(base.BasePuppet):
                     base_port = None
                     port_name = iface['port_names'][0]
                     if port_name:
-                        iface['parameters'].update({'recover_clock_disable_cmd':
-                            recover_clk_cmd_fmt % (0, port_name)})
-                        iface['parameters'].update({'recover_clock_enable_cmd':
-                            recover_clk_cmd_fmt % (1, port_name)})
                         base_port = self._get_base_port(host, port_name)
                     # Handle synce4l external source parameters
                     _ext_src = self._set_external_source_parameters(
