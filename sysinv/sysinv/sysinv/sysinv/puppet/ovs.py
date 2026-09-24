@@ -89,9 +89,8 @@ class OVSPuppet(base.BasePuppet):
                     ovs_flows.update({port['name']: flow})
 
                 if iface['iftype'] == constants.INTERFACE_TYPE_AE:
-                    slaves = interface.get_interface_slaves(
-                        self.context, iface)
-                    for member, slave in enumerate(slaves):
+                    for member, lower_ifname in enumerate(iface['uses']):
+                        slave = self.context['interfaces'][lower_ifname]
                         ovs_ifname = port['interfaces'][member]['name']
 
                         lldp_port = self._get_lldp_port(
