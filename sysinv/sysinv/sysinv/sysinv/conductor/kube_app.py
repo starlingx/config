@@ -1743,7 +1743,15 @@ class AppOperator(object):
 
         metadata_file = os.path.join(app.inst_path,
                                      constants.APP_METADATA_FILE)
-        if os.path.exists(metadata_file) and os.path.getsize(metadata_file) > 0:
+        if not os.path.exists(metadata_file):
+            LOG.warning("Metadata file {} not found. Returning default "
+                        "value {} for keys {}."
+                        .format(metadata_file, default, '.'.join(keys)))
+        elif os.path.getsize(metadata_file) == 0:
+            LOG.warning("Metadata file {} is empty. Returning default "
+                        "value {} for keys {}."
+                        .format(metadata_file, default, '.'.join(keys)))
+        else:
             with io.open(metadata_file, 'r', encoding='utf-8') as f:
                 try:
                     if cutils.is_debian_bullseye():
@@ -1767,6 +1775,7 @@ class AppOperator(object):
                 except KeyError:
                     # metadata file does not have the key
                     pass
+
         LOG.debug('_get_metadata_value: metadata_file=%s, keys=%s, default=%r, value=%r',
                   metadata_file, keys, default, value)
         return value
@@ -3563,10 +3572,8 @@ class AppOperator(object):
         LOG.info("Start updating Application %s from version %s to version %s ..."
                  % (to_app.name, from_app.version, to_app.version))
 
-        # Get the skip_recovery flag from app metadata
-        keys = [constants.APP_METADATA_UPGRADES,
-                constants.APP_METADATA_UPDATE_FAILURE_SKIP_RECOVERY]
-        skip_recovery = bool(strtobool(str(self._get_metadata_value(to_app, keys, False))))
+        # Default until the new tarball's metadata is read after upload.
+        skip_recovery = False
         operation_successful = False
 
         # Track early (downgrade) suspend and whether recovery ran, so a failed
@@ -3618,6 +3625,13 @@ class AppOperator(object):
                 transitory_state=constants.APP_UPDATE_STARTING
             )
 
+            # Read skip_recovery flag from the new tarball metadata
+            self.load_application_metadata_from_file(to_rpc_app)
+            keys = [constants.APP_METADATA_UPGRADES,
+                    constants.APP_METADATA_UPDATE_FAILURE_SKIP_RECOVERY]
+            skip_recovery = bool(strtobool(
+                str(self._get_metadata_value(to_app, keys, False))))
+
             # Downgrades already suspended before the APP_DOWNGRADE_OP hook;
             # non-downgrades suspend here. Cleanup runs for both paths.
             if not is_downgrade:
@@ -3635,8 +3649,6 @@ class AppOperator(object):
             lifecycle_hook_info[LifecycleConstants.EXTRA][LifecycleConstants.TO_APP] = True
 
             self.app_lifecycle_actions(None, None, to_rpc_app, lifecycle_hook_info)
-
-            self.load_application_metadata_from_file(to_rpc_app)
 
             # Check whether the new application is compatible with the given k8s version.
             # If k8s_version is none the check is performed against the active version.
@@ -3721,7 +3733,7 @@ class AppOperator(object):
             # ie.images download/k8s resource creation failure
             # Start recovering without trigger fluxcd process
             LOG.exception(e)
-            if trigger_recovery(fluxcd_process_required=False):
+            if trigger_recovery(skip_recovery, fluxcd_process_required=False):
                 return False
         except exception.LifecycleSemanticCheckException as e:
             LOG.info("App {} rejected operation {} for reason: {}"
