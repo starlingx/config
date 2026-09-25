@@ -2179,18 +2179,34 @@ class TestCpuFrequencyConfigurable(base.TestCase):
         self.assertEqual(result, constants.NOT_CONFIGURABLE)
 
 
-class TestHostPortUpdate(base.TestCase):
+class TestHostPortChannelUpdate(base.TestCase):
     """Tests for change-detected periodic port re-report (CGTS-105820)."""
 
     def setUp(self):
-        super(TestHostPortUpdate, self).setUp()
+        super(TestHostPortChannelUpdate, self).setUp()
         self.agent_manager = AgentManager('test-host', 'test-topic')
         self.agent_manager._ihost_uuid = "FAKEUUID"
         self.context = context.get_admin_context()
         self.rpcapi = mock.MagicMock()
+        # host_port_channel_update() gates the expensive _get_ports_inventory() behind
+        # a cheap channel-signature pre-check. For the behavioral tests below
+        # we stub the signature so it always looks "changed", exercising the
+        # full report path deterministically without touching real NIC
+        # hardware. Pre-check skip behavior is covered by dedicated tests.
+        sig = mock.patch.object(
+            self.agent_manager, '_get_channel_signature',
+            side_effect=self._changing_signature)
+        sig.start()
+        self.addCleanup(sig.stop)
+
+    def _changing_signature(self):
+        """Return a distinct signature object each call so the cheap
+        pre-check never short-circuits (used by the behavioral tests).
+        """
+        return {'sig': object()}
 
     def tearDown(self):
-        super(TestHostPortUpdate, self).tearDown()
+        super(TestHostPortChannelUpdate, self).tearDown()
 
     def _mock_ports_inventory(self, port_list):
         mock_get = mock.MagicMock(return_value=(port_list, [], []))
@@ -2200,12 +2216,12 @@ class TestHostPortUpdate(base.TestCase):
         self.addCleanup(p.stop)
         return mock_get
 
-    def test_host_port_update_first_report(self):
+    def test_host_port_channel_update_first_report(self):
         """First audit reports ports and records prev state."""
         port_list = [{'name': 'ens1f1', 'numchannels': 8}]
         self._mock_ports_inventory(port_list)
 
-        self.agent_manager.host_port_update(self.context, self.rpcapi)
+        self.agent_manager.host_port_channel_update(self.context, self.rpcapi)
 
         self.rpcapi.iport_update_by_ihost.assert_called_once_with(
             self.context, self.agent_manager._ihost_uuid, port_list)
@@ -2213,7 +2229,7 @@ class TestHostPortUpdate(base.TestCase):
         self.assertIn(self.agent_manager.PORT,
                       self.agent_manager._inventory_reported)
 
-    def test_host_port_update_reports_on_change(self):
+    def test_host_port_channel_update_reports_on_change(self):
         """A numchannels change triggers a re-report."""
         # Pretend a previous report already happened at numchannels=64.
         self.agent_manager._prev_port = [{'name': 'ens1f1', 'numchannels': 64}]
@@ -2222,43 +2238,175 @@ class TestHostPortUpdate(base.TestCase):
         changed = [{'name': 'ens1f1', 'numchannels': 8}]
         self._mock_ports_inventory(changed)
 
-        self.agent_manager.host_port_update(self.context, self.rpcapi)
+        self.agent_manager.host_port_channel_update(self.context, self.rpcapi)
 
         self.rpcapi.iport_update_by_ihost.assert_called_once_with(
             self.context, self.agent_manager._ihost_uuid, changed)
         self.assertEqual(self.agent_manager._prev_port, changed)
 
-    def test_host_port_update_no_report_when_unchanged(self):
+    def test_host_port_channel_update_no_report_when_unchanged(self):
         """No re-report when the port inventory is unchanged."""
         port_list = [{'name': 'ens1f1', 'numchannels': 8}]
         self.agent_manager._prev_port = port_list
         self.agent_manager._inventory_reported.add(self.agent_manager.PORT)
         self._mock_ports_inventory(list(port_list))
 
-        self.agent_manager.host_port_update(self.context, self.rpcapi)
+        self.agent_manager.host_port_channel_update(self.context, self.rpcapi)
 
         self.rpcapi.iport_update_by_ihost.assert_not_called()
 
-    def test_host_port_update_empty_inventory_noop(self):
+    def test_host_port_channel_update_empty_inventory_noop(self):
         """Empty port inventory results in no report."""
         self._mock_ports_inventory([])
 
-        self.agent_manager.host_port_update(self.context, self.rpcapi)
+        self.agent_manager.host_port_channel_update(self.context, self.rpcapi)
 
         self.rpcapi.iport_update_by_ihost.assert_not_called()
         self.assertIsNone(self.agent_manager._prev_port)
 
-    def test_host_port_update_sysinv_exception_resets_prev(self):
+    def test_host_port_channel_update_sysinv_exception_resets_prev(self):
         """A SysinvException clears prev_port so the next audit retries."""
         port_list = [{'name': 'ens1f1', 'numchannels': 8}]
         self._mock_ports_inventory(port_list)
         self.rpcapi.iport_update_by_ihost.side_effect = \
             exception.SysinvException("boom")
 
-        self.agent_manager.host_port_update(self.context, self.rpcapi)
+        self.agent_manager.host_port_channel_update(self.context, self.rpcapi)
 
         self.rpcapi.iport_update_by_ihost.assert_called_once()
         self.assertIsNone(self.agent_manager._prev_port)
+
+    def test_host_port_channel_update_skips_full_inventory_when_channels_unchanged(self):
+        """An unchanged channel signature short-circuits before the expensive
+        _get_ports_inventory().
+        """
+        self.agent_manager._inventory_reported.add(self.agent_manager.PORT)
+        self.agent_manager._prev_channel_sig = {'ens1f1': (64, 8)}
+        get_ports = self._mock_ports_inventory(
+            [{'name': 'ens1f1', 'numchannels': 8}])
+        # Stub replaces the setUp "always changing" stub with a matching one.
+        self.agent_manager._get_channel_signature = mock.MagicMock(
+            return_value={'ens1f1': (64, 8)})
+
+        self.agent_manager.host_port_channel_update(self.context, self.rpcapi)
+
+        # Signature matched prev -> expensive path and report both skipped.
+        get_ports.assert_not_called()
+        self.rpcapi.iport_update_by_ihost.assert_not_called()
+
+    def test_host_port_channel_update_runs_full_inventory_when_channels_changed(self):
+        """A changed channel signature falls through to the full inventory and
+        re-reports, caching the new signature.
+        """
+        self.agent_manager._inventory_reported.add(self.agent_manager.PORT)
+        self.agent_manager._prev_port = [{'name': 'ens1f1', 'numchannels': 64}]
+        self.agent_manager._prev_channel_sig = {'ens1f1': (128, 64)}
+        changed_ports = [{'name': 'ens1f1', 'numchannels': 8}]
+        self._mock_ports_inventory(changed_ports)
+        new_sig = {'ens1f1': (128, 8)}
+        self.agent_manager._get_channel_signature = mock.MagicMock(
+            return_value=new_sig)
+
+        self.agent_manager.host_port_channel_update(self.context, self.rpcapi)
+
+        self.rpcapi.iport_update_by_ihost.assert_called_once_with(
+            self.context, self.agent_manager._ihost_uuid, changed_ports)
+        self.assertEqual(self.agent_manager._prev_port, changed_ports)
+        self.assertEqual(self.agent_manager._prev_channel_sig, new_sig)
+
+    def test_host_port_channel_update_signature_none_falls_back_to_full(self):
+        """If the cheap signature cannot be built (None), fall back to the
+        full inventory to stay safe.
+        """
+        self.agent_manager._inventory_reported.add(self.agent_manager.PORT)
+        self.agent_manager._prev_channel_sig = {'ens1f1': (64, 8)}
+        port_list = [{'name': 'ens1f1', 'numchannels': 8}]
+        self._mock_ports_inventory(port_list)
+        self.agent_manager._get_channel_signature = mock.MagicMock(
+            return_value=None)
+
+        self.agent_manager.host_port_channel_update(self.context, self.rpcapi)
+
+        self.rpcapi.iport_update_by_ihost.assert_called_once_with(
+            self.context, self.agent_manager._ihost_uuid, port_list)
+
+
+class TestPortChannelAudit(base.TestCase):
+    """Tests for the dedicated _port_channel_audit periodic task."""
+
+    def setUp(self):
+        super(TestPortChannelAudit, self).setUp()
+        self.agent_manager = AgentManager('test-host', 'test-topic')
+        self.context = context.get_admin_context()
+
+    def test_port_channel_audit_noop_without_host_uuid(self):
+        """No host uuid -> no port update."""
+        self.agent_manager._ihost_uuid = ""
+        self.agent_manager._inventoried_initial = True
+        self.agent_manager.host_port_channel_update = mock.MagicMock()
+
+        self.agent_manager._port_channel_audit(self.context)
+
+        self.agent_manager.host_port_channel_update.assert_not_called()
+
+    def test_port_channel_audit_noop_before_initial_inventory(self):
+        """Before initial inventory -> no port update (avoid racing first
+        port report).
+        """
+        self.agent_manager._ihost_uuid = "FAKEUUID"
+        self.agent_manager._inventoried_initial = False
+        self.agent_manager.host_port_channel_update = mock.MagicMock()
+
+        self.agent_manager._port_channel_audit(self.context)
+
+        self.agent_manager.host_port_channel_update.assert_not_called()
+
+    def test_port_channel_audit_runs_update_when_ready(self):
+        """Once inventoried, the audit drives host_port_channel_update."""
+        self.agent_manager._ihost_uuid = "FAKEUUID"
+        self.agent_manager._inventoried_initial = True
+        self.agent_manager.host_port_channel_update = mock.MagicMock()
+
+        self.agent_manager._port_channel_audit(self.context)
+
+        self.agent_manager.host_port_channel_update.assert_called_once()
+
+
+class TestGetChannelSignature(base.TestCase):
+    """Tests for AgentManager._get_channel_signature cheap pre-check."""
+
+    def setUp(self):
+        super(TestGetChannelSignature, self).setUp()
+        self.agent_manager = AgentManager('test-host', 'test-topic')
+
+    @mock.patch('os.path.exists')
+    def test_signature_filters_virtual_and_collects_channels(self, mock_exists):
+        """Virtual/loopback ifaces are skipped; physical ports' channels are
+        collected via ethtool -l.
+        """
+        mock_exists.return_value = True
+        op = self.agent_manager._ipci_operator
+        op.pci_get_net_names = mock.MagicMock(return_value=[
+            'lo', 'cali1234', 'docker0', 'vlan41', 'ovs-br0',
+            'ens1f0', 'ens1f1'])
+
+        def fake_channels(name):
+            return {'ens1f0': (128, 64), 'ens1f1': (128, 8)}.get(name,
+                                                                  (None, None))
+        op._get_interface_channels = mock.MagicMock(side_effect=fake_channels)
+
+        sig = self.agent_manager._get_channel_signature()
+
+        self.assertEqual(sig, {'ens1f0': (128, 64), 'ens1f1': (128, 8)})
+
+    @mock.patch('os.path.exists')
+    def test_signature_returns_none_on_exception(self, mock_exists):
+        """Any failure yields None so the caller falls back to full inventory."""
+        mock_exists.return_value = True
+        op = self.agent_manager._ipci_operator
+        op.pci_get_net_names = mock.MagicMock(side_effect=Exception("boom"))
+
+        self.assertIsNone(self.agent_manager._get_channel_signature())
 
 
 class TestChangedChannelPorts(base.TestCase):

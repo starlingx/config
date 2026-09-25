@@ -641,13 +641,21 @@ class PCIOperator(object):
         cmd = ['ethtool', interface_name]
 
         try:
+            # check=False: inspect returncode rather than relying on
+            # CalledProcessError, whose class identity is unreliable under
+            # eventlet.
             result = subprocess.run(
                 cmd,
                 capture_output=True,
                 text=True,
-                check=True,
+                check=False,
                 encoding='utf-8'
             )
+
+            if result.returncode != 0:
+                LOG.warning(f"ethtool failed for {interface_name}: "
+                            f"{(result.stderr or '').strip()}")
+                return None
 
             output = result.stdout
 
@@ -680,9 +688,6 @@ class PCIOperator(object):
                 max_speed = None
             return max_speed
 
-        except subprocess.CalledProcessError as e:
-            LOG.warning(f"ethtool failed for {interface_name}: {e.stderr.strip()}")
-            return None
         except Exception as e:
             LOG.error(f"An unexpected error occurred while processing {interface_name}: {e}")
             return None
@@ -707,17 +712,24 @@ class PCIOperator(object):
         cmd = ['ethtool', '-l', interface_name]
 
         try:
+            # Use check=False and inspect returncode rather than check=True.
+            # A non-zero exit simply means the NIC does not support
+            # `ethtool -l` (common for the BMC/idrac NIC) and is expected.
             result = subprocess.run(
                 cmd,
                 capture_output=True,
                 text=True,
-                check=True,
+                check=False,
                 encoding='utf-8'
             )
 
-            output = result.stdout
+            if result.returncode != 0:
+                LOG.debug(f"NIC {interface_name} does not support configurable "
+                          f"channels (ethtool -l rc={result.returncode}: "
+                          f"{(result.stderr or '').strip()})")
+                return None, None
 
-            match = CURRENT_CHANNELS_REGEX.search(output)
+            match = CURRENT_CHANNELS_REGEX.search(result.stdout)
             if match:
                 max_combined = int(match.group(1))
                 current_combined = int(match.group(2))
@@ -728,10 +740,6 @@ class PCIOperator(object):
 
             return max_combined, current_combined
 
-        except subprocess.CalledProcessError as e:
-            LOG.warning(f"NIC {interface_name} does not support configurable "
-                        f"channels (ethtool -l failed: {e.stderr.strip()})")
-            return None, None
         except Exception as e:
             LOG.error(f"An unexpected error occurred while querying channels "
                       f"for {interface_name}: {e}")
