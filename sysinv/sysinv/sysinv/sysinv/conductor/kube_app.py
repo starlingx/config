@@ -1393,6 +1393,25 @@ class AppOperator(object):
                       % ("registry-local-secret", e))
                 return
 
+            # Sync registry-local-secret in the Calico operator namespaces so
+            # these pods can pull images after the credentials are rotated.
+            for calico_ns in constants.CALICO_OPERATOR_NAMESPACES:
+                try:
+                    calico_secret = self._kube.kube_get_secret(
+                        "registry-local-secret", calico_ns)
+                    if calico_secret is None:
+                        continue
+                    calico_secret.data['.dockerconfigjson'] = \
+                        base64.encode_as_text(token)
+                    self._kube.kube_patch_secret(
+                        "registry-local-secret", calico_ns, calico_secret)
+                    LOG.info("Secret registry-local-secret under Namespace "
+                             "%s is updated" % calico_ns)
+                except Exception as e:
+                    LOG.error("Failed to update Secret registry-local-secret "
+                              "under Namespace %s: %s" % (calico_ns, e))
+                    continue
+
             # update "default-registry-key" secret info under all namespaces
             try:
                 ns_list = self._kube.kube_get_namespace_name_list()
