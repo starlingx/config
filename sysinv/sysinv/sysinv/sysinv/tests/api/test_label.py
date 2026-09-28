@@ -187,13 +187,6 @@ class LabelAssignTestCase(LabelTestCase):
         }
         self.assign_labels_failure(host_uuid, memory_mgr_label)
 
-    def test_create_validated_labels_unsupported(self):
-        host_uuid = self.worker.uuid
-        cpu_mgr_label = {
-            'kube-cpu-mgr-policy': 'none',
-        }
-        self.assign_labels_failure(host_uuid, cpu_mgr_label)
-
     @mock.patch('sysinv.api.controllers.v1.label._case_agnostic_check')
     def test_valid_topology_manager_label(self, mock_case_check):
         body = {
@@ -250,20 +243,15 @@ class LabelAssignTestCase(LabelTestCase):
                               constants.KUBE_CPU_MEMORY_MANAGER_VALUES, 'kube-cpu-mgr-policy')
 
     @mock.patch('sysinv.api.controllers.v1.label._case_agnostic_check')
-    def test_invalid_kube_cpu_mgr_policy_none(self, mock_case_check):
+    def test_valid_kube_cpu_mgr_policy_none(self, mock_case_check):
         body = {
             'kube-cpu-mgr-policy': 'None'
         }
 
-        # Simulate 'none' value which should raise an error
-        mock_case_check.side_effect = wsme.exc.ClientSideError(
-            "Setting kube-cpu-mgr-policy to 'none' is not supported"
-        )
+        policylabel._semantic_check_worker_labels(body)
 
-        self.assertRaises(wsme.exc.ClientSideError, policylabel._semantic_check_worker_labels,
-                                                                   body)
-
-        mock_case_check.assert_not_called()
+        mock_case_check.assert_called_once_with('None',
+                        constants.KUBE_CPU_MEMORY_MANAGER_VALUES, 'kube-cpu-mgr-policy')
 
     @mock.patch('sysinv.api.controllers.v1.label._case_agnostic_check')
     def test_valid_memory_manager_label(self, mock_case_check):
