@@ -1036,14 +1036,24 @@ class KubeOperator(object):
 
         This detects certificate renewals so that cached clients are
         invalidated and recreated with the current credentials.
+
+        Returns True if the config has changed, or False otherwise.
+        Raises KubeNotConfigured if the kubernetes admin config file does
+        not exist. This is the single choke point through which every cached
+        client is accessed (via _refresh_on_config_change), so guarding here
+        prevents any API call from using a stale cached client to reach an
+        apiserver that is no longer configured (e.g. after a bootstrap replay
+        removes admin.conf). Callers already handle KubeNotConfigured.
         """
         try:
             current_mtime = os.path.getmtime(KUBERNETES_ADMIN_CONF)
             if current_mtime != self._config_mtime:
                 self._config_mtime = current_mtime
                 return True
-        except OSError:
-            pass
+        # A missing config means kubernetes is not configured on this host;
+        # surface it so cached clients are not used against a dead apiserver.
+        except FileNotFoundError:
+            raise exception.KubeNotConfigured()
         return False
 
     def _invalidate_clients(self):

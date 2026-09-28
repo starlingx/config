@@ -799,6 +799,14 @@ class TestKubeOperator(base.TestCase):
             mock_is_k8s_configured)
         self.mocked_is_k8s_configured.start()
 
+        # KubeOperator._config_has_changed reads the admin.conf mtime and
+        # raises KubeNotConfigured if it is missing. The test environment has
+        # no /etc/kubernetes/admin.conf, so mock a stable mtime to represent a
+        # configured, unchanged kubernetes for the API tests below.
+        self.mocked_config_mtime = mock.patch(
+            'os.path.getmtime', return_value=1.0)
+        self.mocked_config_mtime.start()
+
         def mock_list_namespaced_pod(obj, namespace, field_selector=""):
             pod_name = field_selector.split('metadata.name=', 1)[1]
             return self.list_namespaced_pod_result[pod_name]
@@ -869,6 +877,7 @@ class TestKubeOperator(base.TestCase):
         self.mocked_read_namespaced_service_account.stop()
         self.mocked_read_namespaced_secret.stop()
         self.mocked_read_clusterrolebinding.stop()
+        self.mocked_config_mtime.stop()
 
     def test_kube_get_image_by_pod_name(self):
 
@@ -877,6 +886,32 @@ class TestKubeOperator(base.TestCase):
         result = self.kube_operator.kube_get_image_by_pod_name(
             'test-pod-1', 'test-namespace-1', 'test-container-1')
         assert result == "test-image-1:imageversion-1"
+
+    @mock.patch('os.path.getmtime')
+    def test_config_has_changed_missing_config_raises(self, mock_getmtime):
+        # When the kubernetes admin config file is absent (e.g. after a
+        # bootstrap replay removes admin.conf), _config_has_changed must
+        # raise KubeNotConfigured so cached clients are not used against a
+        # kube-apiserver that is no longer configured.
+        mock_getmtime.side_effect = FileNotFoundError()
+        self.assertRaises(exception.KubeNotConfigured,
+                          self.kube_operator._config_has_changed)
+
+    @mock.patch('os.path.getmtime')
+    def test_config_has_changed_unchanged_returns_false(self, mock_getmtime):
+        # No change in mtime -> config has not changed.
+        self.kube_operator._config_mtime = 1234.0
+        mock_getmtime.return_value = 1234.0
+        self.assertFalse(self.kube_operator._config_has_changed())
+
+    @mock.patch('os.path.getmtime')
+    def test_config_has_changed_changed_returns_true(self, mock_getmtime):
+        # A different mtime (e.g. certificate renewal) -> config changed,
+        # and the stored mtime is updated to the new value.
+        self.kube_operator._config_mtime = 1234.0
+        mock_getmtime.return_value = 5678.0
+        self.assertTrue(self.kube_operator._config_has_changed())
+        self.assertEqual(self.kube_operator._config_mtime, 5678.0)
 
     def test_kube_get_image_by_pod_name_no_pod(self):
 
