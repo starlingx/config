@@ -2589,6 +2589,10 @@ KUBEADM_PATH_FORMAT_STR = "/usr/local/kubernetes/{kubeadm_ver}/stage1/usr/bin/ku
 KUBELET_CNI_BIN_DIR = "/var/opt/cni/bin"
 CALICO_CHAIN_INSERT_MODE = "Append"
 
+# Calico operator namespaces whose registry-local-secret must be re-synced
+# when sysinv credentials rotate (enrollment/rehoming).
+CALICO_OPERATOR_NAMESPACES = ['calico-system', 'tigera-operator']
+
 # K8s n/w upgrade related
 SYSINV_UTILS_PATH = '/usr/bin/sysinv-utils'
 CREATE_HOST_OVERRIDES_COMMAND = 'create-host-overrides'
