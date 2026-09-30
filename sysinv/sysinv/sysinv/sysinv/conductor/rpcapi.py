@@ -656,8 +656,10 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         """
         LOG.debug("ConductorApi.update_pcidp_config: sending "
                   "update_pcidp_config to conductor")
-        return self.call(context, self.make_msg('update_pcidp_config',
-                                                host_uuid=host_uuid))
+        return self.call(context,
+                         self.make_msg('update_pcidp_config',
+                                        host_uuid=host_uuid),
+                         timeout=RPC_TIMEOUT)
 
     def update_platform_ratelimit_config(self, context, host_uuid):
         """Synchronously, have a conductor configure platform ratelimit.
