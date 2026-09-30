@@ -1677,6 +1677,7 @@ SERVICE_PARAM_ENABLED = 'enabled'
 SERVICE_PARAM_NAME_K8S_APPLICATION_AUDIT = 'k8s_application_audit'
 SERVICE_PARAM_NAME_AUTOREAPPLY_APPS_AFTER_APPLY_RUNTIME_MANIFEST = \
     'autoreapply_apps_after_apply_runtime_manifest'
+SERVICE_PARAM_NAME_EVALUATE_APPS_REAPPLY = 'evaluate_apps_reapply'
 SERVICE_PARAM_NAME_MAX_APP_OPERATIONS_PER_PLATFORM_CORE = 'max-app-operations-per-platform-core'
 
 # cgroup v2 parameters

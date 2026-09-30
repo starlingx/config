@@ -1159,6 +1159,11 @@ class ConductorManager(service.PeriodicService):
          },
         {'service': constants.SERVICE_TYPE_PLATFORM,
          'section': constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG,
+         'name': constants.SERVICE_PARAM_NAME_EVALUATE_APPS_REAPPLY,
+         'value': constants.SERVICE_PARAM_ENABLED,
+         },
+        {'service': constants.SERVICE_TYPE_PLATFORM,
+         'section': constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG,
          'name': constants.SERVICE_PARAM_NAME_CGROUP_V2_ENABLED,
          'value': True
          },
@@ -18206,6 +18211,15 @@ class ConductorManager(service.PeriodicService):
                      ('reapply' or 'reapply-all')
 
         """
+
+        service_parameter_value = \
+            service_parameter.get_service_parameter_evaluate_apps_reapply(self.dbapi)
+
+        # If the service parameter is set to 'disabled', skip the evaluation and log a message.
+        if service_parameter_value == 'disabled':
+            LOG.info("Deferring apps reapply evaluation. "
+                     "The service parameter 'evaluate_apps_reapply' is disabled")
+            return
 
         # Check if platform upgrade is in progress
         try:
