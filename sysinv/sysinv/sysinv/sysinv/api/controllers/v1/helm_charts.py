@@ -152,9 +152,27 @@ class HelmChartsController(rest.RestController):
         if not namespace:
             raise wsme.exc.ClientSideError(_("Namespace must be specified."))
 
+    @staticmethod
+    def _legacy_flag_to_flags(flag):
+        """Translate the deprecated single string 'flag' into the 'flags' dict.
+
+        Older callers pass 'flag' as 'reuse' or 'reset'. Map it to the new
+        boolean 'flags' dict so legacy requests keep working. 'reapply' and
+        'reapply_all' were not available in the legacy interface and default
+        to False.
+        """
+        reuse_values = (flag == 'reuse')
+        return {
+            'reuse_values': reuse_values,
+            'reset_values': not reuse_values,
+            constants.HELM_OVERRIDE_UPDATE_WITH_REAPPLY: False,
+            constants.HELM_OVERRIDE_UPDATE_WITH_REAPPLY_ALL: False,
+        }
+
     @wsme_pecan.wsexpose(wtypes.text, wtypes.text, wtypes.text, wtypes.text,
-                         wtypes.text, wtypes.text, wtypes.text)
-    def patch(self, app_name, name, namespace, attributes, flags, values):
+                         wtypes.text, wtypes.text, wtypes.text, wtypes.text)
+    def patch(self, app_name, name, namespace, attributes, values,
+              flags=None, flag=None):
         """ Update user overrides.
 
         :param app_name: name of application
@@ -165,8 +183,18 @@ class HelmChartsController(rest.RestController):
                       Keys: 'reuse_values', 'reset_values', 'reapply', 'reapply_all'
         :param values: a dict of different types of user override values
         :param attributes: a dict of non-overrides related chart attributes
+        :param flag: deprecated. Legacy single string flag ('reuse' or
+                     'reset'). Kept for backward compatibility with callers
+                     that have not migrated to the 'flags' dict. Ignored when
+                     'flags' is provided.
         """
         self.validate_name_and_namespace(name, namespace)
+
+        # Backward compatibility: older callers send the single string
+        # parameter 'flag' ('reuse'/'reset') instead of the 'flags' dict.
+        # Translate it into the new dict form when 'flags' is not provided.
+        if not flags:
+            flags = self._legacy_flag_to_flags(flag)
 
         reuse_values = flags.get('reuse_values', False)
         reset_values = flags.get('reset_values', True)

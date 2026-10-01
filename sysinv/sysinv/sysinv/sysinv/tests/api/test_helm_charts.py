@@ -611,6 +611,133 @@ class ApiHelmChartPatchTestSuiteMixin(ApiHelmChartTestCaseMixin):
         # Verify that evaluate_apps_reapply was NOT called
         self.fake_conductor_api.evaluate_apps_reapply.assert_not_called()
 
+    def test_patch_legacy_flag_reuse_backward_compat(self):
+        # Older callers send the deprecated string 'flag'='reuse' instead of
+        # the 'flags' dict. The request must still succeed and reuse the
+        # existing user overrides.
+        self.fake_helm_apps.return_value = ['platform-integ-apps']
+        self.fake_override.return_value = {"enabled": True}
+        self.fake_merge_overrides.return_value = "global:\n  replicas: \"2\"\n"
+        url = self.get_single_url_helm_override('platform-integ-apps',
+                                                'rbd-provisioner',
+                                                'kube-system')
+        response = self.patch_json(url,
+                                   {'attributes': {},
+                                    'flag': 'reuse',
+                                    'values': {'files': [],
+                                    'set': ['global.replicas=2']}},
+                                    headers=self.API_HEADERS,
+                                    expect_errors=True)
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
+
+        response = self.get_json(url, expect_errors=True)
+        self.assertEqual(response.json['user_overrides'],
+                         'global:\n  replicas: \"2\"\n')
+
+    def test_patch_legacy_flag_reset_backward_compat(self):
+        # Older callers send the deprecated string 'flag'='reset' instead of
+        # the 'flags' dict. The request must still succeed and reset the
+        # existing user overrides.
+        self.fake_helm_apps.return_value = ['platform-integ-apps']
+        self.fake_override.return_value = {"enabled": True}
+        self.fake_merge_overrides.return_value = "global:\n  replicas: \"2\"\n"
+        url = self.get_single_url_helm_override('platform-integ-apps',
+                                                'rbd-provisioner',
+                                                'kube-system')
+        response = self.patch_json(url,
+                                   {'attributes': {},
+                                    'flag': 'reset',
+                                    'values': {}},
+                                    headers=self.API_HEADERS,
+                                    expect_errors=True)
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
+
+        response = self.get_json(url, expect_errors=True)
+        self.assertEqual(response.json['user_overrides'], None)
+
+    def test_patch_legacy_flag_invalid_value_defaults_to_reset(self):
+        # An unexpected legacy 'flag' value must not error; it falls back to
+        # the default reset behavior.
+        self.fake_helm_apps.return_value = ['platform-integ-apps']
+        self.fake_override.return_value = {"enabled": True}
+        self.fake_merge_overrides.return_value = "global:\n  replicas: \"2\"\n"
+        url = self.get_single_url_helm_override('platform-integ-apps',
+                                                'rbd-provisioner',
+                                                'kube-system')
+        response = self.patch_json(url,
+                                   {'attributes': {},
+                                    'flag': 'not-a-real-flag',
+                                    'values': {}},
+                                    headers=self.API_HEADERS,
+                                    expect_errors=True)
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
+
+        response = self.get_json(url, expect_errors=True)
+        self.assertEqual(response.json['user_overrides'], None)
+
+    def test_patch_no_flag_and_no_flags_defaults_to_reset(self):
+        # Neither the legacy 'flag' nor the new 'flags' is provided. The
+        # request must be accepted (both are optional) and default to reset.
+        self.fake_helm_apps.return_value = ['platform-integ-apps']
+        self.fake_override.return_value = {"enabled": True}
+        self.fake_merge_overrides.return_value = "global:\n  replicas: \"2\"\n"
+        url = self.get_single_url_helm_override('platform-integ-apps',
+                                                'rbd-provisioner',
+                                                'kube-system')
+        response = self.patch_json(url,
+                                   {'attributes': {},
+                                    'values': {}},
+                                   headers=self.API_HEADERS,
+                                   expect_errors=True)
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
+
+        response = self.get_json(url, expect_errors=True)
+        self.assertEqual(response.json['user_overrides'], None)
+
+    def test_patch_flags_takes_precedence_over_legacy_flag(self):
+        # When both the legacy 'flag' and the new 'flags' are provided, 'flags'
+        # must win. A contradictory 'flags' (reuse+reset both True) is rejected
+        # even though the legacy 'flag' alone would be valid, proving 'flags'
+        # was the parameter that took effect.
+        url = self.get_single_url_helm_override('platform-integ-apps',
+                                                'rbd-provisioner',
+                                                'kube-system')
+        response = self.patch_json(url,
+                                   {'attributes': {},
+                                    'flag': 'reuse',
+                                    'flags': {'reuse_values': True,
+                                              'reset_values': True},
+                                    'values': {'files': [],
+                                    'set': ['global.replicas=2']}},
+                                    headers=self.API_HEADERS,
+                                    expect_errors=True)
+        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+        self.assertIn("Invalid flags: 'reuse_values' and 'reset_values' "
+                      "cannot both be True.",
+                      response.json['error_message'])
+
+    def test_patch_reapply_flags_mutually_exclusive(self):
+        # 'reapply' and 'reapply_all' cannot both be True.
+        url = self.get_single_url_helm_override('platform-integ-apps',
+                                                'rbd-provisioner',
+                                                'kube-system')
+        response = self.patch_json(url,
+                                   {'attributes': {},
+                                    'flags': {'reapply': True,
+                                              'reapply_all': True},
+                                    'values': {'files': [],
+                                    'set': ['global.replicas=2']}},
+                                    headers=self.API_HEADERS,
+                                    expect_errors=True)
+        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+        self.assertIn("Invalid flags: 'reapply' and 'reapply_all' "
+                      "cannot both be True.",
+                      response.json['error_message'])
+
 
 class ApiHelmChartPatchTestSuiteQat(ApiHelmChartTestCaseMixin):
     """ Helm Chart Attribute Modify Operations
