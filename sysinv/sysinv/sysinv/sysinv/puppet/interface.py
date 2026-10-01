@@ -1077,6 +1077,8 @@ def get_ethernet_network_config(context, iface, config):
     interface_class = iface['ifclass']
     options = {}
 
+    configure_sriov_numvfs = "/usr/local/bin/configure_sriov_numvfs.py"
+
     if is_bridged_interface(context, iface):
         pass
     elif is_slave_interface(context, iface):
@@ -1097,21 +1099,26 @@ def get_ethernet_network_config(context, iface, config):
             # adjusted during parsing in apply_network_config.py
             options['allow-{}'.format(master)] = osname
             if interface_class == constants.INTERFACE_CLASS_PCI_SRIOV:
+
                 if iface['iftype'] == constants.INTERFACE_TYPE_ETHERNET:
-                    sriovfs_path = ("/sys/class/net/%s/device/sriov_numvfs" %
-                            get_interface_port_name(context, iface))
-                command = "echo 0 > %s; echo %s > %s" % (sriovfs_path, iface['sriov_numvfs'],
-                                                        sriovfs_path)
-                iface_op = get_device_sriov_setup_op(context, iface)
-                fill_interface_config_option_operation(options, iface_op, command)
+
+                    intf = get_interface_port_name(context, iface)
+                    numvfs = iface['sriov_numvfs']
+                    command = f"{configure_sriov_numvfs} --pf {intf} --num-vfs {numvfs}"
+
+                    iface_op = get_device_sriov_setup_op(context, iface)
+                    fill_interface_config_option_operation(options, iface_op, command)
+
     elif interface_class == constants.INTERFACE_CLASS_PCI_SRIOV:
         if iface['iftype'] == constants.INTERFACE_TYPE_ETHERNET:
-            sriovfs_path = ("/sys/class/net/%s/device/sriov_numvfs" %
-                            get_interface_port_name(context, iface))
-            command = "echo 0 > %s; echo %s > %s" % (sriovfs_path, iface['sriov_numvfs'],
-                                                        sriovfs_path)
+
+            intf = get_interface_port_name(context, iface)
+            numvfs = iface['sriov_numvfs']
+            command = f"{configure_sriov_numvfs} --pf {intf} --num-vfs {numvfs}"
+
             iface_op = get_device_sriov_setup_op(context, iface)
             fill_interface_config_option_operation(options, iface_op, command)
+
     elif interface_class == constants.INTERFACE_CLASS_PCI_PASSTHROUGH:
         sriovfs_path = ("/sys/class/net/%s/device/sriov_numvfs" %
                         get_interface_port_name(context, iface))
