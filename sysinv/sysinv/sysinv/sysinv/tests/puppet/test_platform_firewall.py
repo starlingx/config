@@ -14,6 +14,7 @@ from sysinv.objects import base as objbase
 from sysinv.tests.db import base as dbbase
 from sysinv.common import constants
 from sysinv.common import platform_firewall as firewall
+from sysinv.puppet import platform_firewall as puppet_firewall
 from sysinv.tests.db import utils as dbutils
 from sysinv.db import api as db_api
 from sysinv.puppet import interface as puppet_intf
@@ -277,6 +278,49 @@ class PlatformFirewallTestCaseMixin(base.PuppetTestCaseMixin):
                 self.assertIn(port, gnp['spec']['ingress'][0]['destination']['ports'])
             else:
                 self.assertNotIn(port, gnp['spec']['ingress'][0]['destination']['ports'])
+
+    def _check_openbao_isolation_gnp(self, gnp, db_api, expected_net_types,
+                                     expected_selector="has(projectcalico.org/namespace)"):
+        """ Validate the openBAO host-isolation GlobalNetworkPolicy.
+
+        :param gnp: the emitted GNP hiera dict
+        :param db_api: sysinv db api instance
+        :param expected_net_types: platform network types whose CIDRs must all
+                                    appear in the Deny destination.nets
+        :param expected_selector: expected top-level selector string
+        """
+        self.assertEqual(gnp["apiVersion"], "crd.projectcalico.org/v1")
+        self.assertEqual(gnp["kind"], "GlobalNetworkPolicy")
+        self.assertEqual(gnp["metadata"]["name"], "stx-openbao-host-isolation")
+
+        spec = gnp["spec"]
+        self.assertEqual(spec["order"], 50)
+        self.assertEqual(spec["selector"], expected_selector)
+        self.assertEqual(spec["types"], ["Egress"])
+
+        egress = spec["egress"]
+        # One Deny per protocol, then a trailing Pass.
+        self.assertEqual(egress[-1]["action"], "Pass")
+        deny_rules = [r for r in egress if r["action"] == "Deny"]
+        self.assertEqual(len(deny_rules), len(puppet_firewall.OPENBAO_HOST_PROTOCOLS))
+
+        deny_protocols = sorted(r["protocol"] for r in deny_rules)
+        self.assertEqual(deny_protocols,
+                         sorted(puppet_firewall.OPENBAO_HOST_PROTOCOLS))
+
+        for deny in deny_rules:
+            self.assertEqual(deny["destination"]["ports"],
+                             puppet_firewall.OPENBAO_HOST_TCP_PORTS)
+            # Every present network's CIDRs (all families) must be in the nets.
+            deny_nets = deny["destination"]["nets"]
+            for net_type in expected_net_types:
+                try:
+                    network = db_api.network_get_by_type(net_type)
+                except Exception:
+                    continue
+                for pool in db_api.address_pools_get_by_network(network.id):
+                    cidr = "%s/%s" % (pool.network, pool.prefix)
+                    self.assertIn(cidr, deny_nets)
 
     def _check_gnp_values(self, gnp, net_type, db_api, egress_size=3, ingress_size=3, destination_check=False):
 
@@ -947,6 +991,17 @@ class PlatformFirewallTestCaseControllerNonDc_Setup02(PlatformFirewallTestCaseMi
                               self.test_interfaces[constants.NETWORK_TYPE_OAM],
                               [constants.NETWORK_TYPE_OAM])
 
+        self.assertTrue('platform::firewall::calico::openbao::config' in hiera_data.keys())
+        self.assertTrue(hiera_data['platform::firewall::calico::openbao::config'])
+        self._check_openbao_isolation_gnp(
+            hiera_data['platform::firewall::calico::openbao::config'],
+            self.dbapi,
+            [constants.NETWORK_TYPE_MGMT,
+             constants.NETWORK_TYPE_CLUSTER_HOST,
+             constants.NETWORK_TYPE_PXEBOOT,
+             constants.NETWORK_TYPE_STORAGE,
+             constants.NETWORK_TYPE_OAM])
+
 
 # Controller, non-DC
 #   eth0:oam
@@ -1022,6 +1077,17 @@ class PlatformFirewallTestCaseControllerNonDc_Setup03(PlatformFirewallTestCaseMi
         self.assertFalse(hiera_data['platform::firewall::calico::mgmt::config'])
         self.assertFalse(hiera_data['platform::firewall::calico::pxeboot::config'])
         self.assertFalse(hiera_data['platform::firewall::calico::storage::config'])
+
+        # openbao GNP is a per-network not a per-interface rule.
+        # it must be installed even if some network is assigned to the loopback interface.
+        self.assertTrue('platform::firewall::calico::openbao::config' in hiera_data.keys())
+        self.assertTrue(hiera_data['platform::firewall::calico::openbao::config'])
+        self._check_openbao_isolation_gnp(
+            hiera_data['platform::firewall::calico::openbao::config'],
+            self.dbapi,
+            [constants.NETWORK_TYPE_MGMT,
+             constants.NETWORK_TYPE_CLUSTER_HOST,
+             constants.NETWORK_TYPE_OAM])
 
         # the HE is filled
         self.assertTrue(hiera_data['platform::firewall::calico::hostendpoint::config'])
@@ -3765,3 +3831,52 @@ class PlatformFirewallTestCaseSystemConfig(PlatformFirewallTestCaseMixin,
                          constants.PLATFORM_SYSINV_PARAMS_API_PORT)
         self.assertEqual(hiera_data["platform::usm::params::public_port"],
                          constants.PLATFORM_USM_PARAMS_PUBLIC_PORT)
+
+
+class PlatformFirewallOpenbaoSelectorTestCase(PlatformFirewallTestCaseMixin,
+                                              dbbase.BaseHostTestCase):
+    """ Unit tests for the openBAO isolation GNP selector builder.
+    """
+
+    def setUp(self):
+        super(PlatformFirewallOpenbaoSelectorTestCase, self).setUp()
+        self.fw = self.operator.platform_firewall  # pylint: disable=no-member
+
+    def test_selector_empty_whitelist(self):
+        # No namespaces, no labels -> pods only.
+        self.assertEqual(self.fw._build_openbao_selector([], []),
+                         "has(projectcalico.org/namespace)")
+        # None args behave like empty.
+        self.assertEqual(self.fw._build_openbao_selector(None, None),
+                         "has(projectcalico.org/namespace)")
+
+    def test_selector_namespace_whitelist(self):
+        selector = self.fw._build_openbao_selector(
+            ["namespace1", "namespace2"], [])
+        self.assertEqual(
+            selector,
+            "has(projectcalico.org/namespace) && "
+            "projectcalico.org/namespace not in { 'namespace1', 'namespace2' }")
+
+    def test_selector_label_presence_whitelist(self):
+        selector = self.fw._build_openbao_selector([], ["openbao-access"])
+        self.assertEqual(
+            selector,
+            "has(projectcalico.org/namespace) && ! has(openbao-access)")
+
+    def test_selector_label_keyvalue_whitelist(self):
+        selector = self.fw._build_openbao_selector(
+            [], ["openbao-access=trusted"])
+        self.assertEqual(
+            selector,
+            "has(projectcalico.org/namespace) && openbao-access != 'trusted'")
+
+    def test_selector_combined_whitelist(self):
+        selector = self.fw._build_openbao_selector(
+            ["client0"], ["openbao-access", "tier=vault-client"])
+        self.assertEqual(
+            selector,
+            "has(projectcalico.org/namespace) && "
+            "projectcalico.org/namespace not in { 'client0' } && "
+            "! has(openbao-access) && "
+            "tier != 'vault-client'")

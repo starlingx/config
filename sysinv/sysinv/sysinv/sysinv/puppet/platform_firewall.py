@@ -26,6 +26,7 @@ FIREWALL_HE_INTERFACE_CFG = 'platform::firewall::calico::hostendpoint::config'
 FIREWALL_EXTRA_FILTER_CFG = 'platform::firewall::extra::config'
 FIREWALL_GNSET_ADMIN_CFG = 'platform::firewall::calico::gnset::admin::config'
 FIREWALL_GNSET_MGMT_CFG = 'platform::firewall::calico::gnset::mgmt::config'
+FIREWALL_GNP_OPENBAO_CFG = 'platform::firewall::calico::openbao::config'
 
 PLATFORM_FIREWALL_CLASSES = {constants.NETWORK_TYPE_PXEBOOT: FIREWALL_GNP_PXEBOOT_CFG,
                              constants.NETWORK_TYPE_MGMT: FIREWALL_GNP_MGMT_CFG,
@@ -44,6 +45,22 @@ LOCAL_MULTICAST_IPV4 = "224.0.0.0/24"
 DHCP_PROTO = "DHCP"
 
 IPSEC_NETWORKS = [constants.NETWORK_TYPE_MGMT, constants.NETWORK_TYPE_CLUSTER_HOST]
+
+OPENBAO_HOST_TCP_PORTS = [8200, 8201]
+
+OPENBAO_HOST_PROTOCOLS = ["TCP"]
+
+# Platform networks the openBAO host instance may be reachable on
+# and that must therefore be denied to pods.
+OPENBAO_ISOLATION_NETWORKS = [constants.NETWORK_TYPE_PXEBOOT,
+                              constants.NETWORK_TYPE_MGMT,
+                              constants.NETWORK_TYPE_CLUSTER_HOST,
+                              constants.NETWORK_TYPE_STORAGE,
+                              constants.NETWORK_TYPE_ADMIN,
+                              constants.NETWORK_TYPE_OAM]
+
+OPENBAO_WHITELIST_NAMESPACES = []
+OPENBAO_WHITELIST_LABELS = []
 
 
 class PlatformFirewallPuppet(base.BasePuppet):
@@ -83,7 +100,8 @@ class PlatformFirewallPuppet(base.BasePuppet):
             FIREWALL_GNP_OAM_CFG: {},
             FIREWALL_EXTRA_FILTER_CFG: {},
             FIREWALL_GNSET_ADMIN_CFG: {},
-            FIREWALL_GNSET_MGMT_CFG: {}
+            FIREWALL_GNSET_MGMT_CFG: {},
+            FIREWALL_GNP_OPENBAO_CFG: {}
         }
 
         dc_role = _get_dc_role(self.dbapi)
@@ -165,6 +183,9 @@ class PlatformFirewallPuppet(base.BasePuppet):
 
             multicast_pools = self._get_multicast_address_pools()
 
+            if host.personality == constants.CONTROLLER:
+                self._set_openbao_host_isolation_gnp(config)
+
             if (config[FIREWALL_GNP_OAM_CFG]):
                 self._set_rules_oam(config[FIREWALL_GNP_OAM_CFG],
                                     networks[constants.NETWORK_TYPE_OAM], host, dc_role)
@@ -232,6 +253,113 @@ class PlatformFirewallPuppet(base.BasePuppet):
 
         self._set_extra_rules(config)
         return config
+
+    @staticmethod
+    def _build_openbao_selector(whitelist_namespaces=None, whitelist_labels=None):
+        """ Build the openBAO isolation GNP top-level selector string.
+
+        The policy always attaches to pods only.
+        When a whitelist is supplied, the matching pods are EXCLUDED from the policy so
+        they may reach the platform openBAO host instance.
+
+        :param whitelist_namespaces: optional list of namespace names to exempt
+        :param whitelist_labels: optional list of label keys or "key=value" to exempt
+        :return: the Calico selector string
+        """
+        whitelist_namespaces = whitelist_namespaces or []
+        whitelist_labels = whitelist_labels or []
+
+        terms = ["has(projectcalico.org/namespace)"]
+
+        if whitelist_namespaces:
+            quoted = ", ".join("'%s'" % ns for ns in whitelist_namespaces)
+            terms.append("projectcalico.org/namespace not in { %s }" % quoted)
+
+        for label in whitelist_labels:
+            if "=" in label:
+                key, value = label.split("=", 1)
+                terms.append("%s != '%s'" % (key.strip(), value.strip()))
+            else:
+                terms.append("! has(%s)" % label.strip())
+
+        return " && ".join(terms)
+
+    def _get_openbao_isolation_nets(self):
+        """ Collect the platform networks for the openBAO isolation GNP.
+
+        Gathers every address pool CIDR of each configured network in
+        OPENBAO_ISOLATION_NETWORKS.
+
+        :return: ordered, de-duplicated list of CIDR strings
+        """
+        networks_by_type = {net.type: net
+                            for net in self.dbapi.networks_get_all()}
+
+        pool_ids_by_network = {}
+        for na in self.dbapi.network_addrpool_get_all():
+            pool_ids_by_network.setdefault(na.network_id, []).append(
+                na.address_pool_id)
+
+        pools_by_id = {p.id: p
+                      for p in self.dbapi.address_pools_get_all_lite()}
+
+        nets = []
+        for net_type in OPENBAO_ISOLATION_NETWORKS:
+            network = networks_by_type.get(net_type)
+            if network is None:
+                continue
+            if not network.pool_uuid:
+                continue
+            for pool_id in pool_ids_by_network.get(network.id, []):
+                addr_pool = pools_by_id.get(pool_id)
+                if addr_pool is None:
+                    continue
+                cidr = "%s/%s" % (addr_pool.network, addr_pool.prefix)
+                if cidr not in nets:
+                    nets.append(cidr)
+        return nets
+
+    def _set_openbao_host_isolation_gnp(self, config):
+        """ Build the GlobalNetworkPolicy that denies pod egress to
+        the platform openBAO host instance (TCP 8200/8201).
+
+        An optional whitelist (namespaces and/or labels)
+        exempts selected pods so they may reach the openBAO ports.
+
+        :param config: the dict containing the hiera data to be filled
+        """
+        openbao_nets = self._get_openbao_isolation_nets()
+        if not openbao_nets:
+            LOG.info("_set_openbao_host_isolation_gnp: openbao_nets is empty")
+            return
+
+        selector = self._build_openbao_selector(
+            OPENBAO_WHITELIST_NAMESPACES, OPENBAO_WHITELIST_LABELS)
+
+        gnp = dict()
+        gnp["apiVersion"] = "crd.projectcalico.org/v1"
+        gnp["kind"] = "GlobalNetworkPolicy"
+        gnp["metadata"] = {"name": "stx-openbao-host-isolation"}
+        gnp["spec"] = dict()
+        gnp["spec"]["order"] = 50
+        gnp["spec"]["selector"] = selector
+        gnp["spec"]["types"] = ["Egress"]
+        egress = []
+        for proto in OPENBAO_HOST_PROTOCOLS:
+            egress.append(
+                {"metadata": {"annotations":
+                    {"name": "stx-egr-openbao-host-isolation-deny-%s"
+                             % proto.lower()}},
+                 "action": "Deny",
+                 "protocol": proto,
+                 "destination": {"nets": openbao_nets,
+                                 "ports": OPENBAO_HOST_TCP_PORTS}})
+        egress.append(
+            {"metadata": {"annotations":
+                {"name": "stx-egr-openbao-host-isolation-pass"}},
+             "action": "Pass"})
+        gnp["spec"]["egress"] = egress
+        config[FIREWALL_GNP_OPENBAO_CFG] = gnp
 
     def _get_hostendpoints(self, host, intf_ep, config):
         """ Fill the HostEndpoint hiera data
