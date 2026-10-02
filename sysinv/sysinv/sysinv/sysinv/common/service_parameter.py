@@ -1123,6 +1123,9 @@ def get_service_parameter_autoreapply_after_apply_runtime_manifest(dbapi):
         service_parameter = get_service_parameter(
             dbapi,
             constants.SERVICE_TYPE_PLATFORM,
+            # TODO dbarbosa: Change 'param_section' from SERVICE_PARAM_SECTION_KUBERNETES_CONFIG to
+            # SERVICE_PARAM_SECTION_PLATFORM_CONFIG, as it is the correct semantic constant for
+            # this service parameter, even though both have the same content.
             constants.SERVICE_PARAM_SECTION_KUBERNETES_CONFIG,
             constants.SERVICE_PARAM_NAME_AUTOREAPPLY_APPS_AFTER_APPLY_RUNTIME_MANIFEST
         )
@@ -1136,9 +1139,52 @@ def get_service_parameter_autoreapply_after_apply_runtime_manifest(dbapi):
                  "Creating with default 'enabled' value.")
         params = {
             "service_param": constants.SERVICE_TYPE_PLATFORM,
+            # TODO dbarbosa: Change 'param_section' from SERVICE_PARAM_SECTION_KUBERNETES_CONFIG to
+            # SERVICE_PARAM_SECTION_PLATFORM_CONFIG, as it is the correct semantic constant for
+            # this service parameter, even though both have the same content.
             "param_section": constants.SERVICE_PARAM_SECTION_KUBERNETES_CONFIG,
             "param_name":
             constants.SERVICE_PARAM_NAME_AUTOREAPPLY_APPS_AFTER_APPLY_RUNTIME_MANIFEST,
+            "value": constants.SERVICE_PARAM_ENABLED,
+        }
+        create_service_parameter(
+            dbapi, params
+        )
+        return constants.SERVICE_PARAM_ENABLED
+
+
+def get_service_parameter_evaluate_apps_reapply(dbapi):
+    """
+    Retrieve the status of the 'evaluate_apps_reapply' service parameter.
+    This function attempts to fetch the value of the 'evaluate_apps_reapply'
+    parameter from the database. If the parameter is not found, it creates the
+    parameter with a default value of 'enabled' and returns 'enabled'.
+
+    Args:
+        dbapi: Database API object.
+    Returns:
+        str: The status of the 'evaluate_apps_reapply' parameter,
+             either 'enabled' or 'disabled'.
+    """
+    try:
+        service_parameter = get_service_parameter(
+            dbapi,
+            constants.SERVICE_TYPE_PLATFORM,
+            constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG,
+            constants.SERVICE_PARAM_NAME_EVALUATE_APPS_REAPPLY
+        )
+        return (
+            service_parameter
+            if service_parameter == constants.SERVICE_PARAM_ENABLED
+            else constants.SERVICE_PARAM_DISABLED
+        )
+    except exception.NotFound:
+        LOG.info("'evaluate_apps_reapply' parameter not found. "
+                 "Creating with default 'enabled' value.")
+        params = {
+            "service_param": constants.SERVICE_TYPE_PLATFORM,
+            "param_section": constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG,
+            "param_name": constants.SERVICE_PARAM_NAME_EVALUATE_APPS_REAPPLY,
             "value": constants.SERVICE_PARAM_ENABLED,
         }
         create_service_parameter(
@@ -1200,6 +1246,7 @@ PLATFORM_CONFIG_PARAMETER_OPTIONAL = [
     constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_HOST_UNLOCK_BLOCKING_PERIOD,
     constants.SERVICE_PARAM_NAME_K8S_APPLICATION_AUDIT,
     constants.SERVICE_PARAM_NAME_AUTOREAPPLY_APPS_AFTER_APPLY_RUNTIME_MANIFEST,
+    constants.SERVICE_PARAM_NAME_EVALUATE_APPS_REAPPLY,
     constants.SERVICE_PARAM_NAME_MAX_APP_OPERATIONS_PER_PLATFORM_CORE,
     constants.SERVICE_PARAM_NAME_PLATFORM_TLS_MIN_VERSION,
     constants.SERVICE_PARAM_NAME_PLATFORM_TLS_CIPHER_SUITE,
@@ -1234,6 +1281,8 @@ PLATFORM_CONFIG_PARAMETER_VALIDATOR = {
     constants.SERVICE_PARAM_NAME_K8S_APPLICATION_AUDIT:
         _validate_enabled_disabled,
     constants.SERVICE_PARAM_NAME_AUTOREAPPLY_APPS_AFTER_APPLY_RUNTIME_MANIFEST:
+        _validate_enabled_disabled,
+    constants.SERVICE_PARAM_NAME_EVALUATE_APPS_REAPPLY:
         _validate_enabled_disabled,
     constants.SERVICE_PARAM_NAME_MAX_APP_OPERATIONS_PER_PLATFORM_CORE:
         _validate_positive_integer,
