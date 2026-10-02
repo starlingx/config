@@ -337,22 +337,41 @@ class AgentAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                        crictl_auth=crictl_auth,
                                        report_state=report_state))
 
-    def pin_kubernetes_control_plane_images(self, context, host_uuid, version):
-        """Asynchronously, pin kubernetes static pod images of current kubernetes version
+    def pin_kubernetes_control_plane_images(self, context, host_uuid, versions):
+        """Asynchronously, pin kubernetes control plane images of specified versions
 
         Following images are pinned
         - kube-apiserver
         - kube-controller-manager
         - kube-scheduler
+        - pause
 
         :param: context: request context
         :param: host_uuid: the host uuid
-        :param: version: Version of images to be pinned
+        :param: versions: List of versions of images to be pinned
         """
         return self.cast(context,
                          self.make_msg('pin_kubernetes_control_plane_images',
                                        host_uuid=host_uuid,
-                                       version=version))
+                                       versions=versions))
+
+    def unpin_kubernetes_control_plane_images(self, context, host_uuid, versions):
+        """Asynchronously, unpin kubernetes control plane images of specified versions
+
+        Following images are unpinned
+        - kube-apiserver
+        - kube-controller-manager
+        - kube-scheduler
+        - pause
+
+        :param: context: request context
+        :param: host_uuid: the host uuid
+        :param: versions: List of versions of images to be unpinned
+        """
+        return self.cast(context,
+                         self.make_msg('unpin_kubernetes_control_plane_images',
+                                       host_uuid=host_uuid,
+                                       versions=versions))
 
     def remove_legacy_multus_config(self, context, host_uuid):
         """Synchronously, remove legacy thin-mode multus CNI config.

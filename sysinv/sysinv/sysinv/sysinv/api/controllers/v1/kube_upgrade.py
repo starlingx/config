@@ -13,6 +13,7 @@ import pecan
 from pecan import rest
 import os
 import six
+import time
 import wsme
 from wsme import types as wtypes
 import wsmeext.pecan as wsme_pecan
@@ -815,6 +816,40 @@ class KubeUpgradeController(rest.RestController):
         # Clean up k8s control-plane backup
         pecan.request.rpcapi.remove_kube_control_plane_backup(
             pecan.request.context)
+
+        next_versions = self._kube_operator.kube_get_higher_patch_version(
+            kube_upgrade_obj.from_version, kube_upgrade_obj.to_version)
+
+        # Above method returns next higher patch versions between from_version and to_version
+        # excluding "from_version". Add it explictly.
+        next_versions.append(kube_upgrade_obj.from_version)
+
+        # current version could be "from_version" if the k8s upgrade was aborted or
+        # it could be "to_version" if the k8s upgrade was succeeded.
+        current_version = self._kube_operator.kube_get_kubernetes_version()
+
+        # Keep the images of the current version pinned.
+        if current_version and current_version in next_versions:
+            next_versions.remove(current_version)
+
+        try:
+            pecan.request.rpcapi.unpin_kubernetes_control_plane_images(
+                pecan.request.context, next_versions)
+        except Exception as e:
+            LOG.error("Failed to unpin kubernetes control plane images: %s", e)
+
+        # In case pause image of the current version got unpinned in the above step,
+        # we re-pin it here to ensure it remains pinned.
+        # pin and unpin operations being asynchronous, we introduce a short delay to ensure
+        # the unpin operation completes before re-pinning.
+        time.sleep(5)
+
+        try:
+            pecan.request.rpcapi.pin_kubernetes_control_plane_images(
+                pecan.request.context, [current_version])
+        except Exception as e:
+            LOG.error("Failed to re-pin kubernetes control plane images of current_version: %s."
+                      " Error: %s", current_version, e)
 
         # Delete the upgrade
         pecan.request.dbapi.kube_upgrade_destroy(kube_upgrade_obj.id)

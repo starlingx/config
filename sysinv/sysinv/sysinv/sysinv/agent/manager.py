@@ -3007,24 +3007,48 @@ class AgentManager(service.PeriodicService):
                                                             is_first_master, success)
             self._cleanup_kube_upgrade_method_details()
 
-    def pin_kubernetes_control_plane_images(self, context, host_uuid, version):
-        """Pin kubernetes static pod images
+    def pin_kubernetes_control_plane_images(self, context, host_uuid, versions):
+        """Pin kubernetes control plane images
 
         Following images of specified kubernetes version are pinned
         - kube-apiserver
         - kube-controller-manager
         - kube-scheduler
+        - pause
 
         :param: context: request context
         :param: host_uuid: the host uuid
-        :param: version: Version of images to be pinned
+        :param: versions: List of versions of images to be pinned
         """
         if self._ihost_uuid and self._ihost_uuid == host_uuid:
-            try:
-                operator = kube_host.KubeControllerOperator(context, host_uuid, self._hostname)
-                operator._pin_unpin_control_plane_images(pin_images_version=version)
-            except Exception as ex:
-                LOG.warning("Failed to pin kubernetes control-plane images. Error: [%s]" % (ex))
+            operator = kube_host.KubeControllerOperator(context, host_uuid, self._hostname)
+            for version in versions:
+                try:
+                    operator._pin_unpin_control_plane_images(pin_images_version=version)
+                except Exception as ex:
+                    LOG.warning("Failed to pin kubernetes control-plane images. Error: [%s]" % (ex))
+
+    def unpin_kubernetes_control_plane_images(self, context, host_uuid, versions):
+        """Unpin kubernetes control plane images
+
+        Following images of specified kubernetes versions are unpinned
+        - kube-apiserver
+        - kube-controller-manager
+        - kube-scheduler
+        - pause
+
+        :param: context: request context
+        :param: host_uuid: the host uuid
+        :param: versions: List of versions of images to be unpinned
+        """
+        if self._ihost_uuid and self._ihost_uuid == host_uuid:
+            operator = kube_host.KubeControllerOperator(context, host_uuid, self._hostname)
+            for version in versions:
+                try:
+                    operator._pin_unpin_control_plane_images(unpin_images_version=version)
+                except Exception as ex:
+                    LOG.warning("Failed to unpin kubernetes control-plane images."
+                                "Error: [%s]" % (ex))
 
     def _is_host_uuid_set(self, timeout=600):
         """Check if self._ihost_uuid is set upon startup

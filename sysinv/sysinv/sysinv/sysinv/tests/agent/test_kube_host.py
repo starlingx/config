@@ -1164,13 +1164,6 @@ class TestKubernetesOperator(base.TestCase):
         p.start()
         self.addCleanup(p.stop)
 
-        mock_pin_unpin_control_plane_images = mock.MagicMock()
-        p = mock.patch(
-            'sysinv.agent.kube_host.KubeControllerOperator._pin_unpin_control_plane_images',
-            mock_pin_unpin_control_plane_images)
-        p.start()
-        self.addCleanup(p.stop)
-
         self.kube_controller_operator._system_mode = \
             constants.SYSTEM_MODE_SIMPLEX
         self.kube_controller_operator.upgrade_control_plane(
@@ -1192,8 +1185,6 @@ class TestKubernetesOperator(base.TestCase):
         mock_kube_patch_daemonset.assert_called_once_with(
             'kube-proxy', kubernetes.NAMESPACE_KUBE_SYSTEM, body=mock.ANY)
         mock_update_kube_symlink.assert_called()
-        mock_pin_unpin_control_plane_images.assert_called_once_with(
-            pin_images_version=to_kube_version, unpin_images_version=from_kube_version)
 
     def test_kube_upgrade_control_plane_success_duplex_first_master(self):
         """Test successful execution of kubernetes control plane upgrade on duplex: first master
@@ -1261,13 +1252,6 @@ class TestKubernetesOperator(base.TestCase):
         p.start()
         self.addCleanup(p.stop)
 
-        mock_pin_unpin_control_plane_images = mock.MagicMock()
-        p = mock.patch(
-            'sysinv.agent.kube_host.KubeControllerOperator._pin_unpin_control_plane_images',
-            mock_pin_unpin_control_plane_images)
-        p.start()
-        self.addCleanup(p.stop)
-
         self.kube_controller_operator._system_mode = \
             constants.SYSTEM_MODE_DUPLEX
         self.kube_controller_operator.upgrade_control_plane(
@@ -1280,8 +1264,6 @@ class TestKubernetesOperator(base.TestCase):
         mock_kube_patch_deployment.assert_not_called()
         mock_kube_patch_daemonset.assert_not_called()
         mock_update_kube_symlink.assert_called_once()
-        mock_pin_unpin_control_plane_images.assert_called_once_with(
-            pin_images_version=to_kube_version, unpin_images_version=from_kube_version)
 
     def test_kube_upgrade_control_plane_success_duplex_second_master(self):
         """Test successful execution of kubernetes control plane upgrade on duplex: Second master
@@ -1384,13 +1366,6 @@ class TestKubernetesOperator(base.TestCase):
         p.start()
         self.addCleanup(p.stop)
 
-        mock_pin_unpin_control_plane_images = mock.MagicMock()
-        p = mock.patch(
-            'sysinv.agent.kube_host.KubeControllerOperator._pin_unpin_control_plane_images',
-            mock_pin_unpin_control_plane_images)
-        p.start()
-        self.addCleanup(p.stop)
-
         self.kube_controller_operator._system_mode = \
             constants.SYSTEM_MODE_DUPLEX
         self.kube_controller_operator.upgrade_control_plane(
@@ -1417,8 +1392,6 @@ class TestKubernetesOperator(base.TestCase):
         mock_kube_patch_daemonset.assert_called_once_with(
             'kube-proxy', kubernetes.NAMESPACE_KUBE_SYSTEM, body=mock.ANY)
         mock_update_kube_symlink.assert_called()
-        mock_pin_unpin_control_plane_images.assert_called_once_with(
-            pin_images_version=to_kube_version, unpin_images_version=from_kube_version)
 
     def test_kube_upgrade_control_plane_failure_simplex(self):
         """Test failed execution of kubernetes control plane upgrade on simplex
@@ -1481,13 +1454,6 @@ class TestKubernetesOperator(base.TestCase):
         p.start()
         self.addCleanup(p.stop)
 
-        mock_pin_unpin_control_plane_images = mock.MagicMock()
-        p = mock.patch(
-            'sysinv.agent.kube_host.KubeControllerOperator._pin_unpin_control_plane_images',
-            mock_pin_unpin_control_plane_images)
-        p.start()
-        self.addCleanup(p.stop)
-
         self.kube_controller_operator._system_mode = \
             constants.SYSTEM_MODE_SIMPLEX
         self.assertRaises(exception.SysinvException,
@@ -1504,7 +1470,6 @@ class TestKubernetesOperator(base.TestCase):
         mock_kube_patch_deployment.assert_not_called()
         mock_kube_patch_daemonset.assert_not_called()
         mock_update_kube_symlink.assert_not_called()
-        mock_pin_unpin_control_plane_images.assert_not_called()
 
     def test_kube_upgrade_control_plane_failure_duplex(self):
         """Test failed execution of kubernetes control plane upgrade on duplex
@@ -1580,13 +1545,6 @@ class TestKubernetesOperator(base.TestCase):
         p.start()
         self.addCleanup(p.stop)
 
-        mock_pin_unpin_control_plane_images = mock.MagicMock()
-        p = mock.patch(
-            'sysinv.agent.kube_host.KubeControllerOperator._pin_unpin_control_plane_images',
-            mock_pin_unpin_control_plane_images)
-        p.start()
-        self.addCleanup(p.stop)
-
         self.kube_controller_operator._system_mode = \
             constants.SYSTEM_MODE_DUPLEX
         self.assertRaises(exception.SysinvException,
@@ -1602,7 +1560,6 @@ class TestKubernetesOperator(base.TestCase):
         mock_kube_patch_service_account.assert_called()
         mock_kube_patch_deployment.assert_called()
         mock_kube_patch_daemonset.assert_not_called()
-        mock_pin_unpin_control_plane_images.assert_not_called()
         mock_update_kube_symlink.assert_not_called()
 
     def test_update_kube_symlink_success_stage1(self):
@@ -1825,7 +1782,8 @@ class TestKubernetesOperator(base.TestCase):
         images = {
             "kube-apiserver": f"registry.k8s.io/kube-apiserver:{version}",
             "kube-scheduler": f"registry.k8s.io/kube-scheduler:{version}",
-            "kube-controller-manager": f"registry.k8s.io/kube-controller-manager:{version}"
+            "kube-controller-manager": f"registry.k8s.io/kube-controller-manager:{version}",
+            "pause": f"registry.k8s.io/pause:{version}"
         }
 
         mock_pin_ctr_image = mock.MagicMock()
@@ -1856,7 +1814,8 @@ class TestKubernetesOperator(base.TestCase):
         images = {
             "kube-apiserver": f"registry.k8s.io/kube-apiserver:{version}",
             "kube-scheduler": f"registry.k8s.io/kube-scheduler:{version}",
-            "kube-controller-manager": f"registry.k8s.io/kube-controller-manager:{version}"
+            "kube-controller-manager": f"registry.k8s.io/kube-controller-manager:{version}",
+            "pause": f"registry.k8s.io/pause:{version}"
         }
 
         mock_pin_ctr_image = mock.MagicMock()
@@ -1889,13 +1848,15 @@ class TestKubernetesOperator(base.TestCase):
             {
                 "kube-apiserver": f"registry.k8s.io/kube-apiserver:{pin_version}",
                 "kube-scheduler": f"registry.k8s.io/kube-scheduler:{pin_version}",
-                "kube-controller-manager": f"registry.k8s.io/kube-controller-manager:{pin_version}"
+                "kube-controller-manager": f"registry.k8s.io/kube-controller-manager:{pin_version}",
+                "pause": f"registry.k8s.io/pause:{pin_version}"
             },
             {
                 "kube-apiserver": f"registry.k8s.io/kube-apiserver:{unpin_version}",
                 "kube-scheduler": f"registry.k8s.io/kube-scheduler:{unpin_version}",
                 "kube-controller-manager":
-                f"registry.k8s.io/kube-controller-manager:{unpin_version}"
+                f"registry.k8s.io/kube-controller-manager:{unpin_version}",
+                "pause": f"registry.k8s.io/pause:{unpin_version}"
             }
         ]
 
