@@ -242,10 +242,18 @@ class HelmChartsController(rest.RestController):
                 pecan.request.context, app.id, name, namespace)
 
         user_overrides = db_chart.user_overrides
+        # A request that changes chart attributes and carries no override
+        # values (helm-chart-attribute-modify) is not an override update, so
+        # it must leave the stored user overrides alone. The client sends no
+        # flags for it, which would otherwise fall through to the default
+        # reset below and silently drop the chart's configuration on every
+        # enable or disable.
+        attributes_only = (attributes and not file_overrides and
+                           not set_overrides)
         if reuse_values:
             if user_overrides is not None:
                 file_overrides.insert(0, user_overrides)
-        else:
+        elif not attributes_only:
             # Default behavior: reset existing user overrides
             user_overrides = None
 

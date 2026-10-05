@@ -415,6 +415,76 @@ class ApiHelmChartPatchTestSuiteMixin(ApiHelmChartTestCaseMixin):
         response = self.get_json(url, expect_errors=True)
         self.assertEqual(response.json['attributes'], 'enabled: false\n')
 
+    def test_helm_override_patch_attribute_keeps_user_overrides(self):
+        # helm-chart-attribute-modify sends attributes with no flags and no
+        # values; it must not reset the chart's stored user overrides.
+        self.fake_helm_apps.return_value = ['platform-integ-apps']
+        self.fake_override.return_value = {"enabled": False}
+        self.fake_merge_overrides.return_value = "global:\n  replicas: \"3\"\n"
+        url = self.get_single_url_helm_override('platform-integ-apps',
+                                                'rbd-provisioner',
+                                                'kube-system')
+        for enabled in ("false", "true"):
+            response = self.patch_json(url,
+                                       {'attributes': {"enabled": enabled},
+                                        'flags': {},
+                                        'values': {}},
+                                       headers=self.API_HEADERS,
+                                       expect_errors=True)
+            self.assertEqual(response.status_code, http_client.OK)
+
+            response = self.get_json(url, expect_errors=True)
+            self.assertEqual(response.json['attributes'],
+                             'enabled: %s\n' % enabled)
+            self.assertEqual(response.json['user_overrides'],
+                             'global:\n  replicas: \"3\"\n')
+
+    def test_helm_override_patch_attribute_with_values_replaces(self):
+        # Attributes sent together with values remain an override update
+        # and keep the default reset-then-replace behavior.
+        self.fake_helm_apps.return_value = ['platform-integ-apps']
+        self.fake_override.return_value = {"enabled": True}
+        self.fake_merge_overrides.return_value = "global:\n  replicas: \"5\"\n"
+        url = self.get_single_url_helm_override('platform-integ-apps',
+                                                'rbd-provisioner',
+                                                'kube-system')
+        response = self.patch_json(url,
+                                   {'attributes': {"enabled": "true"},
+                                    'flags': {},
+                                    'values': {'files': [],
+                                               'set': ['global.replicas=5']}},
+                                   headers=self.API_HEADERS,
+                                   expect_errors=True)
+        self.assertEqual(response.status_code, http_client.OK)
+
+        response = self.get_json(url, expect_errors=True)
+        self.assertEqual(response.json['user_overrides'],
+                         'global:\n  replicas: \"5\"\n')
+
+    def test_helm_override_patch_attribute_reset_keeps_user_overrides(self):
+        # An attributes-only request carries no override values, so there is
+        # nothing to reset; the stored user overrides are preserved even when
+        # reset_values=true is passed explicitly. Modifying an attribute and
+        # resetting overrides are separate operations, never combined in a
+        # single request, so the attributes-only guard intentionally wins.
+        self.fake_helm_apps.return_value = ['platform-integ-apps']
+        self.fake_override.return_value = {"enabled": False}
+        self.fake_merge_overrides.return_value = "global:\n  replicas: \"3\"\n"
+        url = self.get_single_url_helm_override('platform-integ-apps',
+                                                'rbd-provisioner',
+                                                'kube-system')
+        response = self.patch_json(url,
+                                   {'attributes': {"enabled": "false"},
+                                    'flags': {'reset_values': True},
+                                    'values': {}},
+                                   headers=self.API_HEADERS,
+                                   expect_errors=True)
+        self.assertEqual(response.status_code, http_client.OK)
+
+        response = self.get_json(url, expect_errors=True)
+        self.assertEqual(response.json['user_overrides'],
+                         'global:\n  replicas: \"3\"\n')
+
     def test_patch_invalid_application(self):
         url = self.get_single_url_helm_override('invalid_app_name',
                                    'rbd-provisioner', 'kube-system')
