@@ -1524,9 +1524,9 @@ class InterfaceTestCase2(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
 
         iface = iface1
         port = port1
+        port_name = port['name']
         configs = interface.get_interface_network_configs(self.context, iface)
-        numvfs_path = '/sys/class/net/{}/device/sriov_numvfs'.format(port['name'])
-        numvfs_cmd = 'echo 0 > {0}; echo 16 > {0}'.format(numvfs_path)
+        numvfs_cmd = f"/usr/local/bin/configure_sriov_numvfs.py --pf {port_name} --num-vfs 16"
         ipv6_conf_iface_opt = self._get_ipv6_conf_iface_options(port['name'])
         options = {'allow-bond0': port['name'],
                    'bond-master': 'bond0',
@@ -1540,9 +1540,9 @@ class InterfaceTestCase2(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
 
         iface = iface2
         port = port2
+        port_name = port['name']
         configs = interface.get_interface_network_configs(self.context, iface)
-        numvfs_path = '/sys/class/net/{}/device/sriov_numvfs'.format(port['name'])
-        numvfs_cmd = 'echo 0 > {0}; echo 16 > {0}'.format(numvfs_path)
+        numvfs_cmd = f"/usr/local/bin/configure_sriov_numvfs.py --pf {port_name} --num-vfs 16"
         ipv6_conf_iface_opt = self._get_ipv6_conf_iface_options(port['name'])
         options = {'allow-bond0': port['name'],
                    'bond-master': 'bond0',
@@ -2040,11 +2040,11 @@ class InterfaceTestCase2(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         configs = interface.get_interface_network_configs(
             self.context, self.iface)
         ipv6_conf_iface_opt = self._get_ipv6_conf_iface_options(self.port['name'])
+        port_name = self.port['name']
         options = {'stx-description': 'ifname:mgmt0,net:None',
                    'mtu': '1500',
-                   'pre-up': 'echo 0 > /sys/class/net/{}/device/sriov_numvfs;'
-                             ' echo 0 > /sys/class/net/{}/device/sriov_numvfs'.format(
-                                 self.port['name'], self.port['name']),
+                   'pre-up': f"/usr/local/bin/configure_sriov_numvfs.py --pf {port_name}"
+                                                                      ' --num-vfs 0',
                    'post-up': '{}'.format(ipv6_conf_iface_opt)}
         expected = self._get_network_config_ifupdown(
             ifname=self.port['name'], method='manual', options=options)
@@ -2069,9 +2069,9 @@ class InterfaceTestCase2(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         configs = interface.get_interface_network_configs(
             self.context, self.iface)
         ipv6_conf_iface_opt = self._get_ipv6_conf_iface_options(self.port['name'])
-        numvfs_cmd = 'echo 0 > /sys/class/net/{}/device/sriov_numvfs;' \
-                     ' echo 0 > /sys/class/net/{}/device/sriov_numvfs'.format(
-                         self.port['name'], self.port['name'])
+        port_name = self.port['name']
+        numvfs_cmd = f"/usr/local/bin/configure_sriov_numvfs.py --pf {port_name} " \
+                                                               "--num-vfs 0"
         options = {'stx-description': 'ifname:mgmt0,net:None',
                    'mtu': '1500',
                    'post-up': '{}; {}'.format(numvfs_cmd, ipv6_conf_iface_opt)}
@@ -4379,9 +4379,8 @@ class InterfaceConfigTestMixin(InterfaceTestCaseMixin):
         return '/sys/class/net/{}/device/sriov_numvfs'.format(port)
 
     def _get_sriov_numvfs_cmd(self, port, numvfs):
-        sriovfs_path = self._get_sriov_numvfs_path(port)
-        return ['echo 0 > {}'.format(sriovfs_path),
-                'echo {} > {}'.format(numvfs, sriovfs_path)]
+        return ['/usr/local/bin/configure_sriov_numvfs.py --pf {} '
+                '--num-vfs {}'.format(port, numvfs)]
 
     def _get_pci_passthrough_numvfs_cmd(self, port):
         sriovfs_path = self._get_sriov_numvfs_path(port)
