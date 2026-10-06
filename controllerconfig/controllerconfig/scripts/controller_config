@@ -49,6 +49,7 @@ SYSINV_CONF_DIR="/etc/sysinv"
 SYSINV_CONF_FILE="${SYSINV_CONF_DIR}/sysinv.conf"
 LUKS_MOUNT="/var/luks/stx/luks_fs"
 LUKS_KEYRING_PATH="$LUKS_MOUNT/controller/.keyring/${SW_VERSION}/python_keyring"
+CLONE_FLAG="/etc/platform/.cloned_install"
 
 OS_ID=$(grep '^ID=' /etc/os-release | cut -f2- -d= | sed -e 's/\"//g')
 if [ "$OS_ID" == "debian" ]
@@ -887,6 +888,11 @@ start()
         for retry in $(seq 1 ${mount_retries}); do
             if ! /usr/bin/mountpoint -q "$LUKS_MOUNT"; then
                 echo "ERROR: LUKS mount point not available yet, retrying"
+                RC=1
+                sleep 5
+            # Wait for the Keyring to be restored when migrating LUKS fs during disk clone
+            elif [ -e "$CLONE_FLAG" ] && [ ! -e "$LUKS_KEYRING_PATH" ]; then
+                echo "ERROR: LUKS mounted but clone keyring restore not complete yet, retrying"
                 RC=1
                 sleep 5
             else
