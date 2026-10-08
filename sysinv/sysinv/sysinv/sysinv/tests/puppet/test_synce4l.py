@@ -86,7 +86,7 @@ class TestSynce4lParameters(test_base.TestCase):
         ptp_config = {inst['name']: inst}
         self.operator._set_ptp_instance_monitoring_parameters(
             ptp_config, [])
-        expected_socket = '/tmp/synce4l_socket_synce_test'
+        expected_socket = '/var/run/synce4l_socket_synce_test'
         self.assertEqual(inst['global_parameters']['smc_socket_path'],
                          expected_socket)
         self.assertEqual(inst['monitoring_parameters']['smc_socket_path'],
