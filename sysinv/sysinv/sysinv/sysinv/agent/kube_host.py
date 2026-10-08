@@ -667,7 +667,10 @@ class KubeControllerOperator(KubeHostOperator):
             try:
                 if kubernetes.k8s_health_check(tries=3, try_sleep=1, log=False):
                     if not kubernetes.is_node_cordoned(self._host_name):
-                        kubernetes.kube_drain_node_with_options(self._host_name)
+                        is_simplex = (self._system_mode ==
+                                      constants.SYSTEM_MODE_SIMPLEX)
+                        kubernetes.kube_drain_node_with_options(
+                            self._host_name, disable_eviction=is_simplex)
                 else:
                     if self._abort_attempt == 1:
                         raise exception.SysinvException("Kube-apiserver is not running."
