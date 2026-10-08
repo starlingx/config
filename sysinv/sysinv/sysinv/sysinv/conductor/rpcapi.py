@@ -2229,19 +2229,35 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.cast(context, self.make_msg('report_unfinished_kube_upgrade_from_agent',
                                                 host_uuid=host_uuid))
 
-    def pin_kubernetes_control_plane_images(self, context, version):
-        """Asynchronously, pin kubernetes static pod images of specified kubernetes version
+    def pin_kubernetes_control_plane_images(self, context, versions):
+        """Asynchronously, pin kubernetes static pod images of specified kubernetes versions
 
         Following images are pinned
         - kube-apiserver
         - kube-controller-manager
         - kube-scheduler
+        - pause
 
         :param context: request context
-        :param: version: Version of images to be pinned
+        :param: versions: List of versions of images to be pinned
         """
         return self.cast(context, self.make_msg('pin_kubernetes_control_plane_images',
-                                                version=version))
+                                                versions=versions))
+
+    def unpin_kubernetes_control_plane_images(self, context, versions):
+        """Asynchronously, unpin kubernetes static pod images of specified kubernetes version
+
+        Following images are unpinned
+        - kube-apiserver
+        - kube-controller-manager
+        - kube-scheduler
+        - pause
+
+        :param context: request context
+        :param: versions: List of versions of images to be unpinned
+        """
+        return self.cast(context, self.make_msg('unpin_kubernetes_control_plane_images',
+                                                versions=versions))
 
     def store_bitstream_file(self, context, filename):
         """Asynchronously, have the conductor store the device image

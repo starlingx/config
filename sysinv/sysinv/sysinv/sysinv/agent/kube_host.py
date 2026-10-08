@@ -731,15 +731,6 @@ class KubeControllerOperator(KubeHostOperator):
 
                 kubernetes.kube_uncordon_node(self._host_name)
 
-                try:
-                    self._pin_unpin_control_plane_images(
-                        pin_images_version=back_to_kube_version,
-                        unpin_images_version=self.current_stage1_link_version)
-                except Exception as ex:
-                    # This failure can be ignored
-                    LOG.warning("Pin/unpin control-plane images operation failed. "
-                                "Error: [%s]" % (ex))
-
                 self._cleanup_backed_up_artifacts()
 
                 abort = True
@@ -866,15 +857,6 @@ class KubeControllerOperator(KubeHostOperator):
                                                 "kubernetes abort recovery procedure.")
 
             kubernetes.kube_uncordon_node(self._host_name)
-
-            try:
-                self._pin_unpin_control_plane_images(
-                    pin_images_version=self.current_stage1_link_version,
-                    unpin_images_version=recover_from_kube_version)
-            except Exception as ex:
-                # This failure can be ignored
-                LOG.warning("Pin/unpin control-plane images operation failed. "
-                            "Error: [%s]" % (ex))
 
             self._cleanup_backed_up_artifacts()
 
@@ -1126,6 +1108,7 @@ class KubeControllerOperator(KubeHostOperator):
         - kube-apiserver
         - kube-controller-manager
         - kube-scheduler
+        - pause
 
         If pin_images_version is specified, above images for the specified version are pinned
         If unpin_images_version is specified, above images for the specified version are unpinned
@@ -1152,7 +1135,8 @@ class KubeControllerOperator(KubeHostOperator):
                 target_images = [
                     images['kube-apiserver'],
                     images['kube-controller-manager'],
-                    images['kube-scheduler']
+                    images['kube-scheduler'],
+                    images['pause']
                 ]
 
                 for image in target_images:
@@ -1283,13 +1267,6 @@ class KubeControllerOperator(KubeHostOperator):
                 self._rollout_restart_kube_proxy_daemonset()
 
             self._update_kube_symlink(kubernetes.KUBERNETES_SYMLINKS_STAGE_1, to_kube_version)
-
-            try:
-                self._pin_unpin_control_plane_images(pin_images_version=to_kube_version,
-                                                     unpin_images_version=from_kube_version)
-            except Exception as ex:
-                # This failure can be ignored
-                LOG.warning(ex)
 
         except Exception as ex:
             raise exception.SysinvException("Error upgrading control plane components: %s" % (ex))

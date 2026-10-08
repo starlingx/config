@@ -436,7 +436,6 @@ class ConductorManager(service.PeriodicService):
         self._initialize_backup_actions_log()
         self._app_alarm_audit_counter = 0  # Counter for alarm audit frequency
         self._unused_helm_charts_audit_counter = 0  # Counter for helm chart cleanup frequency
-        self._k8s_upgrade_downloading_images_on_inactive_controller = False
         self._app_operations_audit_thread = None
 
     def start(self):
@@ -19778,10 +19777,8 @@ class ConductorManager(service.PeriodicService):
 
         # Following block of conditions ensures kube upgrade status of only the reporting
         # host is updated and not for false host.
-        if current_kube_state == kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES and \
-                self._k8s_upgrade_downloading_images_on_inactive_controller:
+        if current_kube_state == kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES:
             fail_state = kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES_FAILED
-            self._k8s_upgrade_downloading_images_on_inactive_controller = False
         elif current_kube_state == kubernetes.KUBE_UPGRADING_FIRST_MASTER and \
                 kube_host_upgrade.status == kubernetes.KUBE_HOST_UPGRADING_CONTROL_PLANE:
             fail_state = kubernetes.KUBE_UPGRADING_FIRST_MASTER_FAILED
@@ -19983,11 +19980,15 @@ class ConductorManager(service.PeriodicService):
         if result:
             state = kubernetes.KUBE_UPGRADE_DOWNLOADED_IMAGES
             LOG.info("Required kubernetes images downloaded successfully on all controllers.")
+
+            kube_upgrade_obj = objects.kube_upgrade.get_one(context)
+            next_versions = self._kube.kube_get_higher_patch_version(
+                kube_upgrade_obj.from_version, kube_upgrade_obj.to_version)
+            self.pin_kubernetes_control_plane_images(context, next_versions)
         else:
             state = kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES_FAILED
             LOG.error("Kubernetes image download failed on the other controller."
                       "Check sysinv.log on that controller.")
-        self._k8s_upgrade_downloading_images_on_inactive_controller = False
         self._kube_upgrade_state_update(context, state)
 
     def kube_download_images(self, context, kube_version):
@@ -20042,6 +20043,7 @@ class ConductorManager(service.PeriodicService):
         if system.system_mode == constants.SYSTEM_MODE_SIMPLEX:
             self._kube_upgrade_state_update(context, kubernetes.KUBE_UPGRADE_DOWNLOADED_IMAGES)
             LOG.info("Required kubernetes images downloaded successfully.")
+            self.pin_kubernetes_control_plane_images(context, next_versions)
             return
         else:
             controller_hosts = self.dbapi.ihost_get_by_personality(constants.CONTROLLER)
@@ -20055,14 +20057,12 @@ class ConductorManager(service.PeriodicService):
                         f"{local_registry_auth['username']}:{local_registry_auth['password']}"
                     )
                     LOG.info("Downloading images on %s" % (host.hostname))
-                    self._k8s_upgrade_downloading_images_on_inactive_controller = True
                     agent_api.pull_kubernetes_images(context, host.uuid, target_images, crictl_auth)
                 except Exception as ex:
                     # Handle unexpected exception
                     LOG.exception("Images download failed on %s. Error: [%s]" % (host.hostname, ex))
                     self._kube_upgrade_state_update(
                             context, kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES_FAILED)
-                    self._k8s_upgrade_downloading_images_on_inactive_controller = False
 
     def kube_application_update(self,
                                 context,
@@ -21653,7 +21653,7 @@ class ConductorManager(service.PeriodicService):
                     kube_upgrade_obj.save()
                     return
 
-                self.pin_kubernetes_control_plane_images(context, abort_to_version)
+                self.pin_kubernetes_control_plane_images(context, [abort_to_version])
 
                 try:
                     # TODO(kdhokte): Add a mechanism to get current kubernetes version on the host
@@ -21779,24 +21779,45 @@ class ConductorManager(service.PeriodicService):
 
         return
 
-    def pin_kubernetes_control_plane_images(self, context, version):
-        """Pin kubernetes static pod images of specified kubernetes version
+    def pin_kubernetes_control_plane_images(self, context, versions):
+        """Pin kubernetes control plane images of specified kubernetes versions
 
         Following images are pinned
         - kube-apiserver
         - kube-controller-manager
         - kube-scheduler
+        - pause
 
         :param: context: request context
-        :param: version: Version of images to be pinned
+        :param: versions: List of versions of images to be pinned
         """
         try:
             controller_hosts = self.dbapi.ihost_get_by_personality(constants.CONTROLLER)
             agent_api = agent_rpcapi.AgentAPI()
             for host in controller_hosts:
-                agent_api.pin_kubernetes_control_plane_images(context, host.uuid, version)
+                agent_api.pin_kubernetes_control_plane_images(context, host.uuid, versions)
         except Exception as ex:
             LOG.warning("Failed to pin kubernetes control-plane images. Error: [%s]" % (ex))
+
+    def unpin_kubernetes_control_plane_images(self, context, versions):
+        """Unpin kubernetes control plane images of specified kubernetes versions
+
+        Following images are unpinned
+        - kube-apiserver
+        - kube-controller-manager
+        - kube-scheduler
+        - pause
+
+        :param: context: request context
+        :param: versions: List of versions of images to be unpinned
+        """
+        try:
+            controller_hosts = self.dbapi.ihost_get_by_personality(constants.CONTROLLER)
+            agent_api = agent_rpcapi.AgentAPI()
+            for host in controller_hosts:
+                agent_api.unpin_kubernetes_control_plane_images(context, host.uuid, versions)
+        except Exception as ex:
+            LOG.warning("Failed to unpin kubernetes control-plane images. Error: [%s]" % (ex))
 
     def store_bitstream_file(self, context, filename):
         """Store FPGA bitstream file """
