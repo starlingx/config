@@ -7526,6 +7526,38 @@ class ConductorManager(service.PeriodicService):
         except exception.NotFound:
             return upgrade
 
+    def _vim_kube_upgrade_in_progress(self):
+        """Determine whether a VIM kubernetes upgrade orchestration is active.
+
+        During a combined (sw-deploy + kube-upgrade) orchestration, applying
+        certain runtime manifests (e.g. platform::nfv::runtime,
+        platform::firewall::runtime) can disrupt the VIM orchestration and
+        extend host-unlock times. This checks for that condition so that
+        _controller_config_active_apply can defer those manifests.
+
+        The VIM raises an in-progress alarm once the orchestration is underway
+        (900.201 software deploy auto-apply, or 900.401 kubernetes upgrade
+        auto-apply). The presence of either alarm indicates the orchestration
+        is running. These are queried via the local fm-api (a lightweight
+        local socket lookup, no REST/token dependency).
+
+        This is scoped to non-simplex systems only. On AIO-SX there is no
+        standby controller, so deferring these runtime manifests provides no
+        benefit for the orchestrated host-unlock sequence.
+        """
+        if cutils.is_aio_simplex_system(self.dbapi):
+            return False
+
+        for alarm_id in (fm_constants.FM_ALARM_ID_SW_UPGRADE_AUTO_APPLY_INPROGRESS,
+                         fm_constants.FM_ALARM_ID_KUBE_UPGRADE_AUTO_APPLY_INPROGRESS):
+            try:
+                if self.fm_api.get_faults_by_id(alarm_id):
+                    return True
+            except Exception as e:
+                LOG.warn("Failed to query alarm %s: %s", alarm_id, str(e))
+
+        return False
+
     @periodic_task.periodic_task(
         spacing=CONF.conductor_periodic_task_intervals.controller_config_active_apply)
     def _controller_config_active_apply(self, context):
@@ -7536,6 +7568,16 @@ class ConductorManager(service.PeriodicService):
             # Refresh the dnsmasq.hosts file on process restart
             self._generate_dnsmasq_hosts_file()
             self._generate_dnsmasq_hosts_file_called = True
+
+        # Defer runtime manifests while a VIM kubernetes upgrade orchestration
+        # is in progress. Applying manifests such as platform::nfv::runtime or
+        # platform::firewall::runtime during the kubernetes upgrade portion of
+        # a combined upgrade can disrupt the VIM orchestration and increase
+        # host-unlock times.
+        if self._vim_kube_upgrade_in_progress():
+            LOG.info("Skipped _controller_config_active_apply during "
+                     "VIM kubernetes upgrade in progress")
+            return
 
         # Apply deferred Keystone federation configuration.
         # This check is independent of the config finalization state
