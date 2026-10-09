@@ -1758,6 +1758,96 @@ class ManagerTestCase(base.DbTestCase):
         updated_upgrade = self.dbapi.kube_upgrade_get_one()
         self.assertEqual(updated_upgrade.state, kubernetes.KUBE_UPGRADE_DOWNLOADED_IMAGES)
 
+    def test_kube_download_images_systemcontroller_all_versions_success(self):
+        """Test that a DC system controller downloads images for all installed
+        kubernetes versions, not just the versions on its own upgrade path.
+        """
+        # Create controller-0
+        config_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname='controller-0',
+            uuid=str(uuid.uuid4()),
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+        )
+
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_SIMPLEX
+        system_dict['distributed_cloud_role'] = \
+            constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER
+        utils.update_test_isystem(system_dict)
+
+        FROM_VERSION = 'v1.29.2'
+        TO_VERSION = 'v1.32.2'
+        # The controller's own path would only include these, but as a system
+        # controller it must seed images for ALL installed versions below.
+        NEXT_VERSIONS = ['v1.30.6', 'v1.31.5', 'v1.32.2']
+        INSTALLED_VERSIONS = ['1.29.2', '1.30.6', '1.31.5', '1.32.2']
+        # Create an upgrade
+        utils.create_test_kube_upgrade(
+            from_version=FROM_VERSION,
+            to_version=TO_VERSION,
+            state=kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES,
+        )
+
+        mock_kube_get_higher_equal_versions = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.common.kubernetes.KubeOperator.kube_get_higher_patch_version',
+            mock_kube_get_higher_equal_versions)
+        p.start().return_value = NEXT_VERSIONS
+        self.addCleanup(p.stop)
+
+        mock_get_installed_kube_versions = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.get_installed_kube_versions',
+                       mock_get_installed_kube_versions)
+        p.start().return_value = INSTALLED_VERSIONS
+        self.addCleanup(p.stop)
+
+        mock_disable_kubelet_garbage_collection = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.disable_kubelet_garbage_collection',
+                       mock_disable_kubelet_garbage_collection)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_pmon_restart_service = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.pmon_restart_service', mock_pmon_restart_service)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_get_k8s_images = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.get_k8s_images', mock_get_k8s_images)
+        p.start().return_value = {'fake_key': 'fake_image'}
+        self.addCleanup(p.stop)
+
+        mock_download_images_from_upstream_to_local_reg_and_crictl = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.conductor.manager.ContainerImageDownloader.'
+            'download_images_from_upstream_to_local_reg_and_crictl',
+            mock_download_images_from_upstream_to_local_reg_and_crictl)
+        p.start().return_value = True
+        self.addCleanup(p.stop)
+
+        # Download images
+        self.service.kube_download_images(self.context, TO_VERSION)
+
+        # A system controller enumerates all installed versions and must not
+        # fall back to the upgrade-path-only version list.
+        mock_get_installed_kube_versions.assert_called_once()
+        self.assertEqual(mock_get_k8s_images.call_count, len(INSTALLED_VERSIONS))
+        mock_get_k8s_images.assert_has_calls(
+            [mock.call(v.strip('v'), include_all=True) for v in INSTALLED_VERSIONS],
+            any_order=True)
+        mock_download_images_from_upstream_to_local_reg_and_crictl.assert_called_with(
+                                                                                    ['fake_image'])
+        updated_upgrade = self.dbapi.kube_upgrade_get_one()
+        self.assertEqual(updated_upgrade.state, kubernetes.KUBE_UPGRADE_DOWNLOADED_IMAGES)
+
     def test_kube_download_images_simplex_fail(self):
         """Test download images on simplex: failure case
         """

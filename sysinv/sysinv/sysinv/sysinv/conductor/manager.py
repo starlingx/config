@@ -20012,14 +20012,29 @@ class ConductorManager(service.PeriodicService):
         except Exception:
             LOG.warning("Failed to disable garbage collection in kubelet, continuing anyway.")
 
-        # Create a consolidated list of images of all "next_versions" so that
-        # all of them can be pulled concurrently
+        # Create a consolidated list of images so that all of them can be pulled
+        # concurrently. System controllers seed images, including etcd, for all
+        # installed Kubernetes versions; other systems seed only their upgrade-path
+        # versions and exclude etcd.
         target_images = []
-        for k8s_version in next_versions:
+
+        is_system_controller = (
+            system.distributed_cloud_role ==
+            constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER)
+
+        k8s_versions = (
+            kubernetes.get_installed_kube_versions()
+            if is_system_controller
+            else next_versions
+        )
+
+        for k8s_version in k8s_versions:
             k8s_version = k8s_version.strip('v')
-            # TODO(kdhokte): call get_installed_kube_versions inside _start() so all images are
-            # cached for future use and accessed whenever required.
-            images = kubernetes.get_k8s_images(k8s_version)
+
+            # TODO(kdhokte): call get_installed_kube_versions inside _start() so all
+            # images are cached for future use and accessed whenever required.
+            images = kubernetes.get_k8s_images(
+                k8s_version, include_all=is_system_controller)
             target_images.extend(images.values())
 
         target_images = list(set(target_images))
