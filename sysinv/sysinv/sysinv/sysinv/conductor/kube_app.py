@@ -530,7 +530,8 @@ class AppOperator(object):
                         "\' to \'" + new_status + "\'."
             if new_status == constants.APP_UPLOAD_SUCCESS:
                 error_msg = self._append_missing_dependent_apps_msg(app, error_msg)
-            values = {'progress': error_msg, 'status': new_status}
+            values = {'progress': cutils.truncate_message(error_msg),
+                      'status': new_status}
             self._dbapi.kube_app_update(app.id, values)
 
     def _append_missing_dependent_apps_msg(self, app, progress_msg):
@@ -544,7 +545,9 @@ class AppOperator(object):
         :param app: instance of AppOperator.Application that was reset
         :param progress_msg: progress message to be complemented
         :return: the given progress message, with the missing dependent apps
-                 appended to it when there are any
+                 appended to it when there are any. The result is of
+                 unbounded length and must be truncated by the caller
+                 before being persisted to the 'progress' column.
         """
 
         metadata_file = self.retrieve_application_metadata_from_file(

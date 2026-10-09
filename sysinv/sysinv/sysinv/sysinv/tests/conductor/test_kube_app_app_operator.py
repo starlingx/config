@@ -19,6 +19,7 @@ from sysinv.common import constants
 from sysinv.conductor import kube_app
 from sysinv.conductor import manager
 from sysinv.db import api as dbapi
+from sysinv.db.sqlalchemy import models
 from sysinv.helm import helm
 from sysinv.objects import kube_app as obj_app
 
@@ -282,6 +283,75 @@ class AppOperatorTestCase(base.DbTestCase):
         updated_app = obj_app.get_by_name(self.context, 'platform-integ-apps')
         self.assertEqual(updated_app.status, constants.APP_UPLOAD_SUCCESS)
         self.assertNotIn('missing apps', updated_app.progress)
+
+    def test_clear_stuck_applications_progress_fits_db_column(self):
+        """The progress message must fit the 'progress' column.
+
+        The message is assembled from an unbounded list of missing
+        dependent apps, so with enough dependencies it can exceed the
+        column width. Persisting it then raises DBError from inside
+        AppOperator.__init__, which propagates out of
+        ConductorManager._start() and prevents the conductor from ever
+        starting its RPC server, leaving every subsequent RPC to time
+        out.
+
+        This cannot be caught by a DB round-trip: the test backend does
+        not enforce VARCHAR lengths, so the length is asserted directly.
+        """
+        progress_max_length = models.KubeApp.progress.type.length
+
+        dbutils.create_test_app(name='platform-integ-apps',
+                                status=constants.APP_UPDATE_STARTING)
+        self.service.apps_metadata[
+            constants.APP_METADATA_PLATFORM_MANAGED_APPS][
+                'platform-integ-apps'] = {}
+
+        # Enough dependencies to overflow the column on their own
+        metadata = {
+            constants.APP_METADATA_DEPENDENT_APPS: [
+                {'name': 'dependency-app-%d' % i, 'version': r'\d+\.\d+-\d+'}
+                for i in range(10)
+            ]
+        }
+        with fixtures.MockPatchObject(
+            self.app_operator, "retrieve_application_metadata_from_file",
+            return_value=metadata
+        ):
+            self.app_operator._clear_stuck_applications()
+
+        updated_app = obj_app.get_by_name(self.context, 'platform-integ-apps')
+        self.assertEqual(updated_app.status, constants.APP_UPLOAD_SUCCESS)
+        self.assertLessEqual(len(updated_app.progress), progress_max_length)
+        # The reason must still be reported, not truncated away entirely
+        self.assertIn('missing apps', updated_app.progress)
+
+    def test_abort_operation_progress_fits_db_column(self):
+        """_abort_operation must bound the progress message it persists.
+
+        Guards the reset_status=True branch, which writes to the DB
+        directly instead of going through _update_app_status().
+        """
+        progress_max_length = models.KubeApp.progress.type.length
+
+        dbutils.create_test_app(name='platform-integ-apps',
+                                status=constants.APP_APPLY_IN_PROGRESS)
+        self.service.apps_metadata[
+            constants.APP_METADATA_PLATFORM_MANAGED_APPS][
+                'platform-integ-apps'] = {}
+        test_app = obj_app.get_by_name(self.context, 'platform-integ-apps')
+        app = kube_app.AppOperator.Application(test_app)
+
+        oversized_msg = 'x' * (progress_max_length * 2)
+        with fixtures.MockPatchObject(
+            self.app_operator, "_append_missing_dependent_apps_msg",
+            return_value=oversized_msg
+        ):
+            self.app_operator._abort_operation(app, app.status,
+                                               reset_status=True)
+
+        updated_app = obj_app.get_by_name(self.context, 'platform-integ-apps')
+        self.assertEqual(updated_app.status, constants.APP_UPLOAD_SUCCESS)
+        self.assertLessEqual(len(updated_app.progress), progress_max_length)
 
 
 class _FakeCondition(object):
