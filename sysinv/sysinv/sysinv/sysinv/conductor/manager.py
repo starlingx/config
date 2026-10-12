@@ -225,6 +225,7 @@ audit_intervals_opts = [
        cfg.IntOpt('prune_runtime_config', default=43200),
        cfg.IntOpt('k8s_cluster_health', default=180),
        cfg.IntOpt('etcd_cluster_health', default=60),
+       cfg.IntOpt('etcd_cluster_membership', default=180),
        cfg.IntOpt('alarm_audit_interval', default=1800),
                   ]
 
@@ -9494,6 +9495,17 @@ class ConductorManager(service.PeriodicService):
                         etcd.ETCD_LOCAL_ENDPOINT)
             return
 
+        # Before the member is added, not after: the conversion gives
+        # controller-1 a cluster-host address the certificate does not name,
+        # and the fixed instance there binds it. Without this the member is
+        # registered but every TLS connection to it fails verification, so
+        # it never becomes healthy and never gets promoted. The class is a
+        # no-op once the address is already named, so this is safe to run on
+        # a system that has already been converted.
+        self._apply_controller_runtime_manifest(
+            context, constants.CONTROLLER_0_HOSTNAME,
+            self.ETCD_CERTS_RUNTIME_CLASS)
+
         try:
             completed = self.add_floating_etcd_member(context)
         except exception.SysinvException as e:
@@ -9659,8 +9671,9 @@ class ConductorManager(service.PeriodicService):
                                 (0, constants.CONTROLLER_0_HOSTNAME)):
             name = "%s-%d" % (etcd.ETCD_FIXED_NAME_PREFIX, index)
 
-            # Remove etcd member based on the peer URL associated with
-            # this hostname.
+            # Match etcd members against configured cluster host addresses.
+            # A member registered but never started carries no name, so match
+            # on peer URL as well.
             address = addresses['controller%d' % index]
             peer_url = None
             if address:
@@ -9697,6 +9710,12 @@ class ConductorManager(service.PeriodicService):
         the registered count the alarm would assert continuously through
         those steps and gate the very operations it exists to protect.
 
+        The audit is silent while the cluster is deliberately being grown
+        or shrunk. Those windows are governed by the sequencing and the
+        explicit health checks inside the procedures that drive them, not
+        by this alarm, and asserting through them would gate the very
+        operations the alarm exists to protect.
+
         On simplex there is a single member, so a degraded cluster means
         etcd is down entirely, which other health checks already cover.
         The audit is skipped there.
@@ -9721,6 +9740,9 @@ class ConductorManager(service.PeriodicService):
         if cutils.is_aio_simplex_system(self.dbapi):
             return
 
+        if self._etcd_topology_change_in_progress():
+            return
+
         entity_instance_id = "%s=%s" % (
             fm_constants.FM_ENTITY_TYPE_K8S, 'etcd-cluster-health')
 
@@ -9733,7 +9755,7 @@ class ConductorManager(service.PeriodicService):
             return
 
         if total == 0:
-            # Cluster is not formed yet, or etcdctl is unavailable.
+            # Nothing to do.
             return
 
         if healthy == total:
@@ -9763,6 +9785,162 @@ class ConductorManager(service.PeriodicService):
             service_affecting=True)
 
         self.fm_api.set_fault(fault)
+
+    def _etcd_membership_audit_allowed(self):
+        """Return True when etcd membership may be reconciled right now.
+
+        Not on an unconfigured system, and not during a backup or restore,
+        which relocate the etcd data directories.
+        """
+        if not os.path.isfile(tsc.INITIAL_CONFIG_COMPLETE_FLAG):
+            return False
+
+        if (os.path.isfile(tsc.BACKUP_IN_PROGRESS_FLAG) or
+                os.path.isfile(tsc.RESTORE_IN_PROGRESS_FLAG)):
+            return False
+
+        return True
+
+    def _etcd_topology_change_in_progress(self):
+        """Return True while the etcd cluster is deliberately changing size.
+
+        The membership audit grows the cluster on a deploy activate and
+        shrinks it on a rollback, and a simplex-to-duplex conversion adds
+        the floating member. Through those windows the registered
+        membership is by design not the configured membership, so the
+        health alarm must stay silent: it would assert for the duration and
+        block the controller lock that the procedure depends on.
+
+        A backup or restore relocates the data directories underneath the
+        running cluster, so the same suppression applies there.
+        """
+        if not os.path.isfile(tsc.INITIAL_CONFIG_COMPLETE_FLAG):
+            return True
+
+        if (os.path.isfile(tsc.BACKUP_IN_PROGRESS_FLAG) or
+                os.path.isfile(tsc.RESTORE_IN_PROGRESS_FLAG)):
+            return True
+
+        upgrade = self._upgrade_in_progress()
+        state = upgrade.state if upgrade else None
+        return state in [constants.DEPLOY_STATE_ACTIVATE,
+                         constants.DEPLOY_STATE_ACTIVATE_DONE,
+                         constants.DEPLOY_STATE_ACTIVATE_ROLLBACK,
+                         constants.DEPLOY_STATE_ACTIVATE_ROLLBACK_DONE]
+
+    def _reconcile_etcd_rollback(self, context):
+        """Reduce the cluster to the floating member for a rollback.
+
+        Only acts while a fixed member is still registered, so the audit
+        does not repeat the removal on every pass once it has completed.
+        """
+        # Match etcd members against configured cluster host addresses. A
+        # member registered but never started carries no name, so match on
+        # peer URL as well.
+        addresses = self._get_cluster_host_addresses()
+
+        remaining = []
+        for index in (0, 1):
+            name = "%s-%d" % (etcd.ETCD_FIXED_NAME_PREFIX, index)
+            address = addresses['controller%d' % index]
+            peer_url = None
+            if address:
+                peer_url = "https://%s:%s" % (
+                    cutils.format_url_address(address),
+                    etcd.ETCD_PEER_PORT)
+
+            if etcd.member_exists(name, peer_url=peer_url):
+                remaining.append(name)
+
+        if not remaining:
+            return
+
+        LOG.info("Removing fixed etcd members for rollback: %s",
+                 ', '.join(remaining))
+        self.remove_fixed_etcd_members_for_rollback(context)
+
+    def _reconcile_etcd_learners(self):
+        """Promote each etcd member that is a learner to a voting member.
+
+        The promotion attempt is itself the readiness check. etcd refuses to
+        promote a learner that has not caught up with the leader.
+
+        A learner that has not started carries no name and is skipped, since
+        promotion is by name. At most one is promoted per pass, matching
+        etcd's --max-learners default of 1.
+        """
+        learners = [member for member in etcd.get_members()
+                    if not etcd.is_voting_member(member)]
+        if not learners:
+            # Nothing to do.
+            return
+
+        for member in learners:
+            name = member.get('name')
+            if not name:
+                # Registered but not yet started. etcd learns the name when
+                # the member introduces itself, and promotion is by name, so
+                # there is nothing to promote yet.
+                continue
+
+            try:
+                etcd.promote_member(name)
+            except Exception as e:
+                # A learner that has not caught up is refused here, which is
+                # the expected path on an early pass. Wrapped per member so
+                # one refusal neither hides the others nor ends the pass.
+                LOG.info("etcd learner '%s' was not promoted, leaving it for "
+                         "a later pass: %s", name, e)
+                continue
+
+            LOG.info("Promoted etcd learner '%s' to a voting member", name)
+            return
+
+    @periodic_task.periodic_task(
+        spacing=CONF.conductor_periodic_task_intervals.etcd_cluster_membership)
+    def _audit_etcd_cluster_membership(self, context):
+        """Audit to reconcile the etcd cluster, so that learner members are
+        present, healthy, and promoted when ready.
+
+        Each operation waits for the cluster to be reachable, and each is
+        idempotent, so a pass with nothing to do is a no-op:
+          - activate / activate-done   -> add the fixed members
+          - activate-rollback*         -> remove the fixed members
+          - no deploy in progress      -> finish a simplex-to-duplex
+                                          conversion
+
+        Simplex runs a single fixed member and needs no reconciliation.
+        """
+        if cutils.is_aio_simplex_system(self.dbapi):
+            return
+
+        if not self._etcd_membership_audit_allowed():
+            return
+
+        upgrade = self._upgrade_in_progress()
+        state = upgrade.state if upgrade else None
+
+        try:
+            if state in [constants.DEPLOY_STATE_ACTIVATE,
+                         constants.DEPLOY_STATE_ACTIVATE_DONE]:
+                self.add_fixed_etcd_members_for_upgrade(context)
+            elif state in [constants.DEPLOY_STATE_ACTIVATE_ROLLBACK,
+                           constants.DEPLOY_STATE_ACTIVATE_ROLLBACK_DONE]:
+                self._reconcile_etcd_rollback(context)
+            elif state is None:
+                self.migrate_etcd_simplex_to_duplex(context)
+        except Exception as e:
+            # Never let a membership failure kill the audit loop. The next
+            # pass retries, and _audit_etcd_cluster_health raises the alarm
+            # if the cluster stays degraded.
+            LOG.warning("etcd cluster membership audit deferred: %s", e)
+
+        # Reconcile the etcd cluster: promote a learner that is ready.
+        # Guarded separately so it runs whether or not the dispatch succeeded.
+        try:
+            self._reconcile_etcd_learners()
+        except Exception as e:
+            LOG.warning("etcd cluster membership audit deferred: %s", e)
 
     def _populate_app_bundle_metadata(self, tarballs_path=constants.HELM_APP_ISO_INSTALL_PATH):
         """Read metadata of all application bundles and store in the database"""
