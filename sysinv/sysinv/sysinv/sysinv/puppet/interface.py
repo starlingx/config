@@ -168,12 +168,11 @@ class InterfacePuppet(base.BasePuppet):
 
     def _get_cpu_count(self, host, function):
         """
-        Count physical CPUs (excluding HT siblings) for the given function.
+        Count logical CPUs (including SMT/HT thread siblings) for the given
+        function.
         """
         count = 0
         for c in self.dbapi.icpu_get_by_ihost(host.id):
-            if c.thread != 0:
-                continue
             if c.allocated_function == function:
                 count += 1
         return count

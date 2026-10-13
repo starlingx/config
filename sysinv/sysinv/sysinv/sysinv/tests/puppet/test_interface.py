@@ -2502,6 +2502,36 @@ class InterfaceTestCase2(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         self.assertEqual(list(config.keys()), [interface.CHANNEL_CONFIG_RESOURCE])
         self.assertNotIn('_channel_config_meta', context)
 
+    def test_get_cpu_count_includes_smt_thread_siblings(self):
+        """Test that _get_cpu_count counts all logical CPUs, including SMT
+        thread siblings.
+
+        On an SMT system both thread siblings of a platform core are present
+        in PLATFORM_CPU_LIST and have interface IRQs affined to them, so the
+        default NIC channel count must include both threads.
+        """
+        self._create_host(constants.CONTROLLER)
+
+        # Two physical platform cores, each with two SMT threads (4 logical
+        # CPUs total). thread=0 is the primary sibling, thread=1 is the HT
+        # sibling.
+        for cpu_id, core, thread in [(0, 0, 0), (1, 0, 1),
+                                     (2, 1, 0), (3, 1, 1)]:
+            cpu = dbutils.get_test_icpu(
+                cpu=cpu_id, core=core, thread=thread,
+                forihostid=self.host.id,
+                allocated_function=constants.PLATFORM_FUNCTION)
+            cpu.pop('id', None)
+            cpu.pop('uuid', None)
+            self.dbapi.icpu_create(self.host.id, cpu)
+
+        count = self.operator.interface._get_cpu_count(  # pylint: disable=no-member
+            self.host, constants.PLATFORM_FUNCTION)
+
+        # All 4 logical CPUs (both threads of both cores) should be counted,
+        # not just the 2 primary thread siblings.
+        self.assertEqual(count, 4)
+
     def test_channel_config_skipped_when_maxchannels_unsupported(self):
         """Test that channel hieradata is NOT generated when maxchannels is None.
 

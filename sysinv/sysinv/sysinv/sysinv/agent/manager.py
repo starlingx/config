@@ -354,16 +354,23 @@ class AgentManager(service.PeriodicService):
         platform_cpulist = '0'
         with open('/etc/platform/worker_reserved.conf', 'r') as infile:
             for line in infile:
-                if "WORKER_PLATFORM_CORES" in line:
-                    val = line.split("=")
-                    cores = val[1].strip('\n')[1:-1]
-                    for n in cores.split():
-                        nodes = n.split(":")
-                        cpus[nodes[0][-1]] = nodes[1].strip('"')
                 if "PLATFORM_CPU_LIST" in line:
                     val = line.split("=")
                     platform_cpulist = val[1].strip('\n')[1:-1].strip('"')
 
+        # Expand flat platform cpu list (e.g. "0-1,64-65") to a set of cpu ids.
+        platform_cpu_set = set(utils.parse_range_set(platform_cpulist))
+
+        # Group platform logical cpus by numa node using host cpu topology so
+        # interface irqs are affined to numa-local platform cpus. Both SMT
+        # siblings are included because they are present in PLATFORM_CPU_LIST.
+        _, icpus = self._inode_operator.inodes_get_inumas_icpus()
+        node_to_cpus = {}
+        for c in sorted(icpus,
+                        key=lambda c: (int(c['numa_node']), int(c['cpu']))):
+            if c['cpu'] in platform_cpu_set:
+                node_to_cpus.setdefault(str(c['numa_node']), []).append(str(c['cpu']))
+        cpus = {node: ','.join(ids) for node, ids in node_to_cpus.items()}
         for info in interface_list:
             # vbox case, just use 0
             if info['numa_node'] == constants.NUMA_NODE_NONE:
