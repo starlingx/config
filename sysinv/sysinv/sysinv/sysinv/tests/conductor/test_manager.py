@@ -1843,10 +1843,176 @@ class ManagerTestCase(base.DbTestCase):
         mock_get_k8s_images.assert_has_calls(
             [mock.call(v.strip('v'), include_all=True) for v in INSTALLED_VERSIONS],
             any_order=True)
-        mock_download_images_from_upstream_to_local_reg_and_crictl.assert_called_with(
-                                                                                    ['fake_image'])
+        # A system controller also seeds the legacy thin multus images for
+        # N-1/N-2 subclouds, in addition to the per-version k8s images.
+        actual_images = \
+            mock_download_images_from_upstream_to_local_reg_and_crictl.call_args[0][0]
+        self.assertIn('fake_image', actual_images)
+        for legacy_img in manager.LEGACY_SUBCLOUD_MULTUS_IMAGES:
+            self.assertIn(legacy_img, actual_images)
         updated_upgrade = self.dbapi.kube_upgrade_get_one()
         self.assertEqual(updated_upgrade.state, kubernetes.KUBE_UPGRADE_DOWNLOADED_IMAGES)
+
+    def test_kube_download_images_systemcontroller_seeds_legacy_multus(self):
+        """A DC system controller must seed the legacy thin multus-cni images
+        required by N-1 (STX-12) and N-2 (STX-11) subclouds during a combined
+        Platform & Kubernetes upgrade (bug 2170357). These -debug tags are not
+        referenced by any STX-13 system-images.yml, so without explicit seeding
+        the subcloud networking image download fails with 404.
+        """
+        config_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname='controller-0',
+            uuid=str(uuid.uuid4()),
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+        )
+
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_SIMPLEX
+        system_dict['distributed_cloud_role'] = \
+            constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER
+        utils.update_test_isystem(system_dict)
+
+        FROM_VERSION = 'v1.32.13'
+        TO_VERSION = 'v1.35.2'
+        NEXT_VERSIONS = ['v1.33.0', 'v1.34.1', 'v1.35.2']
+        INSTALLED_VERSIONS = ['1.32.13', '1.33.0', '1.34.1', '1.35.2']
+        utils.create_test_kube_upgrade(
+            from_version=FROM_VERSION,
+            to_version=TO_VERSION,
+            state=kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES,
+        )
+
+        mock_kube_get_higher_equal_versions = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.common.kubernetes.KubeOperator.kube_get_higher_patch_version',
+            mock_kube_get_higher_equal_versions)
+        p.start().return_value = NEXT_VERSIONS
+        self.addCleanup(p.stop)
+
+        mock_get_installed_kube_versions = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.get_installed_kube_versions',
+                       mock_get_installed_kube_versions)
+        p.start().return_value = INSTALLED_VERSIONS
+        self.addCleanup(p.stop)
+
+        mock_disable_kubelet_garbage_collection = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.disable_kubelet_garbage_collection',
+                       mock_disable_kubelet_garbage_collection)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_pmon_restart_service = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.pmon_restart_service', mock_pmon_restart_service)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_get_k8s_images = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.get_k8s_images', mock_get_k8s_images)
+        p.start().return_value = {'fake_key': 'fake_image'}
+        self.addCleanup(p.stop)
+
+        mock_download = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.conductor.manager.ContainerImageDownloader.'
+            'download_images_from_upstream_to_local_reg_and_crictl',
+            mock_download)
+        p.start().return_value = True
+        self.addCleanup(p.stop)
+
+        self.service.kube_download_images(self.context, TO_VERSION)
+
+        # All three legacy thin multus images must be in the download set.
+        actual_images = mock_download.call_args[0][0]
+        for legacy_img in manager.LEGACY_SUBCLOUD_MULTUS_IMAGES:
+            self.assertIn(legacy_img, actual_images)
+        updated_upgrade = self.dbapi.kube_upgrade_get_one()
+        self.assertEqual(updated_upgrade.state,
+                         kubernetes.KUBE_UPGRADE_DOWNLOADED_IMAGES)
+
+    def test_kube_download_images_non_dc_excludes_legacy_multus(self):
+        """A non-DC system (e.g. AIO-SX) must NOT seed the legacy thin multus
+        images; it downloads only its own upgrade-path versions (bug 2170357).
+        """
+        config_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname='controller-0',
+            uuid=str(uuid.uuid4()),
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+        )
+
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_SIMPLEX
+        system_dict['distributed_cloud_role'] = None
+        utils.update_test_isystem(system_dict)
+
+        FROM_VERSION = 'v1.32.13'
+        TO_VERSION = 'v1.35.2'
+        NEXT_VERSIONS = ['v1.33.0', 'v1.34.1', 'v1.35.2']
+        utils.create_test_kube_upgrade(
+            from_version=FROM_VERSION,
+            to_version=TO_VERSION,
+            state=kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES,
+        )
+
+        mock_kube_get_higher_equal_versions = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.common.kubernetes.KubeOperator.kube_get_higher_patch_version',
+            mock_kube_get_higher_equal_versions)
+        p.start().return_value = NEXT_VERSIONS
+        self.addCleanup(p.stop)
+
+        mock_get_installed_kube_versions = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.get_installed_kube_versions',
+                       mock_get_installed_kube_versions)
+        p.start().return_value = ['1.32.13', '1.33.0', '1.34.1', '1.35.2']
+        self.addCleanup(p.stop)
+
+        mock_disable_kubelet_garbage_collection = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.disable_kubelet_garbage_collection',
+                       mock_disable_kubelet_garbage_collection)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_pmon_restart_service = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.pmon_restart_service', mock_pmon_restart_service)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_get_k8s_images = mock.MagicMock()
+        p = mock.patch('sysinv.common.kubernetes.get_k8s_images', mock_get_k8s_images)
+        p.start().return_value = {'fake_key': 'fake_image'}
+        self.addCleanup(p.stop)
+
+        mock_download = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.conductor.manager.ContainerImageDownloader.'
+            'download_images_from_upstream_to_local_reg_and_crictl',
+            mock_download)
+        p.start().return_value = True
+        self.addCleanup(p.stop)
+
+        self.service.kube_download_images(self.context, TO_VERSION)
+
+        # Non-DC: only upgrade-path versions pulled, no SC-only legacy multus.
+        self.assertEqual(mock_get_k8s_images.call_count, len(NEXT_VERSIONS))
+        actual_images = mock_download.call_args[0][0]
+        for legacy_img in manager.LEGACY_SUBCLOUD_MULTUS_IMAGES:
+            self.assertNotIn(legacy_img, actual_images)
 
     def test_kube_download_images_simplex_fail(self):
         """Test download images on simplex: failure case
