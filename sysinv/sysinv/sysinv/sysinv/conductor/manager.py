@@ -152,6 +152,23 @@ MANAGER_TOPIC = 'sysinv.conductor_manager'
 
 LOG = log.getLogger(__name__)
 
+# Legacy upstream (thin) multus-cni images required by N-1 (STX-12) and N-2
+# (STX-11) subclouds during a combined Platform & Kubernetes upgrade. These
+# subclouds run on Debian Bullseye and deploy thin multus; the thin->thick
+# migration is Trixie-only and is intentionally not applied on the Bullseye
+# from-side, so they still request the upstream -debug tags.
+#
+# STX-13 deploys the StarlingX thick multus image
+# (docker.io/starlingx/multus-cni) and does not reference these -debug tags in
+# any system-images.yml, so they are never otherwise seeded into the System
+# Controller central registry. They must be present there so Bullseye
+# subclouds can pull them during their networking upgrade.
+LEGACY_SUBCLOUD_MULTUS_IMAGES = [
+    'ghcr.io/k8snetworkplumbingwg/multus-cni:v4.2.0-debug',
+    'ghcr.io/k8snetworkplumbingwg/multus-cni:v4.2.3-debug',
+    'ghcr.io/k8snetworkplumbingwg/multus-cni:v4.2.4-debug',
+]
+
 # Keystone/Barbican connection errors that are transient during factory
 # restore-without-reinstall (flock services still starting). The Barbican
 # secret migration retries on these.
@@ -20685,6 +20702,14 @@ class ConductorManager(service.PeriodicService):
             images = kubernetes.get_k8s_images(
                 k8s_version, include_all=is_system_controller)
             target_images.extend(images.values())
+
+        # On a System Controller, also seed the legacy thin multus-cni images
+        # required by N-1/N-2 (Bullseye) subclouds during a combined Platform &
+        # Kubernetes upgrade. These -debug tags are not referenced by STX-13 and
+        # would otherwise be absent from the central registry, causing the
+        # subcloud networking image download to fail with 404 manifest unknown.
+        if is_system_controller:
+            target_images.extend(LEGACY_SUBCLOUD_MULTUS_IMAGES)
 
         target_images = list(set(target_images))
 
