@@ -6109,6 +6109,18 @@ class ConductorManager(service.PeriodicService):
         # within _config_apply_runtime_manifest().
         cutils.remove(constants.PARTITION_CONFIG_FLAG % (forihostid))
 
+    def _partition_backs_provisioned_pv(self, partition):
+        """Return True if the partition still backs a provisioned PV."""
+
+        pv_id = partition.foripvid or partition.ipv_uuid
+        if not pv_id:
+            return False
+        try:
+            pv = self.dbapi.ipv_get(pv_id)
+        except exception.LvmPvNotFound:
+            return False
+        return pv.pv_state == constants.PROVISIONED
+
     def ipartition_update_by_ihost(self, context,
                                    ihost_uuid, ipart_dict_array, first_report=False):
         """Update existing partition information based on information received
@@ -6204,15 +6216,25 @@ class ConductorManager(service.PeriodicService):
             # Handle database to fix partitions with the status 'stuck'
             # in creating/deleting/modifying.
             if not os.path.exists(partition_config_flag) and \
-                not self._check_runtime_class_apply_in_progress([self.PUPPET_RUNTIME_CLASS_PARTITIONS],
-                                                                host_uuids=ihost_uuid):
+               not self._check_runtime_class_apply_in_progress(
+                                        [self.PUPPET_RUNTIME_CLASS_PARTITIONS],
+                                        host_uuids=ihost_uuid) and \
+               not self._check_lvm_csi_runtime_in_progress():
                 if db_part.device_path not in ipart_device_paths and \
                         not upgrade_in_progress and \
                         not self._verify_restore_in_progress() and \
                         cutils.is_inventory_config_complete(self.dbapi, forihostid) and \
                         db_part.status != constants.PARTITION_CREATE_ON_UNLOCK_STATUS:
-                    self.dbapi.partition_destroy(db_part.uuid)
-                    LOG.info("Delete DB partition stuck: %s" % str(db_part.items()))
+                    if self._partition_backs_provisioned_pv(db_part):
+                        LOG.warning(
+                            "Skipping stuck-partition cleanup for %s: it still"
+                            " backs provisioned PV %s. Not destroying to avoid"
+                            " a dangling PV." %
+                            (db_part.uuid, db_part.ipv_uuid))
+                    else:
+                        self.dbapi.partition_destroy(db_part.uuid)
+                        LOG.info("Delete DB partition stuck: %s" %
+                                 str(db_part.items()))
                 elif db_part.status == constants.PARTITION_MODIFYING_STATUS:
                     partition_dict['status'] = constants.PARTITION_READY_STATUS
                     partition_update_needed = True
@@ -8021,6 +8043,7 @@ class ConductorManager(service.PeriodicService):
 
     PUPPET_RUNTIME_CLASS_ROUTES = 'platform::network::routes::runtime'
     PUPPET_RUNTIME_CLASS_PARTITIONS = 'platform::partitions::runtime'
+    PUPPET_RUNTIME_CLASS_LVM_CSI_PREFIX = 'platform::lvm::csi'
     PUPPET_RUNTIME_CLASS_DOCKERDISTRIBUTION = 'platform::dockerdistribution::runtime'
     PUPPET_RUNTIME_CLASS_USERS = 'platform::users::runtime'
     PUPPET_RUNTIME_CLASS_OSDS = 'platform::ceph::runtime_osds'
@@ -16347,6 +16370,16 @@ class ConductorManager(service.PeriodicService):
             if c in classes_list:
                 if not host_uuids or next((host for host in host_uuids if host in h), None):
                     LOG.info("config runtime in progress (%s, %s)" % (c, h))
+                    return True
+        return False
+
+    def _check_lvm_csi_runtime_in_progress(self):
+        """Return True if any lvm-csi runtime manifest is being applied."""
+        with self.rlock_runtime_config:
+            for c, h in self._runtime_class_apply_in_progress:
+                if c.startswith(self.PUPPET_RUNTIME_CLASS_LVM_CSI_PREFIX):
+                    LOG.info("lvm-csi runtime in progress (%s, %s), skipping "
+                             "stuck-partition cleanup" % (c, h))
                     return True
         return False
 

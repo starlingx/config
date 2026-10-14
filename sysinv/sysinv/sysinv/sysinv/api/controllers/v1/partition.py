@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2017-2023 Wind River Systems, Inc.
+# Copyright (c) 2017-2023,2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -558,12 +558,16 @@ def _semantic_checks(operation, partition):
                 _("Only partition Add/Delete operations are allowed on an "
                   "unprovisioned host."))
 
-        # Allow modification of in-use PVs only for cinder-volumes
+        # Allow modification of in-use PVs only for cinder-volumes or lvm-csi
         ipv_uuid = partition.get('ipv_uuid')
         ipv_lvg_name = None
+        lvm_function = ''
         if ipv_uuid:
-            ipv_lvg_name = pecan.request.dbapi.ipv_get(ipv_uuid)['lvm_vg_name']
+            ipv = pecan.request.dbapi.ipv_get(ipv_uuid)
+            ipv_lvg_name = ipv['lvm_vg_name']
+            lvm_function = (ipv['capabilities'] or {}).get('lvm_function', '')
         if (ipv_lvg_name != constants.LVG_CINDER_VOLUMES and
+                lvm_function != constants.LVM_CSI_PROVISIONING_FUNCTION and
                 (ipv_uuid or
                  partition.get('status') == constants.PARTITION_IN_USE_STATUS)):
             raise wsme.exc.ClientSideError(
@@ -587,7 +591,8 @@ def _semantic_checks(operation, partition):
 
         # Prevent modifying a partition that is in creating state.
         allowed_states = [constants.PARTITION_READY_STATUS]
-        if ipv_lvg_name == constants.LVG_CINDER_VOLUMES:
+        if (ipv_lvg_name == constants.LVG_CINDER_VOLUMES or
+                lvm_function == constants.LVM_CSI_PROVISIONING_FUNCTION):
             allowed_states.append(constants.PARTITION_IN_USE_STATUS)
         status = partition.get('status')
         if status not in allowed_states:

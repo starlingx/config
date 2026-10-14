@@ -3,7 +3,7 @@
 #
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 #
-# Copyright (c) 2017-2023 Wind River Systems, Inc.
+# Copyright (c) 2017-2023,2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -399,6 +399,36 @@ def _resize_partition(disk_device_path, part_number, new_part_size_mib,
     return partition
 
 
+def _resize_partition_online(disk_device_path, part_number, new_part_size_mib):
+    """Resize a partition in use, by an online approach.
+
+    :param   disk_device_path: the device path of the disk on which the
+             partition resides
+    :param   part_number: the partition number
+    :param   new_part_size_mib: the new size for the partition, in MiB
+    :returns dictionary with partition's start, end, start
+    """
+
+    LOG.info("Partition is part of an active VG. Resizing online partition.")
+    # Get disk sector size
+    sector_size_bytes = _get_disk_sector_size(disk_device_path)
+
+    # Resize the partition with the new size ----------------------------------
+    cmd = ['parted', '-s', disk_device_path, 'resizepart', part_number,
+           f"{new_part_size_mib}MiB"]
+    _, err, ret = _command(cmd, device_node=disk_device_path)
+
+    if ret != RETURN_SUCCESS:
+        raise IOError("Could not resize partition %s on disk %s: %s" %
+                      (part_number, disk_device_path, str(err)))
+
+    # Return partition with start and end informations updated.
+    partition = _get_partition_start_end_size(disk_device_path,
+                                              part_number,
+                                              sector_size_bytes)
+    return partition
+
+
 def _send_inventory_update(partition_update):
     """Send update to the sysinv conductor."""
 
@@ -620,6 +650,75 @@ class DrbdFailureException(BaseException):
     pass
 
 
+def _get_vg_for_partition(part_device_path):
+    """Return the LVM volume group that owns a partition, or None.
+
+    :param   part_device_path: the partition's device path
+    :returns the volume group name, or None if the partition is not a PV or
+             has no VG associated
+    """
+    with fix_global_filter(part_device_path):
+        output, err, ret = _command(
+            ['pvs', '--noheadings', '-o', 'vg_name', str(part_device_path)],
+            device_node=part_device_path)
+    if ret != RETURN_SUCCESS:
+        # Not a PV (or pvs could not read it); no VG to return.
+        LOG.info("No PV/VG found for %s (pvs rc=%s): %s" %
+                 (part_device_path, ret, str(err)))
+        return None
+    vg_name = output.strip()
+    return vg_name or None
+
+
+def _extend_thin_pool_for_partition(part_device_path, vg_name=None):
+    """Grow the thin pool (if any) in the VG that owns this partition.
+
+    After a PV has been grown, the VG gains free space and this space must be
+    absorbed by the lvm-csi thin pool.
+
+    :param   part_device_path: partition's device path
+    :param   vg_name (optional): volume group's name
+    """
+    if not vg_name:
+        vg_name = _get_vg_for_partition(part_device_path)
+        if not vg_name:
+            return
+
+    # Find thin pool LVs in this VG
+    pool_path = "%s/%s" % (vg_name, constants.LVM_CSI_POOL_NAME)
+    with fix_global_filter(part_device_path):
+        _, err, ret = _command(
+            ['lvs', '--noheadings', '-o', 'lv_name,lv_attr', pool_path],
+            device_node=part_device_path)
+    if ret != RETURN_SUCCESS:
+        return
+
+    # Check free space in the VG before trying to extend.
+    with fix_global_filter(part_device_path):
+        free_out, _, free_ret = _command(
+            ['vgs', '--noheadings', '--nosuffix', '--units', 'b',
+             '-o', 'vg_free', str(vg_name)], device_node=part_device_path)
+    vg_free = free_out.strip() if free_ret == RETURN_SUCCESS else '0'
+    LOG.info("[LVM-CSI-RESIZE] thin-pool extend: VG '%s' free=%s bytes" % (
+        vg_name, vg_free))
+    try:
+        has_free = int(vg_free) > 0
+    except (ValueError, TypeError):
+        has_free = False
+    if not has_free:
+        return
+
+    # Extends thin pool leaving space for avoid allocation errors
+    with fix_global_filter(part_device_path):
+        out, err, rc = _command(
+            ['lvextend', '-l', '+99%FREE', pool_path],
+            device_node=part_device_path)
+    if rc != RETURN_SUCCESS:
+        LOG.warning("[LVM-CSI-RESIZE] thin-pool extend: lvextend on %s "
+                    "returned rc=%s: stdout='%s' stderr='%s'" %
+                    (pool_path, rc, out, err))
+
+
 def modify_partitions(data, mode, pfile):
     """Process data for modifying (a) partition(s) and send the update back to
        the sysinv conductor.
@@ -702,10 +801,25 @@ def modify_partitions(data, mode, pfile):
                         for line in metadata_dump.splitlines():
                             f.write("%s\n" % line)
 
-                # Resize the partition.
-                part = _resize_partition(disk_device_path, part_number,
-                                         new_part_size_mib, start_mib,
-                                         type_guid)
+                online_resizing = False
+                vg_name = _get_vg_for_partition(part_device_path)
+                if not is_drbd and vg_name:
+                    online_resizing = True
+
+                try:
+                    part = None
+                    # Resize the partition.
+                    if online_resizing:
+                        part = _resize_partition_online(
+                            disk_device_path, part_number, new_part_size_mib)
+                    else:
+                        part = _resize_partition(disk_device_path, part_number,
+                                                 new_part_size_mib, start_mib,
+                                                 type_guid)
+                except Exception as e:
+                    raise IOError(
+                        "It was not possible to resize the partition. %s" % e
+                    ) from e
 
                 _command(["udevadm", "settle", "-E", str(part_device_path)])
 
@@ -732,13 +846,16 @@ def modify_partitions(data, mode, pfile):
                                               "\n".join(new_output)))
 
                 if not is_drbd:
-                    # We may have a local PV, resize it.
+                    # We may have a local PV, resize it
                     output, err, err_code = _command(['pvresize',
                                                       part_device_path])
                     if err_code not in [0, 5]:
                         raise Exception("Pvresize failure. stdout: '%s', "
                                         "stderr: '%s', return code: '%s', " %
                                         (output, err, err_code))
+
+                    # After the PV grew, extend the thin pool in the same VG.
+                    _extend_thin_pool_for_partition(part_device_path, vg_name)
 
                 disk_available_mib = _get_available_space(disk_device_path)
                 response.update({
