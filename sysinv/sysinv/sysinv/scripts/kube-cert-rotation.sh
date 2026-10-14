@@ -136,6 +136,13 @@ done
 declare -r CUTOFF_DAYS=15
 declare -r CUTOFF_DAYS_S=$((${CUTOFF_DAYS}*24*3600))
 
+# Per-member etcd certificate parameters. These must stay in agreement with
+# the two other paths that issue a member certificate: the puppet membership
+# exec in platform/manifests/etcd.pp and etcd_cert_sans.py. Key size is 4096
+# (openssl genpkey below), validity is one year.
+declare -r ETCD_MEMBER_KEY_USAGE="digitalSignature, keyEncipherment"
+declare -r ETCD_MEMBER_EKU="TLS Web Server Authentication, TLS Web Client Authentication"
+
 # Temporary working directory
 TEMP_WORK_DIR="/tmp/kube_cert_rotation"
 
@@ -532,17 +539,15 @@ if [ ${ERR} -eq 0 ]; then
     x509_extensions = v3_req
     distinguished_name = dn
     [dn]
-    CN = etcd-server
+    CN = controller
     [v3_req]
     keyUsage = critical, Digital Signature, Key Encipherment
     extendedKeyUsage = TLS Web Server Authentication, TLS Web Client Authentication
     subjectAltName = @alt_names
     [alt_names]
     IP.1 = ${floating_ip}
-    IP.2 = ${controller_0_ip}
-    IP.3 = ${controller_1_ip}
-    IP.4 = 127.0.0.1
-    IP.5 = ::1
+    IP.2 = 127.0.0.1
+    IP.3 = ::1
     "
     renew_cert_by_openssl "/etc/etcd" "etcd-server" "${config}"
     result=$?
@@ -556,6 +561,69 @@ if [ ${ERR} -eq 0 ]; then
     elif [ ${result} -eq 1 ]; then
         ERR_REASON="Failed to renew etcd-server certificate."
         ERR=1
+    fi
+fi
+
+# Renew this controller's own fixed etcd member certificate.
+#
+# Each host renews only its own member's material. Renewal already runs on
+# whichever controller holds the alarm, and the fixed members are per-host, so
+# there is nothing to renew for the peer -- it renews its own.
+#
+# Note the deliberate absence of a copy into ${CONFIG_PATH}/etcd. The floating
+# certificate above is shared with the standby because the floating member can
+# run on either controller; a fixed member's key must never leave the host it
+# belongs to, which is the property that makes per-member certificates worth
+# having in the first place.
+if [ ${ERR} -eq 0 ]; then
+    if [ "$(hostname)" == "controller-0" ]; then
+        local_fixed_name="fixed-0"
+    else
+        local_fixed_name="fixed-1"
+    fi
+
+    local_fixed_cert="/etc/etcd/etcd-${local_fixed_name}.crt"
+    if [ -f "${local_fixed_cert}" ]; then
+        # The member renews in place, so reuse the cluster-host address it
+        # already binds. Reading it from the current certificate keeps the
+        # renewed SAN identical to the issued one without a second source of
+        # truth for the address.
+        local_fixed_ip=$(openssl x509 -in "${local_fixed_cert}" -noout \
+            -ext subjectAltName 2>/dev/null \
+            | grep -oE 'IP Address:[0-9a-fA-F:.]+' | head -1 | cut -d: -f2-)
+        if [ "x${local_fixed_ip}" == "x" ]; then
+            ERR_REASON="Failed to read address from ${local_fixed_cert}."
+            ERR=1
+        fi
+    fi
+
+    if [ ${ERR} -eq 0 ] && [ -f "${local_fixed_cert}" ]; then
+        config="
+        [req]
+        prompt = no
+        x509_extensions = v3_req
+        distinguished_name = dn
+        [dn]
+        CN = ${local_fixed_name}
+        [v3_req]
+        keyUsage = ${ETCD_MEMBER_KEY_USAGE}
+        extendedKeyUsage = ${ETCD_MEMBER_EKU}
+        subjectAltName = @alt_names
+        [alt_names]
+        IP.1 = ${local_fixed_ip}
+        IP.2 = 127.0.0.1
+        IP.3 = ::1
+        "
+        renew_cert_by_openssl "/etc/etcd" "etcd-${local_fixed_name}" "${config}"
+        result=$?
+        if [ ${result} -eq 0 ]; then
+            RESTART_ETCD=1
+        elif [ ${result} -eq 1 ]; then
+            ERR_REASON="Failed to renew etcd-${local_fixed_name} certificate."
+            ERR=1
+        fi
+    else
+        echo "INFO: no per-member certificate at /etc/etcd/etcd-${local_fixed_name}.crt, skipping"
     fi
 fi
 # Renew etcd-client certificate
