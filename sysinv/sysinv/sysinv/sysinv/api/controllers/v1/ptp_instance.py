@@ -407,6 +407,25 @@ class PtpInstanceController(rest.RestController):
                                   .PTP_INSTANCE_TYPE_SYNCE4L_MONITORING_PARAMETERS
                               ))))
 
+            # Validate dpll-mgr monitoring parameters. The
+            # 'monitoring' section carries collectd-consumed params rendered to
+            # instance-monitoring.conf (e.g. clockclass_passthrough), distinct
+            # from the config_json schema sections validated above.
+            if (ptp_instance['service'] ==
+                    constants.PTP_INSTANCE_TYPE_DPLL_MGR and
+                    param_section == 'monitoring' and param_adding):
+                if param_name not in (
+                        constants
+                        .PTP_INSTANCE_TYPE_DPLL_MGR_MONITORING_PARAMETERS):
+                    raise wsme.exc.ClientSideError(
+                        _("Unsupported dpll-mgr monitoring parameter: "
+                          "%s. Supported: %s" % (
+                              param_name,
+                              ', '.join(
+                                  constants
+                                  .PTP_INSTANCE_TYPE_DPLL_MGR_MONITORING_PARAMETERS
+                              ))))
+
             try:
                 # Check PTP parameter exists
                 ptp_parameter = \
