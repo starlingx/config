@@ -766,18 +766,9 @@ class PlatformPuppet(base.BasePuppet):
             if not host_cpus:
                 return config
 
-            platform_cpus_no_threads = self._get_platform_cpu_list(host)
             vswitch_cpus_no_threads = self._get_vswitch_cpu_list(host)
 
-            platform_numa_cpus = utils.get_numa_index_list(platform_cpus_no_threads)
             vswitch_numa_cpus = utils.get_numa_index_list(vswitch_cpus_no_threads)
-
-            # build a list of platform reserved cpus per numa node
-            platform_cores = []
-            for node, cpus in platform_numa_cpus.items():
-                cpu_list = ','.join([str(c.cpu) for c in cpus])
-                platform_node = "\"node%d:%s\"" % (node, cpu_list)
-                platform_cores.append(platform_node)
 
             # build a list of vswitch reserved cpu counts per numa node
             vswitch_cores = []
@@ -786,7 +777,6 @@ class PlatformPuppet(base.BasePuppet):
                 vswitch_node = "\"node%d:%d\"" % (node, cpu_count)
                 vswitch_cores.append(vswitch_node)
 
-            reserved_platform_cores = "(%s)" % ' '.join(platform_cores)
             reserved_vswitch_cores = "(%s)" % ' '.join(vswitch_cores)
 
             # all logical cpus
@@ -889,8 +879,6 @@ class PlatformPuppet(base.BasePuppet):
                     "\"%s\"" % platform_ranges,
                 'platform::compute::params::reserved_vswitch_cores':
                     reserved_vswitch_cores,
-                'platform::compute::params::reserved_platform_cores':
-                    reserved_platform_cores,
                 'platform::compute::params::max_cpu_mhz_configured':
                     host.max_cpu_mhz_configured,
                 'platform::compute::grub::params::n_cpus': n_cpus,

@@ -2511,3 +2511,111 @@ class TestChangedChannelPorts(base.TestCase):
                 {'numchannels': 8}]
         self.assertEqual(
             self.agent_manager._changed_channel_ports(prev, curr), set())
+
+
+class TestUpdateInterfaceIrqAffinity(base.TestCase):
+    """Tests for AgentManager._update_interface_irq_affinity numa-local
+    platform cpu selection.
+
+    _update_interface_irq_affinity() affines a platform interface's IRQs to
+    the platform logical CPUs that reside on the same numa node as the NIC.
+    When the NIC's numa node has no platform cores, it falls back to the full
+    PLATFORM_CPU_LIST (and logs a cross-numa degradation message). Both SMT
+    thread siblings of a platform core are included because they are present
+    in PLATFORM_CPU_LIST.
+    """
+
+    def setUp(self):
+        super(TestUpdateInterfaceIrqAffinity, self).setUp()
+        self.agent_manager = AgentManager('test-host', 'test-topic')
+        self.agent_manager.host = 'test-host'
+
+        # Capture the command passed to affine-interrupts.sh so we can assert
+        # which cpulist was selected, without spawning a real subprocess.
+        self.popen_commands = []
+
+        def _fake_popen(cmd, *args, **kwargs):
+            self.popen_commands.append(cmd)
+            proc = mock.MagicMock()
+            proc.returncode = 0
+            proc.communicate.return_value = (b'', b'')
+            return proc
+
+        p = mock.patch('sysinv.agent.manager.subprocess.Popen',
+                       side_effect=_fake_popen)
+        self.mock_popen = p.start()
+        self.addCleanup(p.stop)
+
+    def _set_worker_reserved_conf(self, platform_cpulist):
+        """Patch builtins.open so the function reads the given PLATFORM_CPU_LIST."""
+        conf = 'PLATFORM_CPU_LIST="%s"\n' % platform_cpulist
+        mock_file_open = mock.mock_open(read_data=conf)
+        p = mock.patch('builtins.open', mock_file_open)
+        p.start()
+        self.addCleanup(p.stop)
+
+    def _set_cpu_topology(self, icpus):
+        """Patch inodes_get_inumas_icpus to return the given cpu topology."""
+        self.agent_manager._inode_operator = mock.MagicMock()
+        self.agent_manager._inode_operator.inodes_get_inumas_icpus.\
+            return_value = ([], icpus)
+
+    def _affined_cpulist(self, ifname):
+        """Return the cpulist passed to affine-interrupts.sh for an interface."""
+        for cmd in self.popen_commands:
+            parts = cmd.split()
+            # cmd == '/usr/bin/affine-interrupts.sh <ifname> <cpulist>'
+            if len(parts) == 3 and parts[1] == ifname:
+                return parts[2]
+        return None
+
+    def test_nic_on_same_numa_uses_only_that_numa_cpus(self):
+        """A NIC on a numa node with platform cores is affined only to the
+        platform CPUs on that numa node.
+
+        Platform CPUs: 0,1 on numa 0 and 32,33 on numa 1 (each pair is a core
+        with its SMT thread sibling). A NIC on numa 1 must be affined to
+        "32,33" only -- not the numa-0 cpus.
+        """
+        # Two SMT threads per platform core, one platform core per numa node.
+        icpus = [
+            {'cpu': 0, 'numa_node': 0, 'core': 0, 'thread': 0},
+            {'cpu': 1, 'numa_node': 0, 'core': 0, 'thread': 1},
+            {'cpu': 32, 'numa_node': 1, 'core': 8, 'thread': 0},
+            {'cpu': 33, 'numa_node': 1, 'core': 8, 'thread': 1},
+        ]
+        self._set_cpu_topology(icpus)
+        self._set_worker_reserved_conf('0-1,32-33')
+
+        interface_list = [{'name': 'ens1f0', 'numa_node': 1}]
+
+        AgentManager._update_interface_irq_affinity(
+            self.agent_manager, interface_list)
+
+        # Only the numa-1 platform cpus are selected.
+        self.assertEqual(self._affined_cpulist('ens1f0'), '32,33')
+
+    def test_nic_on_numa_without_platform_cores_uses_full_cpulist(self):
+        """A NIC on a numa node that has no platform cores falls back to the
+        full PLATFORM_CPU_LIST.
+
+        Platform CPUs 0,1 exist only on numa 0. A NIC on numa 1 has no
+        numa-local platform cpus, so the full platform cpulist "0-1" is used.
+        """
+        # Platform cores exist only on numa 0. numa 1 cpus are non-platform.
+        icpus = [
+            {'cpu': 0, 'numa_node': 0, 'core': 0, 'thread': 0},
+            {'cpu': 1, 'numa_node': 0, 'core': 0, 'thread': 1},
+            {'cpu': 32, 'numa_node': 1, 'core': 8, 'thread': 0},
+            {'cpu': 33, 'numa_node': 1, 'core': 8, 'thread': 1},
+        ]
+        self._set_cpu_topology(icpus)
+        self._set_worker_reserved_conf('0-1')
+
+        interface_list = [{'name': 'ens2f0', 'numa_node': 1}]
+
+        AgentManager._update_interface_irq_affinity(
+            self.agent_manager, interface_list)
+
+        # numa 1 has no platform cpus -> fall back to the full platform cpulist.
+        self.assertEqual(self._affined_cpulist('ens2f0'), '0-1')
