@@ -263,6 +263,71 @@ mount_platform_dir()
     fi
 }
 
+# Unmount $PLATFORM_DIR, tolerating a transient "device is busy" condition.
+#
+# On a freshly booted standby the just-attached platform mount can retain
+# in-flight references for a short time, so a bare umount occasionally fails
+# with EBUSY. We retry for a bounded window, and if the mount is
+# still busy we fall back to a lazy unmount so the stale mount is detached once
+# its references drain instead of being left live (a live stale mount later
+# breaks go-active with an NFS EBADHANDLE/errno-521).
+UMOUNT_BUSY_RETRIES=5
+UMOUNT_BUSY_INTERVAL=1
+umount_platform_retry()
+{
+    local retry
+    local umount_err
+
+    # Already unmounted: desired end state reached, nothing to do.
+    if ! /usr/bin/mountpoint -q "$PLATFORM_DIR"
+    then
+        return 0
+    fi
+
+    for retry in $(seq 1 ${UMOUNT_BUSY_RETRIES})
+    do
+        umount_err=$(umount $PLATFORM_DIR 2>&1)
+        if [ $? -eq 0 ]
+        then
+            return 0
+        fi
+
+        # Anything other than a busy mount is not something retrying or a lazy
+        # unmount will help with: log it and stop retrying.
+        if ! echo "${umount_err}" | grep -qiE "device is busy|target is busy"
+        then
+            logger -t ${LOGGER_TAG} -p daemon.err \
+                "Unable to unmount $PLATFORM_DIR: ${umount_err}"
+            break
+        fi
+
+        logger -t ${LOGGER_TAG} -p daemon.warn \
+            "$PLATFORM_DIR busy (${retry}/${UMOUNT_BUSY_RETRIES}), retry unmount in ${UMOUNT_BUSY_INTERVAL}s ..."
+        sleep ${UMOUNT_BUSY_INTERVAL}
+    done
+
+    # Still mounted after retries. Capture the holder for diagnosis, then detach
+    # lazily so the mount is cleared once references drain.
+    if /usr/bin/mountpoint -q "$PLATFORM_DIR"
+    then
+        if [ -e /usr/bin/fuser ]
+        then
+            logger -t ${LOGGER_TAG} -p daemon.warn \
+                "$PLATFORM_DIR still busy; holders: $(fuser -vm $PLATFORM_DIR 2>&1 | tr '\n' ' ')"
+        fi
+        logger -t ${LOGGER_TAG} -p daemon.warn \
+            "Forcing lazy unmount of $PLATFORM_DIR after ${UMOUNT_BUSY_RETRIES} busy retries."
+        if umount -l $PLATFORM_DIR
+        then
+            return 0
+        fi
+        warning_error "WARNING: Unable to unmount $PLATFORM_DIR (still busy after lazy unmount)."
+        return 1
+    fi
+
+    return 0
+}
+
 umount_platform_dir()
 {
     if [ -e "${ACTIVE_CONTROLLER_NOT_FOUND_FLAG}" ]
@@ -272,12 +337,12 @@ umount_platform_dir()
 
     if [ -e "${PLATFORM_SIMPLEX_FLAG}" ]
     then
-        umount $PLATFORM_DIR
+        umount_platform_retry
         drbdadm secondary drbd-platform
         drbdadm down drbd-platform
         systemctl stop drbd.service
     else
-        umount $PLATFORM_DIR
+        umount_platform_retry
     fi
 }
 
