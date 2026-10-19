@@ -169,6 +169,20 @@ LEGACY_SUBCLOUD_MULTUS_IMAGES = [
     'ghcr.io/k8snetworkplumbingwg/multus-cni:v4.2.4-debug',
 ]
 
+# Static (platform) images that must be present in the System Controller
+# central registry for a subcloud to bootstrap in the new release, but that no
+# sysinv upgrade path seeds today. The in-place upgrade never re-seeds the
+# ansible static_images set, so a subcloud 404s pulling these (first observed
+# with kubernetes-entrypoint, whose repo/tag changed between releases). Seed
+# them explicitly here.
+# TODO(dbarbosa): this list is hardcoded for a contained fix; replace it by
+# re-seeding the full static_images set from system-images.yml on upgrade.
+# The proper fix will be done in stx-14.
+LEGACY_SUBCLOUD_STATIC_IMAGES = [
+    'quay.io/airshipit/kubernetes-entrypoint:'
+    '9ff5d2e488ad18187bccc48e9595f197d27110c4-ubuntu_jammy',
+]
+
 # Keystone/Barbican connection errors that are transient during factory
 # restore-without-reinstall (flock services still starting). The Barbican
 # secret migration retries on these.
@@ -20710,6 +20724,12 @@ class ConductorManager(service.PeriodicService):
         # subcloud networking image download to fail with 404 manifest unknown.
         if is_system_controller:
             target_images.extend(LEGACY_SUBCLOUD_MULTUS_IMAGES)
+            # Seed static platform images (e.g. kubernetes-entrypoint) that no
+            # upgrade path otherwise seeds into the central registry, so
+            # subclouds can pull them on bootstrap.
+            # TODO(dbarbosa): replace this hardcoded set by re-seeding the full
+            # static_images set from system-images.yml on upgrade.
+            target_images.extend(LEGACY_SUBCLOUD_STATIC_IMAGES)
 
         target_images = list(set(target_images))
 

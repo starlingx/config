@@ -52,8 +52,8 @@ class TestFluxDeploymentManagerBase(test_base.TestCase):
 class TestGetImageList(TestFluxDeploymentManagerBase):
     """Tests for FluxDeploymentManager.get_image_list()."""
 
-    def test_all_controllers_enabled(self):
-        """All four images returned when all controllers are enabled."""
+    def test_all_controllers_returned(self):
+        """All four images returned regardless of enable state."""
         images = self.manager.get_image_list()
         self.assertEqual(len(images), 4)
         self.assertIn(
@@ -71,32 +71,22 @@ class TestGetImageList(TestFluxDeploymentManagerBase):
             f"{FAKE_CONF['flux_notification_controller_tag']}",
             images)
 
-    def test_kustomize_disabled(self):
-        """Kustomize image excluded when disabled."""
+    def test_disabled_controllers_still_included(self):
+        """Kustomize and notification images are included even when their
+        controllers are disabled, so the central registry carries every tag a
+        DC subcloud requests during bootstrap."""
         self.manager.conf_dict['enable_kustomize_controller'] = False
+        self.manager.conf_dict['enable_notification_controller'] = False
         images = self.manager.get_image_list()
-        self.assertEqual(len(images), 3)
-        self.assertNotIn(
+        self.assertEqual(len(images), 4)
+        self.assertIn(
             f"{FAKE_CONF['flux_kustomize_controller_image']}:"
             f"{FAKE_CONF['flux_kustomize_controller_tag']}",
             images)
-
-    def test_notification_disabled(self):
-        """Notification image excluded when disabled."""
-        self.manager.conf_dict['enable_notification_controller'] = False
-        images = self.manager.get_image_list()
-        self.assertEqual(len(images), 3)
-        self.assertNotIn(
+        self.assertIn(
             f"{FAKE_CONF['flux_notification_controller_image']}:"
             f"{FAKE_CONF['flux_notification_controller_tag']}",
             images)
-
-    def test_both_optional_disabled(self):
-        """Only helm and source images when both optional controllers disabled."""
-        self.manager.conf_dict['enable_kustomize_controller'] = False
-        self.manager.conf_dict['enable_notification_controller'] = False
-        images = self.manager.get_image_list()
-        self.assertEqual(len(images), 2)
 
 
 class TestDownloadImages(TestFluxDeploymentManagerBase):
@@ -118,6 +108,19 @@ class TestDownloadImages(TestFluxDeploymentManagerBase):
         """Returns False when image download fails."""
         result = self.manager.download_images()
         self.assertFalse(result)
+
+    @mock.patch.object(flux.ContainerImageDownloader,
+                       'download_images_from_upstream_to_local_reg_and_crictl',
+                       return_value=True)
+    def test_download_seeds_all_controllers(self, mock_download):
+        """All four controller images are seeded even when kustomize and
+        notification controllers are disabled."""
+        self.manager.conf_dict['enable_kustomize_controller'] = False
+        self.manager.conf_dict['enable_notification_controller'] = False
+        result = self.manager.download_images()
+        self.assertTrue(result)
+        seeded_images = mock_download.call_args[0][0]
+        self.assertEqual(len(seeded_images), 4)
 
 
 class TestGetChartPath(TestFluxDeploymentManagerBase):

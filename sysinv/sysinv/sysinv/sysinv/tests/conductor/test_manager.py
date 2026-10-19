@@ -1934,6 +1934,10 @@ class ManagerTestCase(base.DbTestCase):
         actual_images = mock_download.call_args[0][0]
         for legacy_img in manager.LEGACY_SUBCLOUD_MULTUS_IMAGES:
             self.assertIn(legacy_img, actual_images)
+        # The hardcoded static images (e.g. kubernetes-entrypoint)
+        # must also be seeded on a system controller.
+        for static_img in manager.LEGACY_SUBCLOUD_STATIC_IMAGES:
+            self.assertIn(static_img, actual_images)
         updated_upgrade = self.dbapi.kube_upgrade_get_one()
         self.assertEqual(updated_upgrade.state,
                          kubernetes.KUBE_UPGRADE_DOWNLOADED_IMAGES)
@@ -2014,6 +2018,9 @@ class ManagerTestCase(base.DbTestCase):
         actual_images = mock_download.call_args[0][0]
         for legacy_img in manager.LEGACY_SUBCLOUD_MULTUS_IMAGES:
             self.assertNotIn(legacy_img, actual_images)
+        # Hardcoded static images are SC-only too.
+        for static_img in manager.LEGACY_SUBCLOUD_STATIC_IMAGES:
+            self.assertNotIn(static_img, actual_images)
 
     def test_kube_download_images_simplex_fail(self):
         """Test download images on simplex: failure case
