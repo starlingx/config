@@ -527,7 +527,7 @@ class NetworkingPuppet(base.BasePuppet):
             elif instance['service'] == constants.PTP_INSTANCE_TYPE_SYNCE4L:
                 instance['global_parameters'].update({
                     'message_tag': instance['name'],
-                    'smc_socket_path': '/tmp/synce4l_socket_%s' % instance['name']
+                    'smc_socket_path': '/var/run/synce4l_socket_%s' % instance['name']
                 })
                 instance['device_parameters'].update(default_device_parameters)
             elif instance['service'] == constants.PTP_INSTANCE_TYPE_TS2PHC:
@@ -914,7 +914,7 @@ class NetworkingPuppet(base.BasePuppet):
             if instance['service'] == constants.PTP_INSTANCE_TYPE_SYNCE4L:
                 if 'smc_socket_path' not in instance['monitoring_parameters']:
                     instance['monitoring_parameters']['smc_socket_path'] = (
-                        '/tmp/synce4l_socket_%s' % instance_name)
+                        '/var/run/synce4l_socket_%s' % instance_name)
                 if 'interface' not in instance['monitoring_parameters']:
                     interfaces = instance.get('interfaces', [])
                     if interfaces:
