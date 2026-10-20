@@ -15,7 +15,7 @@
 #    under the License.
 #
 #
-# Copyright (c) 2022,2024 Wind River Systems, Inc.
+# Copyright (c) 2022-2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -71,15 +71,6 @@ class BareMetalUtilsTestCase(base.TestCase):
             utils.create_link_without_raise("/fake/source", "/fake/link")
             symlink_mock.assert_called_once_with("/fake/source", "/fake/link")
 
-    def test_get_os_type_centos(self):
-        fd, tmpfile = tempfile.mkstemp()
-        with open(tmpfile, 'w') as f:
-            f.write('ID="centos\n"')
-        os.close(fd)
-        os_type = utils.get_os_type(tmpfile)
-        self.assertEqual(os_type, constants.OS_CENTOS)
-        os.remove(tmpfile)
-
     def test_get_os_type_debian(self):
         fd, tmpfile = tempfile.mkstemp()
         with open(tmpfile, 'w') as f:
@@ -110,20 +101,6 @@ class BareMetalUtilsTestCase(base.TestCase):
                           utils.get_os_type,
                           tmpfile)
         os.remove(tmpfile)
-
-    def test_get_os_target_debian(self):
-        with mock.patch.object(os.path, "exists") as exists_mock:
-            exists_mock.return_value = True
-            result = utils.get_os_target('22.12')
-            exists_mock.assert_called_once()
-            self.assertEqual(constants.OS_DEBIAN, result)
-
-    def test_get_os_target_centos(self):
-        with mock.patch.object(os.path, "exists") as exists_mock:
-            exists_mock.return_value = False
-            result = utils.get_os_target('22.12')
-            exists_mock.assert_called_once()
-            self.assertEqual(constants.OS_CENTOS, result)
 
 
 class ExecuteTestCase(base.TestCase):

@@ -1,4 +1,4 @@
-# Copyright (c) 2019-2022 Wind River Systems, Inc.
+# Copyright (c) 2019-2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -37,18 +37,6 @@ class PuppetOperatorTestSuiteMixin(base.PuppetTestCaseMixin):
     def test_update_secure_system_config(self):
         self.operator.update_secure_system_config()
         assert self.mock_write_config.called
-
-    # self.host is defined in BaseHostTestCase
-    def test_centos_update_host_config(self):
-        self.mocked_get_os_type = mock.patch(
-            'sysinv.common.utils.get_os_type',
-            return_value=constants.OS_CENTOS)
-        self.mocked_get_os_type.start()
-
-        self.operator.update_host_config(self.host)  # pylint: disable=no-member
-        assert self.mock_write_config.called
-
-        self.addCleanup(self.mocked_get_os_type.stop)
 
     # self.host is defined in BaseHostTestCase
     def test_debian_update_host_config(self):

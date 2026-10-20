@@ -6,7 +6,7 @@
 """Root conftest for sysinv unit_coverage tests.
 
 Mocks system dependencies that are unavailable in the test environment:
-- fm_core, rpm: C-extension modules not installed outside STX
+- fm_core: C-extension module not installed outside STX, imported by fm_api
 - pwd/grp lookup: sysinv user/group don't exist on dev machines;
   check_lock_path() in sysinv.common.utils calls pwd.getpwnam('sysinv')
   at import time via the @synchronized decorator on API controllers.
@@ -16,7 +16,6 @@ import sys
 import unittest.mock as mock
 
 sys.modules.setdefault('fm_core', mock.MagicMock())
-sys.modules.setdefault('rpm', mock.MagicMock())
 
 # Patch pwd.getpwnam/grp.getgrnam so check_lock_path() doesn't crash
 # when the 'sysinv' user/group doesn't exist in the test environment.

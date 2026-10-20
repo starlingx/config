@@ -8,8 +8,7 @@ import sys
 import unittest
 from unittest import mock
 
-for _m in ['fm_core', 'rpm']:
-    sys.modules.setdefault(_m, mock.MagicMock())
+sys.modules.setdefault('fm_core', mock.MagicMock())
 
 from sysinv.common import utils
 from sysinv.common import exception

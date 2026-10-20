@@ -1579,38 +1579,15 @@ def get_os_release(release_file=constants.OS_RELEASE_FILE):
     # here will fail, and we just identified a place that would split
     # logic between OSs. The failing tests should mock this function
     # (get_os_release) for each supported OS.
-    if linux_distro[0] not in constants.SUPPORTED_OS_TYPES:
+    if linux_distro[0] != constants.OS_DEBIAN:
         raise exception.SysinvException(_(
             "Unsupported OS detected %s") % linux_distro[0])
 
     return linux_distro
 
 
-def get_os_target(target_rel, feed_folder=constants.OS_UPGRADE_FEED_FOLDER):
-    """
-    Get the target release OS by reading the upgrade feed to check
-    if os_tree repo is included
-
-    :param target_rel (String): Target release version
-    :param feed_folder (String, optional): Upgrade feed directory.
-           Defaults to constants.OS_UPGRADE_FEED_FOLDER.
-    :return String: constants.OS_DEBIAN or constants.OS_CENTOS
-    """
-
-    os_tree_dir = os.path.join(feed_folder, "rel-" + target_rel, "ostree_repo")
-    return constants.OS_DEBIAN if os.path.exists(os_tree_dir) else constants.OS_CENTOS
-
-
 def get_os_type(release_file=constants.OS_RELEASE_FILE):
     return get_os_release(release_file)[0]
-
-
-def is_debian():
-    return get_os_type() == constants.OS_DEBIAN
-
-
-def is_centos():
-    return get_os_type() == constants.OS_CENTOS
 
 
 class ISO(object):
@@ -4006,48 +3983,6 @@ def is_floating_monitor_assigned(dbapi):
     except exception.ControllerFSNameNotFound:
         pass
     return False
-
-
-def get_rpm_package(load_version, package_name):
-    """Search for a package or its initial characters in a specific
-    load version. First, it will look in the patch directory, if it
-    doesn't find it, it will look in the feed directory.
-
-    :param   load_version: the load version where the package is located.
-    :param   package_name: the package name or its initial characters.
-    :returns the package full path or None if not found.
-    """
-    packages_dir = [
-        "/var/www/pages/updates/rel-%s/Packages/" % load_version,
-        "/var/www/pages/feed/rel-%s/Packages/" % load_version,
-    ]
-
-    for package_dir in packages_dir:
-        if not os.path.isdir(package_dir):
-            continue
-
-        for package in os.listdir(package_dir):
-            if package.startswith(package_name):
-                return os.path.join(package_dir, package)
-
-
-def extract_rpm_package(rpm_package, target_dir):
-    try:
-        rpm2cpio_cmd = subprocess.run(
-            ["rpm2cpio", rpm_package],
-            capture_output=True,
-            check=True,
-        )
-
-        subprocess.run(
-            ["cpio", "-idm", "-D", target_dir],
-            input=rpm2cpio_cmd.stdout,
-            check=True,
-        )
-    except Exception as error:
-        raise exception.SysinvException(
-            "Error extracting rpm %s: %s" % (rpm_package, error),
-        )
 
 
 def get_ostree_commit(ostree_repo):
