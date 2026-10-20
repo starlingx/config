@@ -80,6 +80,13 @@ class FluxDeploymentManager(object):
     def get_image_list(self):
         """ Retrieve list of required images for controllers
 
+        All four controller images (helm, source, kustomize, notification) are
+        always returned regardless of whether a controller is enabled. The
+        images must be seeded into the registry even for controllers that are
+        not deployed as pods, since a DC subcloud requests the full static
+        image set during bootstrap. Which controllers actually run as pods is
+        governed separately by the Helm overrides (enable_* flags).
+
         Returns:
             list(str): List containing the images required for controllers.
         """
@@ -87,14 +94,11 @@ class FluxDeploymentManager(object):
         image_list = [f"{self.conf_dict['flux_helm_controller_image']}:"
                       f"{self.conf_dict['flux_helm_controller_tag']}",
                       f"{self.conf_dict['flux_source_controller_image']}:"
-                      f"{self.conf_dict['flux_source_controller_tag']}"]
-
-        if self.conf_dict['enable_kustomize_controller']:
-            image_list.append(f"{self.conf_dict['flux_kustomize_controller_image']}:"
-                              f"{self.conf_dict['flux_kustomize_controller_tag']}")
-        if self.conf_dict['enable_notification_controller']:
-            image_list.append(f"{self.conf_dict['flux_notification_controller_image']}:"
-                              f"{self.conf_dict['flux_notification_controller_tag']}")
+                      f"{self.conf_dict['flux_source_controller_tag']}",
+                      f"{self.conf_dict['flux_kustomize_controller_image']}:"
+                      f"{self.conf_dict['flux_kustomize_controller_tag']}",
+                      f"{self.conf_dict['flux_notification_controller_image']}:"
+                      f"{self.conf_dict['flux_notification_controller_tag']}"]
 
         return image_list
 
