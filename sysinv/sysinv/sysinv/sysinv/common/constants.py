@@ -3006,6 +3006,9 @@ TMP_HIERADATA_SECURE_SYSTEM_YAML = os.path.join(TMP_HIERADATA_PATH, 'secure_syst
 # systemd related
 PMON_RESTART_FULL_PATH = '/usr/local/sbin/pmon-restart'
 
+# Luks mount
+LUKS_MOUNT_PATH = '/var/luks/stx/luks_fs'
+
 # LUKS vault type
 LUKS_VAULT_TYPE_NAME = "luks_encrypted_vault"
 
@@ -3017,6 +3020,15 @@ MGMT_IPSEC_ENABLING = 'enabling'
 MGMT_IPSEC_ENABLED = 'enabled'
 MGMT_IPSEC_DISABLED = 'disabled'
 MGMT_IPSEC_UPGRADING = 'upgrading'
+
+# openbao constants
+OPENBAO_DATA_PATH = '/var/lib/openbao/data'
+OPENBAO_CONFIG_PATH = '/etc/openbao'
+OPENBAO_CERT_PATH = os.path.join(OPENBAO_CONFIG_PATH, 'certs')
+OPENBAO_API_PORT = 8200
+OPENBAO_CLUSTER_PORT = 8201
+OPENBAO_LOG_LEVEL = 'info'
+OPENBAO_LOG_FORMAT = 'standard'
 
 # certificate constants
 VALIDITY = "Validity"
