@@ -484,7 +484,8 @@ class Health(object):
         err_msg = ''
 
         expected_certs = [constants.RESTAPI_CERT_SECRET_NAME,
-                          constants.REGISTRY_CERT_SECRET_NAME]
+                          constants.REGISTRY_CERT_SECRET_NAME,
+                          constants.OPENBAO_CERT_SECRET_NAME]
         system = self._dbapi.isystem_get_one()
         if system.distributed_cloud_role != constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
             expected_certs.append(constants.OPENLDAP_CERT_SECRET_NAME)

@@ -369,6 +369,7 @@ class CertificateController(rest.RestController):
                         constants.CERT_MODE_DOCKER_REGISTRY,
                         constants.CERT_MODE_OPENSTACK,
                         constants.CERT_MODE_OPENLDAP,
+                        constants.CERT_MODE_OPENBAO,
                         ]:
                 try:
                     hash_issuers.append(cutils.get_cert_issuer_hash(cert))
@@ -469,7 +470,8 @@ class CertificateController(rest.RestController):
             if mode in [constants.CERT_MODE_SSL,
                         constants.CERT_MODE_DOCKER_REGISTRY,
                         constants.CERT_MODE_OPENLDAP,
-                        constants.CERT_MODE_OPENSTACK] \
+                        constants.CERT_MODE_OPENSTACK,
+                        constants.CERT_MODE_OPENBAO] \
                     and inv_cert.get('is_ca', None):
                 continue
 

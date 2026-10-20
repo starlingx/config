@@ -2015,6 +2015,10 @@ OPENSTACK_CERT_KEY_FILE_SHARED = os.path.join(CERT_OPENSTACK_SHARED_DIR,
 OPENSTACK_CERT_CA_FILE_SHARED = os.path.join(CERT_OPENSTACK_SHARED_DIR,
                                              CERT_CA_FILE)
 
+OPENBAO_CERT_DIR = "/etc/openbao/certs/"
+OPENBAO_CERT_FILE = os.path.join(OPENBAO_CERT_DIR, "openbao-cert.crt")
+OPENBAO_KEY_FILE = os.path.join(OPENBAO_CERT_DIR, "openbao-cert.key")
+
 CERT_MODE_KUBERNETES_ROOT_CA = 'kubernetes-root-ca'
 CERT_MODE_ETCD = 'etcd'
 CERT_MODE_SSL = 'ssl'
@@ -2024,6 +2028,7 @@ CERT_MODE_OPENSTACK = 'openstack'
 CERT_MODE_OPENSTACK_CA = 'openstack_ca'
 CERT_MODE_OPENLDAP = 'openldap'
 CERT_MODE_OPENLDAP_CA = 'openldap_ca'
+CERT_MODE_OPENBAO = "openbao"
 CERT_MODES_SUPPORTED = [CERT_MODE_SSL,
                         CERT_MODE_SSL_CA,
                         CERT_MODE_DOCKER_REGISTRY,
@@ -2031,16 +2036,19 @@ CERT_MODES_SUPPORTED = [CERT_MODE_SSL,
                         CERT_MODE_OPENSTACK_CA,
                         CERT_MODE_OPENLDAP,
                         CERT_MODE_OPENLDAP_CA,
+                        CERT_MODE_OPENBAO,
                         ]
 CERT_MODES_SUPPORTED_CERT_MANAGER = [CERT_MODE_SSL,
                                      CERT_MODE_DOCKER_REGISTRY,
-                                     CERT_MODE_OPENLDAP]
+                                     CERT_MODE_OPENLDAP,
+                                     CERT_MODE_OPENBAO]
 
 KUBERNETES_ROOTCA_FILE = '/etc/kubernetes/pki/ca.crt'
 ETCD_ROOTCA_FILE = '/etc/etcd/ca.crt'
 
 # CONFIG file permissions
 CONFIG_FILE_PERMISSION_ROOT_READ_ONLY = 0o400
+CONFIG_FILE_PERMISSION_ROOT_WR = 0o600
 CONFIG_FILE_PERMISSION_DEFAULT = 0o644
 
 # TPM configuration states
@@ -2828,6 +2836,7 @@ LOCAL_CA_SECRET_NAME = "system-local-ca"
 RESTAPI_CERT_SECRET_NAME = "system-restapi-gui-certificate"
 REGISTRY_CERT_SECRET_NAME = "system-registry-local-certificate"
 OPENLDAP_CERT_SECRET_NAME = "system-openldap-local-certificate"
+OPENBAO_CERT_SECRET_NAME = "system-openbao-local-certificate"
 
 # The k8s secret for OIDC certificate
 OIDC_CERT_SECRET_NAME = "oidc-auth-apps-certificate"
@@ -2849,7 +2858,8 @@ CERT_GROUP_CERT_MANAGER = 'cert-manager.io'
 CERT_MODE_TO_SECRET_NAME = {
     CERT_MODE_SSL: RESTAPI_CERT_SECRET_NAME,
     CERT_MODE_DOCKER_REGISTRY: REGISTRY_CERT_SECRET_NAME,
-    CERT_MODE_OPENLDAP: OPENLDAP_CERT_SECRET_NAME
+    CERT_MODE_OPENLDAP: OPENLDAP_CERT_SECRET_NAME,
+    CERT_MODE_OPENBAO: OPENBAO_CERT_SECRET_NAME
 }
 
 # Create RestAPI/GUI and Docker Registry certificates from bootstrap
@@ -2906,6 +2916,7 @@ CERT_LOCATION_MAP = {
     CERT_MODE_SSL: SSL_PEM_FILE,
     CERT_MODE_DOCKER_REGISTRY: DOCKER_REGISTRY_CERT_FILE,
     CERT_MODE_OPENLDAP: OPENLDAP_CERT_FILE,
+    CERT_MODE_OPENBAO: OPENBAO_CERT_FILE,
     CERT_MODE_OPENSTACK: OPENSTACK_CERT_FILE,
     CERT_MODE_OPENSTACK_CA: OPENSTACK_CERT_CA_FILE
     # TODO(): TPM
@@ -3011,6 +3022,16 @@ LUKS_MOUNT_PATH = '/var/luks/stx/luks_fs'
 
 # LUKS vault type
 LUKS_VAULT_TYPE_NAME = "luks_encrypted_vault"
+
+# Openbao on LUKS; dir, files and ownership.
+OPENBAO_LUKS_CERT_DIR = os.path.join(LUKS_MOUNT_PATH,
+                                     "controller/.openbao/certs")
+OPENBAO_LUKS_CERT_FILE = os.path.join(OPENBAO_LUKS_CERT_DIR,
+                                      "openbao-cert.crt")
+OPENBAO_LUKS_KEY_FILE = os.path.join(OPENBAO_LUKS_CERT_DIR,
+                                     "openbao-cert.key")
+OPENBAO_USER_NAME = "openbao"
+OPENBAO_GRP_NAME = "openbao"
 
 # mgmt. network IPsec flag
 MGMT_IPSEC_FLAG = 'mgmt_ipsec'
