@@ -24,6 +24,7 @@ class AppOperationsAudit():  # noqa: H238
         apps_metadata,
         perform_automatic_operation_in_parallel_fn,
         execute_automatic_operation_sync,
+        destroy_stale_upload_placeholder_fn=None,
     ):
         self._dbapi = dbapi
         self._context = context
@@ -40,6 +41,7 @@ class AppOperationsAudit():  # noqa: H238
         self._perform_automatic_operation_in_parallel_fn = \
             perform_automatic_operation_in_parallel_fn
         self._execute_automatic_operation_sync = execute_automatic_operation_sync
+        self._destroy_stale_upload_placeholder_fn = destroy_stale_upload_placeholder_fn
         self._app_statuses = {}
 
     def load_app_status(self):
@@ -62,6 +64,35 @@ class AppOperationsAudit():  # noqa: H238
             except exception.KubeAppNotFound:
                 app_statuses[app_name] = constants.APP_NOT_PRESENT
         self._app_statuses = app_statuses
+
+    def recover_stale_upload_entries(self):
+        """
+        Recover platform-managed applications left with a stale upload entry.
+
+        The automatic upload creates the application database entry with
+        placeholder values and the transitional 'uploading' status before the
+        application bundle is resolved and the upload is actually started. If
+        the upload never starts, the entry is left behind and the application
+        is stuck: upload_missing_apps() no longer sees the application as
+        missing, because the entry exists, and no other automatic operation
+        acts on a transitional status.
+
+        Remove those stale entries so that upload_missing_apps() retries the
+        upload in this same audit cycle, instead of requiring a conductor
+        restart or a manual database cleanup.
+        """
+
+        if self._destroy_stale_upload_placeholder_fn is None:
+            return
+
+        for app_name in self._managed_apps:
+            if self._app_statuses[app_name] != constants.APP_UPLOAD_IN_PROGRESS:
+                continue
+
+            if self._destroy_stale_upload_placeholder_fn(app_name):
+                # The entry is gone, so the application is missing again and
+                # upload_missing_apps() is able to retry the upload.
+                self._app_statuses[app_name] = constants.APP_NOT_PRESENT
 
     def upload_missing_apps(self):
         """
@@ -341,6 +372,7 @@ class AppOperationsAudit():  # noqa: H238
         Performs a sequence of automatic operations related to platform application management.
         This method initiates an audit of automatic operations by:
             - Updade cache of application statuses.
+            - Recovering applications left with a stale upload entry.
             - Uploading any missing applications.
             - Applying applications with desire state "applied" that have not yet been applied.
             - Reapplying applications as needed.
@@ -354,6 +386,7 @@ class AppOperationsAudit():  # noqa: H238
         # Populate the app statuses
         self.load_app_status()
         # Perform all automatic operations
+        self.recover_stale_upload_entries()
         self.upload_missing_apps()
         self.apply_missing_apps()
         self.reapply_apps()

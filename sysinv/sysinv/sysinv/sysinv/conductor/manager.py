@@ -8531,6 +8531,73 @@ class ConductorManager(service.PeriodicService):
                     self._update_image_conversion_alarm(fm_constants.FM_ALARM_STATE_CLEAR,
                                                 constants.FILESYSTEM_NAME_IMAGE_CONVERSION)
 
+    def destroy_stale_upload_placeholder(self, app_name):
+        """ Remove a stale placeholder DB entry left behind by an automatic upload.
+
+        The automatic upload creates the application DB entry with placeholder
+        values and the transitional 'uploading' status before the application
+        bundle is resolved and the upload is actually started. If the upload
+        never starts, that entry has to be removed. Otherwise the application
+        stays in the 'uploading' status indefinitely: the application audit no
+        longer reports it as missing, because the entry exists, and never
+        retries the upload, because the status is transitional. Recovering from
+        that state requires either a conductor restart or a manual database
+        cleanup.
+
+        Only entries that still hold the placeholder version and the
+        'uploading' status are removed, so an entry of an application that is
+        really being uploaded, or that is already uploaded, is never touched.
+        An upload that really started has already replaced the placeholder with
+        the version read from the tarball before handing the upload over, so it
+        no longer matches.
+
+        The removal is scoped to the placeholder version, so it behaves as a
+        compare-and-delete: should the entry be advanced to the real version
+        between the read below and the removal, the version no longer matches
+        and nothing is deleted. An observation that became stale therefore
+        cannot remove the entry of an upload that is in progress.
+
+        :param app_name: Name of the application to be checked.
+        :return: True if a stale placeholder entry was removed. False otherwise.
+        """
+
+        try:
+            app = self.dbapi.kube_app_get(app_name)
+        except exception.KubeAppNotFound:
+            return False
+
+        if (app.app_version != constants.APP_VERSION_PLACEHOLDER or
+                app.status != constants.APP_UPLOAD_IN_PROGRESS):
+            return False
+
+        try:
+            # Scoping the removal to the placeholder version keeps this a
+            # compare-and-delete: an entry already advanced to the real version
+            # does not match and is left untouched.
+            self.dbapi.kube_app_destroy(name=app.name, version=app.app_version)
+        except Exception as e:
+            LOG.exception("Failed to remove the stale placeholder entry of "
+                          "application {}: {}".format(app_name, e))
+            return False
+
+        try:
+            self.dbapi.kube_app_get(app_name)
+        except exception.KubeAppNotFound:
+            LOG.info("Removed the stale placeholder entry of application %s "
+                     "left in the '%s' status. The application audit will "
+                     "retry the upload."
+                     % (app_name, constants.APP_UPLOAD_IN_PROGRESS))
+            return True
+
+        # The entry is still there, so the compare-and-delete found no match:
+        # it was advanced out of the placeholder version while being examined,
+        # which means an upload is really in progress. Report that nothing was
+        # recovered, so that the caller leaves this application alone.
+        LOG.info("Kept the entry of application %s: it advanced out of the "
+                 "placeholder version while being examined, so an upload is "
+                 "in progress." % app_name)
+        return False
+
     def _auto_upload_managed_app(self,
                                  context,
                                  app_name,
@@ -8545,8 +8612,16 @@ class ConductorManager(service.PeriodicService):
         :param k8s_version: Kubernetes target version.
         :param k8s_upgrade_timing: When applications should be uploaded.
         :param async_upload: Upload asynchronously if True. Upload synchronously if False.
-        :return: True if the upload successfully started when running asynchronously.
-                 True if the app was successfully uploaded when running synchronously.
+        :return: True if the app was successfully uploaded when running
+                 synchronously (async_upload=False).
+                 True if the upload was successfully started when running
+                 asynchronously (async_upload=True). In this mode True means
+                 the upload was handed over to a separate thread, not that it
+                 completed: the outcome is reported later through the
+                 application status, which the next audit cycle picks up. A
+                 caller that needs to know whether the upload itself succeeded
+                 has to either use async_upload=False or check the application
+                 status afterwards.
                  False if an error has occurred.
                  None if there is not an upload version available for the given app.
         """
@@ -8590,6 +8665,7 @@ class ConductorManager(service.PeriodicService):
                     'manifest_file': constants.APP_TARFILE_NAME_PLACEHOLDER,
                     'status': constants.APP_UPLOAD_IN_PROGRESS}
 
+        app = None
         try:
             self.dbapi.kube_app_create(app_data)
             app = kubeapp_obj.get_by_name(context, app_name)
@@ -8598,7 +8674,7 @@ class ConductorManager(service.PeriodicService):
             if app_bundle is None:
                 # Skip if no bundles are found
                 LOG.debug("No bundle found for uploading %s" % app_name)
-                self.dbapi.kube_app_destroy(name=app.name, version=app.app_version)
+                self.destroy_stale_upload_placeholder(app_name)
                 return
 
             # Increment the auto upload attempts
@@ -8638,25 +8714,35 @@ class ConductorManager(service.PeriodicService):
                                         app,
                                         tarball.tarball_name,
                                         hook_info)
-                return True
+            # In asynchronous mode this reports that the upload was started,
+            # not that it completed. See the :return: description above.
+            return True
         except exception.KubeAppAlreadyExists as e:
             LOG.exception(e)
+            self.destroy_stale_upload_placeholder(app_name)
             return False
         except exception.KubeAppNotFound as e:
             LOG.exception(e)
+            self.destroy_stale_upload_placeholder(app_name)
             return False
         except Exception as e:
             if k8s_version:
                 LOG.exception("App {} automatic upload to match Kubernetes version {} "
-                              "failed with: {}".format(app.name, k8s_version, e))
+                              "failed with: {}".format(app_name, k8s_version, e))
             else:
                 LOG.exception("App {} automatic upload {} failed with: {}"
-                              .format(app.name, k8s_version, e))
-            if app:
+                              .format(app_name, k8s_version, e))
+            if app is not None:
                 app.status = constants.APP_UPLOAD_FAILURE
                 app.save()
                 LOG.error(f"auto upload managed app fails with {e}.\
                     A new upload attempt will be made on the next audit iteration.")
+            else:
+                # The failure happened before the application object could be
+                # retrieved, so the placeholder entry cannot be moved to
+                # 'upload-failed'. Remove it instead, otherwise it would stay
+                # in the transitional 'uploading' status forever.
+                self.destroy_stale_upload_placeholder(app_name)
             return False
 
     @kubernetes.test_k8s_health
@@ -10349,7 +10435,8 @@ class ConductorManager(service.PeriodicService):
             self._app,
             self.apps_metadata,
             self.perform_automatic_operation_in_parallel,
-            self.execute_automatic_operation_sync
+            self.execute_automatic_operation_sync,
+            self.destroy_stale_upload_placeholder
         )
         # Run application operations audit:
         #   - Upload missing apps
@@ -12654,7 +12741,8 @@ class ConductorManager(service.PeriodicService):
                         self._app,
                         self.apps_metadata,
                         self.perform_automatic_operation_in_parallel,
-                        self.execute_automatic_operation_sync
+                        self.execute_automatic_operation_sync,
+                        self.destroy_stale_upload_placeholder
                     )
                     # Populate the app statuses
                     operations_audit.load_app_status()
@@ -19109,7 +19197,8 @@ class ConductorManager(service.PeriodicService):
                 self._app,
                 self.apps_metadata,
                 self.perform_automatic_operation_in_parallel,
-                self.execute_automatic_operation_sync
+                self.execute_automatic_operation_sync,
+                self.destroy_stale_upload_placeholder
             )
             # Populate the app statuses
             operations_audit.load_app_status()

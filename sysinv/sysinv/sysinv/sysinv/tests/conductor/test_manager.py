@@ -16084,3 +16084,170 @@ class EtcdMembershipAuditGuardTestCase(base.DbTestCase):
         self.service._audit_etcd_cluster_membership(self.context)
 
         mock_reconcile.assert_called_once()
+
+
+class TestDestroyStaleUploadPlaceholder(base.DbTestCase):
+    """Tests for ConductorManager.destroy_stale_upload_placeholder().
+
+    An automatic upload creates the application DB entry with placeholder
+    values and the transitional 'uploading' status before the application
+    bundle is resolved. If the upload never starts, that entry has to be
+    removed, otherwise the application stays in 'uploading' forever: the app
+    audit no longer reports it as missing and never retries the upload.
+    """
+
+    def setUp(self):
+        super(TestDestroyStaleUploadPlaceholder, self).setUp()
+
+        self.service = manager.ConductorManager('test-host', 'test-topic')
+        self.service.dbapi = dbapi.get_instance()
+        self.context = context.get_admin_context()
+
+    def _create_placeholder(self, name='openvswitch',
+                            status=constants.APP_UPLOAD_IN_PROGRESS,
+                            app_version=constants.APP_VERSION_PLACEHOLDER):
+        return dbutils.create_test_app(
+            name=name,
+            app_version=app_version,
+            manifest_name=constants.APP_MANIFEST_NAME_PLACEHOLDER,
+            manifest_file=constants.APP_TARFILE_NAME_PLACEHOLDER,
+            status=status)
+
+    def test_removes_stale_placeholder_entry(self):
+        """A placeholder entry stuck in 'uploading' must be removed"""
+        self._create_placeholder()
+
+        self.assertTrue(
+            self.service.destroy_stale_upload_placeholder('openvswitch'))
+        self.assertRaises(exception.KubeAppNotFound,
+                          self.service.dbapi.kube_app_get, 'openvswitch')
+
+    def test_keeps_entry_of_ongoing_upload(self):
+        """An upload that really started already replaced the placeholder
+        version with the version from the tarball. Such an entry must not be
+        removed, even though it still reports the 'uploading' status.
+        """
+        self._create_placeholder(app_version='26.10-42')
+
+        self.assertFalse(
+            self.service.destroy_stale_upload_placeholder('openvswitch'))
+        self.assertEqual(
+            constants.APP_UPLOAD_IN_PROGRESS,
+            self.service.dbapi.kube_app_get('openvswitch').status)
+
+    def test_keeps_entry_in_a_non_transitional_status(self):
+        """An entry that is not in the 'uploading' status must not be removed"""
+        self._create_placeholder(status=constants.APP_UPLOAD_SUCCESS)
+
+        self.assertFalse(
+            self.service.destroy_stale_upload_placeholder('openvswitch'))
+        self.assertEqual(
+            constants.APP_UPLOAD_SUCCESS,
+            self.service.dbapi.kube_app_get('openvswitch').status)
+
+    def test_missing_app_is_not_an_error(self):
+        """Nothing to remove when the application is not in the database"""
+        self.assertFalse(
+            self.service.destroy_stale_upload_placeholder('openvswitch'))
+
+    def test_keeps_entry_advanced_concurrently(self):
+        """An observation of the entry that became stale must not remove it.
+
+        The removal is scoped to the placeholder version, so if the entry is
+        advanced to the real version read from the tarball between the moment
+        it is examined and the moment it is removed, nothing matches and the
+        entry survives. This covers the case of an upload that is really in
+        progress being examined concurrently.
+        """
+        self._create_placeholder(app_version='26.10-42')
+        real_get = self.service.dbapi.kube_app_get
+
+        stale = mock.Mock()
+        stale.name = 'openvswitch'
+        stale.app_version = constants.APP_VERSION_PLACEHOLDER
+        stale.status = constants.APP_UPLOAD_IN_PROGRESS
+
+        seen = []
+
+        def fake_get(name):
+            seen.append(name)
+            # First read returns the stale observation, later reads go to the
+            # database so the outcome of the removal is evaluated for real.
+            return stale if len(seen) == 1 else real_get(name)
+
+        with mock.patch.object(self.service.dbapi, 'kube_app_get',
+                               side_effect=fake_get):
+            result = self.service.destroy_stale_upload_placeholder(
+                'openvswitch')
+
+        # Nothing was recovered, so the caller must leave the app alone.
+        self.assertFalse(result)
+        # And the entry of the ongoing upload is still intact.
+        surviving = self.service.dbapi.kube_app_get('openvswitch')
+        self.assertEqual('26.10-42', surviving.app_version)
+        self.assertEqual(constants.APP_UPLOAD_IN_PROGRESS, surviving.status)
+
+
+class TestAutoUploadManagedAppReturnContract(base.DbTestCase):
+    """Tests for the return value contract of _auto_upload_managed_app().
+
+    The method reports True both when it uploaded the application itself
+    (async_upload=False) and when it handed the upload over to a separate
+    thread (async_upload=True). These tests pin that contract down, so the
+    asynchronous path is not silently changed back to returning None, which
+    used to make the audit report a successful upload as skipped.
+    """
+
+    def setUp(self):
+        super(TestAutoUploadManagedAppReturnContract, self).setUp()
+
+        self.service = manager.ConductorManager('test-host', 'test-topic')
+        self.service.dbapi = dbapi.get_instance()
+        self.context = context.get_admin_context()
+
+        # Initialized when the conductor starts up, not in the constructor.
+        self.service._auto_upload_attemps = {}
+        self.service._patching_operation_is_occurring = mock.Mock(
+            return_value=False)
+        self.service._get_app_bundle_for_update = mock.Mock(
+            return_value=mock.Mock(file_path='/tmp/openvswitch-26.10-42.tgz'))
+
+        tarball = mock.Mock()
+        tarball.app_name = 'openvswitch'
+        tarball.app_version = '26.10-42'
+        tarball.manifest_name = 'openvswitch-fluxcd-manifests'
+        tarball.manifest_file = '/tmp/fluxcd-manifests'
+        tarball.tarball_name = '/tmp/openvswitch-26.10-42.tgz'
+        self.service._check_tarfile = mock.Mock(return_value=tarball)
+        self.service.perform_app_upload = mock.Mock()
+
+    def test_async_upload_reports_the_upload_was_started(self):
+        """With async_upload=True the upload is handed over to another thread
+        and the method reports True for having started it.
+        """
+        with mock.patch(
+                'sysinv.conductor.manager.greenthread.spawn') as mock_spawn:
+            result = self.service._auto_upload_managed_app(
+                self.context, 'openvswitch', async_upload=True)
+
+        self.assertTrue(result)
+        mock_spawn.assert_called_once()
+        # The upload itself was not performed inline.
+        self.service.perform_app_upload.assert_not_called()
+        # The entry left behind holds the real version, so it is not mistaken
+        # for a stale placeholder.
+        app = self.service.dbapi.kube_app_get('openvswitch')
+        self.assertEqual('26.10-42', app.app_version)
+
+    def test_sync_upload_reports_the_upload_completed(self):
+        """With async_upload=False the upload runs inline and True means it
+        actually completed.
+        """
+        with mock.patch(
+                'sysinv.conductor.manager.greenthread.spawn') as mock_spawn:
+            result = self.service._auto_upload_managed_app(
+                self.context, 'openvswitch', async_upload=False)
+
+        self.assertTrue(result)
+        mock_spawn.assert_not_called()
+        self.service.perform_app_upload.assert_called_once()
