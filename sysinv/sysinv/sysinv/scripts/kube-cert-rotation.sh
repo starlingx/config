@@ -316,11 +316,14 @@ renew_cert_by_openssl() {
     return ${ret}
 }
 
-# Get cluster host floating IP address
 get_cluster_host_floating_ip() {
     local floating_ip=""
-    floating_ip=$(cat /etc/kubernetes/admin.conf | grep "server:" | awk -F"//" '{print $2}' | tr -d "[]" | sed -e s/:16443//)
-    echo ${floating_ip}
+    floating_ip=$(awk '$2 == "controller-cluster-host" {print $1}' /etc/hosts | head -1)
+    if [ -z "${floating_ip}" ]; then
+        log_error "not able to read cluster host IP address from /etc/hosts"
+        return 1
+    fi
+    echo "${floating_ip}"
 }
 
 # Return a controller's cluster-host unit address by parsing /etc/hosts.
@@ -473,8 +476,8 @@ fi
 # Get cluster host floating IP address
 if [ ${ERR} -eq 0 ]; then
     floating_ip=$(get_cluster_host_floating_ip)
-    if [ "x${floating_ip}" == "x" ]; then
-        ERR_REASON="Failed to retrieve cluster host floating IP address."
+    if [ $? -ne 0 ]; then
+        ERR_REASON="Not able to read cluster host IP address from /etc/hosts."
         ERR=1
     fi
 fi
