@@ -1882,6 +1882,26 @@ def create_test_kube_app(**kw):
     return dbapi.kube_app_create(kube_app)
 
 
+def get_test_kube_app_bundle(**kw):
+    kube_app_bundle = {
+        'name': kw.get('name', 'test-app'),
+        'version': kw.get('version', '1.0-1'),
+        'file_path': kw.get('file_path', '/tmp/test-app-1.0-1.tgz'),
+        'auto_update': kw.get('auto_update', True),
+        'k8s_auto_update': kw.get('k8s_auto_update', True),
+        'k8s_timing': kw.get('k8s_timing', constants.APP_METADATA_TIMING_PRE),
+        'k8s_minimum_version': kw.get('k8s_minimum_version', '1.24.0'),
+        'k8s_maximum_version': kw.get('k8s_maximum_version'),
+    }
+    return kube_app_bundle
+
+
+def create_test_kube_app_bundle(**kw):
+    kube_app_bundle = get_test_kube_app_bundle(**kw)
+    dbapi = db_api.get_instance()
+    return dbapi.kube_app_bundle_create(kube_app_bundle)
+
+
 def get_primary_address_by_name(address_name, networktype):
     dbapi = db_api.get_instance()
     address = None

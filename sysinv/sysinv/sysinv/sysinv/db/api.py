@@ -5012,6 +5012,14 @@ class Connection(object):
         """
 
     @abc.abstractmethod
+    def kube_app_bundle_update_by_file_path(self, file_path, values):
+        """Update a kube_app_bundle entry identified by its file path.
+
+        :param file_path: Application bundle file path.
+        :param values: Fields and values to update.
+        """
+
+    @abc.abstractmethod
     def kube_app_bundle_is_empty(self):
         """Check if kube_app_bundle table is empty"""
 

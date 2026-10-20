@@ -13839,6 +13839,7 @@ class ManagerTestCase(base.DbTestCase):
         self.assertEqual(self.service._cached_app_bundle_set, expected_set)
 
     @mock.patch('glob.glob')
+    @mock.patch('sysinv.common.app_metadata.extract_bundle_metadata')
     @mock.patch('sysinv.conductor.manager.ConductorManager._add_app_bundle')
     @mock.patch('sysinv.conductor.manager.ConductorManager._remove_app_bundle')
     @mock.patch('sysinv.conductor.manager.ConductorManager._update_cached_app_bundles_set')
@@ -13846,14 +13847,15 @@ class ManagerTestCase(base.DbTestCase):
                                         mock_update_cached_app_bundles_set,
                                         mock_remove_app_bundle,
                                         mock_add_app_bundle,
+                                        mock_extract_bundle_metadata,
                                         mock_glob):
 
-        self.service._cached_app_bundle_set = [
+        self.service._cached_app_bundle_set = {
             "/path/to/bundle1",
             "/path/to/bundle2",
             "/path/to/bundle3",
             "/path/to/bundle4",
-        ]
+        }
         bundle_path_list = [
             "/path/to/bundle1",
             "/path/to/bundle3",
@@ -13861,6 +13863,18 @@ class ManagerTestCase(base.DbTestCase):
             "/path/to/bundle5",
         ]
 
+        stored_bundles = []
+        for file_path in self.service._cached_app_bundle_set:
+            bundle = mock.MagicMock()
+            bundle.file_path = file_path
+            bundle.name = "test-app"
+            stored_bundles.append(bundle)
+        self.service._kube_app_bundle_storage = mock.MagicMock()
+        self.service._kube_app_bundle_storage.get_all.return_value = stored_bundles
+        mock_extract_bundle_metadata.return_value = {
+            'file_path': '/path/to/bundle1',
+            'name': 'test-app',
+        }
         mock_glob.return_value = bundle_path_list
         self.service._update_app_bundles_storage()
 
@@ -13871,6 +13885,51 @@ class ManagerTestCase(base.DbTestCase):
         # ou must call the _update_cached_app_bundles_set function to
         # update only 1 time
         mock_update_cached_app_bundles_set.assert_called_once()
+
+    @mock.patch('sysinv.common.app_metadata.extract_bundle_metadata')
+    def test_refresh_app_bundle_metadata_updates_legacy_maximum(
+            self, mock_extract_bundle_metadata):
+        file_path = "/path/to/bundle.tgz"
+        bundle = mock.MagicMock()
+        bundle.file_path = file_path
+        bundle.name = "test-app"
+        bundle.version = "1.0-1"
+        bundle.k8s_maximum_version = "1.29.0"
+        bundle_data = {
+            'file_path': file_path,
+            'name': "test-app",
+            'version': "1.0-1",
+            'k8s_maximum_version': "1.29",
+        }
+        mock_extract_bundle_metadata.return_value = bundle_data
+        self.service._kube_app_bundle_storage = mock.MagicMock()
+
+        self.service._refresh_app_bundle_metadata(bundle)
+
+        self.service._kube_app_bundle_storage.update.assert_called_once_with(
+            file_path, bundle_data)
+
+    @mock.patch('sysinv.common.app_metadata.extract_bundle_metadata')
+    def test_refresh_app_bundle_metadata_preserves_explicit_patch(
+            self, mock_extract_bundle_metadata):
+        file_path = "/path/to/bundle.tgz"
+        bundle = mock.MagicMock()
+        bundle.file_path = file_path
+        bundle.name = "test-app"
+        bundle.version = "1.0-1"
+        bundle.k8s_maximum_version = "1.29.0"
+        bundle_data = {
+            'file_path': file_path,
+            'name': "test-app",
+            'version': "1.0-1",
+            'k8s_maximum_version': "1.29.0",
+        }
+        mock_extract_bundle_metadata.return_value = bundle_data
+        self.service._kube_app_bundle_storage = mock.MagicMock()
+
+        self.service._refresh_app_bundle_metadata(bundle)
+
+        self.service._kube_app_bundle_storage.update.assert_not_called()
 
     @mock.patch('sysinv.conductor.manager.'
                 'ConductorManager._config_apply_runtime_manifest')

@@ -178,6 +178,10 @@ def validate_metadata_file(path, metadata_file, upgrade_from_release=None):
     supported_k8s_version:
       minimum: <version>
       maximum: <version>
+      - both fields accept the major.minor (e.g. v1.27) and the
+        major.minor.patch (e.g. v1.27.5) formats. A 'minimum' declared as
+        major.minor is equivalent to major.minor.0, while a 'maximum' declared
+        as major.minor supports every patch release of that minor series.
     k8s_upgrades:
       auto_update: <true/false/yes/no>
       timing: <pre/post>
@@ -373,8 +377,10 @@ def validate_metadata_file(path, metadata_file, upgrade_from_release=None):
             raise exception.SysinvException(_(
                 "Supported Kubernetes versions should be formatted as "
                 "major.minor (e.g. v1.27) or major.minor.patch (e.g. v1.27.5). "
-                "Be mindful that the major.minor format will be converted to major.minor.0 "
-                "(e.g. v1.27 is equal to v1.27.0)."))
+                "Be mindful that a 'minimum' field in the major.minor format is "
+                "converted to major.minor.0 (e.g. v1.27 is equal to v1.27.0), while "
+                "a 'maximum' field in that format covers every patch release of the "
+                "minor series (e.g. v1.27 includes v1.27.5)."))
 
     def validate_timing(parent):
         """ Validate the timing field of a given parent section
@@ -852,7 +858,11 @@ def extract_bundle_metadata(file_path):
         return re.fullmatch('([0-9][.])[0-9]+', version)
 
     def format_k8s_version(version):
-        """Standardize Kubernetes version numbers
+        """Standardize a lower bound Kubernetes version number
+
+        Only lower bounds are padded. A major.minor upper bound must be stored
+        as declared, since it covers every patch release of that minor series
+        and padding it would restrict the bound to major.minor.0.
 
         :param version: Version number
         :return: Return a formatted version number in the major.minor.patch format
@@ -894,8 +904,9 @@ def extract_bundle_metadata(file_path):
                 constants.APP_METADATA_MAXIMUM, None)
 
         if maximum_supported_k8s_version is not None:
+            # Stored as declared: a major.minor upper bound supports every patch
+            # release of that minor series.
             maximum_supported_k8s_version = maximum_supported_k8s_version.strip().lstrip('v')
-            maximum_supported_k8s_version = format_k8s_version(maximum_supported_k8s_version)
 
         k8s_upgrades = metadata.get(constants.APP_METADATA_K8S_UPGRADES, None)
         if k8s_upgrades is None:
