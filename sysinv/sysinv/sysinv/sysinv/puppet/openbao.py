@@ -40,6 +40,14 @@ class OpenbaoHostPuppet(base.BasePuppet):
         if constants.CONTROLLER not in utils.get_personalities(host):
             return config
 
+        # During upgrade openbao is not configured until activation.
+        # Disable openbao configurations during upgrade, including:
+        # certificate renewal and manifest (unlock).
+        is_upgrading, _ = self.is_upgrade_in_progress_cached()
+        if is_upgrading:
+            config['platform::openbao::params::service_enabled'] = False
+            return config
+
         config['platform::openbao::params::service_enabled'] = True
         config['platform::openbao::params::initial_start'] = False
 

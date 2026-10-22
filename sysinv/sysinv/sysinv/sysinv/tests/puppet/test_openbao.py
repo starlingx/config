@@ -48,10 +48,19 @@ def _make_address(address):
     return obj
 
 
-def _make_puppet():
-    """Create an OpenbaoHostPuppet with a mocked operator."""
+def _make_puppet(is_upgrading=False):
+    """Create an OpenbaoHostPuppet with a mocked operator.
+
+    get_host_config() consults BasePuppet.is_upgrade_in_progress_cached(),
+    which normally returns a (bool, upgrade) tuple from a live dbapi. With a
+    MagicMock operator there is no real dbapi, so stub it to a deterministic
+    (is_upgrading, None) tuple. Default is the non-upgrade path.
+    """
     operator = mock.MagicMock()
-    return OpenbaoHostPuppet(operator)
+    puppet = OpenbaoHostPuppet(operator)
+    puppet.is_upgrade_in_progress_cached = mock.Mock(
+        return_value=(is_upgrading, None))
+    return puppet
 
 
 def _fake_address_by_name(name, networktype):
@@ -166,6 +175,30 @@ class TestGetHostConfigController1(TestCase):
                          constants.LUKS_MOUNT_PATH)
         # controller-1's raft peer is controller-0's mgmt address
         self.assertEqual(config[_KEY_RAFT_PEERS], [_C0_MGMT])
+
+
+class TestGetHostConfigUpgradeInProgress(TestCase):
+    """During a platform upgrade openbao is disabled until activation."""
+
+    @mock.patch('sysinv.common.utils.get_personalities',
+                return_value=[constants.CONTROLLER])
+    def test_controller_disabled_during_upgrade(self, _mock_pers):
+        """While an upgrade is in progress get_host_config short-circuits:
+        service_enabled is False and no per-host raft/listener keys are
+        emitted (certificate renewal and unlock are deferred)."""
+        puppet = _make_puppet(is_upgrading=True)
+        puppet._get_address_by_name = mock.Mock(
+            side_effect=_fake_address_by_name)
+
+        config = puppet.get_host_config(
+            _make_host(constants.CONTROLLER_0_HOSTNAME))
+
+        self.assertFalse(config[_KEY_SERVICE_ENABLED])
+        # The upgrade path returns early -> no per-host provisioning keys.
+        for key in (_KEY_INITIAL_START, _KEY_NODE_ID, _KEY_CLUSTER_ADDR_NAME,
+                    _KEY_BIND_ADDRESS, _KEY_MGMT_LISTEN, _KEY_LUKS_FS_MOUNT,
+                    _KEY_RAFT_PEERS):
+            self.assertNotIn(key, config)
 
 
 class TestGetHostConfigAddressLookupFailure(TestCase):
