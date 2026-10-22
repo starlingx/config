@@ -525,9 +525,11 @@ class NetworkingPuppet(base.BasePuppet):
                     'message_tag': instance['name']
                 })
             elif instance['service'] == constants.PTP_INSTANCE_TYPE_SYNCE4L:
+                smc_socket_path = '/var/run/synce4l_socket_%s' % instance['name']
                 instance['global_parameters'].update({
                     'message_tag': instance['name'],
-                    'smc_socket_path': '/var/run/synce4l_socket_%s' % instance['name']
+                    'smc_socket_path': smc_socket_path,
+                    'smc_ro_socket_path': smc_socket_path + 'ro',
                 })
                 instance['device_parameters'].update(default_device_parameters)
             elif instance['service'] == constants.PTP_INSTANCE_TYPE_TS2PHC:
@@ -549,6 +551,14 @@ class NetworkingPuppet(base.BasePuppet):
                                                     'verbose', 'message_tag',
                                                     'smc_socket_path']:
                             instance['global_parameters'][global_param['name']] = global_param['value']
+                            # smc_ro_socket_path is auto-derived from
+                            # smc_socket_path (read-only socket = control socket
+                            # path + 'ro'); it is not user-settable. When the
+                            # user overrides smc_socket_path, re-derive it so the
+                            # two stay consistent.
+                            if global_param['name'] == 'smc_socket_path':
+                                instance['global_parameters']['smc_ro_socket_path'] = \
+                                    global_param['value'] + 'ro'
                         else:
                             instance['device_parameters'][global_param['name']] = global_param['value']
                 # Add the supplied instance parameters other than global section to section_parameters
