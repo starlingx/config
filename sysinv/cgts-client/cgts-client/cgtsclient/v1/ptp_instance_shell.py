@@ -101,6 +101,33 @@ def do_ptp_instance_delete(cc, args):
     print('Deleted PTP instance: %s' % uuid)
 
 
+def _validate_dpll_mgr_parameters(section, parameters):
+    """Validate dpll-mgr PTP instance parameter add requests.
+
+    The 'monitoring' section carries collectd-consumed params (e.g.
+    clockclass_passthrough) rendered to instance-monitoring.conf, separate
+    from the config_json schema sections enumerated in
+    PTP_INSTANCE_TYPE_DPLL_MGR_SUPPORTED_SECTIONS.
+    """
+    if section == 'monitoring':
+        for param_keypair in parameters:
+            if param_keypair.find("=") < 0:
+                raise exc.CommandError(
+                    f"Bad PTP parameter keypair: {param_keypair}")
+            (param_name, _param_value) = param_keypair.split("=", 1)
+            if param_name not in \
+                    constants.PTP_INSTANCE_TYPE_DPLL_MGR_MONITORING_PARAMETERS:
+                raise exc.CommandError(
+                    f"Parameter '{param_name}' is not supported for dpll-mgr "
+                    f"section=monitoring. Supported: "
+                    f"{constants.PTP_INSTANCE_TYPE_DPLL_MGR_MONITORING_PARAMETERS}")
+    elif section not in constants.PTP_INSTANCE_TYPE_DPLL_MGR_SUPPORTED_SECTIONS:
+        raise exc.CommandError(
+            f"Section '{section}' is not supported for dpll-mgr. "
+            f"Supported: {constants.PTP_INSTANCE_TYPE_DPLL_MGR_SUPPORTED_SECTIONS} "
+            f"(or 'monitoring')")
+
+
 def _ptp_instance_parameter_op(cc, op, instance, section, parameters):
     if len(parameters) == 0:
         raise exc.CommandError('Missing PTP parameter')
@@ -120,10 +147,7 @@ def _ptp_instance_parameter_op(cc, op, instance, section, parameters):
                 )
     # check section whitelist for dpll-mgr type
     elif ptp_instance.service == constants.PTP_INSTANCE_TYPE_DPLL_MGR and op == "add":
-        if section not in constants.PTP_INSTANCE_TYPE_DPLL_MGR_SUPPORTED_SECTIONS:
-            raise exc.CommandError(
-                f"Section '{section}' is not supported for dpll-mgr. "
-                f"Supported: {constants.PTP_INSTANCE_TYPE_DPLL_MGR_SUPPORTED_SECTIONS}")
+        _validate_dpll_mgr_parameters(section, parameters)
     # validate section=dpll parameters for clock instance type
     elif (ptp_instance.service == constants.PTP_INSTANCE_TYPE_CLOCK
           and section == 'dpll' and op == "add"):

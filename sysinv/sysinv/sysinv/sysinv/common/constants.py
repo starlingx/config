@@ -2708,6 +2708,13 @@ PTP_INSTANCE_TYPE_SYNCE4L_MONITORING_PARAMETERS = [
     'holdover_seconds',
 ]
 
+# dpll-mgr monitoring-section parameters consumed by collectd (read from
+# instance-monitoring.conf). clockclass_passthrough is the operator
+# toggle for GNR-D State-2 cc6 clockClass passthrough (D2, default enabled).
+PTP_INSTANCE_TYPE_DPLL_MGR_MONITORING_PARAMETERS = [
+    'clockclass_passthrough',
+]
+
 # PTP instances created during migration
 PTP_INSTANCE_LEGACY_PTP4L = 'ptp4l-legacy'
 PTP_INSTANCE_LEGACY_PHC2SYS = 'phc2sys-legacy'

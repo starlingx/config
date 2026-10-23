@@ -535,6 +535,39 @@ class TestUpdatePtpInstanceAptsMgr(BasePtpInstanceTestCase):
         self.assertEqual(response.status_code, http_client.BAD_REQUEST)
         self.assertIn('Unsupported sections', response.json['error_message'])
 
+    def test_add_dpll_mgr_monitoring_clockclass_passthrough_ok(self):
+        """Accept clockclass_passthrough in the dpll-mgr monitoring section.
+
+        the operator toggle is a monitoring-section param
+        collectd reads from instance-monitoring.conf. dpll-mgr monitoring must be
+        accepted (was previously rejected -> toggle inert -> passthrough could
+        not be disabled).
+        """
+        response = self.patch_json(
+            self.get_single_url(self.uuid),
+            [{'path': constants.PTP_PARAMETER_ARRAY_PATH,
+              'section': 'monitoring',
+              'value': 'clockclass_passthrough=disabled',
+              'op': constants.PTP_PATCH_OPERATION_ADD}],
+            headers=self.API_HEADERS)
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
+
+    def test_add_dpll_mgr_monitoring_unsupported_param_rejected(self):
+        """Reject an unknown param in the dpll-mgr monitoring section."""
+        response = self.patch_json(
+            self.get_single_url(self.uuid),
+            [{'path': constants.PTP_PARAMETER_ARRAY_PATH,
+              'section': 'monitoring',
+              'value': 'not_a_real_param=1',
+              'op': constants.PTP_PATCH_OPERATION_ADD}],
+            headers=self.API_HEADERS,
+            expect_errors=True)
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+        self.assertIn('Unsupported dpll-mgr monitoring parameter',
+                      response.json['error_message'])
+
     def test_add_config_json_long_value(self):
         """Accept config_json with value longer than 255 chars."""
         # Build a valid JSON > 255 chars
