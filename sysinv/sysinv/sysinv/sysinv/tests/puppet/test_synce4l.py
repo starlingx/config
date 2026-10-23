@@ -78,7 +78,8 @@ class TestSynce4lParameters(test_base.TestCase):
                          constants.PTP_SYNCE_SOURCE_PRIORITY)
 
     def test_synce4l_smc_socket_path_in_global_and_monitoring(self):
-        """smc_socket_path set in both global_parameters and monitoring_parameters."""
+        """smc_socket_path in global and monitoring; smc_ro_socket_path
+        auto-injected into global_parameters only (not monitoring)."""
         instances = [self._make_instance()]
         self.operator._set_ptp_instance_global_parameters(
             instances, [])
@@ -87,10 +88,39 @@ class TestSynce4lParameters(test_base.TestCase):
         self.operator._set_ptp_instance_monitoring_parameters(
             ptp_config, [])
         expected_socket = '/var/run/synce4l_socket_synce_test'
+        expected_ro_socket = expected_socket + 'ro'
         self.assertEqual(inst['global_parameters']['smc_socket_path'],
                          expected_socket)
         self.assertEqual(inst['monitoring_parameters']['smc_socket_path'],
                          expected_socket)
+        # smc_ro_socket_path is auto-injected into global_parameters only
+        # (mirrors ptp4l uds_ro_address); it is not a monitoring parameter.
+        self.assertEqual(inst['global_parameters']['smc_ro_socket_path'],
+                         expected_ro_socket)
+        self.assertNotIn('smc_ro_socket_path', inst['monitoring_parameters'])
+
+    def test_synce4l_smc_ro_socket_path_tracks_user_override(self):
+        """smc_ro_socket_path re-derives from a user-overridden smc_socket_path.
+
+        smc_socket_path is user-settable via the global section. When the
+        user overrides it, smc_ro_socket_path must follow as value + 'ro'
+        rather than keeping the stale default.
+        """
+        uuid_val = str(uuidutils.uuid4())
+        instances = [self._make_instance(uuid_val=uuid_val)]
+        user_param = {
+            'name': 'smc_socket_path',
+            'value': '/var/run/custom_sock',
+            'section': 'global',
+            'owners': [uuid_val],
+        }
+        self.operator._set_ptp_instance_global_parameters(
+            instances, [user_param])
+        inst = instances[0]
+        self.assertEqual(inst['global_parameters']['smc_socket_path'],
+                         '/var/run/custom_sock')
+        self.assertEqual(inst['global_parameters']['smc_ro_socket_path'],
+                         '/var/run/custom_sockro')
 
     def test_synce4l_user_override_routes_to_monitoring(self):
         """User-supplied holdover_ql via monitoring section overrides default."""
