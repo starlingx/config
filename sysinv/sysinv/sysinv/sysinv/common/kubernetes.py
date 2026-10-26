@@ -832,10 +832,14 @@ def get_kube_storage_upgrade_version(kube_upgrade):
         return kube_upgrade.to_version
 
 
-def kube_drain_node_with_options(node_name):
+def kube_drain_node_with_options(node_name, disable_eviction=False):
     """Drain a node with command line options
 
     :param: node_name: string. Name of the node to be drained.
+    :param: disable_eviction: bool. When True, pass '--disable-eviction=true'
+        so pods are deleted directly rather than via the eviction API. This
+        bypasses pod disruption budgets (PDBs); the caller decides when it
+        applies (e.g. single-node clusters where PDBs are not meaningful).
     :raise: SysinvException
     """
     try:
@@ -843,6 +847,8 @@ def kube_drain_node_with_options(node_name):
         cmd = ['kubectl', '--kubeconfig=%s' % KUBERNETES_ADMIN_CONF,
                'drain', node_name, '--ignore-daemonsets', '--delete-emptydir-data',
                '--force', '--skip-wait-for-delete-timeout=1', '--timeout=150s']
+        if disable_eviction:
+            cmd.append('--disable-eviction=true')
 
         process = subprocess.Popen(
             cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1)

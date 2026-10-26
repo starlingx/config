@@ -21065,7 +21065,10 @@ class ConductorManager(service.PeriodicService):
         system = self.dbapi.isystem_get_one()
         if system.system_mode == constants.SYSTEM_MODE_SIMPLEX:
             try:
-                kubernetes.kube_drain_node_with_options(host_name)
+                # Simplex has no HA peer, so PDBs cannot be satisfied during
+                # drain; delete pods directly instead of evicting them.
+                kubernetes.kube_drain_node_with_options(
+                    host_name, disable_eviction=True)
                 cordon_status = kubernetes.KUBE_UPGRADE_CORDON_COMPLETE
                 LOG.info("Kubernetes host cordon operation successful.")
             except Exception as ex:
