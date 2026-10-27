@@ -2003,18 +2003,6 @@ SSL_CERT_CA_LIST_SHARED_DIR = os.path.join(tsc.CONFIG_PATH, "ssl_ca")
 
 KUBERNETES_PKI_SHARED_DIR = os.path.join(tsc.CONFIG_PATH, "kubernetes/pki")
 
-CERT_OPENSTACK_DIR = "/etc/ssl/private/openstack"
-CERT_OPENSTACK_SHARED_DIR = os.path.join(tsc.CONFIG_PATH, 'openstack')
-OPENSTACK_CERT_FILE = os.path.join(CERT_OPENSTACK_DIR, CERT_FILE)
-OPENSTACK_CERT_KEY_FILE = os.path.join(CERT_OPENSTACK_DIR, CERT_KEY_FILE)
-OPENSTACK_CERT_CA_FILE = os.path.join(CERT_OPENSTACK_DIR, CERT_CA_FILE)
-OPENSTACK_CERT_FILE_SHARED = os.path.join(CERT_OPENSTACK_SHARED_DIR,
-                                          CERT_FILE)
-OPENSTACK_CERT_KEY_FILE_SHARED = os.path.join(CERT_OPENSTACK_SHARED_DIR,
-                                              CERT_KEY_FILE)
-OPENSTACK_CERT_CA_FILE_SHARED = os.path.join(CERT_OPENSTACK_SHARED_DIR,
-                                             CERT_CA_FILE)
-
 OPENBAO_CERT_DIR = "/etc/openbao/certs/"
 OPENBAO_CERT_FILE = os.path.join(OPENBAO_CERT_DIR, "openbao-cert.crt")
 OPENBAO_KEY_FILE = os.path.join(OPENBAO_CERT_DIR, "openbao-cert.key")
@@ -2024,16 +2012,12 @@ CERT_MODE_ETCD = 'etcd'
 CERT_MODE_SSL = 'ssl'
 CERT_MODE_SSL_CA = 'ssl_ca'
 CERT_MODE_DOCKER_REGISTRY = 'docker_registry'
-CERT_MODE_OPENSTACK = 'openstack'
-CERT_MODE_OPENSTACK_CA = 'openstack_ca'
 CERT_MODE_OPENLDAP = 'openldap'
 CERT_MODE_OPENLDAP_CA = 'openldap_ca'
 CERT_MODE_OPENBAO = "openbao"
 CERT_MODES_SUPPORTED = [CERT_MODE_SSL,
                         CERT_MODE_SSL_CA,
                         CERT_MODE_DOCKER_REGISTRY,
-                        CERT_MODE_OPENSTACK,
-                        CERT_MODE_OPENSTACK_CA,
                         CERT_MODE_OPENLDAP,
                         CERT_MODE_OPENLDAP_CA,
                         CERT_MODE_OPENBAO,
@@ -2923,9 +2907,7 @@ CERT_LOCATION_MAP = {
     CERT_MODE_SSL: SSL_PEM_FILE,
     CERT_MODE_DOCKER_REGISTRY: DOCKER_REGISTRY_CERT_FILE,
     CERT_MODE_OPENLDAP: OPENLDAP_CERT_FILE,
-    CERT_MODE_OPENBAO: OPENBAO_CERT_FILE,
-    CERT_MODE_OPENSTACK: OPENSTACK_CERT_FILE,
-    CERT_MODE_OPENSTACK_CA: OPENSTACK_CERT_CA_FILE
+    CERT_MODE_OPENBAO: OPENBAO_CERT_FILE
     # TODO(): TPM
 }
 

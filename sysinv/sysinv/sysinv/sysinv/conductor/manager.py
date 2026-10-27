@@ -17832,7 +17832,6 @@ class ConductorManager(service.PeriodicService):
         temp_pem_contents = pem_contents.encode("utf-8")
         if mode in [constants.CERT_MODE_SSL,
                     constants.CERT_MODE_DOCKER_REGISTRY,
-                    constants.CERT_MODE_OPENSTACK,
                     constants.CERT_MODE_OPENLDAP,
                     constants.CERT_MODE_OPENLDAP_CA,
                     constants.CERT_MODE_OPENBAO,
@@ -18385,76 +18384,6 @@ class ConductorManager(service.PeriodicService):
             self._config_apply_runtime_manifest(context,
                                                 config_uuid,
                                                 config_dict)
-
-        elif mode == constants.CERT_MODE_OPENSTACK:
-            config_uuid = self._config_update_hosts(context, personalities)
-            key_path = constants.OPENSTACK_CERT_KEY_FILE
-            cert_path = constants.OPENSTACK_CERT_FILE
-            private_bytes = self._get_private_bytes_one(private_key)
-            public_bytes = self._get_public_bytes(cert_list)
-
-            config_dict = {
-                'personalities': personalities,
-                'file_names': [key_path, cert_path],
-                'file_content': {key_path: private_bytes,
-                                 cert_path: public_bytes},
-                'nobackup': True,
-                'permissions': constants.CONFIG_FILE_PERMISSION_ROOT_READ_ONLY,
-            }
-            self._config_update_file(context, config_uuid, config_dict)
-
-            if not os.path.exists(constants.CERT_OPENSTACK_SHARED_DIR):
-                os.makedirs(constants.CERT_OPENSTACK_SHARED_DIR)
-            # copy the certificate to shared directory
-            with os.fdopen(os.open(constants.OPENSTACK_CERT_FILE_SHARED,
-                                   os.O_CREAT | os.O_TRUNC | os.O_WRONLY,
-                                   constants.CONFIG_FILE_PERMISSION_ROOT_READ_ONLY),
-                                   'wb') as f:
-                f.write(public_bytes)
-            with os.fdopen(os.open(constants.OPENSTACK_CERT_KEY_FILE_SHARED,
-                                   os.O_CREAT | os.O_TRUNC | os.O_WRONLY,
-                                   constants.CONFIG_FILE_PERMISSION_ROOT_READ_ONLY),
-                                   'wb') as f:
-                f.write(private_bytes)
-
-            config_uuid = self._config_update_hosts(context, personalities)
-            config_dict = {
-                "personalities": personalities,
-                "classes": ['openstack::keystone::endpoint::runtime',
-                            'openstack::horizon::runtime']
-            }
-            self._config_apply_runtime_manifest(context,
-                                                config_uuid,
-                                                config_dict)
-
-        elif mode == constants.CERT_MODE_OPENSTACK_CA:
-            config_uuid = self._config_update_hosts(context, personalities)
-            file_content = self._get_public_bytes(cert_list)
-            config_dict = {
-                'personalities': personalities,
-                'file_names': [constants.OPENSTACK_CERT_CA_FILE],
-                'file_content': file_content,
-                'permissions': constants.CONFIG_FILE_PERMISSION_DEFAULT,
-            }
-            self._config_update_file(context, config_uuid, config_dict)
-
-            # copy the certificate to shared directory
-            with os.fdopen(os.open(constants.OPENSTACK_CERT_CA_FILE_SHARED,
-                                   os.O_CREAT | os.O_TRUNC | os.O_WRONLY,
-                                   constants.CONFIG_FILE_PERMISSION_DEFAULT),
-                                   'wb') as f:
-                f.write(file_content)
-
-            config_uuid = self._config_update_hosts(context, personalities)
-            config_dict = {
-                "personalities": personalities,
-                "classes": ['openstack::keystone::endpoint::runtime',
-                            'openstack::horizon::runtime']
-            }
-            self._config_apply_runtime_manifest(context,
-                                                config_uuid,
-                                                config_dict)
-
         elif mode == constants.CERT_MODE_OPENBAO:
             LOG.info("Openbao certificate install")
 
@@ -24308,8 +24237,6 @@ class ConductorManager(service.PeriodicService):
                     constants.OPENLDAP_CERT_FILE),
                   ("dc-adminep-root-ca", constants.AUTOMATIC, constants.DC_ROOT_CA_CERT_PATH),
                   ("dc-adminep-server", constants.AUTOMATIC, constants.ADMIN_EP_CERT_FILENAME),
-                  ("openstack", constants.MANUAL, constants.OPENSTACK_CERT_FILE),
-                  ("openstack_ca", constants.MANUAL, constants.OPENSTACK_CERT_CA_FILE),
                   ("etcd-ca", constants.MANUAL, constants.ETCD_ROOTCA_FILE),
                   ("etcd-client", constants.AUTOMATIC, "/etc/etcd/etcd-client.crt"),
                   ("etcd-server", constants.AUTOMATIC, "/etc/etcd/etcd-server.crt"),

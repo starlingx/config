@@ -22,12 +22,9 @@
 import datetime
 import os
 import pecan
-import six
-import ssl
 import wsme
 import wsmeext.pecan as wsme_pecan
 
-from cryptography import x509
 from pecan import expose
 from pecan import rest
 
@@ -266,8 +263,6 @@ class CertificateController(rest.RestController):
            Certificates are installed according to one of the following modes:
                default: install certificate for ssl
                docker_registry: install certificate for docker registry
-               openstack: install certificate for openstack
-               openstack_ca: install ca certificate for openstack
         """
 
         log_start = cutils.timestamped("certificate_do_post_start")
@@ -367,7 +362,6 @@ class CertificateController(rest.RestController):
             # and openstack certificates
             if mode in [constants.CERT_MODE_SSL,
                         constants.CERT_MODE_DOCKER_REGISTRY,
-                        constants.CERT_MODE_OPENSTACK,
                         constants.CERT_MODE_OPENLDAP,
                         constants.CERT_MODE_OPENBAO,
                         ]:
@@ -437,15 +431,6 @@ class CertificateController(rest.RestController):
                     LOG.error(msg)
                     return dict(success="", error=msg)
 
-            if mode == constants.CERT_MODE_OPENSTACK and index == 0:
-                domain, msg = _check_endpoint_domain_exists()
-                if domain:
-                    msg = _check_cert_dns_name(cert, domain)
-                    if msg is not True:
-                        return dict(success="", error=six.text_type(msg))
-                elif msg:
-                    return dict(success="", error=msg)
-
         try:
             config_dict = {'passphrase': passphrase,
                            'mode': mode,
@@ -470,7 +455,6 @@ class CertificateController(rest.RestController):
             if mode in [constants.CERT_MODE_SSL,
                         constants.CERT_MODE_DOCKER_REGISTRY,
                         constants.CERT_MODE_OPENLDAP,
-                        constants.CERT_MODE_OPENSTACK,
                         constants.CERT_MODE_OPENBAO] \
                     and inv_cert.get('is_ca', None):
                 continue
@@ -662,125 +646,3 @@ class CertificateController(rest.RestController):
             policy.authorize(cert_policy.POLICY_ROOT % method_name, {}, context_dict)
         else:
             raise exception.PolicyNotFound()
-
-
-def _check_endpoint_domain_exists():
-    # Check that public endpoint FQDN is configured
-    endpoint_domain = None
-    msg = None
-    try:
-        endpoint_domain = pecan.request.dbapi.service_parameter_get_one(
-            constants.SERVICE_TYPE_OPENSTACK,
-            constants.SERVICE_PARAM_SECTION_OPENSTACK_HELM,
-            constants.SERVICE_PARAM_NAME_ENDPOINT_DOMAIN).value
-    except exception.NotFound:
-        msg = _("Service parameter for %s, %s, %s is not provisioned" % (
-            constants.SERVICE_TYPE_OPENSTACK,
-            constants.SERVICE_PARAM_SECTION_OPENSTACK_HELM,
-            constants.SERVICE_PARAM_NAME_ENDPOINT_DOMAIN
-        ))
-        LOG.info(msg)
-    return endpoint_domain, msg
-
-
-def _match_hostname(cert_dict, hostname):
-    """Match hostname against certificate CN or SAN entries.
-
-    Replacement for ssl.match_hostname() which was removed in Python 3.12.
-    Supports wildcard matching per RFC 6125: a wildcard '*' in the
-    leftmost label matches exactly one label (no dots).
-    e.g., *.example.com matches foo.example.com but NOT a.b.example.com.
-    """
-    san = cert_dict.get('subjectAltName', ())
-    dns_names = [value for field, value in san if field == 'DNS']
-
-    if not dns_names:
-        # Fall back to CN
-        for sub in cert_dict.get('subject', ()):
-            for key, value in sub:
-                if key == 'commonName':
-                    dns_names.append(value)
-
-    for pattern in dns_names:
-        if _ssl_wildcard_match(pattern.lower(), hostname.lower()):
-            return
-
-    raise ssl.SSLCertVerificationError(
-        "hostname '%s' doesn't match %s"
-        % (hostname, ', '.join(map(repr, dns_names)) or 'certificate'))
-
-
-def _ssl_wildcard_match(pattern, hostname):
-    """Match a DNS pattern against a hostname per RFC 6125.
-
-    Wildcard '*' is only allowed in the leftmost label and matches
-    exactly one label (does not cross dot boundaries).
-    """
-    if not pattern or not hostname:
-        return False
-
-    pattern_labels = pattern.split('.')
-    hostname_labels = hostname.split('.')
-
-    if len(pattern_labels) != len(hostname_labels):
-        return False
-
-    for i, (pat_label, host_label) in enumerate(
-            zip(pattern_labels, hostname_labels)):
-        if '*' in pat_label:
-            # Wildcard only valid in the first (leftmost) label
-            if i != 0:
-                return False
-            # Match prefix*suffix against host_label
-            prefix, suffix = pat_label.split('*', 1)
-            if not host_label.startswith(prefix):
-                return False
-            if not host_label.endswith(suffix):
-                return False
-            if len(host_label) < len(prefix) + len(suffix):
-                return False
-        else:
-            if pat_label != host_label:
-                return False
-
-    return True
-
-
-def _check_cert_dns_name(cert, endpoint_domain):
-    # Prepend the domain with any service name
-    service_endpoint_domain = 'keystone.' + endpoint_domain
-
-    # Check that the endpoint FQDN matches common name or
-    # the dns names in the subject alternative name section of the certificate
-    try:
-        alt_names = cert.extensions.get_extension_for_oid(
-            x509.oid.ExtensionOID.SUBJECT_ALTERNATIVE_NAME)
-    except x509.extensions.ExtensionNotFound:
-        alt_names = None
-        pass
-
-    if alt_names:
-        dns_names = alt_names.value.get_values_for_type(x509.DNSName)
-    if not alt_names or not dns_names:
-        cn = cert.subject.get_attributes_for_oid(
-            x509.oid.NameOID.COMMON_NAME)[0].value
-        LOG.debug("certificate has common name %s" % cn)
-        cert_cn = {'subject': ((('commonName', cn),),)}
-        try:
-            _match_hostname(cert_cn, service_endpoint_domain)
-        except Exception as e:
-            LOG.info("Failed to match CN: %s" % e)
-            return e
-    else:
-        LOG.debug("Certificate contains subject alternative name %s" % dns_names)
-        dns_list = []
-        for name in dns_names:
-            dns_list.append(('DNS', name))
-        cert_san = {'subjectAltName': dns_list}
-        try:
-            _match_hostname(cert_san, service_endpoint_domain)
-        except Exception as e:
-            LOG.info("Failed to match SAN: %s" % e)
-            return e
-
-    return True

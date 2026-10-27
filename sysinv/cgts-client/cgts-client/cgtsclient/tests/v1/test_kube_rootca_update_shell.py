@@ -16,6 +16,16 @@ class KubeRootCAUpdateTest(test_shell.ShellTest):
     def setUp(self):
         super(KubeRootCAUpdateTest, self).setUp()
 
+        # Force a wide terminal so PrettyTable does not wrap long column
+        # values (e.g. 'fake-effective_cert') across multiple lines, which
+        # would break the substring assertions below. The rendered width
+        # otherwise depends on the environment / prettytable version.
+        term_size_patcher = mock.patch(
+            'cgtsclient.common.utils.get_terminal_size',
+            return_value=(1000, 100))
+        term_size_patcher.start()
+        self.addCleanup(term_size_patcher.stop)
+
         self.fake_kube_rootca_update = {
             'from_rootca_cert': 'oldCert',
             'to_rootca_cert': 'newCert',
