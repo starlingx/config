@@ -11462,18 +11462,47 @@ class ManagerTestCase(base.DbTestCase):
         self.addCleanup(q.stop)
 
         utils.create_test_kube_rootca_update(state=kubernetes.KUBE_ROOTCA_UPDATE_STARTED)
-        resp = self.service.generate_kubernetes_rootca_cert(self.context, {}, None)
+        resp = self.service.generate_kubernetes_rootca_cert(self.context, {}, None, None, None)
         self.assertTrue(resp.get('success'))
 
+    def _get_applied_certificate(self):
+        """Return the Certificate sent to cert-manager via apply_custom_resource."""
+        for call in self.mock_kube_create_issuer.call_args_list:
+            plural, body = call.args[3], call.args[5]
+            if plural == 'certificates':
+                return body
+
+    def test_generate_rootca_private_key_spec(self):
+        # The cert-manager secret never shows up, so generate_kubernetes_rootca_cert
+        # ends right after applying the resources. Only the Certificate is checked.
+        self.mock_get_cert_secret = mock.MagicMock(return_value=None)
+        q = mock.patch(
+            'sysinv.common.kubernetes.KubeOperator.get_cert_secret',
+            self.mock_get_cert_secret)
+        q.start()
+        self.addCleanup(q.stop)
+
+        utils.create_test_kube_rootca_update(state=kubernetes.KUBE_ROOTCA_UPDATE_STARTED)
+
+        for algorithm, key_size in (('RSA', 4096), ('ECDSA', 521)):
+            self.mock_kube_create_issuer.reset_mock()
+
+            self.service.generate_kubernetes_rootca_cert(
+                self.context, {}, algorithm, key_size, None)
+
+            certificate = self._get_applied_certificate()
+            self.assertEqual({'algorithm': algorithm, 'size': key_size},
+                             certificate['spec']['privateKey'])
+
     def test_generate_rootca_not_in_progress(self):
-        resp = self.service.generate_kubernetes_rootca_cert(self.context, {}, None)
+        resp = self.service.generate_kubernetes_rootca_cert(self.context, {}, None, None, None)
         self.assertFalse(resp.get('success'))
         self.assertTrue(resp.get('error'))
         self.assertIn("Kubernetes root CA update not started", resp.get('error'))
 
     def test_generate_rootca_advanced_state(self):
         utils.create_test_kube_rootca_update(state=kubernetes.KUBE_ROOTCA_UPDATED_PODS_TRUSTBOTHCAS)
-        resp = self.service.generate_kubernetes_rootca_cert(self.context, {}, None)
+        resp = self.service.generate_kubernetes_rootca_cert(self.context, {}, None, None, None)
         self.assertFalse(resp.get('success'))
         self.assertTrue(resp.get('error'))
         self.assertIn("A new root CA certificate already exists", resp.get('error'))

@@ -23348,7 +23348,7 @@ class ConductorManager(service.PeriodicService):
         if proc.returncode != 0:
             raise Exception("Failed to delete rook-ceph-recovery configmap (rc=%s)." % proc.returncode)
 
-    def generate_kubernetes_rootca_cert(self, context, subject, duration=None):
+    def generate_kubernetes_rootca_cert(self, context, subject, algorithm, key_size, duration=None):
         """ Generate a new k8s root CA
             this will consist on 5 steps:
                 1. Pre-check to assure all conditions are OK for the cert generation
@@ -23439,8 +23439,8 @@ class ConductorManager(service.PeriodicService):
             },
             'keyEncoding': 'pkcs8',
             'privateKey': {
-                'algorithm': 'ECDSA',
-                'size': 384
+                'algorithm': algorithm,
+                'size': key_size
             }
         }
 

@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2021-2023,2025 Wind River Systems, Inc.
+# Copyright (c) 2021-2023,2025-2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -12,6 +12,8 @@ import datetime
 import json
 import mock
 from six.moves import http_client
+import wsme
+from sysinv.api.controllers.v1 import kube_rootca_update
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import health
@@ -49,7 +51,8 @@ class FakeConductorAPI(object):
     def __init__(self):
         self.service = ConductorManager('test-host', 'test-topic')
         self.save_kubernetes_rootca_cert = self.fake_config_certificate
-        self.generate_kubernetes_rootca_cert = self.fake_generate_rootca
+        self.generate_kubernetes_rootca_cert = mock.Mock(
+            side_effect=self.fake_generate_rootca)
         self.config_certificate_return = None
         self.platcert_k8s_secret_value = False
         self.generate_rootca_return = None
@@ -68,7 +71,7 @@ class FakeConductorAPI(object):
     def fake_config_certificate(self, context, pem):
         return self.config_certificate_return
 
-    def fake_generate_rootca(self, context, duration, subject):
+    def fake_generate_rootca(self, context, subject, algorithm=None, key_size=None, duration=None):
         return self.generate_rootca_return
 
     def setup_config_certificate(self, data):
@@ -636,6 +639,72 @@ class TestKubeRootCAGenerate(TestKubeRootCAUpdate,
         self.assertTrue(resp.get('success'))
         self.assertEqual(resp.get('success'), fake_save_rootca_return.get('success'))
         self.assertFalse(resp.get('error'))
+
+    def test_generate_rootca_passes_key_params_to_rpcapi(self):
+        dbutils.create_test_kube_rootca_update(state=kubernetes.KUBE_ROOTCA_UPDATE_STARTED)
+        fake_new_rootca_id = '137813-123'
+        self.fake_conductor_api.setup_generate_rootca(
+            {'success': fake_new_rootca_id, 'error': ''})
+        rpc_call = self.fake_conductor_api.generate_kubernetes_rootca_cert
+
+        # (key params in the request, algorithm and key_size sent to the rpcapi)
+        cases = [
+            ({'algorithm': 'RSA', 'key_size': 4096}, 'RSA', 4096),
+            ({}, 'ECDSA', 384),  # defaults
+        ]
+        for key_params, expected_algorithm, expected_key_size in cases:
+            rpc_call.reset_mock()
+            create_dict = {'expiry_date': None, 'subject': None}
+            create_dict.update(key_params)
+
+            response = self.post_json('/kube_rootca_update/generate_cert', create_dict,
+                                      headers=self.headers)
+
+            self.assertEqual(response.status_code, http_client.OK)
+
+            rpc_call.assert_called_once_with(
+                mock.ANY, mock.ANY, expected_algorithm, expected_key_size, mock.ANY)
+
+
+class TestKubeRootCAGetPrivateKeyParams(base.FunctionalTest):
+
+    def setUp(self):
+        super(TestKubeRootCAGetPrivateKeyParams, self).setUp()
+        self.controller = kube_rootca_update.KubeRootCAGenerateController()
+
+    def test_get_private_key_params_succeeds(self):
+        # (algorithm, key_size) -> (algorithm, key_size) returned
+        valid_inputs = [
+            ((None, None), ('ECDSA', 384)),
+            (('ECDSA', None), ('ECDSA', 384)),
+            (('ECDSA', 384), ('ECDSA', 384)),
+            (('ECDSA', 521), ('ECDSA', 521)),
+            (('RSA', None), ('RSA', 4096)),
+            (('RSA', 4096), ('RSA', 4096)),
+        ]
+
+        for (algorithm, key_size), expected in valid_inputs:
+            with self.subTest(algorithm=algorithm, key_size=key_size):
+                result = self.controller.get_private_key_params(algorithm, key_size)
+
+                self.assertEqual(expected, result)
+
+    def test_get_private_key_params_fails(self):
+        invalid_inputs = [
+            (None, 384),  # key size without algorithm
+            ("DSA", None),  # unsupported algorithm
+            ("ecdsa", 384),  # algorithm is case-sensitive
+            ("ECDSA", 256),  # unsupported key size
+            ("ECDSA", 4096),  # unsupported key size
+            ("RSA", 2048),  # unsupported key size
+            ("RSA", 384),  # unsupported key size
+        ]
+
+        for algorithm, key_size in invalid_inputs:
+            with self.subTest(algorithm=algorithm, key_size=key_size):
+                self.assertRaises(wsme.exc.ClientSideError,
+                                  self.controller.get_private_key_params,
+                                  algorithm, key_size)
 
 
 class TestKubeRootCAPodsUpdateTrustBothCAs(TestKubeRootCAUpdate,
