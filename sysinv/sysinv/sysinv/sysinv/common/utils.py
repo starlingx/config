@@ -147,6 +147,25 @@ BYTE_MULTIPLIERS = {
     'k': 1024,
 }
 
+# Alarm ids are numeric, dot separated and have at least two components,
+# e.g. '900.007'. Used to tell an alarm_ignore_list entry apart from an
+# unparseable value.
+#
+# All 332 ids in fault/fm-doc/fm_doc/events.yaml have exactly two three
+# digit components, but the pattern deliberately constrains only the
+# shape and not the format: any number of components beyond the first and
+# any number of digits are accepted, so '1.2' and '1.2.3.4.5' match and a
+# future id format does not have to come back here. Please keep it that
+# way rather than tightening it to '^\d{3}\.\d{3}$'.
+#
+# What it does insist on is the dot. Without it '900,007' -- a comma typed
+# where a dot belongs, which is the mistake this guards against -- would
+# parse to the two perfectly shaped ids '900' and '007', match no alarm,
+# and report a clean [Fail]. No alarm id has a single component, so
+# requiring the dot turns that typo into a rejected value, which the API
+# boundary reports to the caller.
+ALARM_ID_PATTERN = re.compile(r'^\d+(?:\.\d+)+$')
+
 
 class memoized(object):
     '''Decorator. Caches a function's return value each time it is called.
@@ -5046,39 +5065,89 @@ def get_debian_release_codename():
     return None
 
 
+def _validated_alarm_ids(alarm_ids, raw_value):
+    """Holds a list of alarm ids to the ALARM_ID_PATTERN contract.
+
+    All-or-nothing on purpose: a value with one bad token is rejected
+    whole instead of being partially honoured, so a typo never results
+    in a subset of the requested alarms being ignored.
+
+    :param alarm_ids: list of candidate alarm-id strings.
+    :param raw_value: the value as it arrived, for the log message.
+    :returns: ``alarm_ids`` unchanged, or an empty list.
+    """
+    invalid = [alarm_id for alarm_id in alarm_ids
+               if not ALARM_ID_PATTERN.match(alarm_id)]
+    if invalid:
+        LOG.warning(
+            "alarm_ignore_list value %r contains entries that are not alarm "
+            "ids (%s), ignoring the whole value", raw_value, invalid)
+        return []
+    return alarm_ids
+
+
 def parse_alarm_ignore_list(value):
-    """Normalize an ``alarm_ignore_list`` value coming from a request body.
+    """Normalize an ``alarm_ignore_list`` value coming from a request.
 
-    Older clients send the list as a string-serialized Python literal
-    (e.g. ``"['900.401',]"``), while newer clients may send a real JSON
-    array. Both forms must be accepted and converted to a Python list of
-    alarm-id strings. Invalid input is logged and returned as an empty
-    list so callers can treat it as a soft default.
+    Three input forms reach this helper and all three are accepted:
 
-    :param value: raw value read from the request body, or ``None``.
+    * an already-parsed list, tuple or set, as sent in the
+      ``kube-upgrade-start`` request body;
+    * a string-serialized Python literal (e.g. ``"['900.401',]"``), as
+      sent by older cgts-client versions and by the USM deploy precheck;
+    * a comma-separated list of alarm ids (e.g. ``"900.401,900.007"``),
+      as sent on a query string.
+
+    All three are held to the same contract: every entry must look like
+    an alarm id (``ALARM_ID_PATTERN``), otherwise the whole value is
+    rejected. The form the value arrived in does not change how strictly
+    it is validated.
+
+    A rejected value is logged and returned as an empty list rather than
+    raised, because this helper is shared with the ``kube-upgrade-start``
+    request body, where raising would break existing clients. Returning
+    empty also fails in the safe direction: no alarm is ignored. A caller
+    that needs the operator to be told about a rejected value has to
+    compare the result against what it supplied; see
+    ``HealthController._get_kube_upgrade_alarm_ignore_list``, which does
+    exactly that for the query string parameter.
+
+    :param value: raw value read from the request, or ``None``.
     :returns: list of alarm-id strings (possibly empty).
     """
     if value is None:
         return []
     if isinstance(value, (list, tuple, set)):
-        return [str(a) for a in value]
+        return _validated_alarm_ids([str(a) for a in value], value)
     if isinstance(value, str):
         value = value.strip()
         if not value:
             return []
-        try:
-            parsed = ast.literal_eval(value)
-        except (ValueError, SyntaxError):
+        if value[0] in '[({':
+            # Serialized collection literal, as sent by older clients.
+            try:
+                parsed = ast.literal_eval(value)
+            except (ValueError, SyntaxError):
+                LOG.warning(
+                    "Could not parse alarm_ignore_list value %r, ignoring it",
+                    value)
+                return []
+            if isinstance(parsed, (list, tuple, set)):
+                return _validated_alarm_ids([str(a) for a in parsed], value)
             LOG.warning(
-                "Could not parse alarm_ignore_list value %r, ignoring it",
+                "alarm_ignore_list parsed value is not a list (%r), "
+                "ignoring it", parsed)
+            return []
+        # Comma-separated alarm ids, as sent on a query string. A single
+        # alarm id is a valid list of one.
+        ids = [token.strip() for token in value.split(',')]
+        ids = [alarm_id for alarm_id in ids if alarm_id]
+        if not ids:
+            LOG.warning(
+                "alarm_ignore_list value %r has no alarm id, ignoring it",
                 value)
             return []
-        if isinstance(parsed, (list, tuple, set)):
-            return [str(a) for a in parsed]
-        LOG.warning(
-            "alarm_ignore_list parsed value is not a list (%r), ignoring it",
-            parsed)
-        return []
+        return _validated_alarm_ids(ids, value)
     LOG.warning(
         "alarm_ignore_list has unexpected type %s, ignoring it",
         type(value).__name__)

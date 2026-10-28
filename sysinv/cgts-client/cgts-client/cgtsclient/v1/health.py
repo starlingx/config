@@ -1,10 +1,12 @@
 # -*- encoding: utf-8 -*-
 #
-# Copyright (c) 2015-2023 Wind River Systems, Inc.
+# Copyright (c) 2015-2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
 
+
+from six.moves import urllib
 
 from cgtsclient.common import base
 
@@ -27,8 +29,12 @@ class HealthManager(base.Manager):
         path = '/v1/health/kube-upgrade'
         if relaxed:
             path += '/relaxed'
-        rootca = None if not args else args.get('rootca')
-        if rootca:
-            path += f'?rootca={rootca}'
+        args = args or {}
+        params = [(name, args[name])
+                  for name in ('rootca', 'alarm_ignore_list',
+                               'use_default_ignore_list')
+                  if args.get(name)]
+        if params:
+            path += '?' + urllib.parse.urlencode(params)
         resp, body = self.api.json_request('GET', path)
         return body

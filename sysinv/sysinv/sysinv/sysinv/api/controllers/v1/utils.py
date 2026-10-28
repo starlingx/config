@@ -34,6 +34,7 @@ import tsconfig.tsconfig as tsc
 
 from oslo_config import cfg
 from oslo_log import log
+from oslo_utils import strutils
 from sysinv._i18n import _
 from sysinv.common import ceph
 from sysinv.common import constants
@@ -75,6 +76,41 @@ def validate_sort_dir(sort_dir):
                                          "Acceptable values are "
                                          "'asc' or 'desc'") % sort_dir)
     return sort_dir
+
+
+def boolean_param(name, value, default=False):
+    """Coerces a query string parameter to a boolean.
+
+    wsme hands a query string parameter over as text, so any non-empty
+    string is truthy: without this coercion 'false', '0' and 'no' all
+    read as True. An unrecognized value is rejected with a 400 instead of
+    being silently treated as False, so that a typo in a URL is not read
+    as a deliberate opt-out.
+
+    A valueless flag ('?name', which arrives as an empty string) is read
+    as True: naming the parameter at all is the caller asking for it,
+    which is the usual query string convention for a flag.
+
+    Note this is for query string parameters only. A boolean carried as a
+    path segment (e.g. /health/kube-upgrade/relaxed) arrives as the
+    segment text and must not be passed through here.
+
+    :param name: parameter name, used in the error message.
+    :param value: the raw value, or None when the parameter is absent.
+    :param default: value to return when the parameter is absent.
+    :returns: bool
+    :raises wsme.exc.ClientSideError: if the value is not recognized.
+    """
+    if value is None:
+        return default
+    if value == '':
+        return True
+    try:
+        return strutils.bool_from_string(value, strict=True)
+    except ValueError:
+        raise wsme.exc.ClientSideError(
+            _("Invalid value '%(value)s' for parameter '%(name)s'. "
+              "Expected a boolean.") % {'value': value, 'name': name})
 
 
 def validate_patch(patch):

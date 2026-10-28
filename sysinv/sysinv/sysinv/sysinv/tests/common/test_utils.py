@@ -15,6 +15,7 @@ import errno
 import mock
 import os
 import subprocess
+import testtools
 import time
 
 from sysinv.common import constants
@@ -676,3 +677,179 @@ class TestCommonUtils(base.TestCase):
 
             mock_popen.assert_not_called()
             mock_sys_stdout_flush.assert_not_called()
+
+
+class TestParseAlarmIgnoreList(testtools.TestCase):
+    """Unit tests for sysinv.common.utils.parse_alarm_ignore_list.
+
+    The helper accepts the alarm_ignore_list value coming from a request,
+    which may be: None, an already-parsed list (kube-upgrade-start
+    request body), a string-serialized Python literal (older clients and
+    the USM deploy precheck), a comma-separated list of alarm ids (query
+    string), or unexpected types. All cases must be normalized to a list
+    of alarm-id strings.
+
+    The three accepted forms are held to one contract: every entry must
+    look like an alarm id, otherwise the whole value is rejected. The
+    form the value arrived in must not change how strictly it is
+    validated.
+    """
+
+    def test_none_returns_empty_list(self):
+        result = utils.parse_alarm_ignore_list(None)
+        self.assertEqual(result, [])
+
+    def test_empty_string_returns_empty_list(self):
+        result = utils.parse_alarm_ignore_list('')
+        self.assertEqual(result, [])
+
+    def test_whitespace_string_returns_empty_list(self):
+        result = utils.parse_alarm_ignore_list('   ')
+        self.assertEqual(result, [])
+
+    def test_python_list_passes_through(self):
+        result = utils.parse_alarm_ignore_list(
+            ['900.023', '900.401'])
+        self.assertEqual(result, ['900.023', '900.401'])
+
+    def test_legacy_string_serialized_list_is_parsed(self):
+        # cgts-client used to send the list as repr of a Python list
+        result = utils.parse_alarm_ignore_list(
+            "['900.023', '900.401']")
+        self.assertEqual(result, ['900.023', '900.401'])
+
+    def test_legacy_string_with_trailing_comma_is_parsed(self):
+        # cgts-client formatted the list with a trailing comma
+        result = utils.parse_alarm_ignore_list(
+            "['900.401',]")
+        self.assertEqual(result, ['900.401'])
+
+    def test_comma_separated_string_is_parsed(self):
+        # Format used on the health check query string
+        result = utils.parse_alarm_ignore_list(
+            '900.023,900.401')
+        self.assertEqual(result, ['900.023', '900.401'])
+
+    def test_comma_separated_string_with_spaces_is_parsed(self):
+        result = utils.parse_alarm_ignore_list(
+            '  900.023 , 900.401  ')
+        self.assertEqual(result, ['900.023', '900.401'])
+
+    def test_single_alarm_id_is_a_list_of_one(self):
+        # A single alarm id has no comma, but is still a valid list
+        result = utils.parse_alarm_ignore_list(
+            '900.007')
+        self.assertEqual(result, ['900.007'])
+
+    def test_comma_separated_string_with_empty_tokens_is_parsed(self):
+        result = utils.parse_alarm_ignore_list(
+            '900.023,,900.401,')
+        self.assertEqual(result, ['900.023', '900.401'])
+
+    def test_comma_separated_string_with_invalid_token_is_rejected(self):
+        # All-or-nothing: rejecting the whole value fails closed, i.e. no
+        # alarm is ignored, instead of silently dropping the bad token
+        result = utils.parse_alarm_ignore_list(
+            '900.023,not-an-alarm-id')
+        self.assertEqual(result, [])
+
+    def test_alarm_id_embedded_in_another_string_is_rejected(self):
+        # Guards against the previous substring matching behaviour
+        result = utils.parse_alarm_ignore_list(
+            'XX900.023XX')
+        self.assertEqual(result, [])
+
+    def test_only_commas_returns_empty_list(self):
+        result = utils.parse_alarm_ignore_list(',,')
+        self.assertEqual(result, [])
+
+    def test_tuple_is_normalized_to_list(self):
+        result = utils.parse_alarm_ignore_list(
+            ('900.023', '900.401'))
+        self.assertEqual(sorted(result), ['900.023', '900.401'])
+
+    def test_set_is_normalized_to_list(self):
+        result = utils.parse_alarm_ignore_list(
+            {'900.023', '900.401'})
+        self.assertEqual(sorted(result), ['900.023', '900.401'])
+
+    def test_invalid_string_returns_empty_list(self):
+        # Unparseable garbage must not raise; just log and ignore
+        result = utils.parse_alarm_ignore_list(
+            'not-a-list')
+        self.assertEqual(result, [])
+
+    def test_string_parsing_to_non_list_returns_empty_list(self):
+        # The string parses to a dict, which is not list-like
+        result = utils.parse_alarm_ignore_list(
+            "{'foo': 'bar'}")
+        self.assertEqual(result, [])
+
+    def test_unexpected_type_returns_empty_list(self):
+        # Any non-string/non-iterable type is rejected gracefully
+        result = utils.parse_alarm_ignore_list(42)
+        self.assertEqual(result, [])
+
+    def test_non_string_entries_are_stringified(self):
+        # A caller may pass entries that are not strings; they are
+        # converted before being matched against the pattern
+        result = utils.parse_alarm_ignore_list([900.007])
+        self.assertEqual(result, ['900.007'])
+
+    def test_dotless_entry_is_rejected(self):
+        # No alarm id has a single component. Accepting one would make
+        # the '900,007' typo below look like a valid list of two ids
+        result = utils.parse_alarm_ignore_list([900, 901])
+        self.assertEqual(result, [])
+
+    def test_comma_typed_instead_of_dot_is_rejected(self):
+        # '900,007' is '900.007' with the dot mistyped. Both tokens are
+        # numeric, so only the missing dot tells them apart from real
+        # alarm ids. Rejecting the value is what lets the API boundary
+        # report the mistake instead of returning a clean [Fail] that
+        # ignored nothing.
+        result = utils.parse_alarm_ignore_list('900,007')
+        self.assertEqual(result, [])
+
+    def test_list_with_invalid_entry_is_rejected(self):
+        # The kube-upgrade-start request body reaches the helper as a
+        # real list. It gets the same treatment as the query string form:
+        # one bad entry rejects the value, and 900.023 is not ignored
+        # just because it shared a list with a valid-looking id
+        result = utils.parse_alarm_ignore_list(
+            ['900.023', 'not-an-alarm-id'])
+        self.assertEqual(result, [])
+
+    def test_legacy_literal_with_invalid_entry_is_rejected(self):
+        # Same for the serialized literal form
+        result = utils.parse_alarm_ignore_list(
+            "['900.023', 'not-an-alarm-id']")
+        self.assertEqual(result, [])
+
+    def test_tuple_with_invalid_entry_is_rejected(self):
+        result = utils.parse_alarm_ignore_list(
+            ('not-an-alarm-id',))
+        self.assertEqual(result, [])
+
+    def test_the_three_input_forms_agree(self):
+        # One contract, three forms: the same content must give the same
+        # answer whichever way it arrives, both when valid and when not
+        valid = ['900.023', '900.401']
+        self.assertEqual(utils.parse_alarm_ignore_list(valid), valid)
+        self.assertEqual(
+            utils.parse_alarm_ignore_list(str(valid)), valid)
+        self.assertEqual(
+            utils.parse_alarm_ignore_list(','.join(valid)), valid)
+
+        invalid = ['900.023', 'bogus']
+        self.assertEqual(utils.parse_alarm_ignore_list(invalid), [])
+        self.assertEqual(utils.parse_alarm_ignore_list(str(invalid)), [])
+        self.assertEqual(
+            utils.parse_alarm_ignore_list(','.join(invalid)), [])
+
+    def test_loose_alarm_id_shapes_are_accepted(self):
+        # ALARM_ID_PATTERN constrains the shape, not the format: any
+        # number of components beyond the first and any number of digits
+        # are accepted, so a future id format does not break here
+        result = utils.parse_alarm_ignore_list('1.2,1.2.3.4.5')
+        self.assertEqual(result, ['1.2', '1.2.3.4.5'])
