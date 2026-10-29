@@ -553,6 +553,24 @@ class TestUpdatePtpInstanceAptsMgr(BasePtpInstanceTestCase):
         self.assertEqual(response.content_type, 'application/json')
         self.assertEqual(response.status_code, http_client.OK)
 
+    def test_add_dpll_mgr_monitoring_clockclass_extended_relay_ok(self):
+        """Accept clockclass_extended_relay in the dpll-mgr monitoring section.
+
+        The extended-clockClass relay (G.8275.1 Table 2 NOTE 3) is an operator
+        toggle collectd reads from instance-monitoring.conf; the dpll-mgr
+        monitoring section must accept it so the relay can be opted out,
+        mirroring clockclass_passthrough.
+        """
+        response = self.patch_json(
+            self.get_single_url(self.uuid),
+            [{'path': constants.PTP_PARAMETER_ARRAY_PATH,
+              'section': 'monitoring',
+              'value': 'clockclass_extended_relay=disabled',
+              'op': constants.PTP_PATCH_OPERATION_ADD}],
+            headers=self.API_HEADERS)
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
+
     def test_add_dpll_mgr_monitoring_unsupported_param_rejected(self):
         """Reject an unknown param in the dpll-mgr monitoring section."""
         response = self.patch_json(
