@@ -4554,6 +4554,12 @@ class AppImageParser(object):
 
     TAG_LIST = ['tag', 'imageTag', 'imagetag']
     EXCEPTION_KEYS = ['source_url']
+    # Some charts declare images per component as a trio of sibling keys
+    # 'repository'/'image'/'version' (rendered as
+    # '<repository>/<image>:<version>'). 'version' is treated as a tag key
+    # only when it appears together with this trio, to avoid
+    # misinterpreting unrelated 'version' fields in other charts.
+    REPO_IMAGE_VERSION_KEYS = ('repository', 'image', 'version')
 
     def _find_images_in_dict(self, var_dict):
         """A generator to find image references in a nested dictionary.
@@ -4585,6 +4591,11 @@ class AppImageParser(object):
                    <group>:
                      image: <str>
                      tag(imageTag/imagetag): <str>
+
+              9. <component>:          (per-component repository/image/version
+                   repository: <str>    trio, rendered by the chart as
+                   image: <str>         <repository>/<image>:<version>)
+                   version: <str>
 
         :param var_dict: dict
         :return: a list of image references
@@ -4633,8 +4644,73 @@ class AppImageParser(object):
                         yield {k: v}
 
                 elif isinstance(v, dict):
-                    for result in self._find_images_in_dict(v):
-                        yield {k: result}
+                    # Per-component 'repository'/'image'/'version' trio.
+                    # Yield the three sibling fields together so the image
+                    # reference is not split and the tag ('version') is
+                    # preserved. The component may also hold nested
+                    # components (a trio inside another component), so keep
+                    # traversing the remaining keys.
+                    if self._is_repo_image_version(v):
+                        trio = {'repository': v['repository'],
+                                'image': v['image'],
+                                'version': v['version']}
+                        nested = {}
+                        for sub_k, sub_v in six.iteritems(v):
+                            sub_key = (sub_k.lower()
+                                       if isinstance(sub_k, str) else sub_k)
+                            if sub_key in self.REPO_IMAGE_VERSION_KEYS:
+                                continue
+                            if isinstance(sub_v, dict):
+                                for result in self._find_images_in_dict(
+                                        {sub_k: sub_v}):
+                                    nested = self.merge_dict(nested, result)
+                        trio.update(nested)
+                        yield {k: trio}
+                    else:
+                        for result in self._find_images_in_dict(v):
+                            yield {k: result}
+
+    def _is_repo_image_version(self, var):
+        """Check whether a dict is a 'repository'/'image'/'version' trio.
+
+        Some charts declare images per component using three sibling keys
+        'repository', 'image' and 'version' (rendered as
+        'repository', 'image' and 'version' (rendered as
+        '<repository>/<image>:<version>'). 'repository' and 'image' must be
+        strings. 'version' may also be an
+        int or float, because YAML loads an unquoted value such as
+        'version: 2' or 'version: 1.20' as a number; it is converted with
+        str() when the image reference is built. Note that a float loses
+        trailing zeros (1.20 loads as 1.2), so such values should be
+        quoted in the chart overrides.
+
+        :param var: candidate dict
+        :return: True when all three keys are present with valid values
+        """
+        if not isinstance(var, dict):
+            return False
+        keys = {k.lower() for k in var if isinstance(k, str)}
+        if not set(self.REPO_IMAGE_VERSION_KEYS).issubset(keys):
+            return False
+        version = var.get('version')
+        valid = (isinstance(var.get('image'), str) and
+                 isinstance(var.get('repository'), str) and
+                 isinstance(version, (str, int, float)) and
+                 not isinstance(version, bool))
+        if not valid:
+            LOG.warning("Ignoring image entry with repository/image/version "
+                        "keys but invalid value types (repository=%s, "
+                        "image=%s, version=%s); expected strings for "
+                        "repository and image, and a string or number for "
+                        "version." % (type(var.get('repository')).__name__,
+                                      type(var.get('image')).__name__,
+                                      type(version).__name__))
+        elif isinstance(version, float):
+            LOG.info("Image '%s' has a numeric float version '%s'; "
+                     "trailing zeros are lost by YAML (1.20 -> 1.2). "
+                     "Quote the version in the overrides if the tag "
+                     "differs." % (var.get('image'), version))
+        return valid
 
     def _find_nested_images(self, var, top_level=False):
         """Find image references nested within an 'image' section.
@@ -4791,7 +4867,30 @@ class AppImageParser(object):
                     v = '{}/{}'.format(constants.DOCKER_REGISTRY_SERVER, v)
                     imgs_dict[k] = v
             elif isinstance(v, dict):
-                if ("registry" in v and "repository" in v and
+                if self._is_repo_image_version(v):
+                    # Per-component 'repository'/'image'/'version' trio.
+                    # Prefix the 'repository' field with the local registry
+                    # so operands pull from registry.local rather than the
+                    # public source. As for string images, a repository
+                    # without a registry host (e.g. 'bitnami') is first
+                    # qualified with an explicit 'docker.io'.
+                    if constants.DOCKER_REGISTRY_SERVER not in v["repository"]:
+                        repo = v["repository"]
+                        if (not re.search(r'^.+:.+/', repo) and
+                                not cutils.is_valid_domain_name(
+                                    repo.split('/')[0])):
+                            repo = '{}/{}'.format(
+                                constants.DEFAULT_DOCKER_DOCKER_REGISTRY, repo)
+                        v["repository"] = '{}/{}'.format(
+                            constants.DOCKER_REGISTRY_SERVER, repo)
+                    # The component may also hold nested components; recurse
+                    # only into dict children so the trio's own
+                    # 'image'/'version' strings are not rewritten.
+                    for sub_k, sub_v in six.iteritems(v):
+                        if isinstance(sub_v, dict):
+                            self.update_images_with_local_registry(
+                                {sub_k: sub_v})
+                elif ("registry" in v and "repository" in v and
                         cutils.is_empty_value(v["registry"]) and
                         constants.DOCKER_REGISTRY_SERVER not in v["repository"]):
                     v["repository"] = '{}/{}'.format(
@@ -4909,7 +5008,22 @@ class AppImageParser(object):
                             sub_value, download_imgs_list)
 
             elif isinstance(v, dict):
-                self.generate_download_images_list(v, download_imgs_list)
+                # Per-component 'repository'/'image'/'version' trio:
+                # assemble the three sibling fields into a single
+                # '<repository>/<image>:<version>' download reference.
+                if self._is_repo_image_version(v):
+                    img = '{}/{}:{}'.format(
+                        v['repository'], v['image'], str(v['version']))
+                    if re.search(r'/.+:.+$', img):
+                        download_imgs_list.append(img)
+                    # The component may also hold nested components; recurse
+                    # only into dict children.
+                    for sub_k, sub_v in six.iteritems(v):
+                        if isinstance(sub_v, dict):
+                            self.generate_download_images_list(
+                                {sub_k: sub_v}, download_imgs_list)
+                else:
+                    self.generate_download_images_list(v, download_imgs_list)
 
         return list(set(download_imgs_list))
 

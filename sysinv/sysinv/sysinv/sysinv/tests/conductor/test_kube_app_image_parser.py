@@ -11,6 +11,7 @@
 import copy
 import io
 import os
+import mock
 
 from sysinv.conductor import kube_app
 from sysinv.common import constants
@@ -697,3 +698,311 @@ class TestKubeAppImageParser(base.TestCase):
         result = self.image_parser.update_images_with_local_registry(
             images_dict)
         self.assertEqual(expected, result)
+
+    # Per-component 'repository'/'image'/'version' trio. Each component
+    # declares its image as three sibling keys rendered by the chart as
+    # '<repository>/<image>:<version>'. Components may carry extra,
+    # non-image keys (e.g. a component-specific install path) that must be
+    # ignored.
+    REPO_IMAGE_VERSION_RESOURCE = {
+        'operator': {
+            'repository': 'example.io/acme',
+            'image': 'acme-operator',
+            'version': 'v1.2.3',
+        },
+        'toolkit': {
+            'repository': 'example.io/acme/tools',
+            'image': 'acme-toolkit',
+            'version': 'v4.5.6',
+            'installDir': '/var/opt/acme',
+        },
+        'exporter': {
+            'repository': 'example.io/acme/tools',
+            'image': 'acme-exporter',
+            'version': '7.8.9-distroless',
+        },
+        # A subchart using the conventional 'image.repository' layout must
+        # keep working alongside the trio format.
+        'subchart': {
+            'image': {
+                'repository':
+                    'registry.example.io/acme/subchart',
+            }
+        },
+    }
+
+    def test_find_images_repository_image_version_trio(self):
+        var_dict = copy.deepcopy(self.REPO_IMAGE_VERSION_RESOURCE)
+
+        expected = {
+            'operator': {
+                'repository': 'example.io/acme',
+                'image': 'acme-operator',
+                'version': 'v1.2.3',
+            },
+            'toolkit': {
+                'repository': 'example.io/acme/tools',
+                'image': 'acme-toolkit',
+                'version': 'v4.5.6',
+            },
+            'exporter': {
+                'repository': 'example.io/acme/tools',
+                'image': 'acme-exporter',
+                'version': '7.8.9-distroless',
+            },
+            'subchart': {
+                'image': {
+                    'repository':
+                        'registry.example.io/acme/subchart',
+                }
+            },
+        }
+
+        images_dict = self.image_parser.find_images_in_dict(var_dict)
+        self.assertEqual(expected, images_dict)
+
+    def test_update_images_with_local_registry_repo_image_version(self):
+        # The local registry prefix must be applied to the 'repository'
+        # field of each 'repository'/'image'/'version' trio.
+        images_dict = copy.deepcopy(self.REPO_IMAGE_VERSION_RESOURCE)
+        # Drop the extra non-image key; only the mined fields are passed to
+        # update_images_with_local_registry in practice.
+        del images_dict['toolkit']['installDir']
+
+        expected = {
+            'operator': {
+                'repository': 'registry.local:9001/example.io/acme',
+                'image': 'acme-operator',
+                'version': 'v1.2.3',
+            },
+            'toolkit': {
+                'repository': 'registry.local:9001/example.io/acme/tools',
+                'image': 'acme-toolkit',
+                'version': 'v4.5.6',
+            },
+            'exporter': {
+                'repository': 'registry.local:9001/example.io/acme/tools',
+                'image': 'acme-exporter',
+                'version': '7.8.9-distroless',
+            },
+            'subchart': {
+                'image': {
+                    'repository':
+                        'registry.local:9001/registry.example.io/acme/'
+                        'subchart',
+                }
+            },
+        }
+
+        result = self.image_parser.update_images_with_local_registry(
+            images_dict)
+        self.assertEqual(expected, result)
+
+    def test_update_images_with_local_registry_repo_image_version_idempotent(self):
+        # When the 'repository' already carries the local registry prefix,
+        # it must not be duplicated.
+        images_dict = {
+            'operator': {
+                'repository': 'registry.local:9001/example.io/acme',
+                'image': 'acme-operator',
+                'version': 'v1.2.3',
+            },
+        }
+
+        expected = copy.deepcopy(images_dict)
+
+        result = self.image_parser.update_images_with_local_registry(
+            images_dict)
+        self.assertEqual(expected, result)
+
+    def test_generate_download_images_list_repo_image_version(self):
+        # Each trio must be assembled into a single
+        # '<repository>/<image>:<version>' download reference.
+        download_imgs_dict = copy.deepcopy(self.REPO_IMAGE_VERSION_RESOURCE)
+        del download_imgs_dict['toolkit']['installDir']
+
+        expected = {
+            'example.io/acme/acme-operator:v1.2.3',
+            'example.io/acme/tools/acme-toolkit:v4.5.6',
+            'example.io/acme/tools/acme-exporter:7.8.9-distroless',
+        }
+
+        download_imgs_list = self.image_parser.generate_download_images_list(
+            download_imgs_dict, [])
+        self.assertEqual(expected, set(download_imgs_list))
+
+    # A 'repository'/'image'/'version' trio may itself contain a nested
+    # component declared with the same trio. The nested image must also be
+    # mined, prefixed and listed for download; non-image sibling keys
+    # (e.g. enabled, imagePullPolicy) must be ignored.
+    NESTED_REPO_IMAGE_VERSION_RESOURCE = {
+        'component': {
+            'enabled': False,
+            'repository': 'example.io/acme',
+            'image': 'acme-main',
+            'version': '1.0.0-build1',
+            'imagePullPolicy': 'Always',
+            'manager': {
+                'repository': 'example.io/acme/extra',
+                'image': 'acme-manager',
+                'version': 'v0.1.0',
+            },
+        },
+    }
+
+    def test_find_images_nested_repo_image_version_trio(self):
+        var_dict = copy.deepcopy(self.NESTED_REPO_IMAGE_VERSION_RESOURCE)
+
+        expected = {
+            'component': {
+                'repository': 'example.io/acme',
+                'image': 'acme-main',
+                'version': '1.0.0-build1',
+                'manager': {
+                    'repository': 'example.io/acme/extra',
+                    'image': 'acme-manager',
+                    'version': 'v0.1.0',
+                },
+            },
+        }
+
+        images_dict = self.image_parser.find_images_in_dict(var_dict)
+        self.assertEqual(expected, images_dict)
+
+    def test_update_images_with_local_registry_nested_trio(self):
+        images_dict = copy.deepcopy(self.NESTED_REPO_IMAGE_VERSION_RESOURCE)
+        del images_dict['component']['enabled']
+        del images_dict['component']['imagePullPolicy']
+
+        expected = {
+            'component': {
+                'repository': 'registry.local:9001/example.io/acme',
+                'image': 'acme-main',
+                'version': '1.0.0-build1',
+                'manager': {
+                    'repository':
+                        'registry.local:9001/example.io/acme/extra',
+                    'image': 'acme-manager',
+                    'version': 'v0.1.0',
+                },
+            },
+        }
+
+        result = self.image_parser.update_images_with_local_registry(
+            images_dict)
+        self.assertEqual(expected, result)
+
+    def test_generate_download_images_list_nested_trio(self):
+        download_imgs_dict = copy.deepcopy(
+            self.NESTED_REPO_IMAGE_VERSION_RESOURCE)
+        del download_imgs_dict['component']['enabled']
+        del download_imgs_dict['component']['imagePullPolicy']
+
+        expected = {
+            'example.io/acme/acme-main:1.0.0-build1',
+            'example.io/acme/extra/acme-manager:v0.1.0',
+        }
+
+        download_imgs_list = self.image_parser.generate_download_images_list(
+            download_imgs_dict, [])
+        self.assertEqual(expected, set(download_imgs_list))
+
+    def test_update_images_with_local_registry_domainless_repository(self):
+        # A repository without a registry host must be qualified with an
+        # explicit 'docker.io', matching the string-image behaviour.
+        images_dict = {
+            'plain': {'repository': 'bitnami', 'image': 'x',
+                      'version': '1.0'},
+            'org': {'repository': 'myorg/tools', 'image': 'y',
+                    'version': '2.0'},
+            'host': {'repository': 'example.io/acme', 'image': 'z',
+                     'version': '3.0'},
+            'port': {'repository': 'example.io:5000/acme', 'image': 'w',
+                     'version': '4.0'},
+        }
+        expected = {
+            'plain': {'repository': 'registry.local:9001/docker.io/bitnami',
+                      'image': 'x', 'version': '1.0'},
+            'org': {'repository': 'registry.local:9001/docker.io/myorg/tools',
+                    'image': 'y', 'version': '2.0'},
+            'host': {'repository': 'registry.local:9001/example.io/acme',
+                     'image': 'z', 'version': '3.0'},
+            'port': {'repository':
+                     'registry.local:9001/example.io:5000/acme',
+                     'image': 'w', 'version': '4.0'},
+        }
+        result = self.image_parser.update_images_with_local_registry(
+            images_dict)
+        self.assertEqual(expected, result)
+
+        # Idempotent on a second pass.
+        result = self.image_parser.update_images_with_local_registry(result)
+        self.assertEqual(expected, result)
+
+    def test_find_images_repo_image_version_partial_not_trio(self):
+        # A component with only 'repository'+'image' (no 'version') must NOT
+        # be treated as a trio; it falls back to the legacy behaviour where
+        # the 'image' string is mined on its own.
+        var_dict = {'comp': {'repository': 'r', 'image': 'myimg'}}
+        expected = {'comp': {'image': 'myimg'}}
+        self.assertEqual(expected,
+                         self.image_parser.find_images_in_dict(var_dict))
+
+    # YAML loads unquoted 'version: 2' / 'version: 1.5' as int / float. The
+    # trio must still be recognized and the version converted with str().
+    NUMERIC_VERSION_RESOURCE = {
+        'int_comp': {
+            'repository': 'example.io/acme',
+            'image': 'acme-int',
+            'version': 2,
+        },
+        'float_comp': {
+            'repository': 'example.io/acme',
+            'image': 'acme-float',
+            'version': 1.5,
+        },
+    }
+
+    def test_find_images_repo_image_version_numeric_version(self):
+        var_dict = copy.deepcopy(self.NUMERIC_VERSION_RESOURCE)
+        images_dict = self.image_parser.find_images_in_dict(var_dict)
+        self.assertEqual(self.NUMERIC_VERSION_RESOURCE, images_dict)
+
+    def test_update_images_with_local_registry_numeric_version(self):
+        images_dict = copy.deepcopy(self.NUMERIC_VERSION_RESOURCE)
+        expected = {
+            'int_comp': {
+                'repository': 'registry.local:9001/example.io/acme',
+                'image': 'acme-int',
+                'version': 2,
+            },
+            'float_comp': {
+                'repository': 'registry.local:9001/example.io/acme',
+                'image': 'acme-float',
+                'version': 1.5,
+            },
+        }
+        result = self.image_parser.update_images_with_local_registry(
+            images_dict)
+        self.assertEqual(expected, result)
+
+    def test_generate_download_images_list_numeric_version(self):
+        download_imgs_dict = copy.deepcopy(self.NUMERIC_VERSION_RESOURCE)
+        expected = {
+            'example.io/acme/acme-int:2',
+            'example.io/acme/acme-float:1.5',
+        }
+        download_imgs_list = self.image_parser.generate_download_images_list(
+            download_imgs_dict, [])
+        self.assertEqual(expected, set(download_imgs_list))
+
+    def test_repo_image_version_bool_version_not_trio(self):
+        # bool is a subclass of int but is never a valid tag.
+        var = {'repository': 'r', 'image': 'i', 'version': True}
+        self.assertFalse(self.image_parser._is_repo_image_version(var))
+
+    def test_repo_image_version_invalid_types_logs_warning(self):
+        var = {'repository': 'r', 'image': 'i', 'version': ['1']}
+        with mock.patch.object(kube_app.LOG, 'warning') as warn:
+            self.assertFalse(self.image_parser._is_repo_image_version(var))
+        warn.assert_called_once()
