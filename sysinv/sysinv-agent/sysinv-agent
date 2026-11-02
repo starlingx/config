@@ -17,7 +17,7 @@
 # Short-Description: Maintenance daemon
 ### END INIT INFO
 
-. /etc/init.d/functions
+. /lib/lsb/init-functions
 . /etc/build.info
 
 PLATFORM_CONF="/etc/platform/platform.conf"
