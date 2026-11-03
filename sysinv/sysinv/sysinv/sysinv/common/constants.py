@@ -2697,6 +2697,7 @@ PTP_INSTANCE_TYPE_SYNCE4L_MONITORING_PARAMETERS = [
 # toggle for GNR-D State-2 cc6 clockClass passthrough (D2, default enabled).
 PTP_INSTANCE_TYPE_DPLL_MGR_MONITORING_PARAMETERS = [
     'clockclass_passthrough',
+    'clockclass_extended_relay',
 ]
 
 # PTP instances created during migration

@@ -135,6 +135,7 @@ PTP_INSTANCE_TYPE_DPLL_MGR_SUPPORTED_SECTIONS = [
 # dpll-mgr monitoring-section params consumed by collectd .
 PTP_INSTANCE_TYPE_DPLL_MGR_MONITORING_PARAMETERS = [
     'clockclass_passthrough',
+    'clockclass_extended_relay',
 ]
 PTP_INSTANCE_TYPE_GNSS_MONITOR_SUPPORTED_PARAMETERS = [
     "devices", "satellite_count", "signal_quality_db",
