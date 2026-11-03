@@ -1230,6 +1230,17 @@ class ManagerTestCase(base.DbTestCase):
         self.assertEqual(tlv_list[0]['value'][-3:], "...")
         self.assertTrue(len(tlv_list[0]['value']) <= 255)
 
+    def test_lldp_neighbour_update_by_host_empty_uuid(self):
+        # An empty host_uuid (e.g. from an agent that has not yet learned
+        # its own uuid during enrollment) must be ignored gracefully rather
+        # than raising a SysinvException and spamming a zerorpc traceback
+        # into sysinv.log.
+        for empty_uuid in ('', '   '):
+            # Should not raise and should short-circuit before any db lookup.
+            self.assertIsNone(
+                self.service.lldp_neighbour_update_by_host(
+                    self.context, empty_uuid, []))
+
     def test_platform_interfaces(self):
         ihost = self._create_test_ihost()
         interface = utils.create_test_interface(

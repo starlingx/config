@@ -4313,7 +4313,23 @@ class ConductorManager(service.PeriodicService):
         """
         LOG.debug("Entering lldp_agent_update_by_host %s %s" %
                   (host_uuid, agent_dict_array))
-        host_uuid.strip()
+        host_uuid = host_uuid.strip() if host_uuid else host_uuid
+        if not host_uuid:
+            # An empty host_uuid can be received from an agent that has not
+            # yet learned its own uuid (e.g. early during enrollment). This
+            # is transient and harmless; log a single warning and return
+            # instead of raising a full zerorpc traceback into sysinv.log.
+            # Include identifying info from the first reported agent so the
+            # source of the RPC can be identified if the noise persists.
+            first = next((a for a in (agent_dict_array or [])
+                          if isinstance(a, dict)), {})
+            LOG.warning("Ignoring lldp_agent_update_by_host with empty "
+                        "host_uuid (system_name=%s chassisid=%s "
+                        "mgmt_addr=%s)",
+                        first.get(constants.LLDP_TLV_TYPE_SYSTEM_NAME),
+                        first.get(constants.LLDP_TLV_TYPE_CHASSIS_ID),
+                        first.get(constants.LLDP_TLV_TYPE_MGMT_ADDR))
+            return
         try:
             db_host = self.dbapi.ihost_get(host_uuid)
         except exception.ServerNotFound:
@@ -4414,7 +4430,23 @@ class ConductorManager(service.PeriodicService):
         """
         LOG.debug("Entering lldp_neighbour_update_by_host %s %s" %
                   (host_uuid, neighbour_dict_array))
-        host_uuid.strip()
+        host_uuid = host_uuid.strip() if host_uuid else host_uuid
+        if not host_uuid:
+            # An empty host_uuid can be received from an agent that has not
+            # yet learned its own uuid (e.g. early during enrollment). This
+            # is transient and harmless; log a single warning and return
+            # instead of raising a full zerorpc traceback into sysinv.log.
+            # Include identifying info from the first reported neighbour so
+            # the source of the RPC can be identified if the noise persists.
+            first = next((n for n in (neighbour_dict_array or [])
+                          if isinstance(n, dict)), {})
+            LOG.warning("Ignoring lldp_neighbour_update_by_host with empty "
+                        "host_uuid (system_name=%s chassisid=%s "
+                        "mgmt_addr=%s)",
+                        first.get(constants.LLDP_TLV_TYPE_SYSTEM_NAME),
+                        first.get(constants.LLDP_TLV_TYPE_CHASSIS_ID),
+                        first.get(constants.LLDP_TLV_TYPE_MGMT_ADDR))
+            return
         try:
             db_host = self.dbapi.ihost_get(host_uuid)
         except Exception:
@@ -16870,9 +16902,9 @@ class ConductorManager(service.PeriodicService):
                     config_uuid,
                     config_dict,
                     force)
-            self._log_runtime_config_censored(
-                title="defer apply runtime manifest",
-                runtime_config=self._host_deferred_runtime_config)
+            LOG.info("defer apply runtime manifest config_uuid=%s "
+                     "(deferred queue depth=%d)" %
+                     (config_uuid, len(self._host_deferred_runtime_config)))
             return
 
         # If this is a new config but there are deferred configs waiting,
@@ -16888,9 +16920,9 @@ class ConductorManager(service.PeriodicService):
                 config_uuid,
                 config_dict,
                 force)
-            self._log_runtime_config_censored(
-                title="defer apply runtime manifest due to ordering",
-                runtime_config=self._host_deferred_runtime_config)
+            LOG.info("defer apply runtime manifest due to ordering "
+                     "config_uuid=%s (deferred queue depth=%d)" %
+                     (config_uuid, len(self._host_deferred_runtime_config)))
             return
 
         if not self._try_config_update_puppet(
