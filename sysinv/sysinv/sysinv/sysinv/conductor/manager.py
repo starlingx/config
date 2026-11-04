@@ -20327,6 +20327,76 @@ class ConductorManager(service.PeriodicService):
 
         return self._app.perform_app_abort(rpc_app, lifecycle_hook_info_app_abort)
 
+    def _trigger_single_app_lvm_snapshot_restore(self, context, rpc_app):
+        """Run the LVM snapshot restore lifecycle hook for a single app.
+
+        :param context: request context.
+        :param rpc_app: data object provided in the rpc request.
+        :return: True if the hook succeeded for the app, False otherwise.
+        """
+        hook_info = LifecycleHookInfo()
+        hook_info.init(LifecycleConstants.APP_LIFECYCLE_MODE_MANUAL,
+                       LifecycleConstants.APP_LIFECYCLE_TYPE_OPERATION,
+                       LifecycleConstants.APP_LIFECYCLE_TIMING_POST,
+                       constants.APP_LVM_SNAPSHOT_RESTORE_OP)
+        try:
+            self.app_lifecycle_actions(context, rpc_app, hook_info)
+        except Exception as e:
+            LOG.error("Error performing app_lifecycle_actions for "
+                      "app %s: %s" % (rpc_app.name, str(e)))
+            return False
+        return True
+
+    def trigger_lvm_snapshot_restore_lifecycle(self, context):
+        """Trigger the LVM snapshot restore lifecycle hook for all applied apps
+
+        Runs the application lifecycle hook for the LVM snapshot rollback
+        scenario on every application currently in the applied state,
+        notifying each one after an LVM snapshot restore. The hooks are
+        dispatched in parallel using a thread pool sized by the number of
+        platform cores times the max-app-operations-per-platform-core service
+        parameter. A failure on one application is logged and does not prevent
+        the remaining ones from being processed.
+
+        :param context: request context.
+        :return: True if the hook succeeded for all applied apps (or there
+                 are none), False if it failed for at least one of them.
+        """
+        applied_apps = self.dbapi.kube_app_get_all_by_status(
+            constants.APP_APPLY_SUCCESS)
+
+        if not applied_apps:
+            return True
+
+        available_workers = cutils.get_platform_core_count(self.dbapi) * \
+            self._get_max_app_operations()
+        max_workers = max(1, min(available_workers, len(applied_apps)))
+
+        success = True
+
+        LOG.info("Triggering the LVM snapshot restore lifecycle hook on "
+                 "%s applications using a thread pool with %s workers."
+                 % (len(applied_apps), max_workers))
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {
+                executor.submit(self._trigger_single_app_lvm_snapshot_restore,
+                                context, rpc_app): rpc_app.name
+                for rpc_app in applied_apps
+            }
+
+            for future in as_completed(futures):
+                app_name = futures[future]
+                try:
+                    if not future.result():
+                        success = False
+                except Exception as e:
+                    LOG.error("Error performing app_lifecycle_actions for "
+                              "app %s: %s" % (app_name, str(e)))
+                    success = False
+
+        return success
+
     def perform_app_delete(self, context, rpc_app, lifecycle_hook_info_app_delete):
         """Handling of application delete request (via AppOperator)
 

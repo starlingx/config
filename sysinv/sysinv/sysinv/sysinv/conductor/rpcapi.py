@@ -1815,6 +1815,20 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                                 app_name=app_name,
                                                 flag=flag))
 
+    def trigger_lvm_snapshot_restore_lifecycle(self, context):
+        """Synchronously, trigger the LVM snapshot restore lifecycle hook
+        for all currently applied applications.
+
+        :param context: request context.
+        :returns: True if the hook succeeded for all applied apps,
+                  False otherwise.
+        """
+        return self.call(
+            context,
+            self.make_msg('trigger_lvm_snapshot_restore_lifecycle'),
+            timeout=RPC_TIMEOUT
+        )
+
     def mtc_action_apps_semantic_checks(self, context, action):
         """Synchronously, call apps semantic check for maintenance actions.
 
