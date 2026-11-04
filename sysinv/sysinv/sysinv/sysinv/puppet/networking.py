@@ -11,6 +11,7 @@ import netaddr
 from oslo_log import log
 
 from sysinv.common import constants
+from sysinv.common import dpll_mgr_config_template as dpll_tmpl
 from sysinv.common import exception
 from sysinv.common import utils
 
@@ -627,19 +628,67 @@ class NetworkingPuppet(base.BasePuppet):
     def _set_ptp_instance_dpll_mgr_config(self, ptp_config):
         """Assemble dpll-mgr JSON config from section parameters.
 
-        For each dpll-mgr instance in ptp_config:
-        1. Decode the single config_json row into the full nested config
-        2. Store assembled config as 'config_json' in the instance dict
+        Two sources, in priority order, for each dpll-mgr instance:
+        1. Raw 'config_json' row (fallback / escape hatch): decode the single
+           row into the full nested config verbatim.
+        2. Structured 'config' section (story 2011783): flat name=value tunables
+           merged over the shipped template, with channels and PTP domain
+           derived from the named per-host ptp4l/ts2phc instances.
+
+        The two are mutually exclusive per instance (enforced at the API); if
+        both are somehow present the raw blob wins and a warning is logged.
+
+        The result is stored as 'config_json' in the instance dict. This path
+        is TOTAL by construction: apply-time (Layer-2) validation guarantees a
+        structured config's references resolve, so the structured branch never
+        emits {} and never omits the instance. On an unexpected unresolved
+        reference (e.g. a race with instance deletion) it logs an error and
+        renders the shipped default template rather than stubbing (a {}
+        crash-loops the daemon; omitting the instance makes puppet stop the
+        running daemon).
+
+        A build of the per-host sibling-instance lookup (name -> service) and
+        a per-ptp4l-instance domainNumber map (name -> domain) is needed for
+        structured derivation; the domain is taken from the backhaul ptp4l the
+        instance names in channel_ptp_bh.
         """
+        # Build the per-host sibling-instance lookup once (name -> service)
+        # and build a map of ptp4l instance name -> domainNumber so each
+        # dpll-mgr derives its PTP domain from the SPECIFIC backhaul ptp4l it
+        # names in channel_ptp_bh. A host may run several ptp4l instances (e.g.
+        # a PTS backhaul and an L2 fronthaul); keying off the named backhaul
+        # avoids picking an arbitrary ptp4l's domain by iteration order. Render
+        # is already per host (ptp_config holds only this host's instances).
+        instance_lookup = {}
+        ptp4l_domain_by_name = {}
+        for other_name, other in ptp_config.items():
+            svc = other.get('service')
+            instance_lookup[other_name] = svc
+            if svc == constants.PTP_INSTANCE_TYPE_PTP4L:
+                dn = other.get('global_parameters', {}).get('domainNumber')
+                if dn is not None:
+                    try:
+                        ptp4l_domain_by_name[other_name] = int(dn)
+                    except (TypeError, ValueError):
+                        pass
+
         for instance_name in ptp_config:
             instance = ptp_config[instance_name]
             if instance.get('service') != constants.PTP_INSTANCE_TYPE_DPLL_MGR:
                 continue
 
-            dpll_config = {}
-
             section_params = instance.get('section_parameters', {})
-            if 'config_json' in section_params:
+            has_raw = 'config_json' in section_params
+            has_structured = 'config' in section_params
+
+            if has_raw and has_structured:
+                LOG.warning("dpll-mgr instance '%s' has both a raw config_json "
+                            "and a structured 'config' section; using the raw "
+                            "config_json (sections are mutually exclusive)."
+                            % instance_name)
+
+            if has_raw:
+                dpll_config = {}
                 for param_dict in section_params['config_json']:
                     raw_value = param_dict.get('config_json', '')
                     if isinstance(raw_value, str):
@@ -650,8 +699,51 @@ class NetworkingPuppet(base.BasePuppet):
                         LOG.error("Failed to decode dpll-mgr config_json "
                                   "for instance '%s'" % instance_name)
                 section_params.pop('config_json')
+                section_params.pop('config', None)
+                instance['config_json'] = dpll_config
+                continue
 
-            instance['config_json'] = dpll_config
+            if has_structured:
+                # Flatten the 'config' section rows into a flat dict, stripping
+                # the quoted_str wrapping (mirrors the config_json handling).
+                structured = {}
+                for param_dict in section_params['config']:
+                    for key, value in param_dict.items():
+                        if isinstance(value, str):
+                            value = value.strip("'")
+                        structured[key] = value
+                section_params.pop('config')
+                # Derive the PTP domain from the backhaul ptp4l THIS instance
+                # names in channel_ptp_bh, not an arbitrary host-global ptp4l.
+                # An explicit ptp_domain_number in the structured block still
+                # wins (handled in build_overlay). A uds: override or an
+                # unresolved/missing backhaul reference yields None here, so the
+                # template default domain applies; a genuinely invalid instance
+                # reference is still rejected downstream by derive_channels.
+                backhaul_ref = structured.get('channel_ptp_bh')
+                domain_from_backhaul = ptp4l_domain_by_name.get(backhaul_ref)
+                try:
+                    merged = dpll_tmpl.render_config(
+                        structured, instance_lookup, domain_from_backhaul)
+                    instance['config_json'] = merged
+                except dpll_tmpl.DpllMgrConfigError as e:
+                    # Defensive: Layer-2 should have caught this at apply. There
+                    # is no rendered last-good blob to fall back on in this
+                    # path, so render the shipped template -- the daemon gets a
+                    # complete, valid (if generic) config rather than a
+                    # crash-looping {} stub, and the instance is never omitted
+                    # (which would make puppet stop the running daemon).
+                    LOG.error("dpll-mgr instance '%s' structured config "
+                              "unresolved at render (%s); rendering the "
+                              "default template."
+                              % (instance_name, str(e)))
+                    instance['config_json'] = \
+                        dpll_tmpl.get_default_template()
+                continue
+
+            # Neither source present: preserve existing behaviour (empty dict;
+            # the instance has no config yet).
+            instance['config_json'] = {}
 
     def _set_ptp_instance_interfaces(self, host, ptp_instances, ptp_interfaces):
         allowed_interface_fields = ['ifname',

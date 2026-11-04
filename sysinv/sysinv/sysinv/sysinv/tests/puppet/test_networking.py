@@ -1148,6 +1148,220 @@ class TestDpllMgrHieradata(testtools.TestCase):
             '/var/run/ptp4l-ptp01ro')
 
 
+class TestDpllMgrStructuredConfig(testtools.TestCase):
+    """Unit tests for the structured 'config' section render path
+    (story 2011783) in NetworkingPuppet._set_ptp_instance_dpll_mgr_config."""
+
+    def setUp(self):
+        super(TestDpllMgrStructuredConfig, self).setUp()
+        mock_operator = mock.MagicMock()
+        self.networking = NetworkingPuppet(mock_operator)
+
+    def _make_instance(self, name, service, section_params=None,
+                       global_parameters=None):
+        return {
+            'name': name,
+            'service': service,
+            'id': 1,
+            'uuid': '%s-uuid' % name,
+            'global_parameters': global_parameters or {},
+            'cmdline_opts': '',
+            'interfaces': [],
+            'pmc_gm_settings': {},
+            'device_parameters': {},
+            'gnss_uart_disable': True,
+            'external_sources': [],
+            'monitoring_parameters': {},
+            'section_parameters': section_params or {},
+        }
+
+    def _make_config_section(self, flat):
+        """Mimic how section_parameters stores 'config' rows (quoted_str)."""
+        rows = [{k: quoted_str(str(v))} for k, v in flat.items()]
+        return {'config': rows}
+
+    def _minimum_flat(self):
+        return {
+            'phc_interface': 'eno8703',
+            'operation_mode': 'SW_BASED',
+            'channel_ptp_bh': 'ptp01bh',
+            'channel_ts2_0': 'ts1',
+        }
+
+    def _host_config(self, dpll_section):
+        """A per-host ptp_config with a dpll-mgr + sibling ptp4l/ts2phc."""
+        return {
+            'dpll-mgr1': self._make_instance(
+                'dpll-mgr1', 'dpll-mgr', dpll_section),
+            'ptp01bh': self._make_instance(
+                'ptp01bh', 'ptp4l',
+                global_parameters={'domainNumber': '24'}),
+            'ts1': self._make_instance('ts1', 'ts2phc'),
+        }
+
+    def test_structured_minimum_renders_complete_config(self):
+        section = self._make_config_section(self._minimum_flat())
+        ptp_config = self._host_config(section)
+        self.networking._set_ptp_instance_dpll_mgr_config(ptp_config)
+        cfg = ptp_config['dpll-mgr1']['config_json']
+        # Operator fields present.
+        self.assertEqual(cfg['global']['phc_interface'], 'eno8703')
+        self.assertEqual(cfg['global']['operation_mode'], 'SW_BASED')
+        # Channel socket derived from the named ptp4l instance.
+        self.assertEqual(cfg['channels']['ptp_bh']['call_channel'],
+                         'uds:/var/run/ptp4l-ptp01bh')
+        self.assertEqual(cfg['channels']['ts2_0']['call_channel'],
+                         'uds:/var/run/ts2phc-ts1')
+        # Domain derived from the backhaul ptp4l domainNumber.
+        self.assertEqual(cfg['global']['ptp_domain_number'], 24)
+        # Template boilerplate merged in.
+        self.assertIn('ptp_primary_attributes', cfg['ptp'])
+        self.assertIn('holdover_config', cfg['dpll'])
+        # Both planes ship from the template (GNSS-primary): dpll0/EEC
+        # disconnects the backhaul SDP (:15), dpll1/PPS keeps it as failover
+        # (:12).
+        self.assertEqual(cfg['dpll']['dpll0']['pin_priority_map'],
+                         'GNSS_REF4P:0, SDP0_REF0N:15')
+        self.assertEqual(cfg['dpll']['dpll1']['pin_priority_map'],
+                         'GNSS_REF4P:0, SDP0_REF0N:12')
+
+    def test_structured_never_empty(self):
+        section = self._make_config_section(self._minimum_flat())
+        ptp_config = self._host_config(section)
+        self.networking._set_ptp_instance_dpll_mgr_config(ptp_config)
+        self.assertNotEqual(ptp_config['dpll-mgr1']['config_json'], {})
+
+    def test_structured_domain_from_named_backhaul_not_first_ptp4l(self):
+        """Domain is derived from the ptp4l named in channel_ptp_bh, even when
+        the host runs several ptp4l instances with different domainNumbers
+        (e.g. a PTS backhaul + an L2 fronthaul). Regression: the derivation
+        must not pick an arbitrary ptp4l by dict iteration order."""
+        flat = self._minimum_flat()
+        flat['channel_ptp_bh'] = 'ptp01bh'
+
+        def _config(order):
+            instances = {
+                'dpll-mgr1': self._make_instance(
+                    'dpll-mgr1', 'dpll-mgr',
+                    self._make_config_section(flat)),
+                # Backhaul ptp4l the operator named (domain 24).
+                'ptp01bh': self._make_instance(
+                    'ptp01bh', 'ptp4l',
+                    global_parameters={'domainNumber': '24'}),
+                # L2 fronthaul ptp4l on the same host (DIFFERENT domain 44).
+                'ptp01fh': self._make_instance(
+                    'ptp01fh', 'ptp4l',
+                    global_parameters={'domainNumber': '44'}),
+                'ts1': self._make_instance('ts1', 'ts2phc'),
+            }
+            return {k: instances[k] for k in order}
+
+        # Exercise both iteration orders: fronthaul-first must NOT win.
+        for order in (['dpll-mgr1', 'ptp01fh', 'ptp01bh', 'ts1'],
+                      ['dpll-mgr1', 'ptp01bh', 'ptp01fh', 'ts1']):
+            ptp_config = _config(order)
+            self.networking._set_ptp_instance_dpll_mgr_config(ptp_config)
+            cfg = ptp_config['dpll-mgr1']['config_json']
+            self.assertEqual(
+                cfg['global']['ptp_domain_number'], 24,
+                "domain must come from the named backhaul ptp01bh (24), "
+                "not the fronthaul ptp01fh (44), order=%s" % order)
+
+    def test_structured_explicit_domain_overrides_backhaul(self):
+        """An explicit ptp_domain_number in the structured block wins over the
+        backhaul-derived domain."""
+        flat = self._minimum_flat()
+        flat['ptp_domain_number'] = '48'
+        section = self._make_config_section(flat)
+        ptp_config = self._host_config(section)  # backhaul ptp01bh domain 24
+        self.networking._set_ptp_instance_dpll_mgr_config(ptp_config)
+        cfg = ptp_config['dpll-mgr1']['config_json']
+        self.assertEqual(cfg['global']['ptp_domain_number'], 48)
+
+    def test_structured_uds_backhaul_override_uses_template_domain(self):
+        """A uds: channel_ptp_bh override (not an instance name) yields no
+        derived domain; the template default applies rather than crashing."""
+        flat = self._minimum_flat()
+        flat['channel_ptp_bh'] = 'uds:/var/run/ptp4l-external'
+        section = self._make_config_section(flat)
+        # No ptp4l instance to derive from; backhaul is a raw socket.
+        ptp_config = {
+            'dpll-mgr1': self._make_instance('dpll-mgr1', 'dpll-mgr', section),
+            'ts1': self._make_instance('ts1', 'ts2phc'),
+        }
+        self.networking._set_ptp_instance_dpll_mgr_config(ptp_config)
+        cfg = ptp_config['dpll-mgr1']['config_json']
+        # Template default domain (24) applies; never {} / crash.
+        self.assertEqual(cfg['global']['ptp_domain_number'], 24)
+        self.assertEqual(cfg['channels']['ptp_bh']['call_channel'],
+                         'uds:/var/run/ptp4l-external')
+
+    def test_structured_unresolved_renders_template_not_stale(self):
+        """An unresolved reference at render renders the default template
+        (never {} or omitted), and does not trust a stale config_json row as
+        a 'last-good' blob."""
+        # channel names a ts2phc that is not on the host -> derive fails.
+        flat = self._minimum_flat()
+        flat['channel_ts2_0'] = 'missing-ts'
+        section = self._make_config_section(flat)
+        ptp_config = {
+            'dpll-mgr1': self._make_instance('dpll-mgr1', 'dpll-mgr', section),
+            'ptp01bh': self._make_instance(
+                'ptp01bh', 'ptp4l',
+                global_parameters={'domainNumber': '24'}),
+        }
+        stale = {'global': {'phc_interface': 'prev'}, 'dpll': {},
+                 'channels': {}, 'ptp': {}}
+        ptp_config['dpll-mgr1']['config_json'] = stale
+        self.networking._set_ptp_instance_dpll_mgr_config(ptp_config)
+        # Rendered the default template, not the stale blob and not {}.
+        cfg = ptp_config['dpll-mgr1']['config_json']
+        self.assertNotEqual(cfg, {})
+        self.assertNotEqual(cfg, stale)
+        self.assertIn('holdover_config', cfg['dpll'])
+
+    def test_structured_unresolved_no_last_good_renders_template(self):
+        """Unresolved + no last-good -> render default template, not {}."""
+        flat = self._minimum_flat()
+        flat['channel_ptp_bh'] = 'missing-bh'
+        section = self._make_config_section(flat)
+        ptp_config = {
+            'dpll-mgr1': self._make_instance('dpll-mgr1', 'dpll-mgr', section),
+        }
+        self.networking._set_ptp_instance_dpll_mgr_config(ptp_config)
+        cfg = ptp_config['dpll-mgr1']['config_json']
+        self.assertNotEqual(cfg, {})
+        self.assertIn('holdover_config', cfg['dpll'])
+
+    def test_raw_config_json_still_wins_when_both_present(self):
+        raw = json.dumps({'global': {'log_level': 'DEBUG'},
+                          'dpll': {'dpll0': {'name': 'zl3073x'}}})
+        section = self._make_config_section(self._minimum_flat())
+        section['config_json'] = [{'config_json': "'" + raw + "'"}]
+        ptp_config = self._host_config(section)
+        with mock.patch('sysinv.puppet.networking.LOG') as mock_log:
+            self.networking._set_ptp_instance_dpll_mgr_config(ptp_config)
+            mock_log.warning.assert_called()
+        cfg = ptp_config['dpll-mgr1']['config_json']
+        # Raw blob wins verbatim (no template merge / no derived channels).
+        self.assertEqual(cfg['global']['log_level'], 'DEBUG')
+        self.assertNotIn('channels', cfg)
+
+    def test_explicit_dpll1_override_renders_at_render(self):
+        # PTP-backhaul-primary is expressed by an explicit dpll1 swap; dpll0
+        # keeps its template default.
+        flat = self._minimum_flat()
+        flat['dpll1_pin_priority_map'] = 'GNSS_REF4P:12, SDP0_REF0N:0'
+        section = self._make_config_section(flat)
+        ptp_config = self._host_config(section)
+        self.networking._set_ptp_instance_dpll_mgr_config(ptp_config)
+        cfg = ptp_config['dpll-mgr1']['config_json']
+        self.assertEqual(cfg['dpll']['dpll0']['pin_priority_map'],
+                         'GNSS_REF4P:0, SDP0_REF0N:15')
+        self.assertEqual(cfg['dpll']['dpll1']['pin_priority_map'],
+                         'GNSS_REF4P:12, SDP0_REF0N:0')
+
+
 class TestDpllPinConfig(testtools.TestCase):
     """Unit tests for _set_ptp_dpll_pin_config in NetworkingPuppet."""
 
