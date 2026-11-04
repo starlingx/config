@@ -131,6 +131,25 @@ PTP_INSTANCE_TYPE_DPLL_MGR_SUPPORTED_SECTIONS = [
     'synce',
     'ql_map',
     'inputs_ql',
+    # Structured, defaults-driven interface (story 2011783). Mutually
+    # exclusive with raw 'config_json'.
+    'config',
+]
+# Flat name=value keys accepted under the dpll-mgr 'config' section (the
+# structured, defaults-driven interface, story 2011783). Validated as a closed
+# vocabulary by the cgts-client shell and the sysinv API.
+PTP_INSTANCE_TYPE_DPLL_MGR_STRUCTURED_KEYS = [
+    'phc_interface',
+    'operation_mode',
+    'ptp_domain_number',
+    'channel_ptp_bh',
+    'channel_ts2_0',
+    'channel_ts2_1',
+    'dpll0_pin_priority_map',
+    'dpll1_pin_priority_map',
+    'ho_0',
+    'ho_1',
+    'ho_2',
 ]
 # dpll-mgr monitoring-section params consumed by collectd .
 PTP_INSTANCE_TYPE_DPLL_MGR_MONITORING_PARAMETERS = [

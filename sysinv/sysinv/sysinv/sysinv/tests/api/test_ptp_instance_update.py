@@ -4,6 +4,7 @@
 #
 
 from six.moves import http_client
+import mock
 from sysinv.common import constants
 from sysinv.tests.api import base
 from sysinv.tests.db import base as dbbase
@@ -664,3 +665,214 @@ class TestUpdatePtpInstanceAptsMgr(BasePtpInstanceTestCase):
               'op': constants.PTP_PATCH_OPERATION_DELETE}],
             headers=self.API_HEADERS)
         self.assertEqual(response.status_code, http_client.OK)
+
+
+class TestUpdatePtpInstanceDpllMgrStructuredConfig(BasePtpInstanceTestCase):
+    """Tests for the dpll-mgr structured 'config' section (story 2011783).
+
+    Layer 1 (add time): vocabulary/format validation only.
+    Layer 2 (apply time): cross-reference + required-minimum.
+    """
+
+    uuid = None
+
+    def setUp(self):
+        super(TestUpdatePtpInstanceDpllMgrStructuredConfig, self).setUp()
+        ptp_instance = dbutils.create_test_ptp_instance(
+            name='dpll-mgr1',
+            service=constants.PTP_INSTANCE_TYPE_DPLL_MGR)
+        self.uuid = ptp_instance['uuid']
+
+    def _add_config(self, name, value, expect_errors=False):
+        return self.patch_json(
+            self.get_single_url(self.uuid),
+            [{'path': constants.PTP_PARAMETER_ARRAY_PATH,
+              'section': 'config',
+              'value': '%s=%s' % (name, value),
+              'op': constants.PTP_PATCH_OPERATION_ADD}],
+            headers=self.API_HEADERS,
+            expect_errors=expect_errors)
+
+    # ---- Layer 1: add-time vocabulary / format ----
+
+    def test_add_config_known_key_ok(self):
+        response = self._add_config('phc_interface', 'eno8703')
+        self.assertEqual(response.status_code, http_client.OK)
+
+    def test_add_config_pin_priority_map_ok(self):
+        response = self._add_config(
+            'dpll0_pin_priority_map', 'GNSS_REF4P:0, SDP0_REF0N:12')
+        self.assertEqual(response.status_code, http_client.OK)
+
+    def test_add_config_ptp_0_channel_warned_not_rejected(self):
+        """ptp_0/1/2 forward channels are no-ops in StarlingX: the API
+        warns and accepts rather than rejecting, mirroring the cgts-client,
+        and does NOT store the key (the daemon never consumes it)."""
+        for name in ('channel_ptp_0', 'channel_ptp_1', 'channel_ptp_2'):
+            response = self._add_config(name, 'ptp01bh')
+            # Accepted, not a 400.
+            self.assertEqual(response.status_code, http_client.OK,
+                             '%s should warn-not-reject' % name)
+        # None of the warn channels were persisted.
+        ptp_params = self.get_json(
+            '/ptp_instances/%s/ptp_parameters' % self.uuid,
+            headers=self.API_HEADERS)
+        stored = {p['name'] for p in ptp_params['ptp_parameters']
+                  if p['section'] == 'config'}
+        self.assertNotIn('channel_ptp_0', stored)
+        self.assertNotIn('channel_ptp_1', stored)
+        self.assertNotIn('channel_ptp_2', stored)
+
+    def test_add_config_unknown_key_rejected(self):
+        response = self._add_config('not_a_key', 'x', expect_errors=True)
+        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+        self.assertIn('Unsupported dpll-mgr config key',
+                      response.json['error_message'])
+
+    def test_add_config_unknown_pin_rejected(self):
+        response = self._add_config(
+            'dpll0_pin_priority_map', 'NOPE_REF9Z:0', expect_errors=True)
+        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+        self.assertIn('Unknown dpll pin name',
+                      response.json['error_message'])
+
+    def test_add_config_priority_out_of_range_rejected(self):
+        response = self._add_config(
+            'dpll0_pin_priority_map', 'GNSS_REF4P:99', expect_errors=True)
+        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+        self.assertIn('out of range', response.json['error_message'])
+
+    def test_add_config_priority_15_disconnect_accepted(self):
+        # 15 = disconnect sentinel; a valid priority (e.g. disabling the
+        # backhaul SDP pin on the EEC plane), must not be rejected.
+        response = self._add_config(
+            'dpll0_pin_priority_map', 'GNSS_REF4P:0, SDP0_REF0N:15')
+        self.assertEqual(response.status_code, http_client.OK)
+
+    def test_add_config_bad_operation_mode_rejected(self):
+        response = self._add_config(
+            'operation_mode', 'TURBO', expect_errors=True)
+        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+        self.assertIn('Invalid operation_mode',
+                      response.json['error_message'])
+
+    def test_add_config_primary_key_rejected(self):
+        # The 'primary' hint was removed; it is no longer an accepted key.
+        response = self._add_config('primary', 'gnss', expect_errors=True)
+        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+        self.assertIn('Unsupported dpll-mgr config key',
+                      response.json['error_message'])
+
+    def test_add_config_non_integer_holdover_rejected(self):
+        response = self._add_config('ho_0', 'eight', expect_errors=True)
+        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+        self.assertIn('must be an integer', response.json['error_message'])
+
+    def test_add_config_channel_not_yet_existing_accepted_at_add(self):
+        """Layer 1 does NOT cross-reference; a channel may name an instance
+        that does not exist yet (DM ordering)."""
+        response = self._add_config('channel_ptp_bh', 'ptp01bh')
+        self.assertEqual(response.status_code, http_client.OK)
+
+    def test_config_and_raw_config_json_mutually_exclusive(self):
+        # Add a raw config_json first...
+        self.patch_json(
+            self.get_single_url(self.uuid),
+            [{'path': constants.PTP_PARAMETER_ARRAY_PATH,
+              'section': 'config_json',
+              'value': 'config_json={"global":{"operation_mode":"SW_BASED"}}',
+              'op': constants.PTP_PATCH_OPERATION_ADD}],
+            headers=self.API_HEADERS)
+        # ...then a structured config key must be rejected.
+        response = self._add_config('phc_interface', 'eno8703',
+                                    expect_errors=True)
+        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+        self.assertIn('mutually exclusive', response.json['error_message'])
+
+    def test_raw_config_json_rejected_when_config_exists(self):
+        # Add a structured config section first...
+        self._add_config('phc_interface', 'eno8703')
+        # ...then a raw config_json must be rejected (reverse direction).
+        response = self.patch_json(
+            self.get_single_url(self.uuid),
+            [{'path': constants.PTP_PARAMETER_ARRAY_PATH,
+              'section': 'config_json',
+              'value': 'config_json={"global":{"operation_mode":"SW_BASED"}}',
+              'op': constants.PTP_PATCH_OPERATION_ADD}],
+            headers=self.API_HEADERS,
+            expect_errors=True)
+        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+        self.assertIn('mutually exclusive', response.json['error_message'])
+
+    def test_replace_by_name_single_row(self):
+        """Re-adding ho_0 replaces the prior row (one row, not two)."""
+        self._add_config('ho_0', '480')
+        self._add_config('ho_0', '240')
+        ptp_params = self.get_json(
+            '/ptp_instances/%s/ptp_parameters' % self.uuid,
+            headers=self.API_HEADERS)
+        ho0_rows = [p for p in ptp_params['ptp_parameters']
+                    if p['name'] == 'ho_0' and p['section'] == 'config']
+        self.assertEqual(len(ho0_rows), 1)
+        self.assertEqual(ho0_rows[0]['value'], '240')
+
+    # ---- Layer 2: apply-time cross-reference + required-minimum ----
+
+    def _assign_instance_to_controller(self, instance_id):
+        response = self.patch_json(
+            self.get_host_url(self.controller.uuid),
+            [{'path': constants.PTP_INSTANCE_ARRAY_PATH,
+              'value': instance_id,
+              'op': constants.PTP_PATCH_OPERATION_ADD}],
+            headers=self.API_HEADERS)
+        self.assertEqual(response.status_code, http_client.OK)
+
+    def _apply(self, expect_errors=False):
+        return self.post_json(self.API_PREFIX + '/apply', {},
+                              headers=self.API_HEADERS,
+                              expect_errors=expect_errors)
+
+    def test_apply_missing_required_minimum_rejected(self):
+        """A config lacking a required-minimum key is rejected at apply."""
+        # Only phc_interface present; missing operation_mode / channel_ptp_bh.
+        self._add_config('phc_interface', 'eno8703')
+        self._assign_instance_to_controller(
+            self._instance_id_for_uuid(self.uuid))
+        response = self._apply(expect_errors=True)
+        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+        self.assertIn('missing required key', response.json['error_message'])
+
+    def test_apply_channel_references_missing_instance_rejected(self):
+        """A channel naming a non-existent instance is rejected at apply."""
+        self._add_config('phc_interface', 'eno8703')
+        self._add_config('operation_mode', 'SW_BASED')
+        self._add_config('channel_ptp_bh', 'does-not-exist')
+        self._add_config('dpll0_pin_priority_map', 'GNSS_REF4P:0')
+        self._assign_instance_to_controller(
+            self._instance_id_for_uuid(self.uuid))
+        response = self._apply(expect_errors=True)
+        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+        self.assertIn('does not exist', response.json['error_message'])
+
+    @mock.patch('sysinv.conductor.rpcapi.ConductorAPI.'
+                'update_ptp_instances_config')
+    def test_apply_valid_config_passes(self, mock_rpc):
+        """A complete, resolvable config passes Layer 2 and calls the RPC."""
+        # Create a sibling ptp4l backhaul instance on the same controller.
+        ptp4l = dbutils.create_test_ptp_instance(
+            name='ptp01bh', service=constants.PTP_INSTANCE_TYPE_PTP4L)
+        self._assign_instance_to_controller(ptp4l['id'])
+        self._add_config('phc_interface', 'eno8703')
+        self._add_config('operation_mode', 'SW_BASED')
+        self._add_config('channel_ptp_bh', 'ptp01bh')
+        self._add_config('dpll0_pin_priority_map', 'GNSS_REF4P:0, SDP0_REF0N:12')
+        self._assign_instance_to_controller(
+            self._instance_id_for_uuid(self.uuid))
+        response = self._apply()
+        self.assertEqual(response.status_code, http_client.NO_CONTENT)
+        mock_rpc.assert_called_once()
+
+    def _instance_id_for_uuid(self, uuid):
+        inst = self.get_json(self.get_single_url(uuid),
+                             headers=self.API_HEADERS)
+        return inst['id']

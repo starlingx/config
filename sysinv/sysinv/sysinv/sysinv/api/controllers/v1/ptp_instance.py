@@ -22,6 +22,7 @@ from sysinv.api.controllers.v1 import ptp_parameter
 from sysinv.api.controllers.v1 import types
 from sysinv.api.controllers.v1 import utils
 from sysinv.common import constants
+from sysinv.common import dpll_mgr_config_template as dpll_tmpl
 from sysinv.common import exception
 from sysinv.common import utils as cutils
 from sysinv import objects
@@ -225,6 +226,100 @@ class PtpInstanceController(rest.RestController):
                       "parameter %s" % (param_label or param_uuid))
             pecan.request.dbapi.ptp_parameter_destroy(param_uuid)
 
+    def _validate_dpll_mgr_config_key(self, uuid, param_name, param_value):
+        """Layer-1 vocabulary/format validation for a 'config' section key.
+
+        Rejects (ClientSideError) an unknown structured key, an unknown pin
+        name, an out-of-range priority, a non-integer holdover/domain value,
+        a bad operation_mode enum, and a 'config' key present while a
+        raw config_json row also exists (the two are mutually exclusive). No
+        cross-reference checks here -- a channel_* value may name an instance
+        that does not exist yet; that is a Layer-2 (apply time) concern.
+        """
+        if param_name not in (
+                constants.PTP_INSTANCE_TYPE_DPLL_MGR_STRUCTURED_KEYS):
+            raise wsme.exc.ClientSideError(
+                _("Unsupported dpll-mgr config key: %s. Supported: %s"
+                  % (param_name, ', '.join(
+                      constants.PTP_INSTANCE_TYPE_DPLL_MGR_STRUCTURED_KEYS))))
+
+        # 'config' and raw 'config_json' are mutually exclusive per instance.
+        existing_params = (
+            pecan.request.dbapi.ptp_parameters_get_list(ptp_instance=uuid))
+        for ep in existing_params:
+            if ep.name == 'config_json':
+                raise wsme.exc.ClientSideError(
+                    _("dpll-mgr instance %s already has a raw 'config_json' "
+                      "parameter; the structured 'config' section and raw "
+                      "'config_json' are mutually exclusive. Remove the raw "
+                      "config_json first." % uuid))
+
+        # Per-key format checks (reuse the template module primitives).
+        try:
+            if param_name in ('dpll0_pin_priority_map',
+                              'dpll1_pin_priority_map'):
+                dpll_tmpl.parse_pin_priority_map(param_value)
+            elif param_name == 'operation_mode':
+                if param_value not in dpll_tmpl.VALID_OPERATION_MODES:
+                    raise dpll_tmpl.DpllMgrConfigError(
+                        "Invalid operation_mode '%s' (expected one of: %s)"
+                        % (param_value,
+                           ', '.join(sorted(dpll_tmpl.VALID_OPERATION_MODES))))
+            elif param_name in ('ho_0', 'ho_1', 'ho_2', 'ptp_domain_number'):
+                dpll_tmpl._coerce_int(param_value, param_name)
+        except dpll_tmpl.DpllMgrConfigError as e:
+            raise wsme.exc.ClientSideError(_(str(e)))
+
+    def _validate_dpll_mgr_config_apply(self):
+        """Layer-2 apply-time validation of every dpll-mgr 'config' section.
+
+        For each dpll-mgr instance that carries a 'config' section, verify the
+        required-minimum keys are present and that each channel_* reference
+        resolves to an instance that exists, is assigned to the SAME host as
+        the dpll-mgr instance, and has the correct service type. Raises
+        ClientSideError (a 400) BEFORE the synchronous RPC so a bad config is
+        rejected cleanly instead of failing deep in render/puppet.
+        """
+        dbapi = pecan.request.dbapi
+        instances = dbapi.ptp_instances_get_list()
+        for inst in instances:
+            if inst.service != constants.PTP_INSTANCE_TYPE_DPLL_MGR:
+                continue
+            params = dbapi.ptp_parameters_get_list(ptp_instance=inst.uuid)
+            structured = {p.name: p.value for p in params
+                          if p.section == 'config'}
+            if not structured:
+                continue
+
+            # Required-minimum present.
+            try:
+                dpll_tmpl.validate_required_minimum(structured)
+            except dpll_tmpl.DpllMgrConfigError as e:
+                raise wsme.exc.ClientSideError(
+                    _("dpll-mgr instance '%s': %s" % (inst.name, str(e))))
+
+            # Resolve the host(s) this dpll-mgr instance is assigned to, then
+            # build the sibling-instance lookup for cross-reference.
+            assignees = dbapi.ptp_instance_get_assignees(inst.id)
+            if not assignees:
+                # Not yet assigned to a host -> nothing to render; skip. The
+                # required-minimum check above already guards vocabulary.
+                continue
+            for host in assignees:
+                host_instances = dbapi.ptp_instances_get_list(host=host.uuid)
+                lookup = {hi.name: hi.service for hi in host_instances}
+                channel_refs = {}
+                for ck in ('ptp_bh', 'ts2_0', 'ts2_1'):
+                    key = 'channel_' + ck
+                    if key in structured:
+                        channel_refs[ck] = structured[key]
+                try:
+                    dpll_tmpl.derive_channels(channel_refs, lookup)
+                except dpll_tmpl.DpllMgrConfigError as e:
+                    raise wsme.exc.ClientSideError(
+                        _("dpll-mgr instance '%s' on host '%s': %s"
+                          % (inst.name, host.hostname, str(e))))
+
     def _check_umt_table_id_uniqueness(
         self, instance_uuid, param_section, param_name, param_value
     ):
@@ -351,6 +446,22 @@ class PtpInstanceController(rest.RestController):
             if (ptp_instance['service'] ==
                     constants.PTP_INSTANCE_TYPE_DPLL_MGR and param_adding):
                 if param_name == 'config_json':
+                    # Reverse of the check in _validate_dpll_mgr_config_key:
+                    # reject a raw 'config_json' add when a structured 'config'
+                    # section already exists for this instance. The two are
+                    # mutually exclusive regardless of the order they are added.
+                    existing_params = (
+                        pecan.request.dbapi
+                        .ptp_parameters_get_list(ptp_instance=uuid))
+                    for ep in existing_params:
+                        if ep.section == 'config':
+                            raise wsme.exc.ClientSideError(
+                                _("dpll-mgr instance %s already has a "
+                                  "structured 'config' section; the raw "
+                                  "'config_json' parameter and the structured "
+                                  "'config' section are mutually exclusive. "
+                                  "Remove the structured config first."
+                                  % uuid))
                     try:
                         config = json.loads(param_value)
                     except (json.JSONDecodeError, ValueError) as e:
@@ -390,6 +501,45 @@ class PtpInstanceController(rest.RestController):
                     if param_uuid:
                         # Already updated in-place, skip create/add
                         continue
+
+            # Validate + store the dpll-mgr structured 'config' section
+            # (story 2011783). Layer 1 here is VOCABULARY/FORMAT only: a
+            # channel_* value may name an instance that does not exist yet
+            # (Deployment Manager may add parameters before the referenced
+            # instances), so cross-reference and required-minimum checks are
+            # deferred to apply() (Layer 2). Unlike config_json there is no
+            # in-place upsert for ordinary parameter rows (they are shared
+            # objects with owners), so a re-add is done as replace-by-name:
+            # remove the prior row for this key on this instance, then create.
+            if (ptp_instance['service'] ==
+                    constants.PTP_INSTANCE_TYPE_DPLL_MGR and
+                    param_section == 'config' and param_adding):
+                # ptp_0/1/2 forward channels are no-ops in StarlingX
+                # (forward_clock_parameters() does nothing): warn,
+                # do not reject, and do not store -- the daemon never consumes
+                # them. This mirrors the cgts-client warn-not-reject so the
+                # client and API agree.
+                if (param_name in
+                        constants.PTP_INSTANCE_TYPE_DPLL_MGR_WARN_CHANNELS):
+                    LOG.warning(
+                        "dpll-mgr instance %s: ignoring config channel '%s' "
+                        "(ptp_0/1/2 forward channels are not acted on by "
+                        "StarlingX; prefer channel_ptp_bh / channel_ts2_0 / "
+                        "channel_ts2_1)." % (uuid, param_name))
+                    continue
+                self._validate_dpll_mgr_config_key(
+                    uuid, param_name, param_value)
+                # replace-by-name: drop any existing row for this key/section
+                # on this instance so a re-add replaces rather than duplicates.
+                existing_params = (
+                    pecan.request.dbapi
+                    .ptp_parameters_get_list(ptp_instance=uuid))
+                for ep in existing_params:
+                    if ep.name == param_name and ep.section == 'config':
+                        self._remove_ptp_parameter(
+                            uuid, ep.uuid,
+                            param_label="config's %s" % param_name)
+                        break
 
             # Validate synce4l monitoring parameters
             if (ptp_instance['service'] ==
@@ -539,6 +689,11 @@ class PtpInstanceController(rest.RestController):
     @wsme_pecan.wsexpose(None, status_code=204)
     def apply(self):
         """Apply the ptp instance configuration."""
+        # Layer-2 validation (story 2011783): reject a bad dpll-mgr structured
+        # 'config' section here, synchronously, before the RPC -- so the
+        # operator gets a clear 400 instead of a failure deep in the
+        # render/puppet path.
+        self._validate_dpll_mgr_config_apply()
         try:
             pecan.request.rpcapi.update_ptp_instances_config(
                 pecan.request.context)
