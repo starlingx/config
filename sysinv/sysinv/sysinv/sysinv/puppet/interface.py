@@ -163,8 +163,18 @@ class InterfacePuppet(base.BasePuppet):
                 host, constants.PLATFORM_FUNCTION),
             'application_cpu_count': self._get_cpu_count(
                 host, constants.APPLICATION_FUNCTION),
+            'application_cpu_list': self._get_application_cpu_list(host),
         }
         return context
+
+    def _get_application_cpu_list(self, host):
+        """
+        Return the host's application logical CPUs (including SMT/HT thread
+        siblings) as a cpulist string, e.g. '2-15,34-47'.
+        """
+        cpus = self._get_host_cpu_list(
+            host, constants.APPLICATION_FUNCTION, threads=True)
+        return utils.format_range_set([c.cpu for c in cpus])
 
     def _get_cpu_count(self, host, function):
         """
@@ -1355,6 +1365,10 @@ def get_sriov_config(context, iface):
 
     get_sriov_vf_config(context, iface, port, vf_config)
 
+    app_cpu_list = context.get('application_cpu_list')
+    if app_cpu_list:
+        app_cpu_list = quoted_str(app_cpu_list)
+
     config = {
         'ifname': iface['ifname'],
         'addr': quoted_str(port['pciaddr'].strip()),
@@ -1363,6 +1377,7 @@ def get_sriov_config(context, iface):
         'port_name': port['name'],
         'up_requirement': get_sriov_interface_up_requirement(context, iface),
         'num_channels': port['numchannels'],
+        'application_cpu_list': app_cpu_list,
         'vf_config': vf_config
     }
     return config

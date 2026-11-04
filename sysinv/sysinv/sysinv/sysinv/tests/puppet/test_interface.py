@@ -1393,6 +1393,8 @@ class InterfaceTestCase2(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
                   'port_name': port_name,
                   'up_requirement': up_requirement,
                   'num_channels': self.port['numchannels'],
+                  'application_cpu_list':
+                      self.context.get('application_cpu_list'),
                   'vf_config': vf_config}
 
         return config
@@ -2800,6 +2802,7 @@ class InterfaceHostTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         self.assertIn('interfaces', context)
         self.assertIn('addresses', context)
         self.assertIn('routes', context)
+        self.assertIn('application_cpu_list', context)
 
     def test_is_platform_interface(self):
         if not self.expected_platform_interfaces:
