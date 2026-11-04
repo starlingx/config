@@ -2639,7 +2639,7 @@ class ConductorManager(service.PeriodicService):
 
         config_dict = {
             "personalities": personalities,
-            "classes": [f'platform::lvm::csi::{lvg_lvm_type}::runtime'],
+            "classes": ['platform::lvm::csi::allresources::runtime'],
             "host_uuids": [host_uuid],
             "host_uuid": host_uuid,
             "lvm_vg_name": pv.lvm_vg_name,
@@ -13138,20 +13138,7 @@ class ConductorManager(service.PeriodicService):
             try:
                 pv = self.dbapi.ipv_get(pv_uuid)
                 if pv:
-                    if pv.pv_type == constants.PV_TYPE_DISK:
-                        idisks = self.dbapi.idisk_get_all(foripvid=pv.id)
-                        for d in idisks:
-                            if d['uuid'] == pv['disk_or_part_uuid']:
-                                values = {'foripvid': None}
-                                self.dbapi.idisk_update(d.id, values)
-                    elif pv.pv_type == constants.PV_TYPE_PARTITION:
-                        partitions = self.dbapi.partition_get_all(
-                            foripvid=pv.id)
-                        for p in partitions:
-                            if p['uuid'] == pv['disk_or_part_uuid']:
-                                values = {'foripvid': None}
-                                self.dbapi.partition_update(p.id, values)
-
+                    self._prepare_for_ipv_removal(pv)
                     self.dbapi.ipv_destroy(pv_uuid)
                     LOG.info("LVM CSI pv successfully deleted on host "
                              "%(host)s VG %(vg)s and PV %(pv)s." % args)

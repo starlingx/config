@@ -199,18 +199,12 @@ class StoragePuppet(base.BasePuppet):
         nova_transition_devices = []
         ceph_mon_devices = []
         rook_osd_devices = []
-        lvm_csi_values = {
-            "thick_vg": "",
-            "thick_devices": [],
-            "thin_vg": "",
-            "thin_devices": [],
-            "devices": []
-        }
+        lvm_csi_devices = []
         cgts_thin_pool_enabled = False
         cgts_thin_pool_size = 0
-        removing_lvgs = []
         csi_vgs_by_id = {}
         allresources_vgs = {}
+        removeresources_vgs = {}
 
         # LVM Global Filter is driven by:
         # - cgts-vg PVs       : all nodes
@@ -227,7 +221,9 @@ class StoragePuppet(base.BasePuppet):
             if function \
                and function == constants.LVM_CSI_PROVISIONING_FUNCTION:
                 if vg.vg_state == constants.LVG_DEL:
-                    removing_lvgs.append(vg.lvm_vg_name)
+                    removeresources_vgs[vg.lvm_vg_name] = {
+                        'physical_volumes': [],
+                    }
                     continue
                 # If CGTS-VG is configured for lvm-csi function, then puppet
                 # needs to configure the thin pool for the VG
@@ -244,6 +240,11 @@ class StoragePuppet(base.BasePuppet):
         for pv in pvs:
             function = pv.capabilities.get('lvm_function', None)
 
+            # Pair PVs with a VG that is being deleted
+            if pv.lvm_vg_name in removeresources_vgs:
+                removeresources_vgs[pv.lvm_vg_name][
+                    'physical_volumes'].append(pv.disk_or_part_device_path)
+
             if pv.lvm_vg_name == constants.LVG_CGTS_VG:
                 # PVs for this volume group are only ever added, therefore the
                 # state of the PV doesn't matter. Make sure it's added to the
@@ -258,17 +259,7 @@ class StoragePuppet(base.BasePuppet):
                     nova_final_devices.append(pv.disk_or_part_device_path)
             elif function and \
                     function == constants.LVM_CSI_PROVISIONING_FUNCTION:
-                lvm_csi_values['devices'].append(pv.disk_or_part_device_path)
-                if pv.pv_state == constants.PV_ADD:
-                    vg_obj = next((vg for vg in vgs if vg.id == pv.forilvgid),
-                                  None)
-                    if vg_obj:
-                        lvm_type = vg_obj.capabilities.get(
-                            'lvm_type',
-                            constants.LVM_CSI_PROVISIONING_MODE_THICK)
-                        lvm_csi_values[f"{lvm_type}_vg"] = pv.lvm_vg_name
-                        lvm_csi_values[f"{lvm_type}_devices"].append(
-                            pv.disk_or_part_device_path)
+                lvm_csi_devices.append(pv.disk_or_part_device_path)
 
                 csi_vg = csi_vgs_by_id.get(pv.forilvgid, None)
                 if csi_vg is not None and pv.pv_state != constants.PV_DEL:
@@ -291,7 +282,7 @@ class StoragePuppet(base.BasePuppet):
         # the transition_filter contains the transient list of removing devices
         # as well
         final_devices = cgts_devices + nova_final_devices + ceph_mon_devices
-        final_devices += rook_osd_devices + lvm_csi_values['devices']
+        final_devices += rook_osd_devices + lvm_csi_devices
         final_filter = self._operator.storage.format_lvm_filter(final_devices)
 
         transition_filter = self._operator.storage.format_lvm_filter(
@@ -316,23 +307,17 @@ class StoragePuppet(base.BasePuppet):
                 cgts_thin_pool_enabled,
             'platform::lvm::params::cgts_thin_pool_size':
                 cgts_thin_pool_size,
-            'platform::lvm::params::removing_lvgs': removing_lvgs,
             'platform::lvm::params::csi_service_enabled': csi_service_enabled,
 
             'platform::lvm::vg::cgts_vg::physical_volumes': cgts_devices,
             'platform::lvm::vg::nova_local::physical_volumes':
                 nova_final_devices,
 
-            'platform::lvm::csi::params::thick::vg_name':
-                lvm_csi_values['thick_vg'],
-            'platform::lvm::csi::params::thick::physical_volumes':
-                lvm_csi_values['thick_devices'],
-            'platform::lvm::csi::params::thin::vg_name':
-                lvm_csi_values['thin_vg'],
-            'platform::lvm::csi::params::thin::physical_volumes':
-                lvm_csi_values['thin_devices'],
             'platform::lvm::csi::params::allresources::volume_groups':
                 allresources_vgs,
+
+            'platform::lvm::csi::params::removeresources::volume_groups':
+                removeresources_vgs,
         }
 
     def set_lvm_devices(self, devices):
