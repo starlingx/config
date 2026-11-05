@@ -199,6 +199,143 @@ class PlatformTestCaseKubernetesReservedMemory(base.PuppetTestCaseMixin,
         )
         self.assertEqual(k8s_reserved_memory_config, config)
 
+    def _make_1G_memory(self, nr_vm_1G=0, nr_vswitch_1G=0):
+        m = mock.MagicMock()
+        m.platform_reserved_mib = 1024
+        m.vm_pending_as_percentage = False
+        m.vswitch_hugepages_reqd = None
+        m.vm_hugepages_nr_2M_pending = None
+        m.vm_hugepages_nr_2M = 0
+        m.vm_hugepages_nr_1G_pending = None
+        m.vm_hugepages_nr_1G = nr_vm_1G
+        m.vm_hugepages_nr_4K = 0
+        if nr_vswitch_1G:
+            m.vswitch_hugepages_size_mib = constants.MIB_1G
+            m.vswitch_hugepages_nr = nr_vswitch_1G
+        else:
+            m.vswitch_hugepages_size_mib = None
+            m.vswitch_hugepages_nr = 0
+        return m
+
+    def _get_grub_1G(self, mock_eviction, mock_numa_list, mock_dbapi,
+                     mock_personalities, numa_map):
+        mock_personalities.return_value = [constants.WORKER]
+        mock_eviction.return_value = 100
+        mock_dbapi.imemory_get_by_ihost.return_value = []
+        mock_numa_list.return_value = numa_map
+        mock_host = mock.MagicMock()
+        mock_host.id = 1
+        return self.operator.platform._get_host_memory_config(mock_host)
+
+    @mock.patch('sysinv.common.utils.get_personalities')
+    @mock.patch('sysinv.db.api.get_instance')
+    @mock.patch('sysinv.common.utils.get_numa_index_list')
+    @mock.patch('sysinv.puppet.platform.PlatformPuppet._get_kubelet_eviction_hard_config_MiB')
+    def test_grub_hugepages_1G_symmetric(self, mock_eviction, mock_numa_list,
+                                         mock_dbapi, mock_personalities):
+        """Symmetric config: equal 1G vm pages on each node -> 0:16,1:16."""
+        result = self._get_grub_1G(
+            mock_eviction, mock_numa_list, mock_dbapi, mock_personalities,
+            {0: [self._make_1G_memory(nr_vm_1G=16)],
+             1: [self._make_1G_memory(nr_vm_1G=16)]})
+        self.assertEqual(
+            result['platform::compute::grub::params::g_hugepages'],
+            'hugepagesz=1G hugepages=0:16,1:16')
+
+    @mock.patch('sysinv.common.utils.get_personalities')
+    @mock.patch('sysinv.db.api.get_instance')
+    @mock.patch('sysinv.common.utils.get_numa_index_list')
+    @mock.patch('sysinv.puppet.platform.PlatformPuppet._get_kubelet_eviction_hard_config_MiB')
+    def test_grub_hugepages_1G_asymmetric(self, mock_eviction, mock_numa_list,
+                                          mock_dbapi, mock_personalities):
+        """Asymmetric config: different 1G vm pages per node -> 0:20,1:8."""
+        result = self._get_grub_1G(
+            mock_eviction, mock_numa_list, mock_dbapi, mock_personalities,
+            {0: [self._make_1G_memory(nr_vm_1G=20)],
+             1: [self._make_1G_memory(nr_vm_1G=8)]})
+        self.assertEqual(
+            result['platform::compute::grub::params::g_hugepages'],
+            'hugepagesz=1G hugepages=0:20,1:8')
+
+    @mock.patch('sysinv.common.utils.get_personalities')
+    @mock.patch('sysinv.db.api.get_instance')
+    @mock.patch('sysinv.common.utils.get_numa_index_list')
+    @mock.patch('sysinv.puppet.platform.PlatformPuppet._get_kubelet_eviction_hard_config_MiB')
+    def test_grub_hugepages_1G_contiguous_nodes(self, mock_eviction, mock_numa_list,
+                                                mock_dbapi, mock_personalities):
+        """Contiguous nodes {0, 1, 2, 3}: node IDs match positional indices."""
+        result = self._get_grub_1G(
+            mock_eviction, mock_numa_list, mock_dbapi, mock_personalities,
+            {0: [self._make_1G_memory(nr_vm_1G=32)],
+             1: [self._make_1G_memory(nr_vm_1G=16)],
+             2: [self._make_1G_memory(nr_vm_1G=16)],
+             3: [self._make_1G_memory(nr_vm_1G=8)]})
+        self.assertEqual(
+            result['platform::compute::grub::params::g_hugepages'],
+            'hugepagesz=1G hugepages=0:32,1:16,2:16,3:8')
+
+    @mock.patch('sysinv.common.utils.get_personalities')
+    @mock.patch('sysinv.db.api.get_instance')
+    @mock.patch('sysinv.common.utils.get_numa_index_list')
+    @mock.patch('sysinv.puppet.platform.PlatformPuppet._get_kubelet_eviction_hard_config_MiB')
+    def test_grub_hugepages_1G_noncontiguous_nodes(self, mock_eviction, mock_numa_list,
+                                                   mock_dbapi, mock_personalities):
+        """Non-contiguous nodes {0, 2, 4, 6}: odd nodes absent, must not emit them."""
+        result = self._get_grub_1G(
+            mock_eviction, mock_numa_list, mock_dbapi, mock_personalities,
+            {0: [self._make_1G_memory(nr_vm_1G=32)],
+             2: [self._make_1G_memory(nr_vm_1G=16)],
+             4: [self._make_1G_memory(nr_vm_1G=16)],
+             6: [self._make_1G_memory(nr_vm_1G=8)]})
+        self.assertEqual(
+            result['platform::compute::grub::params::g_hugepages'],
+            'hugepagesz=1G hugepages=0:32,2:16,4:16,6:8')
+
+    @mock.patch('sysinv.common.utils.get_personalities')
+    @mock.patch('sysinv.db.api.get_instance')
+    @mock.patch('sysinv.common.utils.get_numa_index_list')
+    @mock.patch('sysinv.puppet.platform.PlatformPuppet._get_kubelet_eviction_hard_config_MiB')
+    def test_grub_hugepages_1G_vm_only(self, mock_eviction, mock_numa_list,
+                                       mock_dbapi, mock_personalities):
+        """VM-only 1G hugepages: vswitch=0, vm pages drive the grub cmdline."""
+        result = self._get_grub_1G(
+            mock_eviction, mock_numa_list, mock_dbapi, mock_personalities,
+            {0: [self._make_1G_memory(nr_vm_1G=20)],
+             1: [self._make_1G_memory(nr_vm_1G=12)]})
+        self.assertEqual(
+            result['platform::compute::grub::params::g_hugepages'],
+            'hugepagesz=1G hugepages=0:20,1:12')
+
+    @mock.patch('sysinv.common.utils.get_personalities')
+    @mock.patch('sysinv.db.api.get_instance')
+    @mock.patch('sysinv.common.utils.get_numa_index_list')
+    @mock.patch('sysinv.puppet.platform.PlatformPuppet._get_kubelet_eviction_hard_config_MiB')
+    def test_grub_hugepages_1G_vswitch_only(self, mock_eviction, mock_numa_list,
+                                            mock_dbapi, mock_personalities):
+        """vswitch-only 1G hugepages: vm=0, vswitch pages drive the grub cmdline."""
+        result = self._get_grub_1G(
+            mock_eviction, mock_numa_list, mock_dbapi, mock_personalities,
+            {0: [self._make_1G_memory(nr_vswitch_1G=8)],
+             1: [self._make_1G_memory(nr_vswitch_1G=4)]})
+        self.assertEqual(
+            result['platform::compute::grub::params::g_hugepages'],
+            'hugepagesz=1G hugepages=0:8,1:4')
+
+    @mock.patch('sysinv.common.utils.get_personalities')
+    @mock.patch('sysinv.db.api.get_instance')
+    @mock.patch('sysinv.common.utils.get_numa_index_list')
+    @mock.patch('sysinv.puppet.platform.PlatformPuppet._get_kubelet_eviction_hard_config_MiB')
+    def test_grub_hugepages_1G_vm_and_vswitch(self, mock_eviction, mock_numa_list,
+                                              mock_dbapi, mock_personalities):
+        """Mixed 1G hugepages: vm + vswitch counts are summed per node."""
+        result = self._get_grub_1G(
+            mock_eviction, mock_numa_list, mock_dbapi, mock_personalities,
+            {0: [self._make_1G_memory(nr_vm_1G=20, nr_vswitch_1G=8)],
+             1: [self._make_1G_memory(nr_vm_1G=12, nr_vswitch_1G=4)]})
+        self.assertEqual(
+            result['platform::compute::grub::params::g_hugepages'],
+            'hugepagesz=1G hugepages=0:28,1:16')
+
     @mock.patch('sysinv.common.utils.get_personalities')
     @mock.patch('sysinv.db.api.get_instance')
     @mock.patch('sysinv.common.utils.get_numa_index_list')

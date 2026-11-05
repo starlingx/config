@@ -1096,8 +1096,11 @@ class PlatformPuppet(base.BasePuppet):
             default_pgsz = 'default_hugepagesz=2M'
             if sum(vswitch_1G_pages) != 0 or sum(vm_1G_pages) != 0:
                 default_pgsz = 'default_hugepagesz=1G'
-                grub_hugepages_1G = "hugepagesz=1G hugepages=%d" % (
-                    sum(vswitch_1G_pages) + sum(vm_1G_pages))
+                numa_node_ids = list(memory_numa_list.keys())
+                per_node_1G = ','.join(
+                    "%d:%d" % (numa_node_ids[i], vswitch_1G_pages[i] + vm_1G_pages[i])
+                    for i in range(len(vm_1G_pages)))
+                grub_hugepages_1G = "hugepagesz=1G hugepages=%s" % per_node_1G
                 config.update({
                     'platform::compute::grub::params::g_hugepages':
                         grub_hugepages_1G,
