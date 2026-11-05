@@ -15,6 +15,10 @@ class KubeAppManager(base.Manager):
         _, body = self.api.json_request('POST', f"{self.path}evaluate_apps_reapply/", body=triggers)
         return body
 
+    def post_trigger_lvm_snapshot_restore_lifecycle(self):
+        return self.api.json_request(
+            'POST', f"{self.path}apps/trigger_lvm_snapshot_restore_lifecycle/")
+
     def get_all_apps(self):
         _, response = self.api.json_request('GET', f"{self.path}apps/")
         return response.get('apps', [])

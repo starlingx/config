@@ -2242,6 +2242,7 @@ APP_ABORT_OP = 'abort'
 APP_REAPPLY_OP = 'reapply'
 APP_EVALUATE_REAPPLY_OP = 'evaluate-reapply'
 APP_RECOVER_UPDATE_OP = 'recover-update'
+APP_LVM_SNAPSHOT_RESTORE_OP = 'lvm-snapshot-restore'
 # Backup/Restore lifecycle actions:
 APP_BACKUP = 'backup'
 APP_ETCD_BACKUP = 'etcd-backup'

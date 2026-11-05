@@ -122,6 +122,7 @@ class KubeAppController(rest.RestController):
         'update_all': ['POST'],
         'get_apps_update_status': ['GET'],
         'rollback_all_apps': ['POST'],
+        'trigger_lvm_snapshot_restore_lifecycle': ['POST'],
         'get_all_apps_by_status': ['GET'],
         'kube_app_get_by_id': ['GET']
     }
@@ -660,6 +661,17 @@ class KubeAppController(rest.RestController):
     def rollback_all_apps(self):
         self._check_k8s_health(constants.APP_UPDATE_OP)
         pecan.request.rpcapi.rollback_all_apps(pecan.request.context)
+        return
+
+    @cutils.synchronized(LOCK_NAME)
+    @wsme_pecan.wsexpose(None)
+    def trigger_lvm_snapshot_restore_lifecycle(self):
+        success = pecan.request.rpcapi.trigger_lvm_snapshot_restore_lifecycle(
+            pecan.request.context)
+        if not success:
+            raise wsme.exc.ClientSideError(_(
+                "LVM snapshot restore lifecycle failed for one or more "
+                "applications. Check sysinv.log for details."))
         return
 
 
