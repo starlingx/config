@@ -85,6 +85,39 @@ class Manager(object):
 
         return [obj_class(self, res, loaded=True) for res in data if res]
 
+    def _list_paginated(self, url, response_key, obj_class=None):
+        """List a collection that sysinv-api returns in limited-size pages.
+
+        sysinv-api caps each response to 'api_limit_max' items (2000 by
+        default). When more items exist, the response contains a 'next'
+        link, and the following page is requested with 'marker=<uuid of
+        the last item received>'. All the pages are retrieved and the
+        items are returned as a single list.
+        """
+        if obj_class is None:
+            obj_class = self.resource_class
+
+        separator = '&' if '?' in url else '?'
+        marker = None
+        items = []
+
+        while True:
+            page_url = url
+            if marker:
+                page_url = '%s%smarker=%s' % (url, separator, marker)
+
+            _, body = self.api.json_request('GET', page_url)
+            data = body.get(response_key, []) if isinstance(body, dict) else []
+            items.extend(data)
+
+            if not data or not body.get('next'):
+                break
+            marker = data[-1].get('uuid')
+            if not marker:
+                break
+
+        return [obj_class(self, res, loaded=True) for res in items if res]
+
     def _update(self, url, body, http_method='PATCH', response_key=None):
         _, body = self.api.json_request(http_method, url, body=body)
         # PATCH/PUT requests may not return a body

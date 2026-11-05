@@ -25,15 +25,15 @@ class RouteManager(base.Manager):
 
     def list(self):
         path = '/v1/routes'
-        return self._list(path, "routes")
+        return self._list_paginated(path, "routes")
 
     def list_by_interface(self, interface_id):
         path = '/v1/iinterfaces/%s/routes' % interface_id
-        return self._list(path, "routes")
+        return self._list_paginated(path, "routes")
 
     def list_by_host(self, host_id):
         path = '/v1/ihosts/%s/routes' % host_id
-        return self._list(path, "routes")
+        return self._list_paginated(path, "routes")
 
     def get(self, route_id):
         path = '/v1/routes/%s' % route_id

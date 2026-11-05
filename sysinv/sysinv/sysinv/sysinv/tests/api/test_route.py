@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2022 Wind River Systems, Inc.
+# Copyright (c) 2022,2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -9,6 +9,7 @@ Tests for the API route methods.
 """
 
 import mock
+from oslo_config import cfg
 from six.moves import http_client
 
 from oslo_utils import uuidutils
@@ -389,6 +390,110 @@ class TestList(RouteTestCase):
         interface_id = ifaces[0].uuid
         response = self.get_json(self.get_iface_scoped_url(interface_id))
         self.assertEqual([], response[self.RESULT_KEY])
+
+    def _create_routes(self, count):
+        """Create 'count' routes on the test interface, 10.<x>.<y>.0/24"""
+        uuids = []
+        for i in range(count):
+            route = dbutils.create_test_route(
+                interface_id=self.interface.id,
+                family=4,
+                network='10.%d.%d.0' % (i // 250, i % 250 + 1),
+                prefix=24,
+                gateway=str(self.system_controller_subnet[1]),
+                metric=1)
+            uuids.append(route.uuid)
+        return uuids
+
+    def _list_all_pages(self, url, limit):
+        """Follow the 'next' links the same way the client does (marker)."""
+        items = []
+        pages = 0
+        marker = None
+        while True:
+            page_url = '%s?limit=%d' % (url, limit)
+            if marker:
+                page_url += '&marker=%s' % marker
+            response = self.get_json(page_url)
+            page = response[self.RESULT_KEY]
+            items.extend(page)
+            pages += 1
+            if not page or 'next' not in response:
+                break
+            self.assertIn(page[-1]['uuid'], response['next'])
+            marker = page[-1]['uuid']
+        return items, pages
+
+    def test_list_routes_below_limit_has_no_next(self):
+        self._create_routes(3)
+        response = self.get_json('%s?limit=10' % self.API_PREFIX)
+        self.assertEqual(3, len(response[self.RESULT_KEY]))
+        self.assertNotIn('next', response)
+
+    def test_list_routes_limit_returns_next_link(self):
+        self._create_routes(5)
+        response = self.get_json('%s?limit=2' % self.API_PREFIX)
+        routes = response[self.RESULT_KEY]
+        self.assertEqual(2, len(routes))
+        self.assertIn('next', response)
+        self.assertIn('marker=%s' % routes[-1]['uuid'], response['next'])
+        self.assertIn('limit=2', response['next'])
+
+    def test_list_routes_marker_returns_following_page(self):
+        uuids = self._create_routes(5)
+        first = self.get_json('%s?limit=2' % self.API_PREFIX)
+        marker = first[self.RESULT_KEY][-1]['uuid']
+        second = self.get_json('%s?limit=2&marker=%s' % (self.API_PREFIX, marker))
+        got = [r['uuid'] for r in second[self.RESULT_KEY]]
+        self.assertEqual(2, len(got))
+        # No overlap with the first page, and ordering is by id (creation)
+        self.assertEqual(uuids[2:4], got)
+
+    def test_list_routes_all_pages_no_loss_no_duplicates(self):
+        uuids = self._create_routes(7)
+        items, pages = self._list_all_pages(self.API_PREFIX, limit=3)
+        got = [r['uuid'] for r in items]
+        self.assertEqual(3, pages)
+        self.assertEqual(len(uuids), len(got))
+        self.assertEqual(set(uuids), set(got))
+
+    def test_list_routes_exact_multiple_of_limit(self):
+        # The last full page still advertises 'next'; the following page
+        # must be empty and terminate the iteration.
+        uuids = self._create_routes(4)
+        items, pages = self._list_all_pages(self.API_PREFIX, limit=2)
+        self.assertEqual(4, len(items))
+        self.assertEqual(set(uuids), set(r['uuid'] for r in items))
+        self.assertEqual(3, pages)
+
+    def test_list_routes_default_limit_capped_by_api_limit_max(self):
+        # Without ?limit the server caps the page at CONF.api_limit_max
+        # (2000 by default)
+        cfg.CONF.set_override('api_limit_max', 3)
+        self.addCleanup(cfg.CONF.clear_override, 'api_limit_max')
+        uuids = self._create_routes(5)
+        response = self.get_json(self.API_PREFIX)
+        self.assertEqual(3, len(response[self.RESULT_KEY]))
+        self.assertIn('next', response)
+        # An oversized limit is capped as well
+        response = self.get_json('%s?limit=1000' % self.API_PREFIX)
+        self.assertEqual(3, len(response[self.RESULT_KEY]))
+        items, _ = self._list_all_pages(self.API_PREFIX, limit=1000)
+        self.assertEqual(set(uuids), set(r['uuid'] for r in items))
+
+    def test_list_routes_host_scoped_pagination(self):
+        uuids = self._create_routes(5)
+        url = self.get_host_scoped_url(self.host.uuid)
+        items, pages = self._list_all_pages(url, limit=2)
+        self.assertEqual(3, pages)
+        self.assertEqual(set(uuids), set(r['uuid'] for r in items))
+
+    def test_list_routes_interface_scoped_pagination(self):
+        uuids = self._create_routes(5)
+        url = self.get_iface_scoped_url(self.interface.uuid)
+        items, pages = self._list_all_pages(url, limit=2)
+        self.assertEqual(3, pages)
+        self.assertEqual(set(uuids), set(r['uuid'] for r in items))
 
 
 class TestPatch(RouteTestCase):
