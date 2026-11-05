@@ -6811,7 +6811,8 @@ class HostController(rest.RestController):
                 for stor in istors:
                     istor_obj = objects.storage.get_by_uuid(
                                         pecan.request.context, stor.uuid)
-                    istor_values = {'state': constants.SB_STATE_CONFIGURING_WITH_APP}
+                    istor_values = {'state': constants.SB_STATE_CONFIGURING_WITH_APP,
+                                    'osdid': None}
                     pecan.request.dbapi.istor_update(istor_obj['uuid'], istor_values)
 
         hostupdate.ihost_val_update(
