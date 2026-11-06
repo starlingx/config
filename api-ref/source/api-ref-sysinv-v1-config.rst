@@ -13570,6 +13570,115 @@ forbidden (403), badMethod (405)
 This operation does not accept a request body.
 
 -------------------------
+System Health
+-------------------------
+
+These APIs run the system health check. The response is plain text: one
+line per check, each ending in ``[OK]`` or ``[Fail]``, followed by a
+detail line for every check that failed.
+
+***********************************
+Shows the health of the system
+***********************************
+
+.. rest_method:: GET /v1/health
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+serviceUnavailable (503), badRequest (400), unauthorized (401),
+forbidden (403), badMethod (405)
+
+::
+
+   System Health:
+   All hosts are provisioned: [OK]
+   All hosts are unlocked/enabled: [OK]
+   All hosts have current configurations: [OK]
+   All hosts are patch current: [OK]
+   No alarms: [OK]
+   All kubernetes nodes are ready: [OK]
+   All kubernetes control plane pods are ready: [OK]
+
+This operation does not accept a request body.
+
+**********************************************************
+Shows the health of the system for a platform upgrade
+**********************************************************
+
+.. rest_method:: GET /v1/health/upgrade
+
+Adds the platform upgrade specific checks to the general health check.
+
+Appending ``/relaxed`` to the path (``GET
+/v1/health/upgrade/relaxed``) runs the same checks, but a minor or
+warning alarm that is not management affecting no longer fails the
+check. Note that ``relaxed`` is a path segment, not a query parameter.
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+serviceUnavailable (503), badRequest (400), unauthorized (401),
+forbidden (403), badMethod (405)
+
+This operation does not accept a request body.
+
+**********************************************************
+Shows the health of the system for a Kubernetes upgrade
+**********************************************************
+
+.. rest_method:: GET /v1/health/kube-upgrade
+
+Adds the Kubernetes upgrade specific checks to the general health check.
+
+Appending ``/relaxed`` to the path (``GET
+/v1/health/kube-upgrade/relaxed``) runs the same checks, but a minor or
+warning alarm that is not management affecting no longer fails the
+check. A management affecting alarm fails the check either way; use
+``alarm_ignore_list`` or ``use_default_ignore_list`` to accept a
+specific alarm. Note that ``relaxed`` is a path segment, not a query
+parameter.
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+serviceUnavailable (503), badRequest (400), unauthorized (401),
+forbidden (403), badMethod (405)
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "rootca (Optional)", "query", "xsd:boolean", "A boolean flag indicating if the additional Kubernetes root CA update checks should be executed (the parameter is passed as part of the URL, ie, /v1/health/kube-upgrade?rootca=true). The default value is false."
+   "alarm_ignore_list (Optional)", "query", "xsd:string", "A comma separated list of alarm IDs that must not fail the check, ie, /v1/health/kube-upgrade?alarm_ignore_list=900.007,900.401. Each entry must be a whole alarm ID: a value that contains anything other than alarm IDs is rejected with a badRequest rather than partially applied."
+   "use_default_ignore_list (Optional)", "query", "xsd:boolean", "A boolean flag indicating if the alarms that are expected during a Kubernetes upgrade should also be accepted, as configured on the system in sysinv.conf [kube_upgrade] alarm_ignore_list. The list is merged with the one given by alarm_ignore_list, it does not replace it. The default value is false, so a request that does not ask for it is unaffected. This is the parameter to use to run the check while a Kubernetes upgrade is in progress, since alarm 900.007 (Kubernetes upgrade in progress) is raised by the upgrade itself and is management affecting."
+
+::
+
+   System Health:
+   All hosts are provisioned: [OK]
+   All hosts are unlocked/enabled: [OK]
+   All hosts have current configurations: [OK]
+   All hosts are patch current: [OK]
+   No alarms: [OK]
+   All kubernetes nodes are ready: [OK]
+   All kubernetes control plane pods are ready: [OK]
+   All kubernetes applications are in a valid state: [OK]
+
+This operation does not accept a request body.
+
+-------------------------
 Host Kernels
 -------------------------
 

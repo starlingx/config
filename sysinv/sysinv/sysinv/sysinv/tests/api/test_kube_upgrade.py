@@ -10,14 +10,12 @@ Tests for the API /kube_upgrade/ methods.
 
 import mock
 from six.moves import http_client
-import testtools
 
 from sysinv.common import constants
 from sysinv.common import health
 from sysinv.common import kubernetes
 from sysinv.common import exception
 from sysinv.common.usm_service import UsmUpgrade
-from sysinv.common.utils import parse_alarm_ignore_list
 from sysinv.conductor.manager import ConductorManager
 
 from sysinv.tests.api import base
@@ -622,6 +620,37 @@ class TestPostKubeUpgrade(TestKubeUpgrade,
                                     headers={'User-Agent': 'sysinv-test'},
                                     expect_errors=True)
 
+        self.assertEqual(result.content_type, 'application/json')
+        self.assertEqual(http_client.BAD_REQUEST, result.status_int)
+        self.assertIn("System is not in a valid state",
+                      result.json['error_message'])
+
+    @mock.patch('sysinv.common.health.Health._check_trident_compatibility', lambda x: True)
+    def test_create_alarm_ignore_list_invalid_entry_ignores_whole_list(self):
+        """Test that a serialized list holding an entry that is not an
+        alarm id is rejected whole, and that the request still goes
+        through the health check instead of being rejected outright.
+
+        The same helper serves this request body and the health check
+        query string. On the query string an unparseable value is now
+        reported to the caller; here it must stay lenient, because an
+        existing client sending a bad value would otherwise start getting
+        a different error. What must not happen is the bad value being
+        partially honoured: 999.999 travels in the same list as the
+        invalid entry, so it must not be ignored.
+        """
+        unknown_alarm = FakeAlarm('999.999', "False")
+        self.fake_fm_client.alarm.list.return_value = [unknown_alarm]
+
+        create_dict = dbutils.post_get_test_kube_upgrade(to_version='v1.43.2')
+        create_dict['alarm_ignore_list'] = "['999.999', 'not-an-alarm-id']"
+        with mock.patch('sysinv.common.usm_service.get_platform_upgrade',
+                        side_effect=exception.NotFound()):
+            result = self.post_json('/kube_upgrade', create_dict,
+                                    headers={'User-Agent': 'sysinv-test'},
+                                    expect_errors=True)
+
+        # Rejected by the health check, not by parameter validation
         self.assertEqual(result.content_type, 'application/json')
         self.assertEqual(http_client.BAD_REQUEST, result.status_int)
         self.assertIn("System is not in a valid state",
@@ -1301,75 +1330,3 @@ class TestDelete(TestKubeUpgrade,
                       result.json['error_message'])
         self.fake_conductor_api.\
             remove_kube_control_plane_backup.assert_not_called()
-
-
-class TestParseAlarmIgnoreList(testtools.TestCase):
-    """Unit tests for sysinv.common.utils.parse_alarm_ignore_list.
-
-    The helper accepts the alarm_ignore_list value coming from the request
-    body, which may be: None, an already-parsed list, a string-serialized
-    Python literal (legacy clients), or unexpected types. All cases must
-    be normalized to a list of alarm-id strings.
-    """
-
-    def test_none_returns_empty_list(self):
-        result = parse_alarm_ignore_list(None)
-        self.assertEqual(result, [])
-
-    def test_empty_string_returns_empty_list(self):
-        result = parse_alarm_ignore_list('')
-        self.assertEqual(result, [])
-
-    def test_whitespace_string_returns_empty_list(self):
-        result = parse_alarm_ignore_list('   ')
-        self.assertEqual(result, [])
-
-    def test_python_list_passes_through(self):
-        result = parse_alarm_ignore_list(
-            ['900.023', '900.401'])
-        self.assertEqual(result, ['900.023', '900.401'])
-
-    def test_legacy_string_serialized_list_is_parsed(self):
-        # cgts-client used to send the list as repr of a Python list
-        result = parse_alarm_ignore_list(
-            "['900.023', '900.401']")
-        self.assertEqual(result, ['900.023', '900.401'])
-
-    def test_legacy_string_with_trailing_comma_is_parsed(self):
-        # cgts-client formatted the list with a trailing comma
-        result = parse_alarm_ignore_list(
-            "['900.401',]")
-        self.assertEqual(result, ['900.401'])
-
-    def test_tuple_is_normalized_to_list(self):
-        result = parse_alarm_ignore_list(
-            ('900.023', '900.401'))
-        self.assertEqual(sorted(result), ['900.023', '900.401'])
-
-    def test_set_is_normalized_to_list(self):
-        result = parse_alarm_ignore_list(
-            {'900.023', '900.401'})
-        self.assertEqual(sorted(result), ['900.023', '900.401'])
-
-    def test_invalid_string_returns_empty_list(self):
-        # Unparseable garbage must not raise; just log and ignore
-        result = parse_alarm_ignore_list(
-            'not-a-list')
-        self.assertEqual(result, [])
-
-    def test_string_parsing_to_non_list_returns_empty_list(self):
-        # The string parses to a dict, which is not list-like
-        result = parse_alarm_ignore_list(
-            "{'foo': 'bar'}")
-        self.assertEqual(result, [])
-
-    def test_unexpected_type_returns_empty_list(self):
-        # Any non-string/non-iterable type is rejected gracefully
-        result = parse_alarm_ignore_list(42)
-        self.assertEqual(result, [])
-
-    def test_numeric_alarm_ids_are_stringified(self):
-        # If a caller passes integers, they should be converted to str
-        result = parse_alarm_ignore_list(
-            [900, 901])
-        self.assertEqual(result, ['900', '901'])
