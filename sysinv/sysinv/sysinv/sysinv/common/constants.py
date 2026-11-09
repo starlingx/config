@@ -2681,6 +2681,49 @@ PTP_INSTANCE_TYPE_DPLL_MGR_SUPPORTED_SECTIONS = [
     'synce',
     'ql_map',
     'inputs_ql',
+    # Structured, defaults-driven interface (story 2011783): operators supply a
+    # small set of flat name=value tunables under section 'config'; sysinv
+    # merges them over a shipped template at render time (networking.py). The
+    # 'config' section is mutually exclusive with raw 'config_json'.
+    'config',
+]
+
+# Flat name=value keys accepted under the dpll-mgr 'config' section (the
+# structured, defaults-driven interface, story 2011783). Validated as a closed
+# vocabulary at add time (Layer 1); see sysinv.common.dpll_mgr_config_template
+# for the semantics each key maps to in the rendered config_json.
+PTP_INSTANCE_TYPE_DPLL_MGR_STRUCTURED_KEYS = [
+    'phc_interface',
+    'operation_mode',
+    'ptp_domain_number',
+    'channel_ptp_bh',
+    'channel_ts2_0',
+    'channel_ts2_1',
+    'dpll0_pin_priority_map',
+    'dpll1_pin_priority_map',
+    'ho_0',
+    'ho_1',
+    'ho_2',
+]
+
+# Required-minimum structured keys that must all be present at apply time
+# (Layer 2). The dpll0/dpll1 pin priority maps ship as GNSS-primary template
+# defaults and are optional operator overrides.
+PTP_INSTANCE_TYPE_DPLL_MGR_STRUCTURED_REQUIRED = [
+    'phc_interface',
+    'operation_mode',
+    'channel_ptp_bh',
+]
+
+# Structured 'config' channel keys that StarlingX does not act on (ptp_0/1/2
+# forward channels; forward_clock_parameters() is a no-op here). These
+# are WARNED, not rejected, and are not stored: the daemon never consumes them,
+# so persisting them is pointless and keeping them accepted avoids breaking a
+# Deployment Manager overlay that happens to carry one.
+PTP_INSTANCE_TYPE_DPLL_MGR_WARN_CHANNELS = [
+    'channel_ptp_0',
+    'channel_ptp_1',
+    'channel_ptp_2',
 ]
 
 PTP_INSTANCE_TYPE_SYNCE4L_MONITORING_PARAMETERS = [
