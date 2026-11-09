@@ -211,13 +211,24 @@ def do_helm_chart_attribute_modify(cc, args):
     which are managed through the helm-override-update command.
     """
 
-    # Make sure the chart is present
-    app = app_utils._find_app(cc, args.app)
-    chart = _find_overrides(cc, app, args.chart, args.namespace)
-
     attributes = {}
     if args.enabled is not None:
         attributes.update({'enabled': args.enabled})
+
+    # Refuse a no-op attribute-modify. With no attribute to change the client
+    # would send an empty PATCH (attributes={}), which the API cannot tell
+    # apart from a bare helm-override-update and would treat as a reset,
+    # silently dropping the chart's user overrides. Require at least one
+    # attribute so that case can never be issued. Checked before any
+    # application lookup so a bad invocation fails without contacting the API.
+    if not attributes:
+        raise exc.CommandError(
+            'No chart attribute specified. Use --enabled <true/false> to '
+            'modify the chart. To change overrides use helm-override-update.')
+
+    # Make sure the chart is present
+    app = app_utils._find_app(cc, args.app)
+    _find_overrides(cc, app, args.chart, args.namespace)
 
     chart = cc.helm.update_chart(args.app, args.chart, args.namespace,
                                  attributes)
