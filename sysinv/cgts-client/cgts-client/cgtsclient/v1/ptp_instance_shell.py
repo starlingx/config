@@ -121,11 +121,98 @@ def _validate_dpll_mgr_parameters(section, parameters):
                     f"Parameter '{param_name}' is not supported for dpll-mgr "
                     f"section=monitoring. Supported: "
                     f"{constants.PTP_INSTANCE_TYPE_DPLL_MGR_MONITORING_PARAMETERS}")
+    elif section == 'config':
+        _validate_dpll_mgr_config_section(parameters)
     elif section not in constants.PTP_INSTANCE_TYPE_DPLL_MGR_SUPPORTED_SECTIONS:
         raise exc.CommandError(
             f"Section '{section}' is not supported for dpll-mgr. "
             f"Supported: {constants.PTP_INSTANCE_TYPE_DPLL_MGR_SUPPORTED_SECTIONS} "
             f"(or 'monitoring')")
+
+
+# Closed input-pin vocabulary for the structured 'config' section (mirrors
+# sysinv.common.dpll_mgr_config_template; cgts-client cannot import the sysinv
+# package, so the set is duplicated here for client-side rejection).
+_DPLL_MGR_VALID_PINS = {
+    'GNSS_REF4P', 'GNSS_REF4N', 'SDP0_REF0N', 'SDP2_REF0P', 'RCLKA_REF1P',
+    'RCLKB_REF1N', 'SMA1_REF3P', 'SMA3_REF3N', 'DPLL_REF2N',
+}
+_DPLL_MGR_PIN_ALIASES = {
+    'gnss': 'GNSS_REF4P', 'gnss-n': 'GNSS_REF4N', 'pps-sdp0': 'SDP0_REF0N',
+    'pps-sdp2': 'SDP2_REF0P', 'synce-a': 'RCLKA_REF1P', 'synce-b': 'RCLKB_REF1N',
+    'sma1': 'SMA1_REF3P', 'sma3': 'SMA3_REF3N', 'ref2n': 'DPLL_REF2N',
+}
+_DPLL_MGR_WARN_CHANNELS = {'channel_ptp_0', 'channel_ptp_1', 'channel_ptp_2'}
+
+
+def _validate_dpll_mgr_config_section(parameters):
+    """Client-side vocabulary/format validation for the structured 'config'
+    section (story 2011783). Rejects an unknown flat key or pin and an
+    out-of-range priority; warns (does not reject) on ptp_0/1/2 channels. The
+    authoritative checks run server-side (sysinv API Layer 1/2).
+    """
+    for param_keypair in parameters:
+        if param_keypair.find("=") < 0:
+            raise exc.CommandError(
+                f"Bad PTP parameter keypair: {param_keypair}")
+        (param_name, param_value) = param_keypair.split("=", 1)
+
+        if param_name in _DPLL_MGR_WARN_CHANNELS:
+            print(f"WARNING: channel '{param_name}' configures a ptp_0/1/2 "
+                  f"forward channel, which StarlingX does not act on and may "
+                  f"re-arm a collectd clockClass collision. Prefer "
+                  f"channel_ptp_bh / channel_ts2_0 / channel_ts2_1.")
+            continue
+
+        if param_name not in \
+                constants.PTP_INSTANCE_TYPE_DPLL_MGR_STRUCTURED_KEYS:
+            raise exc.CommandError(
+                f"Key '{param_name}' is not supported for dpll-mgr "
+                f"section=config. Supported: "
+                f"{constants.PTP_INSTANCE_TYPE_DPLL_MGR_STRUCTURED_KEYS}")
+
+        if param_name in ('dpll0_pin_priority_map', 'dpll1_pin_priority_map'):
+            _validate_dpll_mgr_pin_map(param_name, param_value)
+        elif param_name == 'operation_mode':
+            if param_value not in ('SW_BASED', 'HW_BASED'):
+                raise exc.CommandError(
+                    f"Invalid operation_mode '{param_value}' "
+                    f"(expected SW_BASED or HW_BASED)")
+        elif param_name in ('ho_0', 'ho_1', 'ho_2', 'ptp_domain_number'):
+            try:
+                int(param_value)
+            except (ValueError, TypeError):
+                raise exc.CommandError(
+                    f"Value for '{param_name}' must be an integer, "
+                    f"got '{param_value}'")
+
+
+def _validate_dpll_mgr_pin_map(param_name, raw_map):
+    """Validate a pin:prio list client-side (unknown pin / bad priority)."""
+    entries = [e.strip() for e in raw_map.split(',') if e.strip()]
+    if not entries:
+        raise exc.CommandError(f"Empty pin priority map for {param_name}")
+    for entry in entries:
+        if entry.count(':') != 1:
+            raise exc.CommandError(
+                f"Malformed pin priority entry '{entry}' "
+                f"(expected 'pin:priority')")
+        pin, prio = entry.split(':', 1)
+        pin = pin.strip()
+        if (pin not in _DPLL_MGR_VALID_PINS
+                and pin not in _DPLL_MGR_PIN_ALIASES):
+            raise exc.CommandError(
+                f"Unknown dpll pin name '{pin}'. Valid input pins: "
+                f"{sorted(_DPLL_MGR_VALID_PINS)} "
+                f"(or aliases {sorted(_DPLL_MGR_PIN_ALIASES)})")
+        try:
+            value = int(prio.strip())
+            if value < 0 or value > 15:
+                raise ValueError()
+        except (ValueError, TypeError):
+            raise exc.CommandError(
+                f"Invalid priority '{prio.strip()}' for pin '{pin}' "
+                f"(must be integer 0-15; 15 disconnects the pin)")
 
 
 def _ptp_instance_parameter_op(cc, op, instance, section, parameters):
