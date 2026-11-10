@@ -15446,12 +15446,12 @@ class ConductorManager(service.PeriodicService):
         return total_size, retcode
 
     def _get_drbd_dev_size(self, drbd_dev):
-        """ Get drbd device size
+        """ Get drbd device usable size in bytes
 
         :param drbd_dev: drbd device name
-        :returns: tuple with (drbd_device_size, return_code)
+        :returns: tuple with (drbd_device_size_in_bytes, return_code)
         """
-        cmd = "blockdev --getpbsz /dev/{}".format(drbd_dev)
+        cmd = "blockdev --getsize64 /dev/{}".format(drbd_dev)
         blockdev_proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
                                          stderr=subprocess.PIPE, shell=True,
                                          universal_newlines=True)
@@ -15461,44 +15461,52 @@ class ConductorManager(service.PeriodicService):
         log_msg = "Executed _get_drbd_dev_size: drbd_dev: {} return code: {}"\
             .format(drbd_dev, retcode)
         if retcode == 0:
-            sector_size = 0
-            drbd_size_in_sectors = 0
-            try:
-                sector_size = int(blockdev_out.strip())
-                drbd_size_in_sectors_file_path = "/sys/block/{}/size".format(drbd_dev)
-                with open(drbd_size_in_sectors_file_path) as f:
-                    drbd_size_in_sectors = int(f.read().strip())
-            except ValueError:
+            if blockdev_out.strip().isdigit():
+                total_size = int(blockdev_out.strip())
+            else:
                 retcode = 1
-            total_size = cutils.bytes_to_GiB(sector_size * drbd_size_in_sectors)
         else:
             log_msg += "\nstdout={}\nstderr={}".format(blockdev_out, blockdev_err)
         LOG.info(log_msg)
         return total_size, retcode
 
-    def _verify_drbd_dev_resized(self, context, drbd_dev, drbd_lv):
-        return self._verify_drbd_resized_generic(context, drbd_dev,
-                                                 drbd_lv, self._get_drbd_dev_size)
+    # DRBD with 'meta-disk internal' reserves part of the device for metadata
+    # (about 32 KiB per GiB), so the usable size is slightly smaller than the
+    # raw LV. Allow this slack when checking the device against the LV. It
+    # covers volumes up to about 2 TiB and must stay below the smallest resize
+    # step (1 GiB).
+    DRBD_META_INTERNAL_SLACK_BYTES = 64 * 1024 * 1024
 
-    def _verify_drbd_fs_resized(self, context, drbd_dev, drbd_lv):
-        return self._verify_drbd_resized_generic(context, drbd_dev,
-                                                 drbd_lv, self._get_drbd_fs_size)
-
-    def _verify_drbd_resized_generic(self, context, drbd_dev, drbd_lv,
-                                     get_actual_size_func, delay=15, max_retries=3):
+    def _verify_drbd_dev_resized(self, context, drbd_dev, drbd_lv,
+                                 delay=15, max_retries=3):
+        # The DRBD device must have grown to match the (increased) LV before we
+        # grow the filesystem on top of it.
         retries = 0
-        resized = False
         while retries < max_retries:
             lvdisplay_dict = self.get_controllerfs_lv_sizes(context)
-            drbd_actual_size, retcode = get_actual_size_func(drbd_dev)
+            dev_size, retcode = self._get_drbd_dev_size(drbd_dev)
             if retcode == 0 and lvdisplay_dict.get(drbd_lv, None):
-                drbd_lv_size = float(lvdisplay_dict[drbd_lv])
-                if math.ceil(drbd_actual_size) >= math.ceil(drbd_lv_size):
-                    resized = True
-                    break
+                lv_size = cutils.GiB_to_bytes(float(lvdisplay_dict[drbd_lv]))
+                if dev_size >= lv_size - self.DRBD_META_INTERNAL_SLACK_BYTES:
+                    return True
             retries += 1
             time.sleep(delay)
-        return resized
+        return False
+
+    def _verify_drbd_fs_resized(self, context, drbd_dev, drbd_lv,
+                                delay=15, max_retries=3):
+        # The EXT4 filesystem must fit inside the DRBD device usable size,
+        # otherwise the mount fails permanently with no self-recovery.
+        retries = 0
+        while retries < max_retries:
+            fs_size, fs_retcode = self._get_drbd_fs_size(drbd_dev)
+            dev_size, dev_retcode = self._get_drbd_dev_size(drbd_dev)
+            if (fs_retcode == 0 and dev_retcode == 0 and
+                    cutils.GiB_to_bytes(fs_size) <= dev_size):
+                return True
+            retries += 1
+            time.sleep(delay)
+        return False
 
     def _verify_drbd_resource_existence(self, filesystem_name):
         """
@@ -15515,8 +15523,24 @@ class ConductorManager(service.PeriodicService):
         # Check if the filesystem name is present in the output of 'drbd-overview'
         return filesystem_name in drbd_dict
 
-    def _resize2fs_drbd_dev(self, context, retry_attempts, drbd_dev, drbd_lv):
+    def _resize2fs_drbd_dev(self, context, retry_attempts, drbd_dev, drbd_lv,
+                            drbd_res, standby_host):
         resized = False
+        if not self._verify_drbd_dev_resized(context, drbd_dev, drbd_lv,
+                                             delay=0, max_retries=1):
+            # The device was not resized for this resource (e.g. the lvextend
+            # ran in a later boot than the global 'drbdadm resize all', so the
+            # marker already existed and the resize never ran for it). Resize
+            # just this resource and re-check before touching the filesystem.
+            LOG.warn("{} device not resized yet, running drbdadm resize {}"
+                     .format(drbd_dev, drbd_res))
+            if standby_host:
+                cmd = ["drbdadm", "resize", drbd_res]
+            else:
+                cmd = ["drbdadm", "--", "--assume-peer-has-space", "resize",
+                       drbd_res]
+            cutils.execute(*cmd, attempts=retry_attempts, run_as_root=True)
+
         if self._verify_drbd_dev_resized(context, drbd_dev, drbd_lv):
             progress = "resize2fs {}".format(drbd_dev)
             cmd = ["resize2fs", "/dev/{}".format(drbd_dev)]
@@ -15568,8 +15592,10 @@ class ConductorManager(service.PeriodicService):
                                 # database_gib /var/lib/postgresql
                                 drbd_dev = "drbd0"
                                 drbd_lv = "pgsql-lv"
+                                drbd_res = "drbd-pgsql"
                                 if self._resize2fs_drbd_dev(context, retry_attempts,
-                                                            drbd_dev, drbd_lv):
+                                                            drbd_dev, drbd_lv, drbd_res,
+                                                            standby_host):
                                     drbd_fs_resized.add(constants.DRBD_PGSQL)
 
                         if constants.DRBD_PLATFORM in (drbd_fs_updated - drbd_fs_resized):
@@ -15578,8 +15604,10 @@ class ConductorManager(service.PeriodicService):
                                 # platform_gib /opt/platform
                                 drbd_dev = "drbd2"
                                 drbd_lv = "platform-lv"
+                                drbd_res = "drbd-platform"
                                 if self._resize2fs_drbd_dev(context, retry_attempts,
-                                                            drbd_dev, drbd_lv):
+                                                            drbd_dev, drbd_lv, drbd_res,
+                                                            standby_host):
                                     drbd_fs_resized.add(constants.DRBD_PLATFORM)
 
                         if constants.DRBD_EXTENSION in (drbd_fs_updated - drbd_fs_resized):
@@ -15588,8 +15616,10 @@ class ConductorManager(service.PeriodicService):
                                 # extension_gib /opt/extension
                                 drbd_dev = "drbd5"
                                 drbd_lv = "extension-lv"
+                                drbd_res = "drbd-extension"
                                 if self._resize2fs_drbd_dev(context, retry_attempts,
-                                                            drbd_dev, drbd_lv):
+                                                            drbd_dev, drbd_lv, drbd_res,
+                                                            standby_host):
                                     drbd_fs_resized.add(constants.DRBD_EXTENSION)
 
                         if constants.DRBD_DC_VAULT in (drbd_fs_updated - drbd_fs_resized):
@@ -15598,8 +15628,10 @@ class ConductorManager(service.PeriodicService):
                                 # patch_gib /opt/dc-vault
                                 drbd_dev = "drbd6"
                                 drbd_lv = "dc-vault-lv"
+                                drbd_res = "drbd-dc-vault"
                                 if self._resize2fs_drbd_dev(context, retry_attempts,
-                                                            drbd_dev, drbd_lv):
+                                                            drbd_dev, drbd_lv, drbd_res,
+                                                            standby_host):
                                     drbd_fs_resized.add(constants.DRBD_DC_VAULT)
 
                         if constants.DRBD_ETCD in (drbd_fs_updated - drbd_fs_resized):
@@ -15608,8 +15640,10 @@ class ConductorManager(service.PeriodicService):
                                 # patch_gib /opt/etcd
                                 drbd_dev = "drbd7"
                                 drbd_lv = "etcd-lv"
+                                drbd_res = "drbd-etcd"
                                 if self._resize2fs_drbd_dev(context, retry_attempts,
-                                                            drbd_dev, drbd_lv):
+                                                            drbd_dev, drbd_lv, drbd_res,
+                                                            standby_host):
                                     drbd_fs_resized.add(constants.DRBD_ETCD)
 
                         if constants.DRBD_DOCKER_DISTRIBUTION in (drbd_fs_updated - drbd_fs_resized):
@@ -15618,8 +15652,10 @@ class ConductorManager(service.PeriodicService):
                                 # patch_gib /var/lib/docker-distribution
                                 drbd_dev = "drbd8"
                                 drbd_lv = "dockerdistribution-lv"
+                                drbd_res = "drbd-dockerdistribution"
                                 if self._resize2fs_drbd_dev(context, retry_attempts,
-                                                            drbd_dev, drbd_lv):
+                                                            drbd_dev, drbd_lv, drbd_res,
+                                                            standby_host):
                                     drbd_fs_resized.add(constants.DRBD_DOCKER_DISTRIBUTION)
 
                         if constants.DRBD_CEPH in (drbd_fs_updated - drbd_fs_resized):
@@ -15628,8 +15664,10 @@ class ConductorManager(service.PeriodicService):
                                 # patch_gib /var/lib/ceph/mon-float
                                 drbd_dev = "drbd9"
                                 drbd_lv = "ceph-float-lv"
+                                drbd_res = "drbd-ceph"
                                 if self._resize2fs_drbd_dev(context, retry_attempts,
-                                                            drbd_dev, drbd_lv):
+                                                            drbd_dev, drbd_lv, drbd_res,
+                                                            standby_host):
                                     drbd_fs_resized.add(constants.DRBD_CEPH)
 
                         if drbd_fs_updated == drbd_fs_resized:
