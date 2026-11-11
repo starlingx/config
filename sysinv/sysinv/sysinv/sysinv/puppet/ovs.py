@@ -352,6 +352,9 @@ class OVSPuppet(base.BasePuppet):
         vswitch_size = 0
 
         host_memory = self.dbapi.imemory_get_by_ihost(host.id)
+        # socket_mem is positional: entry i must belong to NUMA node i, so
+        # order the rows by node instead of relying on primary-key order.
+        host_memory = sorted(host_memory, key=lambda m: m.numa_node)
         for memory in host_memory:
             vswitch_size = memory.vswitch_hugepages_size_mib \
                 if memory.vswitch_hugepages_size_mib is not None else 0
