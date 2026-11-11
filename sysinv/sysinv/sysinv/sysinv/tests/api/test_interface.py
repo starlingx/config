@@ -2132,6 +2132,44 @@ class TestPostMixin(object):
             error_message='Platform VLAN interface cannot be created over a '
             'data interface')
 
+    # Expected message: a data bond cannot be deleted while a VLAN is on top
+    # of it, otherwise the VLAN would be left without a lower interface.
+    def test_delete_data_bond_in_use_by_vlan(self):
+        bond_iface = self._create_worker_bond(
+            'data', constants.NETWORK_TYPE_DATA,
+            constants.INTERFACE_CLASS_DATA, datanetworks='group0-ext1')
+        vlan_iface = self._create_worker_vlan(
+            'vlan2', constants.NETWORK_TYPE_DATA,
+            constants.INTERFACE_CLASS_DATA, 2,
+            lower_iface=bond_iface, datanetworks='group0-ext1')
+
+        self._delete_and_check(bond_iface['uuid'], expect_errors=True,
+                               error_message='still in use by vlan2')
+
+        # nothing was removed: the VLAN keeps its lower interface
+        vlan = self.dbapi.iinterface_get(vlan_iface['uuid'])
+        self.assertEqual([bond_iface['ifname']], vlan.uses)
+
+        # once the VLAN is removed the bond can be deleted
+        self._delete_and_check(vlan_iface['uuid'])
+        self._delete_and_check(bond_iface['uuid'])
+
+    # Expected message: the same protection applies to a platform bond
+    def test_delete_platform_bond_in_use_by_vlan(self):
+        bond_iface = self._create_worker_bond(
+            'pxeboot', constants.NETWORK_TYPE_PXEBOOT,
+            constants.INTERFACE_CLASS_PLATFORM)
+        vlan_iface = self._create_worker_vlan(
+            'vlan2', constants.NETWORK_TYPE_MGMT,
+            constants.INTERFACE_CLASS_PLATFORM, 2,
+            lower_iface=bond_iface)
+
+        self._delete_and_check(bond_iface['uuid'], expect_errors=True,
+                               error_message='still in use by vlan2')
+
+        self._delete_and_check(vlan_iface['uuid'])
+        self._delete_and_check(bond_iface['uuid'])
+
     # Expected message:
     #   An interface with interface class platform cannot assign datanetworks.
     def test_create_nondata_data_network(self):

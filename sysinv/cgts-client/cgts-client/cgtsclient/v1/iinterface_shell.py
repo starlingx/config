@@ -86,7 +86,7 @@ def do_host_if_list(cc, args):
                 attr_str = "%s,primary_reselect=%s" % (
                     attr_str, i.primary_reselect)
         if i.ifclass and i.ifclass == 'data':
-            if False in i.dpdksupport:
+            if False in getattr(i, 'dpdksupport', []):
                 attr_str = "%s,accelerated=False" % attr_str
             else:
                 attr_str = "%s,accelerated=True" % attr_str
