@@ -2453,16 +2453,10 @@ def _delete(interface):
     if check_host:
         _check_host(ihost)
 
-    # Removal of an interface is not allowed on following conditions are met:
-    # the class of the interface is 'platform',
-    # the type of the interface is 'ae', and
-    # the interface is in use (i.e., 'used_by' is not null).
-    # The 'system interface-network-remove' command should be executed to
-    # unassign the interface before its deletion.
-    if (interface['ifclass'] == constants.INTERFACE_CLASS_PLATFORM and
-            interface['iftype'] == constants.INTERFACE_TYPE_AE and
-            interface["used_by"]):
-
+    # Removal of a platform/data interface is not allowed if it is a
+    # lower interface for others. ( i.e: INTERFACE_TYPE_AE )
+    # delete the interfaces on top of it first
+    if (interface["used_by"]):
         str_used_by = ', '.join(str(val) for val in interface["used_by"])
         message = _("Cannot delete interface %s, still in use by %s"
                     % (interface["ifname"], str_used_by))
