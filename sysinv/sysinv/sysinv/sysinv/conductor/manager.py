@@ -24361,6 +24361,12 @@ class ConductorManager(service.PeriodicService):
         except socket.error:
             LOG.debug("Failed to get local hostname to retrieve IPsec certificate")
 
+        # Per-member etcd certificates. A fixed member holds only its own, so
+        # the certificate present here belongs to this host's member.
+        for member_cert in sorted(glob.glob("/etc/etcd/etcd-fixed-*.crt")):
+            certs.append((os.path.basename(member_cert)[:-len(".crt")],
+                          constants.AUTOMATIC, member_cert))
+
         kube_operator = kubernetes.KubeOperator()
         certificates = kube_operator.list_custom_resources("cert-manager.io", "v1", "certificates")
         k8s_secrets_list = [cert["spec"]["secretName"] for cert in certificates]
