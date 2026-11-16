@@ -2504,6 +2504,33 @@ class InterfaceTestCase2(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         self.assertEqual(list(config.keys()), [interface.CHANNEL_CONFIG_RESOURCE])
         self.assertNotIn('_channel_config_meta', context)
 
+    def test_channel_config_skips_vf_interface(self):
+        # A VF interface (iftype=vf) must not break channel generation for
+        # the ethernet interfaces, regardless of iteration order.
+        sriov0 = {'id': 1, 'ifname': 'sriov0', 'iftype': constants.INTERFACE_TYPE_ETHERNET,
+                  'ifclass': constants.INTERFACE_CLASS_PCI_SRIOV, 'ovs_access': False,
+                  'channels': 2, 'uses': []}
+        vf0 = {'id': 2, 'ifname': 'ca', 'iftype': constants.INTERFACE_TYPE_VF,
+               'ifclass': constants.INTERFACE_CLASS_PCI_SRIOV, 'ovs_access': False,
+               'channels': None, 'uses': ['sriov0']}
+        sriov1 = {'id': 3, 'ifname': 'sriov1', 'iftype': constants.INTERFACE_TYPE_ETHERNET,
+                  'ifclass': constants.INTERFACE_CLASS_PCI_SRIOV, 'ovs_access': False,
+                  'channels': 2, 'uses': []}
+        context = {
+            'interfaces': {'sriov0': sriov0, 'ca': vf0, 'sriov1': sriov1},
+            'ports': {1: {'name': 'enp179s0f0', 'interface_id': 1, 'maxchannels': 16},
+                      3: {'name': 'enp179s0f1', 'interface_id': 3, 'maxchannels': 16}},
+            'platform_cpu_count': 1,
+            'application_cpu_count': 16,
+        }
+        config = {interface.CHANNEL_CONFIG_RESOURCE: {}}
+        interface.generate_data_iface_channels(context, config, self.dbapi)
+
+        cc = config[interface.CHANNEL_CONFIG_RESOURCE]
+        self.assertEqual(cc['enp179s0f0']['channels'], 2)
+        self.assertEqual(cc['enp179s0f1']['channels'], 2)
+        self.assertEqual(len(cc), 2)
+
     def test_get_cpu_count_includes_smt_thread_siblings(self):
         """Test that _get_cpu_count counts all logical CPUs, including SMT
         thread siblings.

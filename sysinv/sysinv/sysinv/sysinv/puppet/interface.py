@@ -2147,7 +2147,7 @@ def check_interface_channel_conditions(iface, db_api):
     """
     Function to check the interface channel conditions:-
     1. Interface class is platform or pci-sriov.
-    2. Interface type is ethernet, ae, or vf.
+    2. Interface type is ethernet or ae.
     3. Interface has ovs_access=True.
     """
     if_class = iface.get('ifclass', None)
@@ -2156,8 +2156,7 @@ def check_interface_channel_conditions(iface, db_api):
     if not (if_class in [constants.INTERFACE_CLASS_PLATFORM,
                          constants.INTERFACE_CLASS_PCI_SRIOV] and
             if_type in {constants.INTERFACE_TYPE_ETHERNET,
-                        constants.INTERFACE_TYPE_AE,
-                        constants.INTERFACE_TYPE_VF}):
+                        constants.INTERFACE_TYPE_AE}):
         return False
     # ovs_access creates a veth interface pair on the kernel,
     # skip channel processing
@@ -2181,22 +2180,21 @@ def generate_data_iface_channels(context, config, db_api):
                 continue
             # Channels are a property of the physical port. When multiple
             # interfaces are layered over the same port (e.g. a platform
-            # 'pxeboot0' over a pci-sriov 'common0') they resolve to the same
+            # interface over a pci-sriov interface) they resolve to the same
             # os_ifname; only the interface that OWNS the port may generate
             # channel config. This prevents a layered interface's value from
             # overwriting the port owner's under the same os_ifname key.
-            # The API (_check_channels_interface_type) forbids configuring
-            # channels on a non-port-owning interface, so the owner is the only
-            # interface that can carry an explicit value here. AE (bond)
-            # interfaces are exempt: they propagate channels to their member
-            # ports, handled within _build_iface_channel_config.
-            if iface.get('iftype') != constants.INTERFACE_TYPE_AE:
-                port = get_interface_port(context, iface)
-                if port is not None and port['interface_id'] != iface['id']:
-                    continue
-            _build_iface_channel_config(context, iface, config,
-                                        platform_cpu_count,
-                                        application_cpu_count)
+            try:
+                if iface.get('iftype') == constants.INTERFACE_TYPE_ETHERNET:
+                    port = get_interface_port(context, iface)
+                    if port is not None and port['interface_id'] != iface['id']:
+                        continue
+                _build_iface_channel_config(context, iface, config,
+                                            platform_cpu_count,
+                                            application_cpu_count)
+            except Exception as e:
+                LOG.error("Failed to generate channel data for interface "
+                          f"{iface.get('ifname')}: {e}", exc_info=True)
     except Exception as e:
         LOG.error(f"Failed to generate interface data for interface channels: {e}", exc_info=True)
 
