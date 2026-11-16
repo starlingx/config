@@ -1815,17 +1815,22 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                                 app_name=app_name,
                                                 flag=flag))
 
-    def trigger_lvm_snapshot_restore_lifecycle(self, context):
+    def trigger_lvm_snapshot_restore_lifecycle(self, context, from_release=None,
+                                               to_release=None):
         """Synchronously, trigger the LVM snapshot restore lifecycle hook
         for all currently applied applications.
 
         :param context: request context.
+        :param from_release: software release the rollback is starting from.
+        :param to_release: software release the rollback is going to.
         :returns: True if the hook succeeded for all applied apps,
                   False otherwise.
         """
         return self.call(
             context,
-            self.make_msg('trigger_lvm_snapshot_restore_lifecycle'),
+            self.make_msg('trigger_lvm_snapshot_restore_lifecycle',
+                          from_release=from_release,
+                          to_release=to_release),
             timeout=RPC_TIMEOUT
         )
 
