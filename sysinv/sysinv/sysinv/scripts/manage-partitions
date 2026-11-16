@@ -399,14 +399,16 @@ def _resize_partition(disk_device_path, part_number, new_part_size_mib,
     return partition
 
 
-def _resize_partition_online(disk_device_path, part_number, new_part_size_mib):
+def _resize_partition_online(disk_device_path, part_number, new_part_size_mib,
+                             start_mib):
     """Resize a partition in use, by an online approach.
 
     :param   disk_device_path: the device path of the disk on which the
              partition resides
     :param   part_number: the partition number
     :param   new_part_size_mib: the new size for the partition, in MiB
-    :returns dictionary with partition's start, end, start
+    :param   start_mib: the start of the partition, in MiB
+    :returns dictionary with partition's start, end, size
     """
 
     LOG.info("Partition is part of an active VG. Resizing online partition.")
@@ -414,8 +416,11 @@ def _resize_partition_online(disk_device_path, part_number, new_part_size_mib):
     sector_size_bytes = _get_disk_sector_size(disk_device_path)
 
     # Resize the partition with the new size ----------------------------------
-    cmd = ['parted', '-s', disk_device_path, 'resizepart', part_number,
-           f"{new_part_size_mib}MiB"]
+    # 'parted resizepart' expects the END position of the partition (counted
+    # from the beginning of the disk), not its size.
+    end_mib = int(start_mib) + int(new_part_size_mib)
+    cmd = ['parted', '-s', disk_device_path, 'resizepart', str(part_number),
+           f"{end_mib}MiB"]
     _, err, ret = _command(cmd, device_node=disk_device_path)
 
     if ret != RETURN_SUCCESS:
@@ -811,7 +816,8 @@ def modify_partitions(data, mode, pfile):
                     # Resize the partition.
                     if online_resizing:
                         part = _resize_partition_online(
-                            disk_device_path, part_number, new_part_size_mib)
+                            disk_device_path, part_number, new_part_size_mib,
+                            start_mib)
                     else:
                         part = _resize_partition(disk_device_path, part_number,
                                                  new_part_size_mib, start_mib,
