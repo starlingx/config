@@ -5080,7 +5080,7 @@ class FluxCDHelper(object):
             cmd = ['kubectl', '--kubeconfig', kubernetes.KUBERNETES_ADMIN_CONF,
                    operation_type, '-k', manifest_dir, '--ignore-not-found=true',
                    f'--request-timeout={constants.KUBECTL_KUSTOMIZE_REQUEST_TIMEOUT}',
-                   f'--timeout={constants.KUBECTL_KUSTOMIZE_TIMEOUT}']
+                   f'--timeout={constants.KUBECTL_KUSTOMIZE_DELETE_TIMEOUT}']
         else:
             cmd = ['kubectl', '--kubeconfig', kubernetes.KUBERNETES_ADMIN_CONF,
                    operation_type, '-k', manifest_dir,
