@@ -664,10 +664,12 @@ class KubeAppController(rest.RestController):
         return
 
     @cutils.synchronized(LOCK_NAME)
-    @wsme_pecan.wsexpose(None)
-    def trigger_lvm_snapshot_restore_lifecycle(self):
+    @wsme_pecan.wsexpose(None, body=types.apidict)
+    def trigger_lvm_snapshot_restore_lifecycle(self, body):
+        from_release = body.get('from_release')
+        to_release = body.get('to_release')
         success = pecan.request.rpcapi.trigger_lvm_snapshot_restore_lifecycle(
-            pecan.request.context)
+            pecan.request.context, from_release, to_release)
         if not success:
             raise wsme.exc.ClientSideError(_(
                 "LVM snapshot restore lifecycle failed for one or more "
