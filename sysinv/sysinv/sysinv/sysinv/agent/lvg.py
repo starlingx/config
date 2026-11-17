@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2014 Wind River Systems, Inc.
+# Copyright (c) 2013-2014,2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -69,51 +69,6 @@ class LVGOperator(object):
 
         return thinpools
 
-    def ilvg_rook_get(self):
-        # rook-ceph are hidden by global_filter, list them separately.
-        # keys: matching the field order of pvdisplay command
-        string_keys = ['lvm_vg_name', 'lvm_vg_uuid', 'lvm_vg_access',
-                       'lvm_max_lv', 'lvm_cur_lv', 'lvm_max_pv',
-                       'lvm_cur_pv', 'lvm_vg_size', 'lvm_vg_total_pe',
-                       'lvm_vg_free_pe']
-
-        # keys that need to be translated into ints
-        int_keys = ['lvm_max_lv', 'lvm_cur_lv', 'lvm_max_pv',
-                    'lvm_cur_pv', 'lvm_vg_size', 'lvm_vg_total_pe',
-                    'lvm_vg_free_pe']
-
-        # pvdisplay command to retrieve the pv data of all pvs present
-        vgdisplay_command = 'vgdisplay -C --aligned -o vg_name,vg_uuid,vg_attr'\
-                            ',max_lv,lv_count,max_pv,pv_count,vg_size,'\
-                            'vg_extent_count,vg_free_count'\
-                            ' --units B --nosuffix --noheadings'
-
-        disable_filter = ' --config \'devices/global_filter=["a|.*|"]\''
-        vgdisplay_command = vgdisplay_command + disable_filter
-        vgdisplay_stdout, vgdisplay_stderr = utils.subprocess_open(command=vgdisplay_command,
-                                                                   timeout=5)
-        vgdisplay_output = vgdisplay_stdout
-
-        # parse the output 1 vg/row
-        rook_vgs = []
-        for row in vgdisplay_output.split('\n'):
-            if row.strip().startswith("ceph"):
-
-                # get the values of fields as strings
-                values = row.split()
-
-                # create the dict of attributes
-                attr = dict(zip(string_keys, values))
-
-                # convert required values from strings to ints
-                for k in int_keys:
-                    if k in attr.keys():
-                        attr[k] = int(attr[k])
-
-                rook_vgs.append(attr)
-
-        return rook_vgs
-
     def ilvg_get(self, cinder_device=None):
         '''Enumerate physical volume topology based on:
 
@@ -182,11 +137,6 @@ class LVGOperator(object):
             # Make sure we have attributes
             if attr:
                 ilvg.append(attr)
-
-        rook_vgs = self.ilvg_rook_get()
-        for vg in rook_vgs:
-            if vg and vg not in ilvg:
-                ilvg.append(vg)
 
         LOG.debug("ilvg= %s" % ilvg)
 
