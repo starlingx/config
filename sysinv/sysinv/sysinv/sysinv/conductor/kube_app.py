@@ -2987,12 +2987,6 @@ class AppOperator(object):
                     LOG.info("App {} requested to achieve {} state"
                              "".format(app_name, desired_state))
 
-            elif constants.APP_METADATA_PLATFORM_UNMANAGED_APPS in apps_metadata_dict:
-                apps_metadata_dict[constants.APP_METADATA_PLATFORM_UNMANAGED_APPS].add(app_name)
-
-        elif constants.APP_METADATA_PLATFORM_UNMANAGED_APPS in apps_metadata_dict:
-            apps_metadata_dict[constants.APP_METADATA_PLATFORM_UNMANAGED_APPS].add(app_name)
-
         dependent_apps = metadata.get(constants.APP_METADATA_DEPENDENT_APPS, None)
         if dependent_apps is not None:
             apps_metadata_dict[constants.APP_METADATA_APPS][app_name][

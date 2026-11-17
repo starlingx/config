@@ -86,7 +86,6 @@ class AppUpdateManager:  # noqa: H238
                 + class_apps.get('reporting', [])
             ),
             'dependent_apps': apps_metadata.get('dependent_apps', []),
-            'unmanaged_apps': apps_metadata.get('unmanaged_apps', set()),
         }
 
         status_to_category = {
@@ -223,8 +222,6 @@ class AppUpdateManager:  # noqa: H238
 
             LOG.info("Starting the {operation_label} of apps with applied status.")
             for class_type in self.apps_to_update[constants.APP_UPDATE_OP]:
-                if class_type['class_type'] == 'unmanaged_apps':
-                    LOG.info("Starting the {operation_label} of unmanaged apps with applied status.")
                 self._update_a_list_of_apps(
                     context,
                     class_type['apps'],

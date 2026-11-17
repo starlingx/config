@@ -1145,15 +1145,12 @@ def get_reorder_apps(is_platform_rollback=False):
         constants.APP_METADATA_PLATFORM_MANAGED_APPS: {},
         constants.APP_METADATA_DESIRED_STATES: {},
         constants.APP_METADATA_ORDERED_APPS: {},
-        constants.APP_METADATA_PLATFORM_UNMANAGED_APPS: set(),
         constants.APP_METADATA_CYCLIC_DEPENDENCIES: []
     }
 
     load_metadata_of_apps(apps_metadata, is_platform_rollback)
 
     if isinstance(apps_metadata[constants.APP_METADATA_ORDERED_APPS], dict):
-        apps_metadata[constants.APP_METADATA_ORDERED_APPS]['unmanaged_apps'] = \
-            apps_metadata[constants.APP_METADATA_PLATFORM_UNMANAGED_APPS]
 
         apps_metadata[constants.APP_METADATA_ORDERED_APPS][
             constants.APP_METADATA_CYCLIC_DEPENDENCIES] = \
