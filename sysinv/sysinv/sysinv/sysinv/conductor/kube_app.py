@@ -5064,7 +5064,8 @@ class FluxCDHelper(object):
 
         return rc
 
-    def run_kubectl_kustomize(self, operation_type, manifest_dir):
+    def run_kubectl_kustomize(self, operation_type, manifest_dir,
+                              server_side=False):
         if operation_type == constants.KUBECTL_KUSTOMIZE_VALIDATE:
             cmd = ['kubectl', '--kubeconfig', kubernetes.KUBERNETES_ADMIN_CONF,
                constants.KUBECTL_KUSTOMIZE_APPLY, '-k', manifest_dir, '--dry-run=server',
@@ -5080,6 +5081,9 @@ class FluxCDHelper(object):
                    operation_type, '-k', manifest_dir,
                    f'--request-timeout={constants.KUBECTL_KUSTOMIZE_REQUEST_TIMEOUT}',
                    f'--timeout={constants.KUBECTL_KUSTOMIZE_TIMEOUT}']
+            if server_side and operation_type == constants.KUBECTL_KUSTOMIZE_APPLY:
+                # Server-side apply skips the 256 KiB last-applied annotation.
+                cmd += ['--server-side', '--force-conflicts']
 
         process = subprocess.Popen(cmd,
         stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -5091,6 +5095,17 @@ class FluxCDHelper(object):
             LOG.warning("Command: %s; %s" % (' '.join(cmd), stderr))
 
         if process.returncode != 0:
+            # Object too big for the last-applied annotation: retry once.
+            if (operation_type == constants.KUBECTL_KUSTOMIZE_APPLY and
+                    not server_side and
+                    constants.KUBECTL_ANNOTATION_TOO_LONG in stderr):
+                LOG.warning("Client-side apply of %s exceeds the "
+                            "last-applied-configuration annotation limit. "
+                            "Retrying with server-side apply." % manifest_dir)
+                return self.run_kubectl_kustomize(operation_type,
+                                                  manifest_dir,
+                                                  server_side=True)
+
             namespace_error_keys = ["namespaces", "not found"]
             has_namespace_error = all(substring in stderr for substring in namespace_error_keys)
 
