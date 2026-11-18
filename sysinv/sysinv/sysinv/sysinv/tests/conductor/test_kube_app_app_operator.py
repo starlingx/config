@@ -478,6 +478,105 @@ class VerifyPodsStatusForReleaseTestCase(base.DbTestCase):
             self.fluxcd.verify_pods_status_for_release(self.chart_obj))
 
 
+class RunKubectlKustomizeTestCase(base.DbTestCase):
+    """Apply is retried once server-side if the annotation is too long."""
+
+    MANIFEST_DIR = '/opt/platform/fluxcd/test/manifest'
+    TOO_LONG_ERR = ('The Secret "dex-system-overrides" is invalid: '
+                    'metadata.annotations: Too long: may not be more '
+                    'than 262144 bytes')
+
+    def setUp(self):
+        super(RunKubectlKustomizeTestCase, self).setUp()
+        self.fluxcd = kube_app.FluxCDHelper(mock.MagicMock(),
+                                            mock.MagicMock())
+        p = mock.patch('sysinv.conductor.kube_app.subprocess.Popen')
+        self.popen = p.start()
+        self.addCleanup(p.stop)
+
+    def _set_results(self, results):
+        """Each Popen call returns the next (returncode, stderr)."""
+        processes = []
+        for returncode, stderr in results:
+            proc = mock.MagicMock()
+            proc.returncode = returncode
+            proc.communicate.return_value = ('', stderr)
+            processes.append(proc)
+        self.popen.side_effect = processes
+
+    def _cmd(self, call_index):
+        return self.popen.call_args_list[call_index][0][0]
+
+    def test_apply_success_is_client_side_only(self):
+        self._set_results([(0, '')])
+
+        self.assertTrue(self.fluxcd.run_kubectl_kustomize(
+            constants.KUBECTL_KUSTOMIZE_APPLY, self.MANIFEST_DIR))
+
+        self.assertEqual(self.popen.call_count, 1)
+        self.assertNotIn('--server-side', self._cmd(0))
+        self.assertNotIn('--force-conflicts', self._cmd(0))
+
+    def test_apply_annotation_too_long_retries_server_side(self):
+        self._set_results([(1, self.TOO_LONG_ERR), (0, '')])
+
+        self.assertTrue(self.fluxcd.run_kubectl_kustomize(
+            constants.KUBECTL_KUSTOMIZE_APPLY, self.MANIFEST_DIR))
+
+        self.assertEqual(self.popen.call_count, 2)
+        self.assertNotIn('--server-side', self._cmd(0))
+        self.assertIn('--server-side', self._cmd(1))
+        self.assertIn('--force-conflicts', self._cmd(1))
+        self.assertIn(self.MANIFEST_DIR, self._cmd(1))
+
+    def test_apply_annotation_too_long_retries_only_once(self):
+        self._set_results([(1, self.TOO_LONG_ERR),
+                           (1, self.TOO_LONG_ERR)])
+
+        self.assertFalse(self.fluxcd.run_kubectl_kustomize(
+            constants.KUBECTL_KUSTOMIZE_APPLY, self.MANIFEST_DIR))
+
+        self.assertEqual(self.popen.call_count, 2)
+
+    def test_apply_other_error_is_not_retried(self):
+        self._set_results([(1, 'connection refused')])
+
+        self.assertFalse(self.fluxcd.run_kubectl_kustomize(
+            constants.KUBECTL_KUSTOMIZE_APPLY, self.MANIFEST_DIR))
+
+        self.assertEqual(self.popen.call_count, 1)
+
+    def test_apply_server_side_failure_is_returned(self):
+        self._set_results([
+            (1, self.TOO_LONG_ERR),
+            (1, 'The Secret "dex-system-overrides" is invalid: data: '
+                'Too long: may not be more than 1048576 bytes')])
+
+        self.assertFalse(self.fluxcd.run_kubectl_kustomize(
+            constants.KUBECTL_KUSTOMIZE_APPLY, self.MANIFEST_DIR))
+
+        self.assertEqual(self.popen.call_count, 2)
+
+    def test_validate_never_uses_server_side(self):
+        self._set_results([(1, self.TOO_LONG_ERR)])
+
+        self.assertFalse(self.fluxcd.run_kubectl_kustomize(
+            constants.KUBECTL_KUSTOMIZE_VALIDATE, self.MANIFEST_DIR))
+
+        self.assertEqual(self.popen.call_count, 1)
+        self.assertIn('--dry-run=server', self._cmd(0))
+        self.assertNotIn('--server-side', self._cmd(0))
+
+    def test_delete_never_uses_server_side(self):
+        self._set_results([(1, self.TOO_LONG_ERR)])
+
+        self.assertFalse(self.fluxcd.run_kubectl_kustomize(
+            constants.KUBECTL_KUSTOMIZE_DELETE, self.MANIFEST_DIR))
+
+        self.assertEqual(self.popen.call_count, 1)
+        self.assertNotIn('--server-side', self._cmd(0))
+
+
 class AppOperatorLifecycleHookTestCase(base.DbTestCase):
     """Tests for the lifecycle hook dispatch observability.
 
