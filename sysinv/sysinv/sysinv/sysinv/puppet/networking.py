@@ -585,6 +585,15 @@ class NetworkingPuppet(base.BasePuppet):
                         tmp = instance['global_parameters'].pop('gnss_uart_disable')
                         instance['gnss_uart_disable'] = tmp.lower() == 'true'
 
+            # For HA-enabled phc2sys, derive the read-only management socket
+            # path from the control socket path (+ 'ro'), Derived value overrides any
+            # user-supplied one; only the rendered instance config is changed.
+            if (instance['service'] == constants.PTP_INSTANCE_TYPE_PHC2SYS and
+                    instance['global_parameters'].get('ha_enabled') == '1'):
+                ha_socket = instance['global_parameters'].get(
+                    'ha_phc2sys_com_socket', constants.PTP_PHC2SYS_HA_SOCKET_PATH)
+                instance['global_parameters']['ha_phc2sys_com_ro_socket'] = ha_socket + 'ro'
+
             if instance['service'] == constants.PTP_INSTANCE_TYPE_PTP4L:
                 # Add pmc parameters so that they can be set by puppet
                 instance['pmc_gm_settings'].update(default_pmc_parameters)
