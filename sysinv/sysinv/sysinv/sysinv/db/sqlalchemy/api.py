@@ -3898,13 +3898,18 @@ class Connection(api.Connection):
     @db_objects.objectify(objects.ptp_instance)
     def ptp_instances_get_list(self, host=None, limit=None, marker=None,
                                sort_key=None, sort_dir=None):
-        query = model_query(models.PtpInstances)
-        if host is not None:
-            host_obj = self.ihost_get(host)
-            query = query.join(models.PtpInstanceMaps).filter(
-                models.PtpInstanceMaps.host_id == host_obj.id)
-        return _paginate_query(models.PtpInstances, limit, marker,
-                               sort_key, sort_dir, query)
+        # Building the query on the greenthread session and then calling
+        # another db api method (ihost_get) before running it leaves the
+        # connection "idle in transaction" and never returned to the pool,
+        # so we explicitly define the session here
+        with _session_for_read() as session:
+            query = model_query(models.PtpInstances, session=session)
+            if host is not None:
+                host_obj = self.ihost_get(host)
+                query = query.join(models.PtpInstanceMaps).filter(
+                    models.PtpInstanceMaps.host_id == host_obj.id)
+            return _paginate_query(models.PtpInstances, limit, marker,
+                                   sort_key, sort_dir, query)
 
     def ptp_instance_parameter_add(self, ptp_instance, ptp_parameter):
         return self._ptp_parameter_add(ptp_instance, ptp_parameter)
@@ -7289,19 +7294,23 @@ class Connection(api.Connection):
 
     @db_objects.objectify(objects.peer)
     def peers_get_all_by_cluster(self, cluster_id, name=None):
-        # cluster_get() to raise an exception if the isystem is not found
-        query = model_query(models.Peers)
-        cluster_obj = self.cluster_get(cluster_id)
-        query = query.filter_by(cluster_id=cluster_obj.id)
-        if name is not None:
-            query = query.filter_by(name=name)
-        peer_list = []
-        try:
-            peer_list = query.all()
-        except UnicodeDecodeError:
-            LOG.error("UnicodeDecodeError occurred, "
-                      "return an empty peer list.")
-        return peer_list
+        # Same pattern as ptp_instances_get_list: the nested cluster_get()
+        # call would otherwise leave the query's connection "idle in
+        # transaction", so we explicitly define the session here
+        with _session_for_read() as session:
+            query = model_query(models.Peers, session=session)
+            # cluster_get() to raise an exception if the isystem is not found
+            cluster_obj = self.cluster_get(cluster_id)
+            query = query.filter_by(cluster_id=cluster_obj.id)
+            if name is not None:
+                query = query.filter_by(name=name)
+            peer_list = []
+            try:
+                peer_list = query.all()
+            except UnicodeDecodeError:
+                LOG.error("UnicodeDecodeError occurred, "
+                          "return an empty peer list.")
+            return peer_list
 
     @db_objects.objectify(objects.peer)
     def peer_get(self, peer_uuid):
