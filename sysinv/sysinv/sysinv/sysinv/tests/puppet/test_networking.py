@@ -1181,9 +1181,9 @@ class TestDpllMgrStructuredConfig(testtools.TestCase):
         return {'config': rows}
 
     def _minimum_flat(self):
+        # operation_mode is optional; the rendered config defaults to SW_BASED.
         return {
             'phc_interface': 'eno8703',
-            'operation_mode': 'SW_BASED',
             'channel_ptp_bh': 'ptp01bh',
             'channel_ts2_0': 'ts1',
         }

@@ -27,6 +27,11 @@ class TestDpllMgrConfigSectionValidation(testtools.TestCase):
         self._validate('phc_interface=eno8703', 'operation_mode=SW_BASED',
                        'ptp_domain_number=24')
 
+    def test_minimum_without_operation_mode_ok(self):
+        # operation_mode is optional (defaults to SW_BASED on the server).
+        self._validate('phc_interface=eno8703', 'channel_ptp_bh=ptp01bh',
+                       'channel_ts2_0=ts1', 'channel_ts2_1=ts2')
+
     def test_pin_priority_map_ok(self):
         self._validate('dpll0_pin_priority_map=GNSS_REF4P:0, SDP0_REF0N:12')
 

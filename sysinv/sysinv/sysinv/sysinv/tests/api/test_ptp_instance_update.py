@@ -834,7 +834,7 @@ class TestUpdatePtpInstanceDpllMgrStructuredConfig(BasePtpInstanceTestCase):
 
     def test_apply_missing_required_minimum_rejected(self):
         """A config lacking a required-minimum key is rejected at apply."""
-        # Only phc_interface present; missing operation_mode / channel_ptp_bh.
+        # Only phc_interface present; missing channel_ptp_bh.
         self._add_config('phc_interface', 'eno8703')
         self._assign_instance_to_controller(
             self._instance_id_for_uuid(self.uuid))
@@ -862,8 +862,8 @@ class TestUpdatePtpInstanceDpllMgrStructuredConfig(BasePtpInstanceTestCase):
         ptp4l = dbutils.create_test_ptp_instance(
             name='ptp01bh', service=constants.PTP_INSTANCE_TYPE_PTP4L)
         self._assign_instance_to_controller(ptp4l['id'])
+        # operation_mode is not set: it is optional (defaults to SW_BASED).
         self._add_config('phc_interface', 'eno8703')
-        self._add_config('operation_mode', 'SW_BASED')
         self._add_config('channel_ptp_bh', 'ptp01bh')
         self._add_config('dpll0_pin_priority_map', 'GNSS_REF4P:0, SDP0_REF0N:12')
         self._assign_instance_to_controller(
