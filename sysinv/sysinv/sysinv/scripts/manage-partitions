@@ -59,7 +59,7 @@ def _sectors_to_MiB(value, sector_size):
 
 def _MiB_to_sectors(value, sector_size):
     """Transform <value> MiBs to sectors and return."""
-    return value * (1024 ** 2) / sector_size
+    return int(value * (1024 ** 2) // sector_size)
 
 
 @utils.skip_udev_partition_probe
@@ -238,6 +238,34 @@ def _get_free_space(device_node):
     return free_spaces
 
 
+def _parse_free_sectors(parted_output):
+    """Parse 'parted -m unit s print free' output.
+    :returns list of (start, end) free regions, in sectors, end inclusive"""
+    rows = [line.strip().rstrip(';').split(':')
+            for line in parted_output.splitlines()]
+    return [(int(row[1].rstrip('s')), int(row[2].rstrip('s')))
+            for row in rows if len(row) >= 5 and row[-1] == 'free']
+
+
+def _get_free_sectors(disk_device_path):
+    """Get the free regions of a disk, in sectors."""
+    output, err, ret = _command(
+        ['parted', '-s', '-m', disk_device_path, 'unit', 's', 'print', 'free'],
+        device_node=disk_device_path)
+    if ret != RETURN_SUCCESS:
+        raise IOError("Could not read free space on disk %s: %s" %
+                      (disk_device_path, err))
+    return _parse_free_sectors(output)
+
+
+def _range_in_free_space(free_regions, start_sector, size_sectors):
+    """Check if [start_sector, start_sector + size_sectors) is entirely
+    inside one free region."""
+    end_sector = start_sector + size_sectors - 1
+    return any(start <= start_sector and end_sector <= end
+               for start, end in free_regions)
+
+
 def _get_partition_start_end_size(disk_device_path, part_number,
                                   sector_size_bytes):
     """Return the start, end and size of a partitions.
@@ -313,9 +341,16 @@ def _create_partition(disk_device_path, part_number, start_mib, size_mib,
         # Prior to committing, we need to wipe the LVM data from this
         # partition so that if the LVM global filter is not set correctly
         # we will have stale LVM info polluting the system
-        _wipe_partition(disk_device_path,
-                        _MiB_to_sectors(start_mib, sector_size_bytes),
-                        _MiB_to_sectors(size_mib, sector_size_bytes),
+        start_sectors = _MiB_to_sectors(start_mib, sector_size_bytes)
+        size_sectors = _MiB_to_sectors(size_mib, sector_size_bytes)
+        if not _range_in_free_space(_get_free_sectors(disk_device_path),
+                                    start_sectors, size_sectors):
+            raise IOError("Partition %s of %sMiB at %sMiB (start sector %s, "
+                          "%s sectors) on disk %s is not within free space, "
+                          "refusing to wipe it" %
+                          (part_number, size_mib, start_mib, start_sectors,
+                           size_sectors, disk_device_path))
+        _wipe_partition(disk_device_path, start_sectors, size_sectors,
                         sector_size_bytes)
 
     output, _, _ = _command(["udevadm", "settle", "-E", disk_device_path])
@@ -393,7 +428,7 @@ def _resize_partition(disk_device_path, part_number, new_part_size_mib,
         # a transitory state. We should wait for the partition
         # to stabilize and then try to commit the changes again
         LOG.error(_("IOError resizing partition %s of %s: %s") %
-                  (part_number, disk_device_path, str(e.message)))
+                  (part_number, disk_device_path, str(e)))
         raise e
 
     return partition
@@ -580,7 +615,7 @@ def create_partitions(data, mode, pfile):
                     'available_mib': disk_available_mib,
                     'status': constants.PARTITION_READY_STATUS})
             except Exception as e:
-                LOG.error("ERROR: %s" % e.message)
+                LOG.error("ERROR: %s" % e)
                 response.update({'status': constants.PARTITION_ERROR_STATUS})
         else:
             response = {
@@ -928,7 +963,7 @@ def delete_partitions(data, mode, pfile):
                 response.update({'available_mib': disk_available_mib,
                                  'status': constants.PARTITION_DELETED_STATUS})
             except Exception as e:
-                LOG.error("ERROR: %s" % e.message)
+                LOG.error("ERROR: %s" % e)
                 response.update({'status': constants.PARTITION_ERROR_STATUS})
         else:
             response = {
