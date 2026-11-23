@@ -104,12 +104,11 @@ CHANNEL_SERVICE_TYPE = {
 }
 
 # Required-minimum structured keys (spec 3.6 Layer 2). The dpll0/dpll1 pin
-# priority maps are NOT required from the operator: both planes ship with a
-# GNSS-primary default in DEFAULT_DPLL_MGR_TEMPLATE and the operator overrides
-# either/both as needed.
+# priority maps and operation_mode are NOT required from the operator: both
+# planes ship with a GNSS-primary default and operation_mode defaults to
+# SW_BASED in DEFAULT_DPLL_MGR_TEMPLATE; the operator overrides them as needed.
 REQUIRED_CONFIG_KEYS = (
     'phc_interface',
-    'operation_mode',
     'channel_ptp_bh',
 )
 
@@ -133,8 +132,9 @@ STRUCTURED_SCALAR_KEYS = frozenset([
 
 # ---------------------------------------------------------------------------
 # Shipped boilerplate template (grounded in a live GNR-D GNSS-primary config).
-# Operator-supplied fields (phc_interface, operation_mode, channels, dpll pin
-# maps) are intentionally absent / neutral here and filled by the overlay.
+# Operator-supplied fields (phc_interface, channels, dpll pin maps) are
+# intentionally absent / neutral here and filled by the overlay.
+# operation_mode ships as SW_BASED and is an optional operator override.
 # ---------------------------------------------------------------------------
 DEFAULT_DPLL_MGR_TEMPLATE = {
     "channels": {},
@@ -528,9 +528,10 @@ def build_overlay(structured, instance_lookup, domain_from_backhaul=None):
 def validate_required_minimum(structured):
     """Raise DpllMgrConfigError if any required-minimum key is absent.
 
-    Required (spec 3.6 Layer 2): phc_interface, operation_mode, channel_ptp_bh.
-    The dpll0/dpll1 pin priority maps are supplied by the shipped template
-    default (GNSS-primary) and are optional operator overrides.
+    Required (spec 3.6 Layer 2): phc_interface, channel_ptp_bh.
+    operation_mode (default SW_BASED) and the dpll0/dpll1 pin priority maps
+    (default GNSS-primary) are supplied by the shipped template and are
+    optional operator overrides.
     """
     missing = [k for k in REQUIRED_CONFIG_KEYS if k not in structured]
     if missing:

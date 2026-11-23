@@ -2707,15 +2707,6 @@ PTP_INSTANCE_TYPE_DPLL_MGR_STRUCTURED_KEYS = [
     'ho_2',
 ]
 
-# Required-minimum structured keys that must all be present at apply time
-# (Layer 2). The dpll0/dpll1 pin priority maps ship as GNSS-primary template
-# defaults and are optional operator overrides.
-PTP_INSTANCE_TYPE_DPLL_MGR_STRUCTURED_REQUIRED = [
-    'phc_interface',
-    'operation_mode',
-    'channel_ptp_bh',
-]
-
 # Structured 'config' channel keys that StarlingX does not act on (ptp_0/1/2
 # forward channels; forward_clock_parameters() is a no-op here). These
 # are WARNED, not rejected, and are not stored: the daemon never consumes them,

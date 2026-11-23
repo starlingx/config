@@ -163,10 +163,10 @@ class TestChannelDerivation(base.TestCase):
 class TestBuildOverlayAndRender(base.TestCase):
 
     def _minimum(self):
-        # Required-minimum only: dpll0/dpll1 come from the template default.
+        # Required-minimum only: operation_mode and dpll0/dpll1 come from the
+        # template default.
         return {
             'phc_interface': 'eno8703',
-            'operation_mode': 'SW_BASED',
             'channel_ptp_bh': 'ptp01bh',
             'channel_ts2_0': 'ts1',
             'channel_ts2_1': 'ts2',
@@ -177,6 +177,7 @@ class TestBuildOverlayAndRender(base.TestCase):
             self._minimum(), INSTANCE_LOOKUP, domain_from_backhaul=24)
         # Operator-supplied values land where expected.
         self.assertEqual(config['global']['phc_interface'], 'eno8703')
+        # operation_mode is not given: the template default applies.
         self.assertEqual(config['global']['operation_mode'], 'SW_BASED')
         self.assertEqual(config['global']['ptp_domain_number'], 24)
         self.assertEqual(config['channels']['ptp_bh']['call_channel'],
@@ -314,6 +315,22 @@ class TestLayer2RequiredMinimum(base.TestCase):
     def test_full_minimum_accepted(self):
         tmpl.validate_required_minimum({
             'phc_interface': 'eno8703',
+            'channel_ptp_bh': 'ptp01bh',
+        })
+
+    def test_operation_mode_not_required(self):
+        # operation_mode defaults to SW_BASED; it is not an operator-required
+        # key, and the missing-key message does not list it.
+        self.assertNotIn('operation_mode', tmpl.REQUIRED_CONFIG_KEYS)
+        # testtools' assertRaises is not a context manager; it returns the
+        # raised exception.
+        e = self.assertRaises(DpllMgrConfigError,
+                              tmpl.validate_required_minimum, {})
+        self.assertNotIn('operation_mode', str(e))
+
+    def test_operation_mode_given_is_accepted(self):
+        tmpl.validate_required_minimum({
+            'phc_interface': 'eno8703',
             'operation_mode': 'SW_BASED',
             'channel_ptp_bh': 'ptp01bh',
         })
@@ -321,20 +338,17 @@ class TestLayer2RequiredMinimum(base.TestCase):
     def test_missing_phc_interface_rejected(self):
         self.assertRaises(DpllMgrConfigError,
                           tmpl.validate_required_minimum,
-                          {'operation_mode': 'SW_BASED',
-                           'channel_ptp_bh': 'ptp01bh'})
+                          {'channel_ptp_bh': 'ptp01bh'})
 
     def test_missing_channel_ptp_bh_rejected(self):
         self.assertRaises(DpllMgrConfigError,
                           tmpl.validate_required_minimum,
-                          {'phc_interface': 'eno8703',
-                           'operation_mode': 'SW_BASED'})
+                          {'phc_interface': 'eno8703'})
 
     def test_dpll_maps_not_required(self):
         # Neither dpll0 nor dpll1 maps are operator-required: both ship as a
         # GNSS-primary template default and are optional overrides.
         tmpl.validate_required_minimum({
             'phc_interface': 'eno8703',
-            'operation_mode': 'SW_BASED',
             'channel_ptp_bh': 'ptp01bh',
         })
