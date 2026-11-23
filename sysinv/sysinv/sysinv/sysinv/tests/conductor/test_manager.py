@@ -4826,6 +4826,15 @@ class ManagerTestCase(base.DbTestCase):
         p.start()
         self.addCleanup(p.stop)
 
+        # A k8s health check started by an earlier test in the same worker can
+        # still be running and keeps calling requests.get(), which reads
+        # ~/.netrc through the mocked os.path.exists() and open() below.
+        # Keep any such call off the network and the filesystem.
+        mock_requests_get = mock.MagicMock()
+        p = mock.patch('requests.get', mock_requests_get)
+        p.start()
+        self.addCleanup(p.stop)
+
         mock_os_path_exists = mock.MagicMock()
         p = mock.patch('os.path.exists', mock_os_path_exists)
         p.start()
