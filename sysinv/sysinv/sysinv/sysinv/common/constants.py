@@ -2631,6 +2631,9 @@ PTP_SYNCE_EEC_INVALID_VALUE = '0'
 PTP_SYNCE_TX_HEARTBEAT_MSEC = '1000'
 PTP_SYNCE_RX_HEARTBEAT_MSEC = '500'
 
+# Default control socket of the HA phc2sys instance (phc2sys -z)
+PTP_PHC2SYS_HA_SOCKET_PATH = '/var/run/phc2sys-phc-ha'
+
 # SyncE QL controller parameters (read by collectd synce plugin)
 PTP_SYNCE_HOLDOVER_QL = '0x04'
 PTP_SYNCE_FREERUN_QL = '0x0f'
