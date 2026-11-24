@@ -1824,6 +1824,10 @@ def bytes_to_MiB(bytes_number):
     return bytes_number / float(1024 ** 2)  # pylint: disable=W1619
 
 
+def GiB_to_bytes(gib_number):
+    return int(gib_number * (1024 ** 3))
+
+
 def check_lock_path():
     if os.path.isdir(constants.SYSINV_VOLATILE_PATH):
         return

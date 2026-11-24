@@ -16300,3 +16300,181 @@ class TestAutoUploadManagedAppReturnContract(base.DbTestCase):
         self.assertTrue(result)
         mock_spawn.assert_not_called()
         self.service.perform_app_upload.assert_called_once()
+
+
+class DrbdResizeGuardrailsTestCase(base.DbTestCase):
+    """Tests for the DRBD filesystem resize guardrails.
+
+    The filesystem must never be grown beyond the usable size of the DRBD
+    device, so resize2fs may only run once the device itself was resized.
+    """
+
+    GIB = 1024 ** 3
+
+    def setUp(self):
+        super(DrbdResizeGuardrailsTestCase, self).setUp()
+
+        self.service = manager.ConductorManager('test-host', 'test-topic')
+        self.context = context.get_admin_context()
+
+        p = mock.patch('sysinv.conductor.manager.time.sleep')
+        p.start()
+        self.addCleanup(p.stop)
+
+    def _dev_size(self, stdout, returncode):
+        """Run _get_drbd_dev_size and return its result and the command."""
+        proc = mock.Mock(returncode=returncode)
+        proc.communicate.return_value = (stdout, '')
+        with mock.patch('sysinv.conductor.manager.subprocess.Popen',
+                        return_value=proc) as mock_popen:
+            result = self.service._get_drbd_dev_size('drbd2')
+        return result, mock_popen.call_args[0][0]
+
+    def _verify_fs(self, fs_gib, dev_bytes, dev_retcode=0, fs_retcode=0):
+        with mock.patch.object(self.service, '_get_drbd_fs_size',
+                               return_value=(fs_gib, fs_retcode)), \
+                mock.patch.object(self.service, '_get_drbd_dev_size',
+                                  return_value=(dev_bytes, dev_retcode)):
+            return self.service._verify_drbd_fs_resized(
+                self.context, 'drbd2', 'platform-lv')
+
+    def _verify_dev(self, lv_sizes, dev_bytes, dev_retcode=0):
+        with mock.patch.object(self.service, 'get_controllerfs_lv_sizes',
+                               return_value=lv_sizes), \
+                mock.patch.object(self.service, '_get_drbd_dev_size',
+                                  return_value=(dev_bytes, dev_retcode)):
+            return self.service._verify_drbd_dev_resized(
+                self.context, 'drbd2', 'platform-lv')
+
+    def _run_resize2fs(self, dev_resized, fs_resized, standby_host=None):
+        """Run _resize2fs_drbd_dev and return its result and commands.
+
+        :param dev_resized: results of the successive device checks
+        :param fs_resized: result of the filesystem check
+        :param standby_host: standby controller, None on a simplex system
+        """
+        with mock.patch.object(self.service, '_verify_drbd_dev_resized',
+                               side_effect=dev_resized), \
+                mock.patch.object(self.service, '_verify_drbd_fs_resized',
+                                  return_value=fs_resized), \
+                mock.patch('sysinv.conductor.manager.cutils.execute',
+                           return_value=('', '')) as mock_execute:
+            resized = self.service._resize2fs_drbd_dev(
+                self.context, 3, 'drbd2', 'platform-lv', 'drbd-platform',
+                standby_host)
+        return resized, mock_execute.call_args_list
+
+    def _check_drbd_resource(self, fs, drbd_dev, drbd_lv, drbd_res,
+                             standby_host=None):
+        """Check the device, LV and DRBD resource used for a filesystem."""
+        self.service.dbapi = mock.Mock()
+        self.service.dbapi.controller_fs_get_list.return_value = []
+        with mock.patch.object(self.service, '_drbd_fs_updated',
+                               return_value=[fs]), \
+                mock.patch.object(self.service, '_drbd_connected',
+                                  return_value=True), \
+                mock.patch.object(self.service, '_drbd_fs_sync',
+                                  return_value=[fs]), \
+                mock.patch.object(self.service, '_resize2fs_drbd_dev',
+                                  return_value=True) as mock_resize, \
+                mock.patch('sysinv.conductor.manager.os.path.isfile',
+                           return_value=True):
+            rc, resized = self.service._config_resize_filesystems(
+                self.context, standby_host)
+        mock_resize.assert_called_once_with(
+            self.context, 3, drbd_dev, drbd_lv, drbd_res, standby_host)
+        self.assertTrue(rc)
+        self.assertEqual({fs}, resized)
+
+    def test_get_drbd_dev_size(self):
+        # The size is read in bytes with blockdev --getsize64.
+        result, cmd = self._dev_size('107374182400\n', 0)
+        self.assertEqual((107374182400, 0), result)
+        self.assertEqual('blockdev --getsize64 /dev/drbd2', cmd)
+
+        # Output that is not a number and command failure are reported.
+        self.assertEqual((0, 1), self._dev_size('garbage\n', 0)[0])
+        self.assertEqual((0, 1), self._dev_size('', 1)[0])
+
+    def test_verify_drbd_fs_resized(self):
+        # A filesystem a few MB larger than the usable DRBD device is
+        # invisible at GiB granularity but breaks the mount.
+        self.assertFalse(self._verify_fs(100.0, 100 * self.GIB - 3200000))
+
+        # The filesystem fits in the device.
+        self.assertTrue(self._verify_fs(100.0, 100 * self.GIB))
+        self.assertTrue(self._verify_fs(99.0, 100 * self.GIB))
+
+        # The device size or the filesystem size is unavailable.
+        self.assertFalse(self._verify_fs(99.0, 0, dev_retcode=1))
+        self.assertFalse(self._verify_fs(0, 100 * self.GIB, fs_retcode=1))
+
+    def test_verify_drbd_dev_resized(self):
+        lv_sizes = {'platform-lv': '100.00'}
+
+        # The usable size is a bit smaller than the LV because of the DRBD
+        # internal metadata.
+        self.assertTrue(self._verify_dev(lv_sizes, 100 * self.GIB - 3200000))
+
+        # The device was not resized, the LV was not found, or the device
+        # size is unavailable.
+        self.assertFalse(self._verify_dev(lv_sizes, 99 * self.GIB))
+        self.assertFalse(self._verify_dev({}, 100 * self.GIB))
+        self.assertFalse(self._verify_dev(lv_sizes, 0, dev_retcode=1))
+
+    def test_resize2fs_drbd_dev(self):
+        drbdadm = mock.call('drbdadm', '--', '--assume-peer-has-space',
+                            'resize', 'drbd-platform', attempts=3,
+                            run_as_root=True)
+        drbdadm_duplex = mock.call('drbdadm', 'resize', 'drbd-platform',
+                                   attempts=3, run_as_root=True)
+        resize2fs = mock.call('resize2fs', '/dev/drbd2', attempts=3,
+                              run_as_root=True)
+
+        # The device is already resized.
+        resized, calls = self._run_resize2fs([True, True], True)
+        self.assertTrue(resized)
+        self.assertEqual([resize2fs], calls)
+
+        # The device is behind, so its DRBD resource is resized before
+        # resize2fs runs.
+        resized, calls = self._run_resize2fs([False, True], True)
+        self.assertTrue(resized)
+        self.assertEqual([drbdadm, resize2fs], calls)
+
+        # With a standby controller DRBD checks that the peer has space.
+        resized, calls = self._run_resize2fs([False, True], True,
+                                             standby_host=mock.Mock())
+        self.assertTrue(resized)
+        self.assertEqual([drbdadm_duplex, resize2fs], calls)
+
+        # The device still can't be resized, so resize2fs must not run.
+        resized, calls = self._run_resize2fs([False, False], True)
+        self.assertFalse(resized)
+        self.assertEqual([drbdadm], calls)
+
+        # The filesystem does not fit in the device after resize2fs.
+        resized, __ = self._run_resize2fs([True, True], False)
+        self.assertFalse(resized)
+
+    def test_config_resize_filesystems_drbd_resources(self):
+        # docker-distribution has no hyphen in the resource name, and the
+        # ceph resource is drbd-ceph.
+        for fs, drbd_dev, drbd_lv, drbd_res in (
+                (constants.DRBD_PGSQL, 'drbd0', 'pgsql-lv', 'drbd-pgsql'),
+                (constants.DRBD_PLATFORM, 'drbd2', 'platform-lv',
+                 'drbd-platform'),
+                (constants.DRBD_EXTENSION, 'drbd5', 'extension-lv',
+                 'drbd-extension'),
+                (constants.DRBD_DC_VAULT, 'drbd6', 'dc-vault-lv',
+                 'drbd-dc-vault'),
+                (constants.DRBD_ETCD, 'drbd7', 'etcd-lv', 'drbd-etcd'),
+                (constants.DRBD_DOCKER_DISTRIBUTION, 'drbd8',
+                 'dockerdistribution-lv', 'drbd-dockerdistribution'),
+                (constants.DRBD_CEPH, 'drbd9', 'ceph-float-lv', 'drbd-ceph')):
+            self._check_drbd_resource(fs, drbd_dev, drbd_lv, drbd_res)
+
+        # With a standby controller the resource names are the same.
+        self._check_drbd_resource(constants.DRBD_PLATFORM, 'drbd2',
+                                  'platform-lv', 'drbd-platform',
+                                  standby_host=mock.Mock())
